@@ -1,4 +1,4 @@
-export interface EventPlayer {
+export interface Player {
   id: string;
   name: string;
   gender?: string | null;
@@ -171,4 +171,3 @@ export function generateMatches(
       return generateDoublesMatches(players, numCourts, previousMatches);
   }
 }
-
