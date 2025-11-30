@@ -1,9 +1,9 @@
-export const dynamic = 'force-dynamic';
+'use client';
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Trophy, Mail, Lock, Eye, EyeOff } from 'lucide-react';
+import { Trophy, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
@@ -105,7 +105,7 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-6 text-center text-sm text-gray-500">
-            Don&apos;t have an account?{' '}
+            Do not have an account?{' '}
             <Link href="/register" className="text-blue-600 font-medium hover:underline">
               Sign up
             </Link>
