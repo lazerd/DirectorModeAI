@@ -1,6 +1,3 @@
-Here's the content - copy everything below:
-
-```typescript
 interface Player {
   id: string;
   name: string;
@@ -174,8 +171,3 @@ export function generateMatches(
       return generateDoublesMatches(players, numCourts, previousMatches);
   }
 }
-```
-
-Paste that into the new file, then click **Commit changes**.
-
-  
