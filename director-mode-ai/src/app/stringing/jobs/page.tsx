@@ -8,6 +8,7 @@ import { formatDistanceToNow } from 'date-fns';
 
 type Job = {
   id: string;
+  customer_id: string;
   status: string;
   main_tension_lbs: number;
   cross_tension_lbs: number | null;
@@ -316,14 +317,17 @@ function JobCard({
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-2">
-            <span className="font-display text-lg">
+            <Link 
+              href={`/stringing/customers/${job.customer_id}`}
+              className="font-display text-lg hover:text-stringing transition-colors"
+            >
               {job.customer.full_name}
-            </span>
+            </Link>
             <span className={`badge ${statusColors[job.status as keyof typeof statusColors]}`}>
               {job.status.replace('_', ' ')}
             </span>
             {job.customer.email && (
-<Mail size={14} className="text-gray-400" />
+              <Mail size={14} className="text-gray-400" />
             )}
           </div>
           
