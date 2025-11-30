@@ -1,0 +1,603 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ========================================
+   CSS Variables - Unified Design System
+   ======================================== */
+:root {
+  /* Primary - Court Blue */
+  --primary: 210, 100%, 45%;
+  --primary-light: 210, 100%, 95%;
+  --primary-dark: 210, 100%, 35%;
+  
+  /* Accent - Tennis Ball Yellow-Green */
+  --accent: 75, 80%, 55%;
+  --accent-light: 75, 80%, 90%;
+  
+  /* Semantic Colors */
+  --success: 142, 76%, 45%;
+  --success-light: 142, 76%, 95%;
+  --warning: 38, 92%, 50%;
+  --warning-light: 38, 92%, 95%;
+  --destructive: 0, 84%, 60%;
+  --destructive-light: 0, 84%, 95%;
+  
+  /* Tool Colors */
+  --mixer: 25, 95%, 55%;
+  --mixer-light: 25, 95%, 95%;
+  --lessons: 210, 100%, 45%;
+  --lessons-light: 210, 100%, 95%;
+  --stringing: 280, 70%, 50%;
+  --stringing-light: 280, 70%, 95%;
+  
+  /* Neutrals */
+  --background: 210, 40%, 98%;
+  --foreground: 220, 15%, 20%;
+  --card: 0, 0%, 100%;
+  --card-foreground: 220, 15%, 20%;
+  --muted: 210, 20%, 96%;
+  --muted-foreground: 215, 15%, 45%;
+  --border: 210, 20%, 88%;
+  --input: 210, 20%, 88%;
+  --ring: 210, 100%, 45%;
+  
+  /* Radius */
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: 220, 20%, 10%;
+  --foreground: 210, 20%, 95%;
+  --card: 220, 18%, 14%;
+  --card-foreground: 210, 20%, 95%;
+  --muted: 220, 15%, 20%;
+  --muted-foreground: 215, 15%, 60%;
+  --border: 220, 15%, 25%;
+  --input: 220, 15%, 25%;
+}
+
+/* ========================================
+   Base Styles
+   ======================================== */
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========================================
+   Typography
+   ======================================== */
+.font-display {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+
+/* ========================================
+   Card Component
+   ======================================== */
+.card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.06);
+}
+
+.card-interactive:hover {
+  transform: translateY(-2px);
+}
+
+/* ========================================
+   Button Components
+   ======================================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  border-radius: var(--radius);
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: hsl(var(--primary));
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: hsl(var(--primary-dark));
+}
+
+.btn-secondary {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: hsl(var(--border));
+}
+
+.btn-ghost {
+  background: transparent;
+  color: hsl(var(--foreground));
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: hsl(var(--muted));
+}
+
+.btn-destructive {
+  background: hsl(var(--destructive));
+  color: white;
+}
+
+.btn-destructive:hover:not(:disabled) {
+  background: hsl(0, 84%, 50%);
+}
+
+.btn-success {
+  background: hsl(var(--success));
+  color: white;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: hsl(142, 76%, 38%);
+}
+
+/* Tool-specific buttons */
+.btn-mixer {
+  background: hsl(var(--mixer));
+  color: white;
+}
+
+.btn-mixer:hover:not(:disabled) {
+  background: hsl(25, 95%, 45%);
+}
+
+.btn-lessons {
+  background: hsl(var(--lessons));
+  color: white;
+}
+
+.btn-stringing {
+  background: hsl(var(--stringing));
+  color: white;
+}
+
+.btn-stringing:hover:not(:disabled) {
+  background: hsl(280, 70%, 40%);
+}
+
+.btn-sm {
+  padding: 0.375rem 0.875rem;
+  font-size: 0.8125rem;
+}
+
+.btn-lg {
+  padding: 0.875rem 1.75rem;
+  font-size: 1rem;
+}
+
+.btn-icon {
+  padding: 0.5rem;
+  aspect-ratio: 1;
+}
+
+/* ========================================
+   Form Components
+   ======================================== */
+.input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.9375rem;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  color: hsl(var(--foreground));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.input:focus {
+  outline: none;
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15);
+}
+
+.input::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+.input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+textarea.input {
+  min-height: 100px;
+  resize: vertical;
+}
+
+select.input {
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 0.5rem center;
+  background-repeat: no-repeat;
+  background-size: 1.5em 1.5em;
+  padding-right: 2.5rem;
+}
+
+.label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  margin-bottom: 0.375rem;
+}
+
+.label-muted {
+  color: hsl(var(--muted-foreground));
+  font-weight: 400;
+}
+
+/* ========================================
+   Badge Component
+   ======================================== */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+.badge-primary {
+  background: hsl(var(--primary-light));
+  color: hsl(var(--primary));
+}
+
+.badge-success {
+  background: hsl(var(--success-light));
+  color: hsl(142, 76%, 30%);
+}
+
+.badge-warning {
+  background: hsl(var(--warning-light));
+  color: hsl(38, 92%, 30%);
+}
+
+.badge-destructive {
+  background: hsl(var(--destructive-light));
+  color: hsl(0, 84%, 40%);
+}
+
+.badge-mixer {
+  background: hsl(var(--mixer-light));
+  color: hsl(25, 95%, 35%);
+}
+
+.badge-lessons {
+  background: hsl(var(--lessons-light));
+  color: hsl(210, 100%, 35%);
+}
+
+.badge-stringing {
+  background: hsl(var(--stringing-light));
+  color: hsl(280, 70%, 35%);
+}
+
+/* ========================================
+   Spinner
+   ======================================== */
+.spinner {
+  width: 1.25rem;
+  height: 1.25rem;
+  border: 2px solid hsl(var(--border));
+  border-top-color: hsl(var(--primary));
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ========================================
+   Gradient Utilities
+   ======================================== */
+.bg-gradient-primary {
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(220, 90%, 50%) 100%);
+}
+
+.bg-gradient-mixer {
+  background: linear-gradient(135deg, hsl(var(--mixer)) 0%, hsl(35, 95%, 55%) 100%);
+}
+
+.bg-gradient-lessons {
+  background: linear-gradient(135deg, hsl(var(--lessons)) 0%, hsl(220, 90%, 55%) 100%);
+}
+
+.bg-gradient-stringing {
+  background: linear-gradient(135deg, hsl(var(--stringing)) 0%, hsl(300, 70%, 50%) 100%);
+}
+
+.bg-gradient-subtle {
+  background: linear-gradient(135deg, hsl(var(--background)) 0%, hsl(var(--muted)) 100%);
+}
+
+/* ========================================
+   Tool Cards (Homepage)
+   ======================================== */
+.tool-card {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.tool-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 2px;
+  background: transparent;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  transition: background 0.3s ease;
+}
+
+.tool-card-mixer:hover::before {
+  background: linear-gradient(135deg, hsl(var(--mixer)) 0%, hsl(35, 95%, 55%) 100%);
+}
+
+.tool-card-lessons:hover::before {
+  background: linear-gradient(135deg, hsl(var(--lessons)) 0%, hsl(220, 90%, 55%) 100%);
+}
+
+.tool-card-stringing:hover::before {
+  background: linear-gradient(135deg, hsl(var(--stringing)) 0%, hsl(300, 70%, 50%) 100%);
+}
+
+.tool-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+}
+
+/* ========================================
+   Alert Component
+   ======================================== */
+.alert {
+  padding: 1rem;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.alert-info {
+  background: hsl(var(--primary-light));
+  border: 1px solid hsl(var(--primary) / 0.2);
+  color: hsl(var(--primary-dark));
+}
+
+.alert-success {
+  background: hsl(var(--success-light));
+  border: 1px solid hsl(var(--success) / 0.2);
+  color: hsl(142, 76%, 25%);
+}
+
+.alert-warning {
+  background: hsl(var(--warning-light));
+  border: 1px solid hsl(var(--warning) / 0.2);
+  color: hsl(38, 92%, 25%);
+}
+
+.alert-error {
+  background: hsl(var(--destructive-light));
+  border: 1px solid hsl(var(--destructive) / 0.2);
+  color: hsl(0, 84%, 35%);
+}
+
+/* ========================================
+   Table Component
+   ======================================== */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.table th {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  border-bottom: 1px solid hsl(var(--border));
+  background: hsl(var(--muted));
+}
+
+.table td {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: hsl(var(--muted) / 0.5);
+}
+
+/* ========================================
+   Tabs Component
+   ======================================== */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: hsl(var(--muted));
+  border-radius: var(--radius);
+}
+
+.tab {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tab:hover {
+  color: hsl(var(--foreground));
+}
+
+.tab-active {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* ========================================
+   Modal Component
+   ======================================== */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+  animation: fadeIn 0.15s ease;
+}
+
+.modal {
+  background: hsl(var(--card));
+  border-radius: var(--radius);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  max-width: 100%;
+  max-height: 90vh;
+  overflow: auto;
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================================
+   Animations
+   ======================================== */
+.page-enter {
+  animation: pageEnter 0.3s ease;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ========================================
+   Scrollbar
+   ======================================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* ========================================
+   Utility Classes
+   ======================================== */
+.text-primary { color: hsl(var(--primary)); }
+.text-success { color: hsl(var(--success)); }
+.text-warning { color: hsl(var(--warning)); }
+.text-destructive { color: hsl(var(--destructive)); }
+.text-muted { color: hsl(var(--muted-foreground)); }
+
+.bg-primary { background-color: hsl(var(--primary)); }
+.bg-success { background-color: hsl(var(--success)); }
+.bg-warning { background-color: hsl(var(--warning)); }
+.bg-destructive { background-color: hsl(var(--destructive)); }
+.bg-muted { background-color: hsl(var(--muted)); }
+
+.border-primary { border-color: hsl(var(--primary)); }
+.border-success { border-color: hsl(var(--success)); }
+.border-warning { border-color: hsl(var(--warning)); }
+.border-destructive { border-color: hsl(var(--destructive)); }
