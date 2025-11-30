@@ -1,7 +1,7 @@
 interface Player {
   id: string;
   name: string;
-  gender?: string;
+  gender?: string | null;
 }
 
 interface EventPlayer {
