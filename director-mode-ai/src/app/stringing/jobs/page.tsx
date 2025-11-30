@@ -323,7 +323,7 @@ function JobCard({
               {job.status.replace('_', ' ')}
             </span>
             {job.customer.email && (
-              <Mail size={14} className="text-gray-400" title={job.customer.email} />
+<Mail size={14} className="text-gray-400" />
             )}
           </div>
           
