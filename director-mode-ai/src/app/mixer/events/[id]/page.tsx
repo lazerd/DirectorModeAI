@@ -28,7 +28,7 @@ interface Event {
 interface Player {
   id: string;
   name: string;
-  gender: string | null;
+  gender?: string | null;
 }
 
 interface EventPlayer {
