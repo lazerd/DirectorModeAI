@@ -186,12 +186,11 @@ export default function EventDashboardPage() {
 
     const matches = generateMatches(
       event.match_format,
-      eventPlayers,
+      eventPlayers as any,
       event.num_courts,
       [],
       nextRoundNumber
     );
-
     for (const match of matches) {
       await supabase.from('matches').insert({
         round_id: round.id,
