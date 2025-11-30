@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Clock, Wrench, CheckCircle, Package, Search, RefreshCw } from 'lucide-react';
+import { Plus, Clock, Wrench, CheckCircle, Package, RefreshCw, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -32,6 +32,7 @@ export default function StringingJobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'done'>('all');
+  const [sendingEmail, setSendingEmail] = useState<string | null>(null);
 
   useEffect(() => {
     fetchJobs();
@@ -59,9 +60,70 @@ export default function StringingJobsPage() {
     setLoading(false);
   };
 
+  const sendNotificationEmail = async (job: Job) => {
+    if (!job.customer.email) {
+      alert('No email address for this customer');
+      return false;
+    }
+
+    setSendingEmail(job.id);
+    
+    try {
+      const stringName = job.string 
+        ? `${job.string.brand} ${job.string.name}`
+        : job.custom_string_name || 'Custom string';
+      
+      const tension = job.cross_tension_lbs
+        ? `${job.main_tension_lbs}/${job.cross_tension_lbs} lbs`
+        : `${job.main_tension_lbs} lbs`;
+
+      const racketInfo = job.racket 
+        ? `${job.racket.brand || ''} ${job.racket.model || ''}`.trim()
+        : 'N/A';
+
+      const res = await fetch('/api/stringing/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: job.customer.email,
+          customerName: job.customer.full_name,
+          racketInfo,
+          stringInfo: stringName,
+          tension,
+        }),
+      });
+
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to send email');
+      }
+
+      return true;
+    } catch (err: any) {
+      console.error('Email error:', err);
+      alert('Failed to send email: ' + err.message);
+      return false;
+    } finally {
+      setSendingEmail(null);
+    }
+  };
+
   const updateJobStatus = async (jobId: string, newStatus: string) => {
     const supabase = createClient();
+    const job = jobs.find(j => j.id === jobId);
     
+    // If marking as done, send email notification first
+    if (newStatus === 'done' && job) {
+      const emailSent = await sendNotificationEmail(job);
+      if (!emailSent && job.customer.email) {
+        // Email failed but customer has email - ask if they want to continue
+        if (!confirm('Email notification failed. Mark as ready anyway?')) {
+          return;
+        }
+      }
+    }
+
     const updates: Record<string, unknown> = { status: newStatus };
     if (newStatus === 'done') {
       updates.completed_at = new Date().toISOString();
@@ -75,7 +137,6 @@ export default function StringingJobsPage() {
       .eq('id', jobId);
 
     if (!error) {
-      // TODO: Send email notification when status = 'done'
       fetchJobs();
     }
   };
@@ -187,6 +248,7 @@ export default function StringingJobsPage() {
                 key={job.id}
                 job={job}
                 onStatusChange={updateJobStatus}
+                sendingEmail={sendingEmail === job.id}
               />
             ))}
           </div>
@@ -229,9 +291,11 @@ function StatCard({
 function JobCard({
   job,
   onStatusChange,
+  sendingEmail,
 }: {
   job: Job;
   onStatusChange: (id: string, status: string) => void;
+  sendingEmail: boolean;
 }) {
   const statusColors = {
     pending: 'badge-warning',
@@ -252,15 +316,15 @@ function JobCard({
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-3 mb-2">
-            <Link 
-              href={`/stringing/jobs/${job.id}`}
-              className="font-display text-lg hover:text-primary transition-colors"
-            >
+            <span className="font-display text-lg">
               {job.customer.full_name}
-            </Link>
+            </span>
             <span className={`badge ${statusColors[job.status as keyof typeof statusColors]}`}>
               {job.status.replace('_', ' ')}
             </span>
+            {job.customer.email && (
+              <Mail size={14} className="text-gray-400" title={job.customer.email} />
+            )}
           </div>
           
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
@@ -292,8 +356,9 @@ function JobCard({
             <button
               onClick={() => onStatusChange(job.id, 'done')}
               className="btn btn-sm btn-success"
+              disabled={sendingEmail}
             >
-              Done
+              {sendingEmail ? 'Sending...' : 'Done'}
             </button>
           )}
           {job.status === 'done' && (
@@ -304,12 +369,6 @@ function JobCard({
               Picked Up
             </button>
           )}
-          <Link
-            href={`/stringing/jobs/${job.id}`}
-            className="btn btn-sm btn-ghost"
-          >
-            View
-          </Link>
         </div>
       </div>
     </div>
