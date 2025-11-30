@@ -1,10 +1,10 @@
-interface Player {
+export interface EventPlayer {
   id: string;
   name: string;
   gender?: string | null;
 }
 
-interface EventPlayer {
+export interface EventPlayer {
   player_id: string;
   strength_order: number;
   wins: number;
