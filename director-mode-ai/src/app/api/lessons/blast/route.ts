@@ -24,28 +24,57 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No slots found' }, { status: 400 });
     }
 
-    // Format slots for email
-    const slotList = slots.map(slot => {
+    // Get the base URL from environment or request
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://director-mode-ai.vercel.app';
+
+    // Format slots for email with booking links
+    const slotListHtml = slots.map(slot => {
       const start = new Date(slot.start_time);
       const end = new Date(slot.end_time);
       const dateStr = start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
       const startTime = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
       const endTime = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
       const location = slot.location ? ` at ${slot.location}` : '';
-      return `• ${dateStr}: ${startTime} - ${endTime}${location}`;
-    }).join('\n');
+      const bookingUrl = `${baseUrl}/client/coach/${coachId}?slot=${slot.id}`;
+      
+      return `
+        <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+          <p style="margin: 0 0 8px 0; font-weight: 600; color: #1e293b;">
+            📅 ${dateStr}
+          </p>
+          <p style="margin: 0 0 8px 0; color: #475569;">
+            🕐 ${startTime} - ${endTime}${location}
+          </p>
+          <a href="${bookingUrl}" style="display: inline-block; background: #2563eb; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">
+            Book This Slot →
+          </a>
+        </div>
+      `;
+    }).join('');
 
     const emailHtml = `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #2563eb;">Last Minute Lesson Availability! 🎾</h2>
-        <p>Hi there!</p>
-        <p><strong>${coachName || 'Your coach'}</strong> has last-minute lesson availability:</p>
-        <div style="background: #f3f4f6; padding: 16px; border-radius: 8px; margin: 16px 0;">
-          <pre style="margin: 0; white-space: pre-wrap; font-family: sans-serif;">${slotList}</pre>
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="color: #1e293b; margin: 0;">🎾 Last Minute Lesson Availability!</h1>
         </div>
-        <p>Interested? Reply to this email or contact your coach directly to book!</p>
-        <p style="color: #6b7280; font-size: 14px; margin-top: 24px;">
-          — Sent via LastMinute Lessons
+        
+        <p style="color: #475569; font-size: 16px;">Hi there!</p>
+        
+        <p style="color: #475569; font-size: 16px;">
+          <strong>${coachName || 'Your coach'}</strong> has ${slots.length > 1 ? 'some last-minute openings' : 'a last-minute opening'} available:
+        </p>
+        
+        ${slotListHtml}
+        
+        <p style="color: #475569; font-size: 14px; margin-top: 24px;">
+          Click any slot above to book instantly. Spots are first-come, first-served!
+        </p>
+        
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        
+        <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+          Sent via LastMinute Lessons<br/>
+          Reply to this email to contact your coach directly
         </p>
       </div>
     `;
@@ -56,7 +85,7 @@ export async function POST(request: NextRequest) {
         from: process.env.RESEND_FROM_EMAIL || 'LastMinute Lessons <onboarding@resend.dev>',
         to: email,
         replyTo: coachEmail,
-        subject: `🎾 Last Minute Lesson Opening${slots.length > 1 ? 's' : ''} Available!`,
+        subject: `🎾 ${slots.length > 1 ? `${slots.length} Last Minute Lesson Openings` : 'Last Minute Lesson Opening'} Available!`,
         html: emailHtml,
       })
     );
