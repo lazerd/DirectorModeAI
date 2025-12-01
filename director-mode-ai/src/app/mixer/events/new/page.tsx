@@ -169,7 +169,7 @@ export default function CreateEventPage() {
                 <option value="fixed_games">Fixed Games (e.g., play 6 games)</option>
                 <option value="timed">Timed Rounds</option>
                 <option value="first_to_x">First to X Games</option>
-                <option value="pro_set">Pro Set (first to 8)</option>
+                
               </select>
             </div>
 
