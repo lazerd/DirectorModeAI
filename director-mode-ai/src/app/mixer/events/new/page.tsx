@@ -174,29 +174,33 @@ export default function CreateEventPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Round Length (minutes)</label>
-                <input
-                  type="number"
-                  value={formData.round_length_minutes}
-                  onChange={(e) => setFormData({ ...formData, round_length_minutes: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  min={10}
-                  max={60}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Games per Round</label>
-                <input
-                  type="number"
-                  value={formData.target_games}
-                  onChange={(e) => setFormData({ ...formData, target_games: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  min={4}
-                  max={12}
-                />
-              </div>
-            </div>
+  {formData.scoring_format === 'timed' && (
+    <div>
+      <label className="block text-sm font-medium mb-1">Round Length (minutes)</label>
+      <input
+        type="number"
+        value={formData.round_length_minutes}
+        onChange={(e) => setFormData({ ...formData, round_length_minutes: parseInt(e.target.value) })}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+        min={10}
+        max={60}
+      />
+    </div>
+  )}
+  {(formData.scoring_format === 'fixed_games' || formData.scoring_format === 'first_to_x') && (
+    <div>
+      <label className="block text-sm font-medium mb-1">Target Games</label>
+      <input
+        type="number"
+        value={formData.target_games}
+        onChange={(e) => setFormData({ ...formData, target_games: parseInt(e.target.value) })}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+        min={4}
+        max={12}
+      />
+    </div>
+  )}
+</div>
           </div>
         </div>
 
