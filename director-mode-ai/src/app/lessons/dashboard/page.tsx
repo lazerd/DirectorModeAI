@@ -109,27 +109,37 @@ export default function DashboardPage() {
   const sendBlast = async () => {
     if (unnotifiedSlots.length === 0 || clients.length === 0) return;
     setSending(true);
-    const supabase = createClient();
     
-    // Record the blast
-    const { data: blast } = await supabase.from('lesson_blasts').insert({
-      coach_id: coachId,
-      slots_count: unnotifiedSlots.length,
-      recipients_count: clients.length,
-      sent_at: new Date().toISOString()
-    }).select().single();
-
-    // Mark slots as notified
-    await supabase
-      .from('lesson_slots')
-      .update({ notifications_sent: true, notified_at: new Date().toISOString() })
-      .in('id', unnotifiedSlots.map(s => s.id));
-
-    // TODO: Actually send emails via Resend or similar
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const response = await fetch('/api/lessons/blast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coachId,
+          slotIds: unnotifiedSlots.map(s => s.id),
+          clientEmails: clients.map(c => c.email),
+          coachName: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Your Coach',
+          coachEmail: user?.email
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        alert(`✅ Blast sent to ${result.sent} clients for ${unnotifiedSlots.length} slot${unnotifiedSlots.length > 1 ? 's' : ''}!`);
+        if (coachId) fetchSlots(coachId);
+      } else {
+        alert(`❌ Error: ${result.error}`);
+      }
+    } catch (error) {
+      console.error('Blast error:', error);
+      alert('❌ Failed to send blast. Check console for details.');
+    }
     
-    alert(`Blast sent to ${clients.length} clients for ${unnotifiedSlots.length} slots!`);
     setSending(false);
-    if (coachId) fetchSlots(coachId);
   };
 
   const getSlotsForDay = (date: Date) => {
@@ -301,8 +311,8 @@ export default function DashboardPage() {
                   type="text"
                   value={newSlot.location}
                   onChange={(e) => setNewSlot({ ...newSlot, location: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
                   placeholder="Court 1, Main Club"
+                  className="w-full px-3 py-2 border rounded-lg"
                 />
               </div>
             </div>
