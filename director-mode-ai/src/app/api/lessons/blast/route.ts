@@ -11,7 +11,7 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    const { coachId, slotIds, clientEmails, coachName, coachEmail } = await request.json();
+    const { coachId, slotIds, clientEmails, coachName, coachEmail, timezone } = await request.json();
 
     // Get slot details
     const { data: slots } = await supabase
@@ -24,29 +24,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No slots found' }, { status: 400 });
     }
 
-    // Get the base URL from environment or request
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://director-mode-ai.vercel.app';
 
-    // Format slots for email with booking links
+    // Format slots for email with direct booking links
     const slotListHtml = slots.map(slot => {
       const start = new Date(slot.start_time);
       const end = new Date(slot.end_time);
-      const dateStr = start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-      const startTime = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      const endTime = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      const location = slot.location ? ` at ${slot.location}` : '';
-      const bookingUrl = `${baseUrl}/client/coach/${coachId}?slot=${slot.id}`;
+      
+      // Format in a timezone-aware way
+      const dateStr = start.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        month: 'long', 
+        day: 'numeric',
+        timeZone: timezone || 'America/Los_Angeles'
+      });
+      const startTime = start.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        timeZone: timezone || 'America/Los_Angeles'
+      });
+      const endTime = end.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        timeZone: timezone || 'America/Los_Angeles'
+      });
+      const location = slot.location ? `📍 ${slot.location}` : '';
+      
+      // Direct booking link
+      const bookingUrl = `${baseUrl}/book/${slot.id}`;
       
       return `
-        <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
-          <p style="margin: 0 0 8px 0; font-weight: 600; color: #1e293b;">
+        <div style="background: #f8fafc; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid #e2e8f0;">
+          <p style="margin: 0 0 8px 0; font-size: 18px; font-weight: 600; color: #1e293b;">
             📅 ${dateStr}
           </p>
-          <p style="margin: 0 0 8px 0; color: #475569;">
-            🕐 ${startTime} - ${endTime}${location}
+          <p style="margin: 0 0 12px 0; color: #475569; font-size: 16px;">
+            🕐 ${startTime} - ${endTime}
           </p>
-          <a href="${bookingUrl}" style="display: inline-block; background: #2563eb; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; font-weight: 600;">
-            Book This Slot →
+          ${location ? `<p style="margin: 0 0 12px 0; color: #475569; font-size: 14px;">${location}</p>` : ''}
+          <a href="${bookingUrl}" style="display: inline-block; background: #16a34a; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px;">
+            ✓ Book This Slot
           </a>
         </div>
       `;
@@ -55,22 +72,24 @@ export async function POST(request: NextRequest) {
     const emailHtml = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="text-align: center; margin-bottom: 24px;">
-          <h1 style="color: #1e293b; margin: 0;">🎾 Last Minute Lesson Availability!</h1>
+          <h1 style="color: #1e293b; margin: 0; font-size: 28px;">🎾 Lesson Time Available!</h1>
         </div>
         
-        <p style="color: #475569; font-size: 16px;">Hi there!</p>
+        <p style="color: #475569; font-size: 16px; line-height: 1.6;">Hi there!</p>
         
-        <p style="color: #475569; font-size: 16px;">
-          <strong>${coachName || 'Your coach'}</strong> has ${slots.length > 1 ? 'some last-minute openings' : 'a last-minute opening'} available:
+        <p style="color: #475569; font-size: 16px; line-height: 1.6;">
+          Great news! <strong>${coachName || 'Your coach'}</strong> has ${slots.length > 1 ? 'some last-minute openings' : 'a last-minute opening'} available.
         </p>
         
-        ${slotListHtml}
+        <div style="margin: 24px 0;">
+          ${slotListHtml}
+        </div>
         
-        <p style="color: #475569; font-size: 14px; margin-top: 24px;">
-          Click any slot above to book instantly. Spots are first-come, first-served!
+        <p style="color: #64748b; font-size: 14px; line-height: 1.6;">
+          ⚡ Spots are first-come, first-served. Click a slot above to book instantly!
         </p>
         
-        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
         
         <p style="color: #94a3b8; font-size: 12px; text-align: center;">
           Sent via LastMinute Lessons<br/>
@@ -85,7 +104,7 @@ export async function POST(request: NextRequest) {
         from: process.env.RESEND_FROM_EMAIL || 'LastMinute Lessons <onboarding@resend.dev>',
         to: email,
         replyTo: coachEmail,
-        subject: `🎾 ${slots.length > 1 ? `${slots.length} Last Minute Lesson Openings` : 'Last Minute Lesson Opening'} Available!`,
+        subject: `🎾 ${coachName || 'Your Coach'} has lesson time available!`,
         html: emailHtml,
       })
     );
@@ -106,7 +125,7 @@ export async function POST(request: NextRequest) {
       slots_count: slots.length,
       recipients_count: successCount,
       sent_at: new Date().toISOString(),
-      subject: `Last Minute Lesson Opening${slots.length > 1 ? 's' : ''} Available!`
+      subject: `Lesson Opening${slots.length > 1 ? 's' : ''} Available!`
     });
 
     return NextResponse.json({ 
