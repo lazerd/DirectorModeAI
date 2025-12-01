@@ -96,7 +96,7 @@ export default function MixerHomePage() {
             <p className="text-gray-500 mb-4">
               Create your first event to get started with round robins and mixers.
             </p>
-            <Link href="/mixer/events/new" className="btn btn-mixer">
+            <Link href="/mixer/select-format" className="btn btn-mixer">
               <Plus size={18} />
               Create Event
             </Link>
