@@ -136,9 +136,8 @@ export class RoundGenerator {
     // Heavily penalize repeat opponents (increased from -50 to -300)
     if (this.hasPlayedAgainst(p1, p2)) score -= 300;
     if (p3 && p4 && this.hasPlayedAgainst(p3, p4)) score -= 300;
-    if (p3 && this.hasPlayedAgainst(p1, p4)) score -= 300;
-    if (p4 && this.hasPlayedAgainst(p2, p3)) score -= 300;
-
+    if (p3 && p4 && this.hasPlayedAgainst(p1, p4)) score -= 300;
+    if (p3 && p4 && this.hasPlayedAgainst(p2, p3)) score -= 300;
     return score;
   }
 
