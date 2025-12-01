@@ -117,13 +117,14 @@ export default function DashboardPage() {
       const response = await fetch('/api/lessons/blast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          coachId,
-          slotIds: unnotifiedSlots.map(s => s.id),
-          clientEmails: clients.map(c => c.email),
-          coachName: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Your Coach',
-          coachEmail: user?.email
-        })
+       body: JSON.stringify({
+  coachId,
+  slotIds: unnotifiedSlots.map(s => s.id),
+  clientEmails: clients.map(c => c.email),
+  coachName: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Your Coach',
+  coachEmail: user?.email,
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+})
       });
       
       const result = await response.json();
