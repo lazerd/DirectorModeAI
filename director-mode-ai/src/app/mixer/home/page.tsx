@@ -52,7 +52,7 @@ export default function MixerHomePage() {
             <h1 className="font-display text-2xl sm:text-3xl mb-1">My Events</h1>
             <p className="text-gray-500">Manage your mixers and tournaments</p>
           </div>
-          <Link href="/mixer/events/new" className="btn btn-mixer">
+          <Link href="/mixer/select-format" className="btn btn-mixer">
             <Plus size={18} />
             Create Event
           </Link>
