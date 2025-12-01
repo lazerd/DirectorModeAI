@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, Clock, MapPin, User, Search, Plus, X } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, Search, Plus, X, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { format, isPast, addHours } from 'date-fns';
+import { format, addHours } from 'date-fns';
 
 type Coach = {
   id: string;
@@ -23,15 +23,23 @@ type Booking = {
   };
 };
 
+type SearchCoach = {
+  id: string;
+  display_name: string | null;
+  email: string | null;
+};
+
 export default function ClientDashboard() {
   const router = useRouter();
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState<string | null>(null);
-  const [showAddCoach, setShowAddCoach] = useState(false);
-  const [coachCode, setCoachCode] = useState('');
-  const [addingCoach, setAddingCoach] = useState(false);
+  const [showFindCoach, setShowFindCoach] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchCoach[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [requestingCoachId, setRequestingCoachId] = useState<string | null>(null);
 
   useEffect(() => {
     initClient();
@@ -104,52 +112,70 @@ export default function ClientDashboard() {
     if (data) setBookings(data as any);
   };
 
-  const requestCoach = async () => {
-    if (!coachCode.trim() || !clientId) return;
-    setAddingCoach(true);
-
+  const searchCoaches = async (query: string) => {
+    if (!query.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setSearching(true);
     const supabase = createClient();
     
-    // Find coach by code (we'll use their ID for now, but could add a coach_code field)
-    const { data: coach } = await supabase
+    // Search coaches by display_name
+    const { data } = await supabase
       .from('lesson_coaches')
-      .select('id')
-      .eq('id', coachCode.trim())
-      .single();
+      .select('id, display_name, profile:profile_id(email)')
+      .ilike('display_name', `%${query}%`)
+      .limit(10);
 
-    if (!coach) {
-      alert('Coach not found. Please check the code and try again.');
-      setAddingCoach(false);
-      return;
+    if (data) {
+      // Filter out coaches already connected
+      const connectedCoachIds = coaches.map(c => c.id);
+      const filtered = data
+        .filter((c: any) => !connectedCoachIds.includes(c.id))
+        .map((c: any) => ({
+          id: c.id,
+          display_name: c.display_name,
+          email: c.profile?.email || null
+        }));
+      setSearchResults(filtered);
     }
+    setSearching(false);
+  };
 
-    // Check if already requested
-    const { data: existing } = await supabase
-      .from('lesson_client_coaches')
-      .select('id, status')
-      .eq('client_id', clientId)
-      .eq('coach_id', coach.id)
-      .single();
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (showFindCoach) {
+        searchCoaches(searchQuery);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery, showFindCoach]);
 
-    if (existing) {
-      alert(`You've already ${existing.status === 'pending' ? 'requested' : 'been added to'} this coach.`);
-      setAddingCoach(false);
-      return;
-    }
+  const requestCoach = async (coachId: string) => {
+    if (!clientId) return;
+    setRequestingCoachId(coachId);
+
+    const supabase = createClient();
 
     // Create pending request
-    await supabase.from('lesson_client_coaches').insert({
+    const { error } = await supabase.from('lesson_client_coaches').insert({
       client_id: clientId,
-      coach_id: coach.id,
+      coach_id: coachId,
       status: 'pending',
       requested_at: new Date().toISOString()
     });
 
-    alert('Request sent! The coach will review your request.');
-    setShowAddCoach(false);
-    setCoachCode('');
-    fetchCoaches(clientId);
-    setAddingCoach(false);
+    if (error) {
+      alert('Failed to send request. You may have already requested this coach.');
+    } else {
+      alert('Request sent! The coach will review your request.');
+      setShowFindCoach(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      fetchCoaches(clientId);
+    }
+    setRequestingCoachId(null);
   };
 
   const cancelBooking = async (slotId: string, startTime: string) => {
@@ -253,11 +279,11 @@ export default function ClientDashboard() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-lg">My Coaches</h2>
             <button
-              onClick={() => setShowAddCoach(true)}
+              onClick={() => setShowFindCoach(true)}
               className="flex items-center gap-1 text-blue-600 text-sm font-medium"
             >
               <Plus className="h-4 w-4" />
-              Add Coach
+              Find a Coach
             </button>
           </div>
 
@@ -278,10 +304,10 @@ export default function ClientDashboard() {
               <User className="h-10 w-10 mx-auto mb-2 text-gray-300" />
               <p>No coaches yet</p>
               <button
-                onClick={() => setShowAddCoach(true)}
+                onClick={() => setShowFindCoach(true)}
                 className="mt-2 text-blue-600 text-sm font-medium"
               >
-                Add your first coach
+                Find your first coach
               </button>
             </div>
           ) : (
@@ -308,40 +334,66 @@ export default function ClientDashboard() {
         </section>
       </main>
 
-      {/* Add Coach Modal */}
-      {showAddCoach && (
+      {/* Find Coach Modal */}
+      {showFindCoach && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 w-full max-w-md">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md max-h-[80vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-lg">Add a Coach</h2>
-              <button onClick={() => setShowAddCoach(false)} className="text-gray-400 hover:text-gray-600">
+              <h2 className="font-semibold text-lg">Find a Coach</h2>
+              <button onClick={() => { setShowFindCoach(false); setSearchQuery(''); setSearchResults([]); }} className="text-gray-400 hover:text-gray-600">
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Enter the coach code provided by your coach or club.
-            </p>
-            <input
-              type="text"
-              value={coachCode}
-              onChange={(e) => setCoachCode(e.target.value)}
-              className="w-full px-4 py-2 border rounded-lg mb-4"
-              placeholder="Coach code"
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowAddCoach(false)}
-                className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={requestCoach}
-                disabled={addingCoach || !coachCode.trim()}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-              >
-                {addingCoach ? 'Sending...' : 'Request Access'}
-              </button>
+            
+            <div className="relative mb-4">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border rounded-lg"
+                placeholder="Search by coach name..."
+                autoFocus
+              />
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {searching ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+                </div>
+              ) : searchQuery && searchResults.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>No coaches found matching "{searchQuery}"</p>
+                </div>
+              ) : searchResults.length > 0 ? (
+                <div className="space-y-2">
+                  {searchResults.map((coach) => (
+                    <div key={coach.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                          <User className="h-5 w-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <p className="font-medium">{coach.display_name || 'Coach'}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => requestCoach(coach.id)}
+                        disabled={requestingCoachId === coach.id}
+                        className="px-3 py-1 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {requestingCoachId === coach.id ? 'Sending...' : 'Request'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Search className="h-10 w-10 mx-auto mb-2 text-gray-300" />
+                  <p>Search for a coach by name</p>
+                </div>
+              )}
             </div>
           </div>
         </div>
