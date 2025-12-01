@@ -49,7 +49,7 @@ export default function CreateEventPage() {
       const eventCode = generateEventCode();
 
       const { data, error: insertError } = await supabase
-        .from('mixer_events')
+        .from('events')
         .insert({
           ...formData,
           user_id: user.id,
