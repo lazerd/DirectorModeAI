@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Clock, Users, Send, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay, parseISO } from 'date-fns';
+import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay } from 'date-fns';
 
 type Slot = { 
   id: string; 
@@ -85,10 +85,15 @@ export default function DashboardPage() {
   const addSlot = async () => {
     if (!coachId || !newSlot.date) return;
     const supabase = createClient();
+    
+    // Create datetime in local timezone
+    const startDateTime = new Date(`${newSlot.date}T${newSlot.start_time}:00`);
+    const endDateTime = new Date(`${newSlot.date}T${newSlot.end_time}:00`);
+    
     await supabase.from('lesson_slots').insert({
       coach_id: coachId,
-      start_time: `${newSlot.date}T${newSlot.start_time}:00`,
-      end_time: `${newSlot.date}T${newSlot.end_time}:00`,
+      start_time: startDateTime.toISOString(),
+      end_time: endDateTime.toISOString(),
       location: newSlot.location || null,
       status: 'open'
     });
@@ -117,14 +122,14 @@ export default function DashboardPage() {
       const response = await fetch('/api/lessons/blast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-       body: JSON.stringify({
-  coachId,
-  slotIds: unnotifiedSlots.map(s => s.id),
-  clientEmails: clients.map(c => c.email),
-  coachName: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Your Coach',
-  coachEmail: user?.email,
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
-})
+        body: JSON.stringify({
+          coachId,
+          slotIds: unnotifiedSlots.map(s => s.id),
+          clientEmails: clients.map(c => c.email),
+          coachName: user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Your Coach',
+          coachEmail: user?.email,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone
+        })
       });
       
       const result = await response.json();
@@ -144,7 +149,10 @@ export default function DashboardPage() {
   };
 
   const getSlotsForDay = (date: Date) => {
-    return slots.filter(slot => isSameDay(parseISO(slot.start_time), date));
+    return slots.filter(slot => {
+      const slotDate = new Date(slot.start_time);
+      return isSameDay(slotDate, date);
+    });
   };
 
   return (
@@ -232,36 +240,39 @@ export default function DashboardPage() {
                   </div>
                   
                   <div className="p-2 space-y-2">
-                    {daySlots.map((slot) => (
-                      <div
-                        key={slot.id}
-                        className={`p-2 rounded-lg text-xs ${
-                          slot.status === 'booked' 
-                            ? 'bg-green-100 text-green-800' 
-                            : slot.notifications_sent 
-                              ? 'bg-blue-100 text-blue-800'
-                              : 'bg-orange-100 text-orange-800'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">
-                            {format(parseISO(slot.start_time), 'h:mm a')}
-                          </span>
-                          <button
-                            onClick={() => deleteSlot(slot.id)}
-                            className="opacity-50 hover:opacity-100"
-                          >
-                            <Trash2 size={12} />
-                          </button>
+                    {daySlots.map((slot) => {
+                      const startTime = new Date(slot.start_time);
+                      return (
+                        <div
+                          key={slot.id}
+                          className={`p-2 rounded-lg text-xs ${
+                            slot.status === 'booked' 
+                              ? 'bg-green-100 text-green-800' 
+                              : slot.notifications_sent 
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-orange-100 text-orange-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">
+                              {format(startTime, 'h:mm a')}
+                            </span>
+                            <button
+                              onClick={() => deleteSlot(slot.id)}
+                              className="opacity-50 hover:opacity-100"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                          {slot.location && (
+                            <p className="truncate">{slot.location}</p>
+                          )}
+                          {!slot.notifications_sent && slot.status === 'open' && (
+                            <span className="text-[10px] bg-orange-200 px-1 rounded">NEW</span>
+                          )}
                         </div>
-                        {slot.location && (
-                          <p className="truncate">{slot.location}</p>
-                        )}
-                        {!slot.notifications_sent && slot.status === 'open' && (
-                          <span className="text-[10px] bg-orange-200 px-1 rounded">NEW</span>
-                        )}
-                      </div>
-                    ))}
+                      );
+                    })}
                     
                     <button
                       onClick={() => openAddSlot(day)}
