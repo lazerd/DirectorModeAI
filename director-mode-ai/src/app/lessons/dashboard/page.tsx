@@ -82,13 +82,31 @@ export default function DashboardPage() {
     setShowAddSlot(true);
   };
 
+  // Helper function to calculate end time (1 hour after start)
+  const calculateEndTime = (startTime: string): string => {
+    const [hours, minutes] = startTime.split(':').map(Number);
+    const endHours = (hours + 1) % 24;
+    return `${endHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  };
+
+  // Handle start time change - auto-populate end time
+  const handleStartTimeChange = (startTime: string) => {
+    const endTime = calculateEndTime(startTime);
+    setNewSlot({ ...newSlot, start_time: startTime, end_time: endTime });
+  };
+
   const addSlot = async () => {
     if (!coachId || !newSlot.date) return;
     const supabase = createClient();
     
-    // Create datetime in local timezone
-    const startDateTime = new Date(`${newSlot.date}T${newSlot.start_time}:00`);
-    const endDateTime = new Date(`${newSlot.date}T${newSlot.end_time}:00`);
+    // FIX: Parse date and time components explicitly to ensure local timezone
+    const [year, month, day] = newSlot.date.split('-').map(Number);
+    const [startHour, startMinute] = newSlot.start_time.split(':').map(Number);
+    const [endHour, endMinute] = newSlot.end_time.split(':').map(Number);
+    
+    // Create dates in local timezone (month is 0-indexed in JS Date)
+    const startDateTime = new Date(year, month - 1, day, startHour, startMinute);
+    const endDateTime = new Date(year, month - 1, day, endHour, endMinute);
     
     await supabase.from('lesson_slots').insert({
       coach_id: coachId,
@@ -303,7 +321,7 @@ export default function DashboardPage() {
                   <input
                     type="time"
                     value={newSlot.start_time}
-                    onChange={(e) => setNewSlot({ ...newSlot, start_time: e.target.value })}
+                    onChange={(e) => handleStartTimeChange(e.target.value)}
                     className="w-full px-3 py-2 border rounded-lg"
                   />
                 </div>
