@@ -1,3 +1,4 @@
+// coach page
 export default function CoachPage() {
   return (
     <div style={{ padding: '50px', textAlign: 'center' }}>
