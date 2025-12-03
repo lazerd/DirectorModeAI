@@ -244,7 +244,7 @@ export default function CoachPublicPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Coach Not Found</h1>
-          <p className="text-gray-600 mb-4">We couldn't find a coach with that link.</p>
+          <p className="text-gray-600 mb-4">We couldn&apos;t find a coach with that link.</p>
           <a href="/find-coach" className="text-blue-600 hover:underline">
             Search for your coach →
           </a>
@@ -385,7 +385,7 @@ export default function CoachPublicPage() {
           <>
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 flex items-center gap-3">
               <CheckCircle className="h-5 w-5 text-green-600" />
-              <p className="text-green-800">You're approved! Select an available slot to book your lesson.</p>
+              <p className="text-green-800">You&apos;re approved! Select an available slot to book your lesson.</p>
             </div>
 
             <div className="bg-white rounded-xl border mb-6">
