@@ -219,7 +219,7 @@ export default function CoachPublicPage() {
     if (error) {
       alert('Failed to book slot. Please try again.');
     } else {
-      alert('🎉 Lesson booked successfully!');
+      alert('Lesson booked successfully!');
       setSelectedSlot(null);
       fetchSlots();
     }
@@ -244,9 +244,9 @@ export default function CoachPublicPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Coach Not Found</h1>
-          <p className="text-gray-600 mb-4">We couldn&apos;t find a coach with that link.</p>
+          <p className="text-gray-600 mb-4">We could not find a coach with that link.</p>
           <a href="/find-coach" className="text-blue-600 hover:underline">
-            Search for your coach →
+            Search for your coach
           </a>
         </div>
       </div>
@@ -278,18 +278,8 @@ export default function CoachPublicPage() {
               Create an account or sign in to request lessons with {coach.display_name}.
             </p>
             <div className="flex gap-3 justify-center">
-              
-                href={`/login?redirect=/coach/${slug}`}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-              >
-                Sign In
-              </a>
-              
-                href={`/register?redirect=/coach/${slug}`}
-                className="px-6 py-2 border rounded-lg hover:bg-gray-50"
-              >
-                Create Account
-              </a>
+              <a href={'/login?redirect=/coach/' + slug} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Sign In</a>
+              <a href={'/register?redirect=/coach/' + slug} className="px-6 py-2 border rounded-lg hover:bg-gray-50">Create Account</a>
             </div>
           </div>
         )}
@@ -338,7 +328,7 @@ export default function CoachPublicPage() {
                     onChange={(e) => setRequestForm({ ...requestForm, message: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg"
                     rows={3}
-                    placeholder="Hi! I'd like to take lessons with you..."
+                    placeholder="Hi! I would like to take lessons with you..."
                   />
                 </div>
                 <div className="flex gap-3">
@@ -354,16 +344,11 @@ export default function CoachPublicPage() {
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                   >
                     {requesting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Sending...
-                      </>
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <>
-                        <Send className="h-4 w-4" />
-                        Send Request
-                      </>
+                      <Send className="h-4 w-4" />
                     )}
+                    {requesting ? 'Sending...' : 'Send Request'}
                   </button>
                 </div>
               </div>
@@ -382,10 +367,10 @@ export default function CoachPublicPage() {
         )}
 
         {clientStatus === 'approved' && (
-          <>
+          <div>
             <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6 flex items-center gap-3">
               <CheckCircle className="h-5 w-5 text-green-600" />
-              <p className="text-green-800">You&apos;re approved! Select an available slot to book your lesson.</p>
+              <p className="text-green-800">You are approved! Select an available slot to book your lesson.</p>
             </div>
 
             <div className="bg-white rounded-xl border mb-6">
@@ -444,7 +429,7 @@ export default function CoachPublicPage() {
                 })}
               </div>
             </div>
-          </>
+          </div>
         )}
       </main>
 
@@ -487,16 +472,11 @@ export default function CoachPublicPage() {
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {booking ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Booking...
-                  </>
+                  <Loader2 className="h-4 w-4 animate-spin" />
                 ) : (
-                  <>
-                    <CheckCircle className="h-4 w-4" />
-                    Book Lesson
-                  </>
+                  <CheckCircle className="h-4 w-4" />
                 )}
+                {booking ? 'Booking...' : 'Book Lesson'}
               </button>
             </div>
           </div>
