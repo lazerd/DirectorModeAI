@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, Users, Send, Plus, Trash2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Clock, Users, Send, Plus, Trash2, ChevronLeft, ChevronRight, Link, Check, Copy } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay } from 'date-fns';
 
@@ -20,12 +20,14 @@ export default function DashboardPage() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [coachId, setCoachId] = useState<string | null>(null);
+  const [coachSlug, setCoachSlug] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [showAddSlot, setShowAddSlot] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [newSlot, setNewSlot] = useState({ date: '', start_time: '09:00', end_time: '10:00', location: '' });
+  const [copied, setCopied] = useState(false);
 
   const weekStart = startOfWeek(currentWeek, { weekStartsOn: 0 });
   const weekEnd = endOfWeek(currentWeek, { weekStartsOn: 0 });
@@ -38,13 +40,14 @@ export default function DashboardPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
-    let { data: coach } = await supabase.from('lesson_coaches').select('id').eq('profile_id', user.id).single();
+    let { data: coach } = await supabase.from('lesson_coaches').select('id, slug').eq('profile_id', user.id).single();
     if (!coach) {
-      const { data: newCoach } = await supabase.from('lesson_coaches').insert({ profile_id: user.id }).select('id').single();
+      const { data: newCoach } = await supabase.from('lesson_coaches').insert({ profile_id: user.id }).select('id, slug').single();
       coach = newCoach;
     }
     if (coach) { 
-      setCoachId(coach.id); 
+      setCoachId(coach.id);
+      setCoachSlug(coach.slug);
       fetchSlots(coach.id); 
       fetchClients(coach.id); 
     }
@@ -82,14 +85,12 @@ export default function DashboardPage() {
     setShowAddSlot(true);
   };
 
-  // Helper function to calculate end time (1 hour after start)
   const calculateEndTime = (startTime: string): string => {
     const [hours, minutes] = startTime.split(':').map(Number);
     const endHours = (hours + 1) % 24;
     return `${endHours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
   };
 
-  // Handle start time change - auto-populate end time
   const handleStartTimeChange = (startTime: string) => {
     const endTime = calculateEndTime(startTime);
     setNewSlot({ ...newSlot, start_time: startTime, end_time: endTime });
@@ -99,12 +100,10 @@ export default function DashboardPage() {
     if (!coachId || !newSlot.date) return;
     const supabase = createClient();
     
-    // FIX: Parse date and time components explicitly to ensure local timezone
     const [year, month, day] = newSlot.date.split('-').map(Number);
     const [startHour, startMinute] = newSlot.start_time.split(':').map(Number);
     const [endHour, endMinute] = newSlot.end_time.split(':').map(Number);
     
-    // Create dates in local timezone (month is 0-indexed in JS Date)
     const startDateTime = new Date(year, month - 1, day, startHour, startMinute);
     const endDateTime = new Date(year, month - 1, day, endHour, endMinute);
     
@@ -125,6 +124,17 @@ export default function DashboardPage() {
     const supabase = createClient();
     await supabase.from('lesson_slots').delete().eq('id', slotId);
     if (coachId) fetchSlots(coachId);
+  };
+
+  const copyShareLink = async () => {
+    if (!coachSlug) {
+      alert('Please set up your profile link in Settings first.');
+      return;
+    }
+    const link = `${window.location.origin}/coach/${coachSlug}`;
+    await navigator.clipboard.writeText(link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const unnotifiedSlots = slots.filter(s => s.status === 'open' && !s.notifications_sent);
@@ -175,6 +185,38 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 lg:p-8">
+      {/* Share Link Banner */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link className="h-5 w-5 text-blue-600" />
+          <div>
+            <p className="font-medium text-blue-900">Share your booking link with students</p>
+            {coachSlug ? (
+              <p className="text-sm text-blue-600">director-mode-ai.vercel.app/coach/{coachSlug}</p>
+            ) : (
+              <p className="text-sm text-blue-600">Set up your link in <a href="/lessons/settings" className="underline">Settings</a></p>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={copyShareLink}
+          disabled={!coachSlug}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+        >
+          {copied ? (
+            <>
+              <Check className="h-4 w-4" />
+              Copied!
+            </>
+          ) : (
+            <>
+              <Copy className="h-4 w-4" />
+              Copy Link
+            </>
+          )}
+        </button>
+      </div>
+
       {/* Header with stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div className="bg-white rounded-xl border p-4">
