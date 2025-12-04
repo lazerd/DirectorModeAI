@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Shuffle, Clock, Wrench, ArrowRight, LogOut, User, Calendar, UserCircle } from "lucide-react";
+import { Shuffle, Clock, Wrench, ArrowRight, LogOut, User, Calendar, UserCircle, Trophy } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function HomePage() {
@@ -170,25 +170,36 @@ export default function HomePage() {
       <section className="py-16 px-4 bg-gradient-to-r from-green-50 to-blue-50">
         <div className="max-w-4xl mx-auto">
           <div className="bg-white rounded-2xl border-2 border-green-200 p-8 md:p-12">
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              <div className="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+            <div className="text-center mb-8">
+              <div className="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <UserCircle className="text-green-600" size={40} />
               </div>
-              <div className="flex-1 text-center md:text-left">
-                <h3 className="text-2xl font-bold mb-2">Are You a Player?</h3>
-                <p className="text-gray-600 mb-4">
-                  Looking to book lessons with your coach? Check your stringing order status? View your mixer history?
-                </p>
-                <div className="flex flex-wrap gap-3 justify-center md:justify-start">
-                  <Link href="/client/dashboard" className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2">
-                    <Calendar size={18} />
-                    My Lessons
-                  </Link>
-                  <Link href="/find-coach" className="px-6 py-3 border-2 border-green-600 text-green-600 rounded-lg font-semibold hover:bg-green-50 flex items-center gap-2">
-                    Find My Coach
-                  </Link>
-                </div>
-              </div>
+              <h3 className="text-2xl font-bold mb-2">Are You a Player?</h3>
+              <p className="text-gray-600">
+                Book lessons, check your stringing orders, and view events - all in one place.
+              </p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-4">
+              <Link href="/client/dashboard" className="flex flex-col items-center gap-2 p-4 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors">
+                <Calendar className="h-8 w-8 text-blue-600" />
+                <span className="font-semibold text-blue-900">My Lessons</span>
+                <span className="text-xs text-blue-600">Book & manage</span>
+              </Link>
+              <Link href="/client/dashboard?tab=stringing" className="flex flex-col items-center gap-2 p-4 bg-pink-50 hover:bg-pink-100 rounded-xl transition-colors">
+                <Wrench className="h-8 w-8 text-pink-600" />
+                <span className="font-semibold text-pink-900">My Stringing</span>
+                <span className="text-xs text-pink-600">Order status</span>
+              </Link>
+              <Link href="/client/dashboard?tab=events" className="flex flex-col items-center gap-2 p-4 bg-orange-50 hover:bg-orange-100 rounded-xl transition-colors">
+                <Trophy className="h-8 w-8 text-orange-600" />
+                <span className="font-semibold text-orange-900">Events</span>
+                <span className="text-xs text-orange-600">Mixers & tournaments</span>
+              </Link>
+            </div>
+            <div className="text-center mt-6">
+              <Link href="/find-coach" className="text-green-600 hover:underline font-medium">
+                Looking for your coach? Find them here →
+              </Link>
             </div>
           </div>
         </div>
