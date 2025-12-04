@@ -36,6 +36,7 @@ export default function CoachPublicPage() {
   const [clientStatus, setClientStatus] = useState<ClientStatus>('none');
   const [clientId, setClientId] = useState<string | null>(null);
   const [clientName, setClientName] = useState<string>('');
+  const [clientEmail, setClientEmail] = useState<string>('');
   const [userEmail, setUserEmail] = useState<string>('');
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
@@ -90,7 +91,7 @@ export default function CoachPublicPage() {
 
     const { data: client } = await supabase
       .from('lesson_clients')
-      .select('id, name')
+      .select('id, name, email')
       .eq('profile_id', user.id)
       .single();
 
@@ -107,6 +108,7 @@ export default function CoachPublicPage() {
 
     setClientId(client.id);
     setClientName(client.name || user.email || 'Client');
+    setClientEmail(client.email || user.email || '');
 
     const { data: relationship } = await supabase
       .from('lesson_client_coaches')
@@ -199,6 +201,23 @@ export default function CoachPublicPage() {
       return;
     }
 
+    // Send email notification to coach about new request
+    try {
+      await fetch('/api/lessons/client-request-notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          coachEmail: coachEmail,
+          coachName: coach.display_name,
+          clientName: requestForm.name || user.user_metadata?.full_name || user.email?.split('@')[0],
+          clientEmail: requestForm.email || user.email,
+          message: requestForm.message
+        })
+      });
+    } catch (e) {
+      console.error('Failed to send notification:', e);
+    }
+
     setClientStatus('pending');
     setShowRequestForm(false);
     setRequesting(false);
@@ -235,6 +254,7 @@ export default function CoachPublicPage() {
 
     if (error) {
       alert('Failed to book slot. Please try again.');
+      setBooking(false);
     } else {
       try {
         await fetch('/api/lessons/booking-notify', {
@@ -244,8 +264,10 @@ export default function CoachPublicPage() {
             coachEmail: coachEmail,
             coachName: coach.display_name,
             clientName: clientName,
+            clientEmail: clientEmail,
             slotDate: format(parseISO(selectedSlot.start_time), 'EEEE, MMMM d, yyyy'),
-            slotTime: format(parseISO(selectedSlot.start_time), 'h:mm a') + ' - ' + format(parseISO(selectedSlot.end_time), 'h:mm a')
+            slotTime: format(parseISO(selectedSlot.start_time), 'h:mm a') + ' - ' + format(parseISO(selectedSlot.end_time), 'h:mm a'),
+            location: selectedSlot.location
           })
         });
       } catch (e) {
@@ -253,10 +275,8 @@ export default function CoachPublicPage() {
       }
 
       setSelectedSlot(null);
-router.push('/client/dashboard');
+      router.push('/client/dashboard');
     }
-
-    setBooking(false);
   };
 
   const getSlotsForDay = (date: Date) => {
