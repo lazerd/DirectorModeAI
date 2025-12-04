@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Calendar, Clock, MapPin, ChevronLeft, ChevronRight, User, CheckCircle, Loader2, Send } from 'lucide-react';
+import { Calendar, Clock, MapPin, ChevronLeft, ChevronRight, User, CheckCircle, Loader2, Send, LogOut, LogIn } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay, parseISO } from 'date-fns';
 
@@ -35,6 +35,7 @@ export default function CoachPublicPage() {
   const [clientStatus, setClientStatus] = useState<ClientStatus>('none');
   const [clientId, setClientId] = useState<string | null>(null);
   const [clientName, setClientName] = useState<string>('');
+  const [userEmail, setUserEmail] = useState<string>('');
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [booking, setBooking] = useState(false);
@@ -73,7 +74,6 @@ export default function CoachPublicPage() {
 
     setCoach(coachData);
 
-    // Get coach email from profiles
     const { data: profile } = await supabase
       .from('profiles')
       .select('email')
@@ -91,6 +91,8 @@ export default function CoachPublicPage() {
       setLoading(false);
       return;
     }
+
+    setUserEmail(user.email || '');
 
     const { data: client } = await supabase
       .from('lesson_clients')
@@ -143,6 +145,12 @@ export default function CoachPublicPage() {
       .order('start_time');
 
     if (data) setSlots(data);
+  };
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.reload();
   };
 
   const requestToJoin = async () => {
@@ -234,7 +242,6 @@ export default function CoachPublicPage() {
     if (error) {
       alert('Failed to book slot. Please try again.');
     } else {
-      // Send email notification to coach
       try {
         await fetch('/api/lessons/booking-notify', {
           method: 'POST',
@@ -286,14 +293,32 @@ export default function CoachPublicPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-              <User className="h-8 w-8 text-blue-600" />
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <User className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">{coach.display_name || 'Coach'}</h1>
+                <p className="text-gray-500 text-sm">Tennis Coach</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold">{coach.display_name || 'Coach'}</h1>
-              <p className="text-gray-500">Tennis Coach</p>
+            <div className="flex items-center gap-3">
+              {clientStatus === 'not_logged_in' ? (
+                <a href={'/login?redirect=/coach/' + slug} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
+                  <LogIn className="h-4 w-4" />
+                  Sign In
+                </a>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600">{userEmail}</span>
+                  <button onClick={handleSignOut} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-2">
+                    <LogOut className="h-4 w-4" />
+                    Sign Out
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
