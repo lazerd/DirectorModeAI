@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Calendar, Clock, MapPin, User, X } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, X, LogOut } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format, parseISO, isPast } from 'date-fns';
 
@@ -23,6 +23,7 @@ export default function ClientDashboardPage() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loading, setLoading] = useState(true);
   const [clientId, setClientId] = useState<string | null>(null);
+  const [clientName, setClientName] = useState<string>('');
   const [cancelling, setCancelling] = useState<string | null>(null);
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function ClientDashboardPage() {
     // Get client record
     const { data: client } = await supabase
       .from('lesson_clients')
-      .select('id')
+      .select('id, name')
       .eq('profile_id', user.id)
       .single();
 
@@ -51,6 +52,7 @@ export default function ClientDashboardPage() {
     }
 
     setClientId(client.id);
+    setClientName(client.name || user.email || 'Client');
 
     // Get all booked slots for this client
     const { data: slots } = await supabase
@@ -87,6 +89,12 @@ export default function ClientDashboardPage() {
     }
 
     setLoading(false);
+  };
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push('/');
   };
 
   const cancelBooking = async (slotId: string) => {
@@ -126,9 +134,18 @@ export default function ClientDashboardPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <h1 className="text-2xl font-bold">My Lessons</h1>
-          <p className="text-gray-500">View and manage your booked lessons</p>
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">My Lessons</h1>
+            <p className="text-gray-500">Welcome, {clientName}</p>
+          </div>
+          <button
+            onClick={handleSignOut}
+            className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </button>
         </div>
       </header>
 
@@ -151,7 +168,10 @@ export default function ClientDashboardPage() {
           <>
             {/* Upcoming Lessons */}
             <div className="mb-8">
-              <h2 className="text-lg font-semibold mb-4">Upcoming Lessons ({upcomingBookings.length})</h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Upcoming Lessons ({upcomingBookings.length})</h2>
+                <a href="/find-coach" className="text-blue-600 hover:underline text-sm">+ Find a Coach</a>
+              </div>
               {upcomingBookings.length === 0 ? (
                 <div className="bg-white rounded-xl border p-6 text-center text-gray-500">
                   No upcoming lessons
