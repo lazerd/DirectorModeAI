@@ -8,26 +8,25 @@ function formatDateForCalendar(dateStr: string, timeStr: string): { start: strin
   const date = new Date(dateStr);
   const [startTime, endTime] = timeStr.split(' - ');
   
-  const parseTime = (timeString: string, baseDate: Date): Date => {
+  const parseTime = (timeString: string, baseDate: Date): string => {
     const [time, period] = timeString.split(' ');
     let [hours, minutes] = time.split(':').map(Number);
     if (period === 'PM' && hours !== 12) hours += 12;
     if (period === 'AM' && hours === 12) hours = 0;
-    const result = new Date(baseDate);
-    result.setHours(hours, minutes, 0, 0);
-    return result;
-  };
-
-  const startDate = parseTime(startTime, date);
-  const endDate = parseTime(endTime, date);
-
-  const formatForGoogle = (d: Date): string => {
-    return d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+    
+    const year = baseDate.getFullYear();
+    const month = String(baseDate.getMonth() + 1).padStart(2, '0');
+    const day = String(baseDate.getDate()).padStart(2, '0');
+    const h = String(hours).padStart(2, '0');
+    const m = String(minutes).padStart(2, '0');
+    
+    // Return in format: 20251205T090000 (no Z = local time)
+    return `${year}${month}${day}T${h}${m}00`;
   };
 
   return {
-    start: formatForGoogle(startDate),
-    end: formatForGoogle(endDate)
+    start: parseTime(startTime, date),
+    end: parseTime(endTime, date)
   };
 }
 
