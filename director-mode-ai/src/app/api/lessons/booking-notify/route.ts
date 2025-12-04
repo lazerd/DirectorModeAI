@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 function formatDateForCalendar(dateStr: string, timeStr: string): { start: string; end: string } {
-  // Parse "Friday, December 5, 2025" and "9:00 AM - 10:00 AM"
   const date = new Date(dateStr);
   const [startTime, endTime] = timeStr.split(' - ');
   
@@ -20,7 +19,6 @@ function formatDateForCalendar(dateStr: string, timeStr: string): { start: strin
     const h = String(hours).padStart(2, '0');
     const m = String(minutes).padStart(2, '0');
     
-    // Return in format: 20251205T090000 (no Z = local time)
     return `${year}${month}${day}T${h}${m}00`;
   };
 
@@ -30,29 +28,28 @@ function formatDateForCalendar(dateStr: string, timeStr: string): { start: strin
   };
 }
 
-function generateCalendarLinks(clientName: string, slotDate: string, slotTime: string, location?: string) {
+function generateCalendarLinks(title: string, slotDate: string, slotTime: string, location?: string) {
   const { start, end } = formatDateForCalendar(slotDate, slotTime);
-  const title = encodeURIComponent(`Tennis Lesson with ${clientName}`);
+  const encodedTitle = encodeURIComponent(title);
   const details = encodeURIComponent(`Lesson booked via LastMinute Lessons`);
   const loc = encodeURIComponent(location || '');
 
-  const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${loc}`;
-  
-  const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?subject=${title}&startdt=${start}&enddt=${end}&body=${details}&location=${loc}`;
+  const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodedTitle}&dates=${start}/${end}&details=${details}&location=${loc}`;
+  const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?subject=${encodedTitle}&startdt=${start}&enddt=${end}&body=${details}&location=${loc}`;
 
   return { googleUrl, outlookUrl };
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { coachEmail, coachName, clientName, slotDate, slotTime, location } = await request.json();
+    const { coachEmail, coachName, clientName, clientEmail, slotDate, slotTime, location } = await request.json();
 
     if (!coachEmail || !clientName || !slotDate || !slotTime) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const { googleUrl, outlookUrl } = generateCalendarLinks(clientName, slotDate, slotTime, location);
-
+    // Email to coach
+    const coachCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${clientName}`, slotDate, slotTime, location);
     await resend.emails.send({
       from: 'LastMinute Lessons <notifications@mixermodeai.com>',
       to: coachEmail,
@@ -67,18 +64,43 @@ export async function POST(request: NextRequest) {
             <p style="margin: 8px 0 0 0;"><strong>Time:</strong> ${slotTime}</p>
             ${location ? `<p style="margin: 8px 0 0 0;"><strong>Location:</strong> ${location}</p>` : ''}
           </div>
-          
           <p style="margin-top: 24px;"><strong>Add to your calendar:</strong></p>
           <div style="margin: 16px 0;">
-            <a href="${googleUrl}" style="display: inline-block; background: #4285f4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-right: 10px;">📅 Google Calendar</a>
-            <a href="${outlookUrl}" style="display: inline-block; background: #0078d4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none;">📅 Outlook</a>
+            <a href="${coachCalendarLinks.googleUrl}" style="display: inline-block; background: #4285f4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-right: 10px;">📅 Google Calendar</a>
+            <a href="${coachCalendarLinks.outlookUrl}" style="display: inline-block; background: #0078d4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none;">📅 Outlook</a>
           </div>
-          
-          <p style="margin-top: 24px;">View your dashboard to see all bookings.</p>
-          <a href="https://director-mode-ai.vercel.app/lessons/dashboard" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 8px;">View Dashboard</a>
+          <a href="https://director-mode-ai.vercel.app/lessons/dashboard" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View Dashboard</a>
         </div>
       `
     });
+
+    // Email to client (if email provided)
+    if (clientEmail) {
+      const clientCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${coachName || 'Coach'}`, slotDate, slotTime, location);
+      await resend.emails.send({
+        from: 'LastMinute Lessons <notifications@mixermodeai.com>',
+        to: clientEmail,
+        subject: `Booking Confirmed: Lesson with ${coachName || 'your coach'}`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #16a34a;">Lesson Confirmed! ✅</h2>
+            <p>Hi ${clientName},</p>
+            <p>Your lesson with <strong>${coachName || 'your coach'}</strong> is confirmed:</p>
+            <div style="background: #f0fdf4; padding: 16px; border-radius: 8px; margin: 16px 0;">
+              <p style="margin: 0;"><strong>Date:</strong> ${slotDate}</p>
+              <p style="margin: 8px 0 0 0;"><strong>Time:</strong> ${slotTime}</p>
+              ${location ? `<p style="margin: 8px 0 0 0;"><strong>Location:</strong> ${location}</p>` : ''}
+            </div>
+            <p style="margin-top: 24px;"><strong>Add to your calendar:</strong></p>
+            <div style="margin: 16px 0;">
+              <a href="${clientCalendarLinks.googleUrl}" style="display: inline-block; background: #4285f4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-right: 10px;">📅 Google Calendar</a>
+              <a href="${clientCalendarLinks.outlookUrl}" style="display: inline-block; background: #0078d4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none;">📅 Outlook</a>
+            </div>
+            <a href="https://director-mode-ai.vercel.app/client/dashboard" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View My Lessons</a>
+          </div>
+        `
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
