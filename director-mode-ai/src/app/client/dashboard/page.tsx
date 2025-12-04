@@ -158,7 +158,7 @@ export default function ClientDashboardPage() {
               You have not booked any lessons yet.
             </p>
             
-              href="/find-coach"
+              <a href="/find-coach"
               className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-block"
             >
               Find a Coach
