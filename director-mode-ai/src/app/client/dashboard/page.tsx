@@ -39,7 +39,6 @@ export default function ClientDashboardPage() {
       return;
     }
 
-    // Get client record
     const { data: client } = await supabase
       .from('lesson_clients')
       .select('id, name')
@@ -54,21 +53,9 @@ export default function ClientDashboardPage() {
     setClientId(client.id);
     setClientName(client.name || user.email || 'Client');
 
-    // Get all booked slots for this client
     const { data: slots } = await supabase
       .from('lesson_slots')
-      .select(`
-        id,
-        start_time,
-        end_time,
-        location,
-        status,
-        coach_id,
-        lesson_coaches (
-          display_name,
-          slug
-        )
-      `)
+      .select('id, start_time, end_time, location, status, coach_id, lesson_coaches(display_name, slug)')
       .eq('booked_by_client_id', client.id)
       .eq('status', 'booked')
       .order('start_time', { ascending: true });
@@ -99,17 +86,12 @@ export default function ClientDashboardPage() {
 
   const cancelBooking = async (slotId: string) => {
     if (!confirm('Are you sure you want to cancel this lesson?')) return;
-    
     setCancelling(slotId);
     const supabase = createClient();
 
     const { error } = await supabase
       .from('lesson_slots')
-      .update({
-        status: 'open',
-        booked_by_client_id: null,
-        booked_at: null
-      })
+      .update({ status: 'open', booked_by_client_id: null, booked_at: null })
       .eq('id', slotId);
 
     if (error) {
@@ -139,10 +121,7 @@ export default function ClientDashboardPage() {
             <h1 className="text-2xl font-bold">My Lessons</h1>
             <p className="text-gray-500">Welcome, {clientName}</p>
           </div>
-          <button
-            onClick={handleSignOut}
-            className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
-          >
+          <button onClick={handleSignOut} className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
             <LogOut className="h-4 w-4" />
             Sign Out
           </button>
@@ -154,35 +133,22 @@ export default function ClientDashboardPage() {
           <div className="bg-white rounded-xl border p-8 text-center">
             <Calendar className="h-12 w-12 text-gray-300 mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">No lessons booked</h2>
-            <p className="text-gray-600 mb-6">
-              You have not booked any lessons yet.
-            </p>
-            
-              <a href="/find-coach"
-              className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-block"
-            >
-              Find a Coach
-            </a>
+            <p className="text-gray-600 mb-6">You have not booked any lessons yet.</p>
+            <a href="/find-coach" className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 inline-block">Find a Coach</a>
           </div>
         ) : (
-          <>
-            {/* Upcoming Lessons */}
+          <div>
             <div className="mb-8">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold">Upcoming Lessons ({upcomingBookings.length})</h2>
                 <a href="/find-coach" className="text-blue-600 hover:underline text-sm">+ Find a Coach</a>
               </div>
               {upcomingBookings.length === 0 ? (
-                <div className="bg-white rounded-xl border p-6 text-center text-gray-500">
-                  No upcoming lessons
-                </div>
+                <div className="bg-white rounded-xl border p-6 text-center text-gray-500">No upcoming lessons</div>
               ) : (
                 <div className="space-y-4">
                   {upcomingBookings.map((booking) => (
-                    <div
-                      key={booking.id}
-                      className="bg-white rounded-xl border p-4 flex items-center justify-between"
-                    >
+                    <div key={booking.id} className="bg-white rounded-xl border p-4 flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                           <User className="h-6 w-6 text-blue-600" />
@@ -207,12 +173,7 @@ export default function ClientDashboardPage() {
                           )}
                         </div>
                       </div>
-                      <button
-                        onClick={() => cancelBooking(booking.id)}
-                        disabled={cancelling === booking.id}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-50"
-                        title="Cancel booking"
-                      >
+                      <button onClick={() => cancelBooking(booking.id)} disabled={cancelling === booking.id} className="p-2 text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-50" title="Cancel booking">
                         {cancelling === booking.id ? (
                           <div className="animate-spin h-5 w-5 border-2 border-red-500 border-t-transparent rounded-full" />
                         ) : (
@@ -225,16 +186,12 @@ export default function ClientDashboardPage() {
               )}
             </div>
 
-            {/* Past Lessons */}
             {pastBookings.length > 0 && (
               <div>
                 <h2 className="text-lg font-semibold mb-4 text-gray-500">Past Lessons ({pastBookings.length})</h2>
                 <div className="space-y-4 opacity-60">
                   {pastBookings.map((booking) => (
-                    <div
-                      key={booking.id}
-                      className="bg-white rounded-xl border p-4 flex items-center gap-4"
-                    >
+                    <div key={booking.id} className="bg-white rounded-xl border p-4 flex items-center gap-4">
                       <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
                         <User className="h-6 w-6 text-gray-400" />
                       </div>
@@ -256,7 +213,7 @@ export default function ClientDashboardPage() {
                 </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </main>
     </div>
