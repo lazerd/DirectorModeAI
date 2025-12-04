@@ -43,7 +43,7 @@ function LoginForm() {
 
       const user = data.user;
       if (user) {
-        const { data: coach } = await supabase.from('lesson_coaches').select('id').eq('profile_id', user.id).single();
+        const { data: coach } = await supabase.from('lesson_coaches').select('id, slug').eq('profile_id', user.id).not('slug', 'is', null).single();
         if (coach) {
           router.push('/lessons/dashboard');
           router.refresh();
