@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, Users, Send, Plus, Trash2, ChevronLeft, ChevronRight, Link, Check, Copy } from 'lucide-react';
+import { Send, Plus, Trash2, ChevronLeft, ChevronRight, Link, Check, Copy, LogOut } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay } from 'date-fns';
 
@@ -79,6 +79,12 @@ export default function DashboardPage() {
   useEffect(() => {
     if (coachId) fetchSlots(coachId);
   }, [currentWeek, coachId]);
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = '/';
+  };
 
   const openAddSlot = (date: Date) => {
     setSelectedDate(date);
@@ -186,6 +192,13 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 lg:p-8">
+      <div className="flex justify-end mb-4">
+        <button onClick={handleSignOut} className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg flex items-center gap-2">
+          <LogOut className="h-4 w-4" />
+          Sign Out
+        </button>
+      </div>
+
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Link className="h-5 w-5 text-blue-600" />
