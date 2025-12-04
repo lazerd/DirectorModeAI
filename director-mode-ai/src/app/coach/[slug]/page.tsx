@@ -18,6 +18,7 @@ type Coach = {
   id: string;
   display_name: string | null;
   slug: string;
+  profile_id: string;
 };
 
 type ClientStatus = 'none' | 'pending' | 'approved' | 'not_logged_in';
@@ -28,10 +29,12 @@ export default function CoachPublicPage() {
   const slug = params.slug as string;
   
   const [coach, setCoach] = useState<Coach | null>(null);
+  const [coachEmail, setCoachEmail] = useState<string>('');
   const [slots, setSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
   const [clientStatus, setClientStatus] = useState<ClientStatus>('none');
   const [clientId, setClientId] = useState<string | null>(null);
+  const [clientName, setClientName] = useState<string>('');
   const [currentWeek, setCurrentWeek] = useState(new Date());
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
   const [booking, setBooking] = useState(false);
@@ -59,7 +62,7 @@ export default function CoachPublicPage() {
     
     const { data: coachData, error } = await supabase
       .from('lesson_coaches')
-      .select('id, display_name, slug')
+      .select('id, display_name, slug, profile_id')
       .eq('slug', slug)
       .single();
 
@@ -69,6 +72,17 @@ export default function CoachPublicPage() {
     }
 
     setCoach(coachData);
+
+    // Get coach email from profiles
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', coachData.profile_id)
+      .single();
+    
+    if (profile?.email) {
+      setCoachEmail(profile.email);
+    }
 
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -80,7 +94,7 @@ export default function CoachPublicPage() {
 
     const { data: client } = await supabase
       .from('lesson_clients')
-      .select('id')
+      .select('id, name')
       .eq('profile_id', user.id)
       .single();
 
@@ -96,6 +110,7 @@ export default function CoachPublicPage() {
     }
 
     setClientId(client.id);
+    setClientName(client.name || user.email || 'Client');
 
     const { data: relationship } = await supabase
       .from('lesson_client_coaches')
@@ -188,7 +203,7 @@ export default function CoachPublicPage() {
   };
 
   const bookSlot = async () => {
-    if (!selectedSlot || !clientId) return;
+    if (!selectedSlot || !clientId || !coach) return;
     setBooking(true);
 
     const supabase = createClient();
@@ -219,6 +234,23 @@ export default function CoachPublicPage() {
     if (error) {
       alert('Failed to book slot. Please try again.');
     } else {
+      // Send email notification to coach
+      try {
+        await fetch('/api/lessons/booking-notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            coachEmail: coachEmail,
+            coachName: coach.display_name,
+            clientName: clientName,
+            slotDate: format(parseISO(selectedSlot.start_time), 'EEEE, MMMM d, yyyy'),
+            slotTime: format(parseISO(selectedSlot.start_time), 'h:mm a') + ' - ' + format(parseISO(selectedSlot.end_time), 'h:mm a')
+          })
+        });
+      } catch (e) {
+        console.error('Failed to send notification:', e);
+      }
+
       alert('Lesson booked successfully!');
       setSelectedSlot(null);
       fetchSlots();
@@ -245,9 +277,7 @@ export default function CoachPublicPage() {
         <div className="text-center">
           <h1 className="text-2xl font-bold text-gray-800 mb-2">Coach Not Found</h1>
           <p className="text-gray-600 mb-4">We could not find a coach with that link.</p>
-          <a href="/find-coach" className="text-blue-600 hover:underline">
-            Search for your coach
-          </a>
+          <a href="/find-coach" className="text-blue-600 hover:underline">Search for your coach</a>
         </div>
       </div>
     );
@@ -274,9 +304,7 @@ export default function CoachPublicPage() {
           <div className="bg-white rounded-xl border p-6 text-center">
             <User className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Sign in to book lessons</h2>
-            <p className="text-gray-600 mb-6">
-              Create an account or sign in to request lessons with {coach.display_name}.
-            </p>
+            <p className="text-gray-600 mb-6">Create an account or sign in to request lessons with {coach.display_name}.</p>
             <div className="flex gap-3 justify-center">
               <a href={'/login?redirect=/coach/' + slug} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Sign In</a>
               <a href={'/register?redirect=/coach/' + slug} className="px-6 py-2 border rounded-lg hover:bg-gray-50">Create Account</a>
@@ -287,15 +315,10 @@ export default function CoachPublicPage() {
         {clientStatus === 'none' && (
           <div className="bg-white rounded-xl border p-6">
             <h2 className="text-xl font-semibold mb-2">Request to become a client</h2>
-            <p className="text-gray-600 mb-6">
-              Send a request to {coach.display_name} to start booking lessons.
-            </p>
+            <p className="text-gray-600 mb-6">Send a request to {coach.display_name} to start booking lessons.</p>
             
             {!showRequestForm ? (
-              <button
-                onClick={() => setShowRequestForm(true)}
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
-              >
+              <button onClick={() => setShowRequestForm(true)} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2">
                 <Send className="h-4 w-4" />
                 Request to Join
               </button>
@@ -303,51 +326,20 @@ export default function CoachPublicPage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
-                  <input
-                    type="text"
-                    value={requestForm.name}
-                    onChange={(e) => setRequestForm({ ...requestForm, name: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    placeholder="John Smith"
-                  />
+                  <input type="text" value={requestForm.name} onChange={(e) => setRequestForm({ ...requestForm, name: e.target.value })} className="w-full px-3 py-2 border rounded-lg" placeholder="John Smith" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    type="email"
-                    value={requestForm.email}
-                    onChange={(e) => setRequestForm({ ...requestForm, email: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    placeholder="john@example.com"
-                  />
+                  <input type="email" value={requestForm.email} onChange={(e) => setRequestForm({ ...requestForm, email: e.target.value })} className="w-full px-3 py-2 border rounded-lg" placeholder="john@example.com" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Message (optional)</label>
-                  <textarea
-                    value={requestForm.message}
-                    onChange={(e) => setRequestForm({ ...requestForm, message: e.target.value })}
-                    className="w-full px-3 py-2 border rounded-lg"
-                    rows={3}
-                    placeholder="Hi! I would like to take lessons with you..."
-                  />
+                  <textarea value={requestForm.message} onChange={(e) => setRequestForm({ ...requestForm, message: e.target.value })} className="w-full px-3 py-2 border rounded-lg" rows={3} placeholder="Hi! I would like to take lessons with you..." />
                 </div>
                 <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowRequestForm(false)}
-                    className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={requestToJoin}
-                    disabled={requesting || !requestForm.name || !requestForm.email}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-                  >
-                    {requesting ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
+                  <button onClick={() => setShowRequestForm(false)} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+                  <button onClick={requestToJoin} disabled={requesting || !requestForm.name || !requestForm.email} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2">
+                    {requesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                     {requesting ? 'Sending...' : 'Send Request'}
                   </button>
                 </div>
@@ -360,9 +352,7 @@ export default function CoachPublicPage() {
           <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 text-center">
             <Clock className="h-12 w-12 text-yellow-600 mx-auto mb-4" />
             <h2 className="text-xl font-semibold mb-2">Request Pending</h2>
-            <p className="text-gray-600">
-              Your request to become a client of {coach.display_name} is pending approval.
-            </p>
+            <p className="text-gray-600">Your request to become a client of {coach.display_name} is pending approval.</p>
           </div>
         )}
 
@@ -375,21 +365,9 @@ export default function CoachPublicPage() {
 
             <div className="bg-white rounded-xl border mb-6">
               <div className="p-4 border-b flex items-center justify-between">
-                <button
-                  onClick={() => setCurrentWeek(subWeeks(currentWeek, 1))}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-                <h2 className="font-semibold">
-                  {format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}
-                </h2>
-                <button
-                  onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
-                >
-                  <ChevronRight className="h-5 w-5" />
-                </button>
+                <button onClick={() => setCurrentWeek(subWeeks(currentWeek, 1))} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft className="h-5 w-5" /></button>
+                <h2 className="font-semibold">{format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}</h2>
+                <button onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight className="h-5 w-5" /></button>
               </div>
 
               <div className="grid grid-cols-7 divide-x">
@@ -402,25 +380,14 @@ export default function CoachPublicPage() {
                     <div key={day.toISOString()} className={`min-h-[180px] ${isPast ? 'bg-gray-50' : ''}`}>
                       <div className={`p-2 text-center border-b ${isToday ? 'bg-blue-50' : ''}`}>
                         <p className="text-xs text-gray-500">{format(day, 'EEE')}</p>
-                        <p className={`text-lg font-semibold ${isToday ? 'text-blue-600' : isPast ? 'text-gray-400' : ''}`}>
-                          {format(day, 'd')}
-                        </p>
+                        <p className={`text-lg font-semibold ${isToday ? 'text-blue-600' : isPast ? 'text-gray-400' : ''}`}>{format(day, 'd')}</p>
                       </div>
-
                       <div className="p-2 space-y-2">
-                        {daySlots.length === 0 && !isPast && (
-                          <p className="text-xs text-gray-400 text-center py-4">No slots</p>
-                        )}
+                        {daySlots.length === 0 && !isPast && <p className="text-xs text-gray-400 text-center py-4">No slots</p>}
                         {daySlots.map((slot) => (
-                          <button
-                            key={slot.id}
-                            onClick={() => setSelectedSlot(slot)}
-                            className="w-full p-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-lg text-xs text-left transition-colors"
-                          >
+                          <button key={slot.id} onClick={() => setSelectedSlot(slot)} className="w-full p-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-lg text-xs text-left transition-colors">
                             <p className="font-medium">{format(parseISO(slot.start_time), 'h:mm a')}</p>
-                            {slot.location && (
-                              <p className="truncate text-green-600">{slot.location}</p>
-                            )}
+                            {slot.location && <p className="truncate text-green-600">{slot.location}</p>}
                           </button>
                         ))}
                       </div>
@@ -437,19 +404,14 @@ export default function CoachPublicPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 w-full max-w-md">
             <h2 className="font-semibold text-lg mb-4">Confirm Booking</h2>
-            
             <div className="bg-blue-50 rounded-xl p-4 mb-6 space-y-3">
               <div className="flex items-center gap-3">
                 <Calendar className="h-5 w-5 text-blue-600" />
-                <span className="font-medium">
-                  {format(parseISO(selectedSlot.start_time), 'EEEE, MMMM d, yyyy')}
-                </span>
+                <span className="font-medium">{format(parseISO(selectedSlot.start_time), 'EEEE, MMMM d, yyyy')}</span>
               </div>
               <div className="flex items-center gap-3">
                 <Clock className="h-5 w-5 text-blue-600" />
-                <span>
-                  {format(parseISO(selectedSlot.start_time), 'h:mm a')} - {format(parseISO(selectedSlot.end_time), 'h:mm a')}
-                </span>
+                <span>{format(parseISO(selectedSlot.start_time), 'h:mm a')} - {format(parseISO(selectedSlot.end_time), 'h:mm a')}</span>
               </div>
               {selectedSlot.location && (
                 <div className="flex items-center gap-3">
@@ -458,24 +420,10 @@ export default function CoachPublicPage() {
                 </div>
               )}
             </div>
-
             <div className="flex gap-3">
-              <button
-                onClick={() => setSelectedSlot(null)}
-                className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={bookSlot}
-                disabled={booking}
-                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {booking ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <CheckCircle className="h-4 w-4" />
-                )}
+              <button onClick={() => setSelectedSlot(null)} className="flex-1 px-4 py-2 border rounded-lg hover:bg-gray-50">Cancel</button>
+              <button onClick={bookSlot} disabled={booking} className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2">
+                {booking ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                 {booking ? 'Booking...' : 'Book Lesson'}
               </button>
             </div>
