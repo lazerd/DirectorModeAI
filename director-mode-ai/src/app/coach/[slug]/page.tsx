@@ -19,6 +19,7 @@ type Coach = {
   display_name: string | null;
   slug: string;
   profile_id: string;
+  email: string | null;
 };
 
 type ClientStatus = 'none' | 'pending' | 'approved' | 'not_logged_in';
@@ -63,7 +64,7 @@ export default function CoachPublicPage() {
     
     const { data: coachData, error } = await supabase
       .from('lesson_coaches')
-      .select('id, display_name, slug, profile_id')
+      .select('id, display_name, slug, profile_id, email')
       .eq('slug', slug)
       .single();
 
@@ -73,15 +74,8 @@ export default function CoachPublicPage() {
     }
 
     setCoach(coachData);
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('id', coachData.profile_id)
-      .single();
-    
-    if (profile?.email) {
-      setCoachEmail(profile.email);
+    if (coachData.email) {
+      setCoachEmail(coachData.email);
     }
 
     const { data: { user } } = await supabase.auth.getUser();
