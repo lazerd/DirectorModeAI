@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Shuffle, Clock, Wrench, ArrowRight, LogOut, User } from "lucide-react";
+import { Shuffle, Clock, Wrench, ArrowRight, LogOut, User, Calendar, UserCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function HomePage() {
@@ -42,11 +42,11 @@ export default function HomePage() {
 
     const supabase = createClient();
     
-    // Check if user is a coach
     const { data: coach } = await supabase
       .from('lesson_coaches')
-      .select('id')
+      .select('id, slug')
       .eq('profile_id', user.id)
+      .not('slug', 'is', null)
       .single();
 
     if (coach) {
@@ -54,7 +54,6 @@ export default function HomePage() {
       return;
     }
 
-    // Check if user is a client
     const { data: client } = await supabase
       .from('lesson_clients')
       .select('id')
@@ -66,7 +65,6 @@ export default function HomePage() {
       return;
     }
 
-    // Neither - go to find coach page
     router.push('/find-coach');
   };
 
@@ -120,41 +118,73 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Admin/Coach Tools */}
       <section className="py-16 px-4">
-        <div className="max-w-6xl mx-auto grid md:grid-cols-3 gap-6">
-          <div onClick={() => goToTool("/mixer/home")} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
-            <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mb-6">
-              <Shuffle className="text-orange-600" size={28} />
+        <div className="max-w-6xl mx-auto">
+          <h2 className="text-center text-sm font-semibold text-gray-500 uppercase tracking-wide mb-8">For Coaches, Directors & Pro Shops</h2>
+          <div className="grid md:grid-cols-3 gap-6">
+            <div onClick={() => goToTool("/mixer/home")} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
+              <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mb-6">
+                <Shuffle className="text-orange-600" size={28} />
+              </div>
+              <span className="inline-block px-3 py-1 bg-orange-100 text-orange-600 rounded-full text-xs font-semibold mb-4">EVENTS</span>
+              <h3 className="text-2xl font-bold mb-3">MixerMode AI</h3>
+              <p className="text-gray-600 mb-6">Run round robins, generate balanced teams, track scores.</p>
+              <div className="flex items-center gap-2 text-orange-600 font-semibold">
+                {user ? "Open Tool" : "Sign in"} <ArrowRight size={18} />
+              </div>
             </div>
-            <span className="inline-block px-3 py-1 bg-orange-100 text-orange-600 rounded-full text-xs font-semibold mb-4">EVENTS</span>
-            <h3 className="text-2xl font-bold mb-3">MixerMode AI</h3>
-            <p className="text-gray-600 mb-6">Run round robins, generate balanced teams, track scores.</p>
-            <div className="flex items-center gap-2 text-orange-600 font-semibold">
-              {user ? "Open Tool" : "Sign in"} <ArrowRight size={18} />
+
+            <div onClick={goToLessons} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
+              <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
+                <Clock className="text-blue-600" size={28} />
+              </div>
+              <span className="inline-block px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs font-semibold mb-4">LESSONS</span>
+              <h3 className="text-2xl font-bold mb-3">LastMinuteLesson</h3>
+              <p className="text-gray-600 mb-6">Post open slots, notify clients, let them book.</p>
+              <div className="flex items-center gap-2 text-blue-600 font-semibold">
+                {user ? "Open Tool" : "Sign in"} <ArrowRight size={18} />
+              </div>
+            </div>
+
+            <div onClick={() => goToTool("/stringing/jobs")} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
+              <div className="w-16 h-16 bg-pink-100 rounded-2xl flex items-center justify-center mb-6">
+                <Wrench className="text-pink-600" size={28} />
+              </div>
+              <span className="inline-block px-3 py-1 bg-pink-100 text-pink-600 rounded-full text-xs font-semibold mb-4">PRO SHOP</span>
+              <h3 className="text-2xl font-bold mb-3">StringingMode AI</h3>
+              <p className="text-gray-600 mb-6">String recommendations, job tracking, inventory.</p>
+              <div className="flex items-center gap-2 text-pink-600 font-semibold">
+                {user ? "Open Tool" : "Sign in"} <ArrowRight size={18} />
+              </div>
             </div>
           </div>
+        </div>
+      </section>
 
-          <div onClick={goToLessons} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
-            <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
-              <Clock className="text-blue-600" size={28} />
-            </div>
-            <span className="inline-block px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs font-semibold mb-4">LESSONS</span>
-            <h3 className="text-2xl font-bold mb-3">LastMinuteLesson</h3>
-            <p className="text-gray-600 mb-6">Post open slots, notify clients, let them book.</p>
-            <div className="flex items-center gap-2 text-blue-600 font-semibold">
-              {user ? "Open Tool" : "Sign in"} <ArrowRight size={18} />
-            </div>
-          </div>
-
-          <div onClick={() => goToTool("/stringing/jobs")} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
-            <div className="w-16 h-16 bg-pink-100 rounded-2xl flex items-center justify-center mb-6">
-              <Wrench className="text-pink-600" size={28} />
-            </div>
-            <span className="inline-block px-3 py-1 bg-pink-100 text-pink-600 rounded-full text-xs font-semibold mb-4">PRO SHOP</span>
-            <h3 className="text-2xl font-bold mb-3">StringingMode AI</h3>
-            <p className="text-gray-600 mb-6">String recommendations, job tracking, inventory.</p>
-            <div className="flex items-center gap-2 text-pink-600 font-semibold">
-              {user ? "Open Tool" : "Sign in"} <ArrowRight size={18} />
+      {/* Player/Client Section */}
+      <section className="py-16 px-4 bg-gradient-to-r from-green-50 to-blue-50">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white rounded-2xl border-2 border-green-200 p-8 md:p-12">
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <div className="w-20 h-20 bg-green-100 rounded-2xl flex items-center justify-center flex-shrink-0">
+                <UserCircle className="text-green-600" size={40} />
+              </div>
+              <div className="flex-1 text-center md:text-left">
+                <h3 className="text-2xl font-bold mb-2">Are You a Player?</h3>
+                <p className="text-gray-600 mb-4">
+                  Looking to book lessons with your coach? Check your stringing order status? View your mixer history?
+                </p>
+                <div className="flex flex-wrap gap-3 justify-center md:justify-start">
+                  <Link href="/client/dashboard" className="px-6 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 flex items-center gap-2">
+                    <Calendar size={18} />
+                    My Lessons
+                  </Link>
+                  <Link href="/find-coach" className="px-6 py-3 border-2 border-green-600 text-green-600 rounded-lg font-semibold hover:bg-green-50 flex items-center gap-2">
+                    Find My Coach
+                  </Link>
+                </div>
+              </div>
             </div>
           </div>
         </div>
