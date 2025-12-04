@@ -83,17 +83,21 @@ export default function HomePage() {
               <div className="w-24 h-8 bg-gray-200 animate-pulse rounded"></div>
             ) : user ? (
               <>
-                <div className="flex items-center gap-2 text-green-600 bg-green-50 px-3 py-2 rounded-lg">
+                <Link href="/client/dashboard" className="flex items-center gap-2 px-3 py-2 text-green-600 hover:bg-green-50 rounded-lg font-medium">
+                  <Calendar size={18} />
+                  My Account
+                </Link>
+                <div className="flex items-center gap-2 text-gray-600 px-3 py-2">
                   <User size={18} />
-                  <span className="font-medium">Welcome, {user.email?.split("@")[0]}!</span>
+                  <span>{user.email?.split("@")[0]}</span>
                 </div>
-                <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">
                   <LogOut size={18} />
-                  Sign Out
                 </button>
               </>
             ) : (
               <>
+                <Link href="/client/dashboard" className="text-green-600 hover:text-green-700 font-medium">I'm a Player</Link>
                 <Link href="/login" className="text-gray-600 hover:text-gray-900">Sign In</Link>
                 <Link href="/login" className="px-5 py-2.5 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700">Get Started</Link>
               </>
