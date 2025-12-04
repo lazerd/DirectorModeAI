@@ -252,9 +252,8 @@ export default function CoachPublicPage() {
         console.error('Failed to send notification:', e);
       }
 
-      alert('Lesson booked successfully!');
       setSelectedSlot(null);
-      fetchSlots();
+router.push('/client/dashboard');
     }
 
     setBooking(false);
