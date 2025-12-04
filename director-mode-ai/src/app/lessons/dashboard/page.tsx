@@ -41,11 +41,12 @@ export default function DashboardPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
-    let { data: coach } = await supabase.from('lesson_coaches').select('id, slug').eq('profile_id', user.id).single();
-    if (!coach) {
-      const { data: newCoach } = await supabase.from('lesson_coaches').insert({ profile_id: user.id }).select('id, slug').single();
-      coach = newCoach;
-    }
+    const { data: coach } = await supabase.from('lesson_coaches').select('id, slug').eq('profile_id', user.id).single();
+if (!coach) {
+  // Not a coach - redirect to client dashboard
+  window.location.href = '/client/dashboard';
+  return;
+}
     if (coach) { 
       setCoachId(coach.id);
       setCoachSlug(coach.slug);
