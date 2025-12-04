@@ -1,13 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Trophy, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect');
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -22,16 +24,55 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
       if (error) {
         setError(error.message);
+        setLoading(false);
         return;
       }
 
+      // If there's a redirect parameter, use it
+      if (redirectTo) {
+        router.push(redirectTo);
+        router.refresh();
+        return;
+      }
+
+      // Otherwise, check if user is a coach or client and redirect accordingly
+      const user = data.user;
+      if (user) {
+        // Check if they're a coach
+        const { data: coach } = await supabase
+          .from('lesson_coaches')
+          .select('id')
+          .eq('profile_id', user.id)
+          .single();
+
+        if (coach) {
+          router.push('/lessons/dashboard');
+          router.refresh();
+          return;
+        }
+
+        // Check if they're a client
+        const { data: client } = await supabase
+          .from('lesson_clients')
+          .select('id')
+          .eq('profile_id', user.id)
+          .single();
+
+        if (client) {
+          router.push('/client/dashboard');
+          router.refresh();
+          return;
+        }
+      }
+
+      // Default fallback
       router.push('/');
       router.refresh();
     } catch {
