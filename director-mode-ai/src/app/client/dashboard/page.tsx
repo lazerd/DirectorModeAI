@@ -43,6 +43,14 @@ type Tab = 'lessons' | 'stringing' | 'events';
 
 export default function ClientDashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>('lessons');
+
+useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+  const tab = params.get('tab');
+  if (tab === 'stringing' || tab === 'events') {
+    setActiveTab(tab);
+  }
+}, []);
   const [upcomingLessons, setUpcomingLessons] = useState<Lesson[]>([]);
   const [pastLessons, setPastLessons] = useState<Lesson[]>([]);
   const [myCoaches, setMyCoaches] = useState<Coach[]>([]);
