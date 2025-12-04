@@ -34,6 +34,42 @@ export default function HomePage() {
     }
   };
 
+  const goToLessons = async () => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    const supabase = createClient();
+    
+    // Check if user is a coach
+    const { data: coach } = await supabase
+      .from('lesson_coaches')
+      .select('id')
+      .eq('profile_id', user.id)
+      .single();
+
+    if (coach) {
+      router.push('/lessons/dashboard');
+      return;
+    }
+
+    // Check if user is a client
+    const { data: client } = await supabase
+      .from('lesson_clients')
+      .select('id')
+      .eq('profile_id', user.id)
+      .single();
+
+    if (client) {
+      router.push('/client/dashboard');
+      return;
+    }
+
+    // Neither - go to find coach page
+    router.push('/find-coach');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
       <header className="border-b bg-white">
@@ -98,7 +134,7 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div onClick={() => goToTool("/lessons/dashboard")} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
+          <div onClick={goToLessons} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
             <div className="w-16 h-16 bg-blue-100 rounded-2xl flex items-center justify-center mb-6">
               <Clock className="text-blue-600" size={28} />
             </div>
@@ -132,9 +168,9 @@ export default function HomePage() {
               <Link href="/mixer/home" className="flex items-center justify-center gap-3 p-4 bg-orange-500 text-white rounded-xl font-semibold hover:bg-orange-600">
                 <Shuffle size={20} /> MixerMode
               </Link>
-              <Link href="/lessons/dashboard" className="flex items-center justify-center gap-3 p-4 bg-blue-500 text-white rounded-xl font-semibold hover:bg-blue-600">
+              <button onClick={goToLessons} className="flex items-center justify-center gap-3 p-4 bg-blue-500 text-white rounded-xl font-semibold hover:bg-blue-600">
                 <Clock size={20} /> Lessons
-              </Link>
+              </button>
               <Link href="/stringing/jobs" className="flex items-center justify-center gap-3 p-4 bg-pink-500 text-white rounded-xl font-semibold hover:bg-pink-600">
                 <Wrench size={20} /> Stringing
               </Link>
