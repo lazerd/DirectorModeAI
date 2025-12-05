@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -116,6 +116,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
   }, [event.id]);
 
   const checkEventFormat = async () => {
+    const supabase = createClient();
     const { data } = await supabase
       .from("events")
       .select("match_format")
@@ -127,6 +128,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
   };
 
   const fetchPlayers = async () => {
+    const supabase = createClient();
     const { data, error } = await supabase
       .from("event_players")
       .select(`
@@ -159,6 +161,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
 
   const handleAddPlayer = async (e: React.FormEvent) => {
     e.preventDefault();
+    const supabase = createClient();
     
     // For round-robin, require both partners
     if (matchFormat === "round-robin") {
@@ -186,7 +189,14 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
       setHasFormat(false); // Reset format when adding players
 
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        toast({
+          variant: "destructive",
+          title: "Not logged in",
+          description: "Please log in to add players.",
+        });
+        return;
+      }
 
       // Create both players
       const { data: playersData, error: playersError } = await supabase
@@ -264,7 +274,14 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
     setHasFormat(false); // Reset format when adding players
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Not logged in",
+        description: "Please log in to add players.",
+      });
+      return;
+    }
 
     // First create the player
     const { data: player, error: playerError } = await supabase
@@ -324,6 +341,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
   };
 
   const handleRemovePlayer = async (eventPlayerId: string) => {
+    const supabase = createClient();
     const { error } = await supabase
       .from("event_players")
       .delete()
@@ -356,6 +374,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
     setPlayers(newPlayers);
 
     // Update strength_order in database
+    const supabase = createClient();
     const updates = newPlayers.map((player, index) => ({
       id: player.id,
       strength_order: index,
