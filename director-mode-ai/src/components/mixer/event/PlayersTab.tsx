@@ -351,7 +351,7 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Players ({players.length})</CardTitle>
+        <CardTitle>TEST Players ({players.length})</CardTitle>
         <CardDescription>
           {matchFormat === "round-robin" 
             ? "Add partner pairs. Players added together will stay as partners throughout the event."
