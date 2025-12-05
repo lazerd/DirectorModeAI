@@ -519,3 +519,4 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     </Card>
   );
 }
+
