@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -47,6 +49,7 @@ function SortablePlayer({ player, onRemove, onEdit }: SortablePlayerProps) {
       className="flex items-center gap-2 sm:gap-4 p-4 sm:p-6 bg-card border-2 rounded-2xl hover:shadow-lg hover:border-primary/50 transition-all"
     >
       <button
+        type="button"
         {...listeners}
         {...attributes}
         className="cursor-grab active:cursor-grabbing touch-none p-1 sm:p-2 hover:bg-muted rounded-lg transition-colors"
@@ -60,6 +63,7 @@ function SortablePlayer({ player, onRemove, onEdit }: SortablePlayerProps) {
         )}
       </div>
       <Button
+        type="button"
         variant="ghost"
         size="sm"
         onClick={() => onEdit(player)}
@@ -68,6 +72,7 @@ function SortablePlayer({ player, onRemove, onEdit }: SortablePlayerProps) {
         <Pencil className="h-4 w-4 sm:h-5 sm:w-5" />
       </Button>
       <Button
+        type="button"
         variant="ghost"
         size="sm"
         onClick={() => onRemove(player.id)}
@@ -84,7 +89,7 @@ interface PlayersTabProps {
   onFormatUpdated?: () => void;
 }
 
-const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
+export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) {
   const { toast } = useToast();
   const [players, setPlayers] = useState<EventPlayer[]>([]);
   const [newPlayerName, setNewPlayerName] = useState("");
@@ -136,37 +141,31 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
       .order("strength_order");
 
     if (error) {
-      console.error("Error fetching players:", error);
       toast({
         variant: "destructive",
         title: "Error fetching players",
         description: error.message,
       });
     } else {
-      const formattedPlayers = data.map((ep: any) => ({
+      const formattedPlayers = (data || []).map((ep: any) => ({
         id: ep.id,
         player_id: ep.player_id,
         strength_order: ep.strength_order,
-        player_name: ep.players.name,
-        player_gender: ep.players.gender,
+        player_name: ep.players?.name || "Unknown",
+        player_gender: ep.players?.gender,
       }));
       setPlayers(formattedPlayers);
     }
     setLoading(false);
   };
 
-  const handleAddPlayer = async () => {
-    console.log("Add button clicked");
-    console.log("Player name:", newPlayerName);
-    console.log("Match format:", matchFormat);
+  const handleAddPlayer = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     
     if (adding) return;
-    setAdding(true);
-
-    const supabase = createClient();
     
+    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    console.log("User:", user);
     
     if (!user) {
       toast({
@@ -174,9 +173,10 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
         title: "Not logged in",
         description: "Please log in to add players.",
       });
-      setAdding(false);
       return;
     }
+
+    setAdding(true);
     
     // For round-robin, require both partners
     if (matchFormat === "round-robin") {
@@ -200,8 +200,6 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
         ])
         .select();
 
-      console.log("Players insert result:", playersData, playersError);
-
       if (playersError) {
         toast({
           variant: "destructive",
@@ -218,8 +216,6 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
           { event_id: event.id, player_id: playersData[0].id, strength_order: players.length },
           { event_id: event.id, player_id: playersData[1].id, strength_order: players.length + 1 },
         ]);
-
-      console.log("Event players insert error:", eventPlayersError);
 
       if (eventPlayersError) {
         toast({
@@ -254,16 +250,12 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
     }
 
     setHasFormat(false);
-
-    console.log("Inserting player:", newPlayerName.trim());
     
     const { data: player, error: playerError } = await supabase
       .from("players")
       .insert([{ user_id: user.id, name: newPlayerName.trim(), gender: newPlayerGender }])
       .select()
       .single();
-
-    console.log("Player insert result:", player, playerError);
 
     if (playerError) {
       toast({
@@ -278,8 +270,6 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
     const { error: eventPlayerError } = await supabase
       .from("event_players")
       .insert([{ event_id: event.id, player_id: player.id, strength_order: players.length }]);
-
-    console.log("Event player insert error:", eventPlayerError);
 
     if (eventPlayerError) {
       toast({
@@ -302,6 +292,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
   const handleFormatSelected = () => {
     setShowFormatSelector(false);
     checkEventFormat();
+    if (onFormatUpdated) onFormatUpdated();
     toast({
       title: "Ready to play!",
       description: "You can now generate Round 1 in the Rounds tab.",
@@ -376,7 +367,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
       </CardHeader>
       <CardContent className="space-y-6">
         {matchFormat === "round-robin" ? (
-          <div className="space-y-4">
+          <form onSubmit={handleAddPlayer} className="space-y-4">
             <div className="bg-muted/50 rounded-lg p-4 border-2 border-primary/20">
               <p className="text-sm font-medium mb-3 text-primary">Partner Pair</p>
               <div className="space-y-3">
@@ -416,18 +407,17 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
                 </div>
               </div>
             </div>
-            <Button onClick={handleAddPlayer} disabled={adding} size="lg" className="w-full">
+            <Button type="submit" disabled={adding} size="lg" className="w-full">
               <Plus className="h-5 w-5 mr-2" />
               {adding ? "Adding..." : "Add Partner Pair"}
             </Button>
-          </div>
+          </form>
         ) : (
-          <div className="flex gap-3">
+          <form onSubmit={handleAddPlayer} className="flex gap-3">
             <Input
               placeholder="Player name"
               value={newPlayerName}
               onChange={(e) => setNewPlayerName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleAddPlayer()}
               className="flex-1 h-12 text-base"
             />
             <Select value={newPlayerGender} onValueChange={setNewPlayerGender}>
@@ -439,11 +429,11 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
                 <SelectItem value="female">Female</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleAddPlayer} disabled={adding} size="lg" className="px-6">
+            <Button type="submit" disabled={adding} size="lg" className="px-6">
               <Plus className="h-5 w-5 mr-2" />
               {adding ? "..." : "Add"}
             </Button>
-          </div>
+          </form>
         )}
 
         {loading ? (
@@ -496,6 +486,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
 
         {players.length >= 4 && !hasFormat && (
           <Button 
+            type="button"
             onClick={() => setShowFormatSelector(true)} 
             size="lg" 
             className="w-full"
@@ -510,6 +501,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
               ✓ Format selected! Go to Rounds tab to start.
             </p>
             <Button 
+              type="button"
               variant="ghost" 
               size="lg"
               onClick={() => setShowFormatSelector(true)}
@@ -533,7 +525,4 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
       )}
     </Card>
   );
-};
-
-export default PlayersTab;
-// trigger build
+}
