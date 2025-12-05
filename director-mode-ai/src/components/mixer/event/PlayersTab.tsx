@@ -11,7 +11,6 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSo
 import { CSS } from "@dnd-kit/utilities";
 import FormatSelector from "@/components/mixer/event/FormatSelector";
 import EditPlayerDialog from "@/components/mixer/event/EditPlayerDialog";
-import { addPlayerSchema } from "@/lib/validationSchemas";
 
 interface Event {
   id: string;
@@ -24,11 +23,6 @@ interface EventPlayer {
   strength_order: number;
   player_name: string;
   player_gender?: string;
-}
-
-interface Player {
-  id: string;
-  name: string;
 }
 
 interface SortablePlayerProps {
@@ -47,41 +41,41 @@ function SortablePlayer({ player, onRemove, onEdit }: SortablePlayerProps) {
   };
 
   return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className="flex items-center gap-2 sm:gap-4 p-4 sm:p-6 bg-card border-2 rounded-2xl hover:shadow-lg hover:border-primary/50 transition-all"
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 sm:gap-4 p-4 sm:p-6 bg-card border-2 rounded-2xl hover:shadow-lg hover:border-primary/50 transition-all"
+    >
+      <button
+        {...listeners}
+        {...attributes}
+        className="cursor-grab active:cursor-grabbing touch-none p-1 sm:p-2 hover:bg-muted rounded-lg transition-colors"
       >
-        <button
-          {...listeners}
-          {...attributes}
-          className="cursor-grab active:cursor-grabbing touch-none p-1 sm:p-2 hover:bg-muted rounded-lg transition-colors"
-        >
-          <GripVertical className="h-5 w-5 sm:h-6 sm:w-6 text-muted-foreground" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <p className="text-base sm:text-lg font-semibold truncate">{player.player_name}</p>
-          {player.player_gender && (
-            <p className="text-xs text-muted-foreground capitalize">{player.player_gender}</p>
-          )}
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onEdit(player)}
-          className="hover:bg-muted flex-shrink-0"
-        >
-          <Pencil className="h-4 w-4 sm:h-5 sm:w-5" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onRemove(player.id)}
-          className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
-        >
-          <X className="h-4 w-4 sm:h-5 sm:w-5" />
-        </Button>
+        <GripVertical className="h-5 w-5 sm:h-6 sm:w-6 text-muted-foreground" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className="text-base sm:text-lg font-semibold truncate">{player.player_name}</p>
+        {player.player_gender && (
+          <p className="text-xs text-muted-foreground capitalize">{player.player_gender}</p>
+        )}
       </div>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onEdit(player)}
+        className="hover:bg-muted flex-shrink-0"
+      >
+        <Pencil className="h-4 w-4 sm:h-5 sm:w-5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => onRemove(player.id)}
+        className="text-destructive hover:text-destructive hover:bg-destructive/10 flex-shrink-0"
+      >
+        <X className="h-4 w-4 sm:h-5 sm:w-5" />
+      </Button>
+    </div>
   );
 }
 
@@ -98,6 +92,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
   const [newPlayer2Name, setNewPlayer2Name] = useState("");
   const [newPlayer2Gender, setNewPlayer2Gender] = useState<string>("male");
   const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
   const [showFormatSelector, setShowFormatSelector] = useState(false);
   const [hasFormat, setHasFormat] = useState(false);
   const [matchFormat, setMatchFormat] = useState<string | null>(null);
@@ -141,6 +136,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
       .order("strength_order");
 
     if (error) {
+      console.error("Error fetching players:", error);
       toast({
         variant: "destructive",
         title: "Error fetching players",
@@ -159,61 +155,52 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
     setLoading(false);
   };
 
-  const handleAddPlayer = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddPlayer = async () => {
+    console.log("Add button clicked");
+    console.log("Player name:", newPlayerName);
+    console.log("Match format:", matchFormat);
+    
+    if (adding) return;
+    setAdding(true);
+
     const supabase = createClient();
+    
+    const { data: { user } } = await supabase.auth.getUser();
+    console.log("User:", user);
+    
+    if (!user) {
+      toast({
+        variant: "destructive",
+        title: "Not logged in",
+        description: "Please log in to add players.",
+      });
+      setAdding(false);
+      return;
+    }
     
     // For round-robin, require both partners
     if (matchFormat === "round-robin") {
-      const validation1 = addPlayerSchema.safeParse({ name: newPlayerName.trim() });
-      const validation2 = addPlayerSchema.safeParse({ name: newPlayer2Name.trim() });
-      
-      if (!validation1.success) {
+      if (!newPlayerName.trim() || !newPlayer2Name.trim()) {
         toast({
           variant: "destructive",
-          title: "Invalid partner 1 name",
-          description: validation1.error.errors[0].message,
+          title: "Both names required",
+          description: "Please enter both partner names.",
         });
-        return;
-      }
-      
-      if (!validation2.success) {
-        toast({
-          variant: "destructive",
-          title: "Invalid partner 2 name",
-          description: validation2.error.errors[0].message,
-        });
+        setAdding(false);
         return;
       }
 
-      setHasFormat(false); // Reset format when adding players
+      setHasFormat(false);
 
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({
-          variant: "destructive",
-          title: "Not logged in",
-          description: "Please log in to add players.",
-        });
-        return;
-      }
-
-      // Create both players
       const { data: playersData, error: playersError } = await supabase
         .from("players")
         .insert([
-          { 
-            user_id: user.id, 
-            name: validation1.data.name,
-            gender: newPlayerGender 
-          },
-          { 
-            user_id: user.id, 
-            name: validation2.data.name,
-            gender: newPlayer2Gender 
-          }
+          { user_id: user.id, name: newPlayerName.trim(), gender: newPlayerGender },
+          { user_id: user.id, name: newPlayer2Name.trim(), gender: newPlayer2Gender }
         ])
         .select();
+
+      console.log("Players insert result:", playersData, playersError);
 
       if (playersError) {
         toast({
@@ -221,24 +208,18 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
           title: "Error adding partners",
           description: playersError.message,
         });
+        setAdding(false);
         return;
       }
 
-      // Add both to event
       const { error: eventPlayersError } = await supabase
         .from("event_players")
         .insert([
-          {
-            event_id: event.id,
-            player_id: playersData[0].id,
-            strength_order: players.length,
-          },
-          {
-            event_id: event.id,
-            player_id: playersData[1].id,
-            strength_order: players.length + 1,
-          },
+          { event_id: event.id, player_id: playersData[0].id, strength_order: players.length },
+          { event_id: event.id, player_id: playersData[1].id, strength_order: players.length + 1 },
         ]);
+
+      console.log("Event players insert error:", eventPlayersError);
 
       if (eventPlayersError) {
         toast({
@@ -249,7 +230,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
       } else {
         toast({
           title: "Partners added",
-          description: `${validation1.data.name} & ${validation2.data.name} are now partners.`,
+          description: `${newPlayerName.trim()} & ${newPlayer2Name.trim()} are now partners.`,
         });
         setNewPlayerName("");
         setNewPlayer2Name("");
@@ -257,42 +238,32 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
         setNewPlayer2Gender("male");
         fetchPlayers();
       }
+      setAdding(false);
       return;
     }
     
     // Regular single player add
-    const validation = addPlayerSchema.safeParse({ name: newPlayerName.trim() });
-    if (!validation.success) {
+    if (!newPlayerName.trim()) {
       toast({
         variant: "destructive",
-        title: "Invalid player name",
-        description: validation.error.errors[0].message,
+        title: "Name required",
+        description: "Please enter a player name.",
       });
+      setAdding(false);
       return;
     }
+
+    setHasFormat(false);
+
+    console.log("Inserting player:", newPlayerName.trim());
     
-    setHasFormat(false); // Reset format when adding players
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast({
-        variant: "destructive",
-        title: "Not logged in",
-        description: "Please log in to add players.",
-      });
-      return;
-    }
-
-    // First create the player
     const { data: player, error: playerError } = await supabase
       .from("players")
-      .insert([{ 
-        user_id: user.id, 
-        name: validation.data.name,
-        gender: newPlayerGender 
-      }])
+      .insert([{ user_id: user.id, name: newPlayerName.trim(), gender: newPlayerGender }])
       .select()
       .single();
+
+    console.log("Player insert result:", player, playerError);
 
     if (playerError) {
       toast({
@@ -300,19 +271,15 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
         title: "Error adding player",
         description: playerError.message,
       });
+      setAdding(false);
       return;
     }
 
-    // Then add to event
     const { error: eventPlayerError } = await supabase
       .from("event_players")
-      .insert([
-        {
-          event_id: event.id,
-          player_id: player.id,
-          strength_order: players.length,
-        },
-      ]);
+      .insert([{ event_id: event.id, player_id: player.id, strength_order: players.length }]);
+
+    console.log("Event player insert error:", eventPlayerError);
 
     if (eventPlayerError) {
       toast({
@@ -323,17 +290,18 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
     } else {
       toast({
         title: "Player added",
-        description: `${validation.data.name} has been added to the event.`,
+        description: `${newPlayerName.trim()} has been added to the event.`,
       });
       setNewPlayerName("");
       setNewPlayerGender("male");
       fetchPlayers();
     }
+    setAdding(false);
   };
 
   const handleFormatSelected = () => {
     setShowFormatSelector(false);
-    checkEventFormat(); // Refresh format state
+    checkEventFormat();
     toast({
       title: "Ready to play!",
       description: "You can now generate Round 1 in the Rounds tab.",
@@ -362,8 +330,8 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
     }
   };
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
+  const handleDragEnd = async (dragEvent: DragEndEvent) => {
+    const { active, over } = dragEvent;
 
     if (!over || active.id === over.id) return;
 
@@ -373,22 +341,16 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
     const newPlayers = arrayMove(players, oldIndex, newIndex);
     setPlayers(newPlayers);
 
-    // Update strength_order in database
     const supabase = createClient();
-    const updates = newPlayers.map((player, index) => ({
-      id: player.id,
-      strength_order: index,
-    }));
-
-    for (const update of updates) {
+    for (let i = 0; i < newPlayers.length; i++) {
       await supabase
         .from("event_players")
-        .update({ strength_order: update.strength_order })
-        .eq("id", update.id);
+        .update({ strength_order: i })
+        .eq("id", newPlayers[i].id);
     }
   };
 
-  const minPlayers = event.num_courts * 2; // Minimum for singles on all courts
+  const minPlayers = event.num_courts * 2;
 
   if (showFormatSelector) {
     return (
@@ -414,7 +376,7 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
       </CardHeader>
       <CardContent className="space-y-6">
         {matchFormat === "round-robin" ? (
-          <form onSubmit={handleAddPlayer} className="space-y-4">
+          <div className="space-y-4">
             <div className="bg-muted/50 rounded-lg p-4 border-2 border-primary/20">
               <p className="text-sm font-medium mb-3 text-primary">Partner Pair</p>
               <div className="space-y-3">
@@ -454,17 +416,18 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
                 </div>
               </div>
             </div>
-            <Button type="submit" size="lg" className="w-full">
+            <Button onClick={handleAddPlayer} disabled={adding} size="lg" className="w-full">
               <Plus className="h-5 w-5 mr-2" />
-              Add Partner Pair
+              {adding ? "Adding..." : "Add Partner Pair"}
             </Button>
-          </form>
+          </div>
         ) : (
-          <form onSubmit={handleAddPlayer} className="flex gap-3">
+          <div className="flex gap-3">
             <Input
               placeholder="Player name"
               value={newPlayerName}
               onChange={(e) => setNewPlayerName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddPlayer()}
               className="flex-1 h-12 text-base"
             />
             <Select value={newPlayerGender} onValueChange={setNewPlayerGender}>
@@ -476,11 +439,11 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
                 <SelectItem value="female">Female</SelectItem>
               </SelectContent>
             </Select>
-            <Button type="submit" size="lg" className="px-6">
+            <Button onClick={handleAddPlayer} disabled={adding} size="lg" className="px-6">
               <Plus className="h-5 w-5 mr-2" />
-              Add
+              {adding ? "..." : "Add"}
             </Button>
-          </form>
+          </div>
         )}
 
         {loading ? (
@@ -498,9 +461,8 @@ const PlayersTab = ({ event, onFormatUpdated }: PlayersTabProps) => {
             <SortableContext items={players} strategy={verticalListSortingStrategy}>
               <div className="space-y-3">
                 {players.map((player, index) => {
-                  const isPartner1 = matchFormat === "round-robin" && index % 2 === 0;
-                  const isPartner2 = matchFormat === "round-robin" && index % 2 === 1;
                   const pairNumber = matchFormat === "round-robin" ? Math.floor(index / 2) + 1 : null;
+                  const isPartner1 = matchFormat === "round-robin" && index % 2 === 0;
                   
                   return (
                     <div key={player.id} className="flex items-center gap-3">
