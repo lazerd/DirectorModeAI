@@ -13,6 +13,7 @@ type Lesson = {
   location: string | null;
   coach_name: string;
   coach_slug: string;
+  coach_email: string | null;
 };
 
 type Coach = {
@@ -43,14 +44,6 @@ type Tab = 'lessons' | 'stringing' | 'events';
 
 export default function ClientDashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>('lessons');
-
-useEffect(() => {
-  const params = new URLSearchParams(window.location.search);
-  const tab = params.get('tab');
-  if (tab === 'stringing' || tab === 'events') {
-    setActiveTab(tab);
-  }
-}, []);
   const [upcomingLessons, setUpcomingLessons] = useState<Lesson[]>([]);
   const [pastLessons, setPastLessons] = useState<Lesson[]>([]);
   const [myCoaches, setMyCoaches] = useState<Coach[]>([]);
@@ -60,6 +53,14 @@ useEffect(() => {
   const [clientEmail, setClientEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab === 'stringing' || tab === 'events') {
+      setActiveTab(tab);
+    }
+  }, []);
 
   useEffect(() => {
     loadDashboard();
@@ -103,10 +104,10 @@ useEffect(() => {
         })).filter((c: Coach) => c.slug));
       }
 
-      // Get booked lessons
+      // Get booked lessons with coach email
       const { data: slots } = await supabase
         .from('lesson_slots')
-        .select('id, start_time, end_time, location, lesson_coaches(display_name, slug)')
+        .select('id, start_time, end_time, location, lesson_coaches(display_name, slug, email)')
         .eq('booked_by_client_id', client.id)
         .eq('status', 'booked')
         .order('start_time', { ascending: true });
@@ -118,7 +119,8 @@ useEffect(() => {
           end_time: slot.end_time,
           location: slot.location,
           coach_name: slot.lesson_coaches?.display_name || 'Coach',
-          coach_slug: slot.lesson_coaches?.slug || ''
+          coach_slug: slot.lesson_coaches?.slug || '',
+          coach_email: slot.lesson_coaches?.email || null
         }));
 
         setUpcomingLessons(lessons.filter(l => !isPast(parseISO(l.end_time))));
@@ -159,10 +161,10 @@ useEffect(() => {
     window.location.href = '/';
   };
 
-  const cancelBooking = async (lessonId: string) => {
+  const cancelBooking = async (lesson: Lesson) => {
     if (!confirm('Are you sure you want to cancel this lesson?')) return;
     
-    setCancelling(lessonId);
+    setCancelling(lesson.id);
     const supabase = createClient();
     
     const { error } = await supabase
@@ -172,12 +174,32 @@ useEffect(() => {
         booked_by_client_id: null,
         booked_at: null
       })
-      .eq('id', lessonId);
+      .eq('id', lesson.id);
 
     if (error) {
       alert('Failed to cancel booking. Please try again.');
     } else {
-      setUpcomingLessons(prev => prev.filter(l => l.id !== lessonId));
+      // Notify coach
+      if (lesson.coach_email) {
+        try {
+          await fetch('/api/lessons/cancel-notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipientEmail: lesson.coach_email,
+              recipientName: lesson.coach_name,
+              cancelledBy: 'client',
+              otherPartyName: clientName,
+              slotDate: format(parseISO(lesson.start_time), 'EEEE, MMMM d, yyyy'),
+              slotTime: format(parseISO(lesson.start_time), 'h:mm a') + ' - ' + format(parseISO(lesson.end_time), 'h:mm a'),
+              location: lesson.location
+            })
+          });
+        } catch (e) {
+          console.error('Failed to send cancellation notification:', e);
+        }
+      }
+      setUpcomingLessons(prev => prev.filter(l => l.id !== lesson.id));
     }
     
     setCancelling(null);
@@ -323,7 +345,7 @@ useEffect(() => {
                           </div>
                         </div>
                         <button
-                          onClick={() => cancelBooking(lesson.id)}
+                          onClick={() => cancelBooking(lesson)}
                           disabled={cancelling === lesson.id}
                           className="p-2 text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-50"
                           title="Cancel booking"
