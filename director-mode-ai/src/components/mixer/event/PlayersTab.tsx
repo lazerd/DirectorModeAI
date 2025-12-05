@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -116,7 +116,6 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   }, [event.id]);
 
   const checkEventFormat = async () => {
-    const supabase = createClient();
     const { data } = await supabase
       .from("events")
       .select("match_format")
@@ -128,7 +127,6 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   };
 
   const fetchPlayers = async () => {
-    const supabase = createClient();
     const { data, error } = await supabase
       .from("event_players")
       .select(`
@@ -164,7 +162,6 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     
     if (adding) return;
     
-    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
@@ -178,7 +175,6 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
 
     setAdding(true);
     
-    // For round-robin, require both partners
     if (matchFormat === "round-robin") {
       if (!newPlayerName.trim() || !newPlayer2Name.trim()) {
         toast({
@@ -238,7 +234,6 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
       return;
     }
     
-    // Regular single player add
     if (!newPlayerName.trim()) {
       toast({
         variant: "destructive",
@@ -300,7 +295,6 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   };
 
   const handleRemovePlayer = async (eventPlayerId: string) => {
-    const supabase = createClient();
     const { error } = await supabase
       .from("event_players")
       .delete()
@@ -332,7 +326,6 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     const newPlayers = arrayMove(players, oldIndex, newIndex);
     setPlayers(newPlayers);
 
-    const supabase = createClient();
     for (let i = 0; i < newPlayers.length; i++) {
       await supabase
         .from("event_players")
@@ -480,7 +473,7 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
 
         {players.length > 0 && players.length < minPlayers && (
           <p className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
-            💡 Add at least {minPlayers - players.length} more {minPlayers - players.length === 1 ? "player" : "players"} to fill all courts
+            Add at least {minPlayers - players.length} more {minPlayers - players.length === 1 ? "player" : "players"} to fill all courts
           </p>
         )}
 
@@ -491,14 +484,14 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
             size="lg" 
             className="w-full"
           >
-            Choose Match Format →
+            Choose Match Format
           </Button>
         )}
 
         {hasFormat && (
           <div className="bg-primary/10 border-2 border-primary/30 rounded-lg p-4 text-center space-y-2">
             <p className="text-sm font-medium text-primary">
-              ✓ Format selected! Go to Rounds tab to start.
+              Format selected! Go to Rounds tab to start.
             </p>
             <Button 
               type="button"
