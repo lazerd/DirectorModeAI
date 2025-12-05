@@ -13,6 +13,8 @@ type Slot = {
   status: string;
   notifications_sent: boolean;
   client_name?: string;
+  client_email?: string;
+  booked_by_client_id?: string;
 };
 
 type Client = { id: string; name: string; email: string; };
@@ -22,6 +24,7 @@ export default function DashboardPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [coachId, setCoachId] = useState<string | null>(null);
   const [coachSlug, setCoachSlug] = useState<string | null>(null);
+  const [coachName, setCoachName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [currentWeek, setCurrentWeek] = useState(new Date());
@@ -41,15 +44,15 @@ export default function DashboardPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     
-    const { data: coach } = await supabase.from('lesson_coaches').select('id, slug').eq('profile_id', user.id).single();
-if (!coach) {
-  // Not a coach - redirect to client dashboard
-  window.location.href = '/client/dashboard';
-  return;
-}
+    const { data: coach } = await supabase.from('lesson_coaches').select('id, slug, display_name').eq('profile_id', user.id).single();
+    if (!coach) {
+      window.location.href = '/client/dashboard';
+      return;
+    }
     if (coach) { 
       setCoachId(coach.id);
       setCoachSlug(coach.slug);
+      setCoachName(coach.display_name || user.email?.split('@')[0] || 'Coach');
       fetchSlots(coach.id); 
       fetchClients(coach.id); 
     }
@@ -59,12 +62,16 @@ if (!coach) {
     const supabase = createClient();
     const { data } = await supabase
       .from('lesson_slots')
-      .select('*, lesson_clients(name)')
+      .select('*, lesson_clients(name, email)')
       .eq('coach_id', coachId)
       .gte('start_time', weekStart.toISOString())
       .lte('start_time', weekEnd.toISOString())
       .order('start_time');
-    if (data) setSlots(data.map((s: any) => ({ ...s, client_name: s.lesson_clients?.name })));
+    if (data) setSlots(data.map((s: any) => ({ 
+      ...s, 
+      client_name: s.lesson_clients?.name,
+      client_email: s.lesson_clients?.email
+    })));
     setLoading(false);
   };
 
@@ -127,10 +134,38 @@ if (!coach) {
     fetchSlots(coachId);
   };
 
-  const deleteSlot = async (slotId: string) => {
-    if (!confirm('Delete this slot?')) return;
+  const deleteSlot = async (slot: Slot) => {
+    const isBooked = slot.status === 'booked';
+    const confirmMessage = isBooked 
+      ? `This slot is booked by ${slot.client_name}. Delete and notify them?`
+      : 'Delete this slot?';
+    
+    if (!confirm(confirmMessage)) return;
+    
     const supabase = createClient();
-    await supabase.from('lesson_slots').delete().eq('id', slotId);
+    
+    // If slot was booked, notify the client
+    if (isBooked && slot.client_email) {
+      try {
+        await fetch('/api/lessons/cancel-notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            recipientEmail: slot.client_email,
+            recipientName: slot.client_name,
+            cancelledBy: 'coach',
+            otherPartyName: coachName,
+            slotDate: format(new Date(slot.start_time), 'EEEE, MMMM d, yyyy'),
+            slotTime: format(new Date(slot.start_time), 'h:mm a') + ' - ' + format(new Date(slot.end_time), 'h:mm a'),
+            location: slot.location
+          })
+        });
+      } catch (e) {
+        console.error('Failed to send cancellation notification:', e);
+      }
+    }
+    
+    await supabase.from('lesson_slots').delete().eq('id', slot.id);
     if (coachId) fetchSlots(coachId);
   };
 
@@ -264,7 +299,7 @@ if (!coach) {
                         <div key={slot.id} className={`p-2 rounded-lg text-xs ${slot.status === 'booked' ? 'bg-green-100 text-green-800' : slot.notifications_sent ? 'bg-blue-100 text-blue-800' : 'bg-orange-100 text-orange-800'}`}>
                           <div className="flex items-center justify-between">
                             <span className="font-medium">{format(startTime, 'h:mm a')}</span>
-                            <button onClick={() => deleteSlot(slot.id)} className="opacity-50 hover:opacity-100"><Trash2 size={12} /></button>
+                            <button onClick={() => deleteSlot(slot)} className="opacity-50 hover:opacity-100"><Trash2 size={12} /></button>
                           </div>
                           {slot.status === 'booked' && slot.client_name && <p className="font-semibold truncate">{slot.client_name}</p>}
                           {slot.location && <p className="truncate">{slot.location}</p>}
