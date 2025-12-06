@@ -7,16 +7,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, GripVertical, X, Pencil } from "lucide-react";
+import { Plus, GripVertical, X, Pencil, Play } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import FormatSelector from "@/components/mixer/event/FormatSelector";
 import EditPlayerDialog from "@/components/mixer/event/EditPlayerDialog";
+import { RoundGenerator } from "@/lib/advancedMatchGeneration";
 
 interface Event {
   id: string;
   num_courts: number;
+  match_format?: string | null;
 }
 
 interface EventPlayer {
@@ -87,9 +89,10 @@ function SortablePlayer({ player, onRemove, onEdit }: SortablePlayerProps) {
 interface PlayersTabProps {
   event: Event;
   onFormatUpdated?: () => void;
+  onSwitchToRounds?: () => void;
 }
 
-export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) {
+export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }: PlayersTabProps) {
   const { toast } = useToast();
   
   const [players, setPlayers] = useState<EventPlayer[]>([]);
@@ -97,10 +100,12 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   const [newPlayerGender, setNewPlayerGender] = useState<string>("male");
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [showFormatSelector, setShowFormatSelector] = useState(false);
   const [hasFormat, setHasFormat] = useState(false);
   const [matchFormat, setMatchFormat] = useState<string | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<EventPlayer | null>(null);
+  const [hasRounds, setHasRounds] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -112,6 +117,7 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   useEffect(() => {
     fetchPlayers();
     checkEventFormat();
+    checkExistingRounds();
   }, [event.id]);
 
   const checkEventFormat = async () => {
@@ -123,6 +129,16 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     
     setHasFormat(!!data?.match_format);
     setMatchFormat(data?.match_format || null);
+  };
+
+  const checkExistingRounds = async () => {
+    const { data } = await supabase
+      .from("rounds")
+      .select("id")
+      .eq("event_id", event.id)
+      .limit(1);
+    
+    setHasRounds((data?.length || 0) > 0);
   };
 
   const fetchPlayers = async () => {
@@ -221,13 +237,127 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     setAdding(false);
   };
 
+  const handleGenerateRound1 = async () => {
+    if (!matchFormat) {
+      toast({
+        variant: "destructive",
+        title: "No format selected",
+        description: "Please select a match format first.",
+      });
+      return;
+    }
+
+    const minPlayers = matchFormat === 'singles' ? 2 : 4;
+    if (players.length < minPlayers) {
+      toast({
+        variant: "destructive",
+        title: "Not enough players",
+        description: `Need at least ${minPlayers} players for ${matchFormat}.`,
+      });
+      return;
+    }
+
+    setGenerating(true);
+
+    // Fetch full player data
+    const { data: eventPlayers, error: playersError } = await supabase
+      .from("event_players")
+      .select(`
+        player_id,
+        wins,
+        losses,
+        games_won,
+        games_lost,
+        players(name, gender)
+      `)
+      .eq("event_id", event.id)
+      .order("strength_order");
+
+    if (playersError || !eventPlayers) {
+      toast({
+        variant: "destructive",
+        title: "Error fetching players",
+        description: playersError?.message || "Could not load players.",
+      });
+      setGenerating(false);
+      return;
+    }
+
+    const playerData = eventPlayers.map((ep: any) => ({
+      player_id: ep.player_id,
+      name: ep.players.name,
+      gender: ep.players.gender,
+      wins: ep.wins || 0,
+      losses: ep.losses || 0,
+      games_won: ep.games_won || 0,
+      games_lost: ep.games_lost || 0,
+    }));
+
+    // Generate round
+    const generator = new RoundGenerator(playerData, event.num_courts, matchFormat);
+    const pairings = generator.generateMultipleRounds(1)[0];
+
+    // Create round in database
+    const { data: round, error: roundError } = await supabase
+      .from("rounds")
+      .insert([{
+        event_id: event.id,
+        round_number: 1,
+        status: "upcoming",
+      }])
+      .select()
+      .single();
+
+    if (roundError) {
+      toast({
+        variant: "destructive",
+        title: "Error creating round",
+        description: roundError.message,
+      });
+      setGenerating(false);
+      return;
+    }
+
+    // Create matches
+    const matchInserts = pairings.map((pairing, idx) => ({
+      round_id: round.id,
+      court_number: idx + 1,
+      ...pairing,
+    }));
+
+    const { error: matchError } = await supabase.from("matches").insert(matchInserts);
+
+    if (matchError) {
+      toast({
+        variant: "destructive",
+        title: "Error creating matches",
+        description: matchError.message,
+      });
+      setGenerating(false);
+      return;
+    }
+
+    toast({
+      title: "Round 1 created!",
+      description: "Switching to Rounds tab...",
+    });
+
+    setGenerating(false);
+    setHasRounds(true);
+
+    // Switch to Rounds tab
+    if (onSwitchToRounds) {
+      setTimeout(() => onSwitchToRounds(), 500);
+    }
+  };
+
   const handleFormatSelected = () => {
     setShowFormatSelector(false);
     checkEventFormat();
     if (onFormatUpdated) onFormatUpdated();
     toast({
-      title: "Ready to play!",
-      description: "You can now generate Round 1 in the Rounds tab.",
+      title: "Format selected!",
+      description: "Now you can generate Round 1.",
     });
   };
 
@@ -271,7 +401,8 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     }
   };
 
-  const minPlayers = event.num_courts * 2;
+  const minPlayersRequired = matchFormat === 'singles' ? 2 : 4;
+  const canGenerateRound = hasFormat && players.length >= minPlayersRequired && !hasRounds;
 
   if (showFormatSelector) {
     return (
@@ -299,10 +430,10 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
             placeholder="Player name"
             value={newPlayerName}
             onChange={(e) => setNewPlayerName(e.target.value)}
-            className="flex-1 h-12 text-base"
+            className="flex-1 h-12 text-base bg-white"
           />
           <Select value={newPlayerGender} onValueChange={setNewPlayerGender}>
-            <SelectTrigger className="w-[120px] h-12">
+            <SelectTrigger className="w-[120px] h-12 bg-white">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -349,13 +480,14 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
           </DndContext>
         )}
 
-        {players.length > 0 && players.length < minPlayers && (
+        {players.length > 0 && players.length < minPlayersRequired && (
           <p className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
-            Add at least {minPlayers - players.length} more player(s) to fill all courts
+            Add at least {minPlayersRequired - players.length} more player(s) to start
           </p>
         )}
 
-        {players.length >= 4 && !hasFormat && (
+        {/* Format Selection */}
+        {players.length >= 2 && !hasFormat && (
           <Button 
             type="button"
             onClick={() => setShowFormatSelector(true)} 
@@ -366,21 +498,40 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
           </Button>
         )}
 
-        {hasFormat && (
-          <div className="bg-primary/10 border-2 border-primary/30 rounded-lg p-4 text-center space-y-2">
-            <p className="text-sm font-medium text-primary">
-              Format selected! Go to Rounds tab to start.
+        {/* Generate Round 1 Button - Big and prominent! */}
+        {canGenerateRound && (
+          <Button 
+            type="button"
+            onClick={handleGenerateRound1}
+            disabled={generating}
+            size="lg" 
+            className="w-full h-16 text-xl bg-green-600 hover:bg-green-700"
+          >
+            <Play className="h-6 w-6 mr-3" />
+            {generating ? "Generating..." : "Generate Round 1"}
+          </Button>
+        )}
+
+        {/* Already has rounds */}
+        {hasRounds && (
+          <div className="bg-green-100 border-2 border-green-300 rounded-lg p-4 text-center">
+            <p className="text-green-800 font-medium">
+              ✅ Round already generated! Go to Rounds tab to continue.
             </p>
-            <Button 
-              type="button"
-              variant="ghost" 
-              size="lg"
-              onClick={() => setShowFormatSelector(true)}
-              className="w-full touch-manipulation"
-            >
-              Change Format
-            </Button>
           </div>
+        )}
+
+        {/* Change Format Option */}
+        {hasFormat && !hasRounds && (
+          <Button 
+            type="button"
+            variant="outline" 
+            size="lg"
+            onClick={() => setShowFormatSelector(true)}
+            className="w-full"
+          >
+            Change Format ({matchFormat})
+          </Button>
         )}
       </CardContent>
 
