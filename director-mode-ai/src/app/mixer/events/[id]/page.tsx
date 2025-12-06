@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Users, Trophy, ListOrdered, Flag, Award, Settings, Share2, GitBranch } from "lucide-react";
+import { ArrowLeft, Users, Trophy, ListOrdered, Flag, Award, Settings, Share2, GitBranch, Swords } from "lucide-react";
 import PlayersTab from "@/components/mixer/event/PlayersTab";
 import RoundsTab from "@/components/mixer/event/RoundsTab";
 import StandingsTab from "@/components/mixer/event/StandingsTab";
@@ -110,6 +110,8 @@ export default function EventDashboard() {
                        event.match_format === 'single-elimination-singles' || 
                        event.match_format === 'single-elimination-doubles';
 
+  const isTeamBattle = event.match_format === 'team-battle';
+
   const getFormatDisplay = (format: string | null) => {
     if (!format) return null;
     const displays: Record<string, string> = {
@@ -122,12 +124,26 @@ export default function EventDashboard() {
       'single-elimination': '🏆 Tournament',
       'single-elimination-singles': '🏆 Singles Tournament',
       'single-elimination-doubles': '🏅 Doubles Tournament',
+      'team-battle': '⚔️ Team Battle',
     };
     return displays[format] || format;
   };
 
+  // Determine which tabs to show based on format
+  const getTabConfig = () => {
+    if (isTournament) {
+      return { middleTab: 'bracket', middleIcon: GitBranch, middleLabel: 'Bracket' };
+    } else if (isTeamBattle) {
+      return { middleTab: 'teams', middleIcon: Swords, middleLabel: 'Teams' };
+    } else {
+      return { middleTab: 'rounds', middleIcon: ListOrdered, middleLabel: 'Rounds' };
+    }
+  };
+
+  const tabConfig = getTabConfig();
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5">
+    <div className={`min-h-screen ${isTeamBattle ? 'bg-gradient-to-br from-red-50 via-background to-blue-50' : 'bg-gradient-to-br from-primary/5 via-background to-accent/5'}`}>
       <header className="border-b bg-card/80 backdrop-blur sticky top-0 z-10">
         <div className="container mx-auto px-4 py-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
@@ -177,7 +193,9 @@ export default function EventDashboard() {
                 {event.num_courts} {event.num_courts === 1 ? 'Court' : 'Courts'}
               </span>
               {event.match_format && (
-                <span className="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs font-medium bg-secondary/10 text-secondary-foreground">
+                <span className={`inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs font-medium ${
+                  isTeamBattle ? 'bg-red-100 text-red-700' : 'bg-secondary/10 text-secondary-foreground'
+                }`}>
                   {getFormatDisplay(event.match_format)}
                 </span>
               )}
@@ -201,10 +219,17 @@ export default function EventDashboard() {
               <Share2 className="h-4 w-4 sm:h-5 sm:w-5" />
               <span className="hidden sm:inline">Share</span>
             </TabsTrigger>
-            <TabsTrigger value="players" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
-              <Users className="h-4 w-4 sm:h-5 sm:w-5" />
-              <span className="hidden sm:inline">Players</span>
-            </TabsTrigger>
+            {isTeamBattle ? (
+              <TabsTrigger value="teams" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
+                <Swords className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="hidden sm:inline">Teams</span>
+              </TabsTrigger>
+            ) : (
+              <TabsTrigger value="players" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
+                <Users className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span className="hidden sm:inline">Players</span>
+              </TabsTrigger>
+            )}
             {isTournament ? (
               <TabsTrigger value="bracket" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
                 <GitBranch className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -230,9 +255,20 @@ export default function EventDashboard() {
             <EventCodeQR eventCode={event.event_code} eventName={event.name} />
           </TabsContent>
 
-          <TabsContent value="players" className="space-y-4">
-            <PlayersTab event={event} onFormatUpdated={fetchEvent} onSwitchToRounds={() => setActiveTab("rounds")} />
-          </TabsContent>
+          {isTeamBattle ? (
+            <TabsContent value="teams" className="space-y-4">
+              {/* TeamBattleTab will be created next */}
+              <div className="bg-white rounded-xl border-2 border-gray-200 p-8 text-center">
+                <Swords className="h-16 w-16 mx-auto text-red-400 mb-4" />
+                <h2 className="text-2xl font-bold mb-2">Team Battle Mode</h2>
+                <p className="text-gray-600">Team management component coming next...</p>
+              </div>
+            </TabsContent>
+          ) : (
+            <TabsContent value="players" className="space-y-4">
+              <PlayersTab event={event} onFormatUpdated={fetchEvent} onSwitchToRounds={() => setActiveTab("rounds")} />
+            </TabsContent>
+          )}
 
           {isTournament ? (
             <TabsContent value="bracket" className="space-y-4">
