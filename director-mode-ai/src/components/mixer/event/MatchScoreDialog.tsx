@@ -43,7 +43,6 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
   const isTied = team1Score === team2Score && team1Score > 0;
 
   const validateScore = (): boolean => {
-    // General validation: winner must have higher score (unless fixed_games with tie)
     if (team1Score === team2Score && scoringFormat !== "fixed_games") {
       toast({
         variant: "destructive",
@@ -88,7 +87,6 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
         return false;
       }
 
-      // Check for tie without tiebreaker winner selected
       if (isTied && !tiebreakerWinner) {
         toast({
           variant: "destructive",
@@ -108,7 +106,6 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
     }
     setSaving(true);
 
-    // Determine winner: if tied, use tiebreaker winner; otherwise use score
     const winnerTeam = isTied ? tiebreakerWinner : (team1Score > team2Score ? 1 : team2Score > team1Score ? 2 : null);
     const oldWinnerTeam = match.winner_team;
     const wasScored = oldWinnerTeam !== null;
@@ -133,11 +130,9 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       return;
     }
 
-    // Update event_players standings
     const playerIds = [match.player1_id, match.player2_id, match.player3_id, match.player4_id]
       .filter((id) => id !== null) as string[];
 
-    // Skip standings update if no players (e.g., BYE match)
     if (playerIds.length === 0) {
       setTimeout(() => {
         toast({
@@ -152,7 +147,6 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       return;
     }
 
-    // Get current standings
     const { data: standings } = await supabase
       .from("event_players")
       .select("*")
@@ -160,14 +154,12 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       .in("player_id", playerIds);
 
     if (standings) {
-      // Update each player's stats
       const updates = playerIds.map((playerId, index) => {
         const currentStats = standings.find((s) => s.player_id === playerId);
         if (!currentStats) return null;
 
         const isTeam1 = index === 0 || index === 2;
         
-        // Calculate old values to subtract if match was already scored
         let oldWins = 0, oldLosses = 0, oldGamesWon = 0, oldGamesLost = 0;
         if (wasScored) {
           const oldWon = (isTeam1 && oldWinnerTeam === 1) || (!isTeam1 && oldWinnerTeam === 2);
@@ -178,7 +170,6 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
           oldGamesLost = isTeam1 ? match.team2_score : match.team1_score;
         }
 
-        // Calculate new values - handle ties properly
         const won = winnerTeam !== null && ((isTeam1 && winnerTeam === 1) || (!isTeam1 && winnerTeam === 2));
         const lost = winnerTeam !== null && ((isTeam1 && winnerTeam === 2) || (!isTeam1 && winnerTeam === 1));
         const gamesWon = isTeam1 ? team1Score : team2Score;
@@ -198,7 +189,6 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       }
     }
 
-    // Force a small delay to ensure realtime updates propagate
     setTimeout(() => {
       toast({
         title: "Score saved",
@@ -213,14 +203,14 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md bg-white">
         <DialogHeader>
           <DialogTitle className="text-2xl">Court {match.court_number}</DialogTitle>
           <DialogDescription className="text-base">Enter match score</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          <div className="space-y-3 p-5 bg-primary/5 rounded-2xl border-2">
+          <div className="space-y-3 p-5 bg-blue-50 rounded-2xl border-2 border-blue-200">
             <Label className="text-base font-bold">Team 1</Label>
             <p className="text-base font-medium">
               {match.player1?.name || "TBD"}
@@ -232,7 +222,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                 variant="outline"
                 size="lg"
                 onClick={() => setTeam1Score(Math.max(0, team1Score - 1))}
-                className="h-14 w-14 text-xl font-bold"
+                className="h-14 w-14 text-xl font-bold bg-white"
               >
                 −
               </Button>
@@ -241,21 +231,21 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                 min="0"
                 value={team1Score}
                 onChange={(e) => setTeam1Score(parseInt(e.target.value) || 0)}
-                className="h-14 text-center text-3xl font-bold"
+                className="h-14 text-center text-3xl font-bold bg-white border-2"
               />
               <Button
                 type="button"
                 variant="outline"
                 size="lg"
                 onClick={() => setTeam1Score(team1Score + 1)}
-                className="h-14 w-14 text-xl font-bold"
+                className="h-14 w-14 text-xl font-bold bg-white"
               >
                 +
               </Button>
             </div>
           </div>
 
-          <div className="space-y-3 p-5 bg-primary/5 rounded-2xl border-2">
+          <div className="space-y-3 p-5 bg-orange-50 rounded-2xl border-2 border-orange-200">
             <Label className="text-base font-bold">Team 2</Label>
             <p className="text-base font-medium">
               {match.player2?.name || "TBD"}
@@ -267,7 +257,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                 variant="outline"
                 size="lg"
                 onClick={() => setTeam2Score(Math.max(0, team2Score - 1))}
-                className="h-14 w-14 text-xl font-bold"
+                className="h-14 w-14 text-xl font-bold bg-white"
               >
                 −
               </Button>
@@ -276,14 +266,14 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                 min="0"
                 value={team2Score}
                 onChange={(e) => setTeam2Score(parseInt(e.target.value) || 0)}
-                className="h-14 text-center text-3xl font-bold"
+                className="h-14 text-center text-3xl font-bold bg-white border-2"
               />
               <Button
                 type="button"
                 variant="outline"
                 size="lg"
                 onClick={() => setTeam2Score(team2Score + 1)}
-                className="h-14 w-14 text-xl font-bold"
+                className="h-14 w-14 text-xl font-bold bg-white"
               >
                 +
               </Button>
@@ -291,9 +281,9 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
           </div>
 
           {scoringFormat === "fixed_games" && isTied && (
-            <div className="space-y-3 p-5 bg-destructive/10 rounded-2xl border-2 border-destructive/20">
-              <Label className="text-base font-bold text-destructive">Tiebreaker Winner</Label>
-              <p className="text-sm text-muted-foreground">Match is tied. Select which team won the tiebreaker:</p>
+            <div className="space-y-3 p-5 bg-red-50 rounded-2xl border-2 border-red-200">
+              <Label className="text-base font-bold text-red-700">Tiebreaker Winner</Label>
+              <p className="text-sm text-gray-600">Match is tied. Select which team won the tiebreaker:</p>
               <div className="flex gap-3">
                 <Button
                   type="button"
@@ -319,7 +309,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
         </div>
 
         <DialogFooter className="gap-3 sm:gap-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)} size="lg" className="flex-1 sm:flex-1">
+          <Button variant="outline" onClick={() => onOpenChange(false)} size="lg" className="flex-1 sm:flex-1 bg-white">
             Cancel
           </Button>
           <Button onClick={handleSave} disabled={saving} size="lg" className="flex-1 sm:flex-1">
