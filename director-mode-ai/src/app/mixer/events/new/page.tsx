@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Calendar, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 export default function CreateEventPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   
@@ -23,17 +24,22 @@ export default function CreateEventPage() {
     format_notes: '',
   });
 
-  // Set default date and time on mount
+  // Set default date/time and read format from URL
   useEffect(() => {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().slice(0, 5);
+    
+    // Read format from URL query parameter
+    const formatFromUrl = searchParams.get('format') || '';
+    
     setFormData(prev => ({
       ...prev,
       event_date: dateStr,
       start_time: timeStr,
+      match_format: formatFromUrl,
     }));
-  }, []);
+  }, [searchParams]);
 
   const generateEventCode = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -44,37 +50,17 @@ export default function CreateEventPage() {
     return result;
   };
 
-  // Auto-map event type to match format
-  const handleEventTypeChange = (eventType: string) => {
-    let matchFormat = '';
-    
-    switch (eventType) {
-      case 'singles':
-        matchFormat = 'singles';
-        break;
-      case 'doubles':
-        matchFormat = 'doubles';
-        break;
-      case 'mixed-doubles':
-        matchFormat = 'mixed-doubles';
-        break;
-      case 'optimize-courts':
-        matchFormat = 'maximize-courts';
-        break;
-      case 'king-of-court':
-        matchFormat = 'king-of-court';
-        break;
-      case 'round-robin':
-        matchFormat = 'round-robin';
-        break;
-      case 'tournament':
-        matchFormat = 'singles'; // default, user can change
-        break;
-      default:
-        matchFormat = '';
-    }
-    
-    setFormData({ ...formData, match_format: matchFormat });
+  const getFormatDisplayName = (format: string) => {
+    const names: Record<string, string> = {
+      'singles': 'Singles Mixer',
+      'doubles': 'Doubles Mixer',
+      'mixed-doubles': 'Mixed Doubles Mixer',
+      'maximize-courts': 'Optimize Courts (Auto Singles/Doubles)',
+      'king-of-court': 'King of the Court',
+      'round-robin': 'Team Round Robin',
+      'single-elimination': 'Single Elimination Tournament',
+    };
+    return names[format] || format;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -116,14 +102,16 @@ export default function CreateEventPage() {
     }
   };
 
-  const isTournament = formData.match_format === 'singles' || formData.match_format === 'doubles' || formData.match_format === 'mixed-doubles';
-
   return (
     <div className="p-6 lg:p-8 max-w-2xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
-        <Link href="/mixer/home" className="p-2 hover:bg-gray-100 rounded-lg">
+        <button 
+          type="button"
+          onClick={() => router.push('/mixer/select-format')} 
+          className="p-2 hover:bg-gray-100 rounded-lg"
+        >
           <ArrowLeft size={20} />
-        </Link>
+        </button>
         <div>
           <h1 className="font-semibold text-2xl">Create New Event</h1>
           <p className="text-gray-500 text-sm">Set up your mixer or tournament</p>
@@ -181,23 +169,32 @@ export default function CreateEventPage() {
           </h2>
           
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Event Type *</label>
-              <select
-                value={formData.match_format}
-                onChange={(e) => handleEventTypeChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-                required
-              >
-                <option value="">Select event type...</option>
-                <option value="singles">Singles Mixer</option>
-                <option value="doubles">Doubles Mixer</option>
-                <option value="mixed-doubles">Mixed Doubles Mixer</option>
-                <option value="optimize-courts">Optimize Courts (Auto Singles/Doubles)</option>
-                <option value="king-of-court">King of the Court</option>
-                <option value="round-robin">Team Round Robin</option>
-              </select>
-            </div>
+            {formData.match_format && (
+              <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
+                <p className="text-sm text-gray-600">Selected Format:</p>
+                <p className="font-bold text-lg text-orange-700">{getFormatDisplayName(formData.match_format)}</p>
+                <button 
+                  type="button"
+                  onClick={() => router.push('/mixer/select-format')} 
+                  className="text-sm text-orange-600 hover:underline"
+                >
+                  Change format →
+                </button>
+              </div>
+            )}
+
+            {!formData.match_format && (
+              <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
+                <p className="text-gray-600">No format selected.</p>
+                <button 
+                  type="button"
+                  onClick={() => router.push('/mixer/select-format')} 
+                  className="text-sm text-orange-600 hover:underline"
+                >
+                  Select a format →
+                </button>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium mb-1">Number of Courts</label>
@@ -262,12 +259,16 @@ export default function CreateEventPage() {
         )}
 
         <div className="flex gap-3">
-          <Link href="/mixer/home" className="flex-1 py-2 text-center border border-gray-300 rounded-lg hover:bg-gray-50">
+          <button
+            type="button"
+            onClick={() => router.push('/mixer/select-format')}
+            className="flex-1 py-2 text-center border border-gray-300 rounded-lg hover:bg-gray-50"
+          >
             Cancel
-          </Link>
+          </button>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || !formData.match_format}
             className="flex-1 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 disabled:opacity-50"
           >
             {loading ? 'Creating...' : 'Create Event'}
