@@ -92,12 +92,9 @@ interface PlayersTabProps {
 export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) {
   const { toast } = useToast();
   
-  
   const [players, setPlayers] = useState<EventPlayer[]>([]);
   const [newPlayerName, setNewPlayerName] = useState("");
   const [newPlayerGender, setNewPlayerGender] = useState<string>("male");
-  const [newPlayer2Name, setNewPlayer2Name] = useState("");
-  const [newPlayer2Gender, setNewPlayer2Gender] = useState<string>("male");
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [showFormatSelector, setShowFormatSelector] = useState(false);
@@ -222,52 +219,6 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
       fetchPlayers();
     }
     setAdding(false);
-  };
-
-    console.log("STEP 5: Inserting into players table...");
-    const { data: player, error: playerError } = await supabase
-      .from("players")
-      .insert([{ user_id: user.id, name: newPlayerName.trim(), gender: newPlayerGender }])
-      .select()
-      .single();
-    console.log("STEP 5 RESULT - Player:", player, "Error:", playerError);
-
-    if (playerError) {
-      console.log("STEP 5 FAILED:", playerError.message);
-      toast({
-        variant: "destructive",
-        title: "Error adding player",
-        description: playerError.message,
-      });
-      setAdding(false);
-      return;
-    }
-
-    console.log("STEP 6: Inserting into event_players table...");
-    const { error: eventPlayerError } = await supabase
-      .from("event_players")
-      .insert([{ event_id: event.id, player_id: player.id, strength_order: players.length }]);
-    console.log("STEP 6 RESULT - Error:", eventPlayerError);
-
-    if (eventPlayerError) {
-      console.log("STEP 6 FAILED:", eventPlayerError.message);
-      toast({
-        variant: "destructive",
-        title: "Error adding player to event",
-        description: eventPlayerError.message,
-      });
-    } else {
-      console.log("STEP 7: SUCCESS! Clearing form and refreshing...");
-      toast({
-        title: "Player added",
-        description: `${newPlayerName.trim()} has been added to the event.`,
-      });
-      setNewPlayerName("");
-      setNewPlayerGender("male");
-      fetchPlayers();
-    }
-    setAdding(false);
-    console.log("STEP 8: Done");
   };
 
   const handleFormatSelected = () => {
@@ -446,4 +397,3 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     </Card>
   );
 }
-
