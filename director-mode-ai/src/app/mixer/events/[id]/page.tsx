@@ -133,7 +133,7 @@ export default function EventDashboard() {
                     End Event
                   </Button>
                 </AlertDialogTrigger>
-                <AlertDialogContent>
+                <AlertDialogContent className="bg-white">
                   <AlertDialogHeader>
                     <AlertDialogTitle>End Event?</AlertDialogTitle>
                     <AlertDialogDescription>
