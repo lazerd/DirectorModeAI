@@ -102,6 +102,23 @@ function CreateEventForm() {
     router.push('/mixer/select-format');
   };
 
+  const handleNumberChange = (field: string, value: string, min: number = 1) => {
+    if (value === '') {
+      setFormData(prev => ({ ...prev, [field]: 0 }));
+    } else {
+      setFormData(prev => ({ ...prev, [field]: parseInt(value) || 0 }));
+    }
+  };
+
+  const handleNumberBlur = (field: string, min: number = 1) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: prev[field as keyof typeof prev] && (prev[field as keyof typeof prev] as number) >= min 
+        ? prev[field as keyof typeof prev] 
+        : min
+    }));
+  };
+
   return (
     <div className="p-6 lg:p-8 max-w-2xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
@@ -198,8 +215,9 @@ function CreateEventForm() {
               <label className="block text-sm font-medium mb-1">Number of Courts</label>
               <input
                 type="number"
-                value={formData.num_courts}
-                onChange={(e) => setFormData({ ...formData, num_courts: parseInt(e.target.value) || 1 })}
+                value={formData.num_courts || ''}
+                onChange={(e) => handleNumberChange('num_courts', e.target.value)}
+                onBlur={() => handleNumberBlur('num_courts', 1)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                 min={1}
                 max={20}
@@ -225,8 +243,9 @@ function CreateEventForm() {
                   <label className="block text-sm font-medium mb-1">Round Length (minutes)</label>
                   <input
                     type="number"
-                    value={formData.round_length_minutes}
-                    onChange={(e) => setFormData({ ...formData, round_length_minutes: parseInt(e.target.value) || 10 })}
+                    value={formData.round_length_minutes || ''}
+                    onChange={(e) => handleNumberChange('round_length_minutes', e.target.value)}
+                    onBlur={() => handleNumberBlur('round_length_minutes', 5)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                     min={5}
                     max={60}
@@ -239,12 +258,8 @@ function CreateEventForm() {
                   <input
                     type="number"
                     value={formData.target_games || ''}
-                    onChange={(e) => setFormData({ ...formData, target_games: e.target.value === '' ? 0 : parseInt(e.target.value) })}
-                    onBlur={(e) => {
-                      if (!e.target.value || parseInt(e.target.value) < 1) {
-                        setFormData(prev => ({ ...prev, target_games: 1 }));
-                      }
-                    }}
+                    onChange={(e) => handleNumberChange('target_games', e.target.value)}
+                    onBlur={() => handleNumberBlur('target_games', 1)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                     min={1}
                     max={21}
