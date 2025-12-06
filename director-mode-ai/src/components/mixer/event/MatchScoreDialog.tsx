@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
+import { AlertCircle } from "lucide-react";
 
 interface Match {
   id: string;
@@ -39,16 +40,15 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
   const [team2Score, setTeam2Score] = useState(match.team2_score);
   const [tiebreakerWinner, setTiebreakerWinner] = useState<number | null>(match.tiebreaker_winner);
   const [saving, setSaving] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   const isTied = team1Score === team2Score && team1Score > 0;
 
   const validateScore = (): boolean => {
+    setValidationError(null);
+    
     if (team1Score === team2Score && scoringFormat !== "fixed_games") {
-      toast({
-        variant: "destructive",
-        title: "Invalid score",
-        description: "Scores cannot be tied. One team must have a higher score.",
-      });
+      setValidationError("Scores cannot be tied. One team must have a higher score.");
       return false;
     }
 
@@ -57,20 +57,12 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       const minScore = Math.min(team1Score, team2Score);
       
       if (maxScore !== targetGames) {
-        toast({
-          variant: "destructive",
-          title: "Invalid score",
-          description: `Winner must have exactly ${targetGames} games for "First to ${targetGames}" format.`,
-        });
+        setValidationError(`Winner must have exactly ${targetGames} games for "First to ${targetGames}" format.`);
         return false;
       }
       
       if (minScore >= targetGames) {
-        toast({
-          variant: "destructive",
-          title: "Invalid score",
-          description: `Loser must have fewer than ${targetGames} games.`,
-        });
+        setValidationError(`Loser must have fewer than ${targetGames} games.`);
         return false;
       }
     }
@@ -79,20 +71,12 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       const total = team1Score + team2Score;
       
       if (total !== targetGames) {
-        toast({
-          variant: "destructive",
-          title: "Invalid score",
-          description: `Total games must equal ${targetGames} for "Fixed ${targetGames} Games" format.`,
-        });
+        setValidationError(`Total games must equal ${targetGames}. Current total: ${total}`);
         return false;
       }
 
       if (isTied && !tiebreakerWinner) {
-        toast({
-          variant: "destructive",
-          title: "Tiebreaker required",
-          description: "Please select which team won the tiebreaker.",
-        });
+        setValidationError("Match is tied. Please select which team won the tiebreaker.");
         return false;
       }
     }
@@ -121,11 +105,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       .eq("id", match.id);
 
     if (matchError) {
-      toast({
-        variant: "destructive",
-        title: "Error saving score",
-        description: matchError.message,
-      });
+      setValidationError(`Error saving: ${matchError.message}`);
       setSaving(false);
       return;
     }
@@ -201,15 +181,46 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
     }, 100);
   };
 
+  // Clear validation error when scores change
+  const handleTeam1ScoreChange = (value: number) => {
+    setTeam1Score(value);
+    setValidationError(null);
+  };
+
+  const handleTeam2ScoreChange = (value: number) => {
+    setTeam2Score(value);
+    setValidationError(null);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md bg-white">
         <DialogHeader>
           <DialogTitle className="text-2xl">Court {match.court_number}</DialogTitle>
-          <DialogDescription className="text-base">Enter match score</DialogDescription>
+          <DialogDescription className="text-base">
+            Enter match score
+            {scoringFormat === "fixed_games" && targetGames && (
+              <span className="block text-sm mt-1 font-medium">
+                Format: Fixed {targetGames} games (total must equal {targetGames})
+              </span>
+            )}
+            {scoringFormat === "first_to_x" && targetGames && (
+              <span className="block text-sm mt-1 font-medium">
+                Format: First to {targetGames} games
+              </span>
+            )}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {/* Inline validation error - highly visible */}
+          {validationError && (
+            <div className="p-4 bg-red-100 border-2 border-red-400 rounded-xl flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-red-700 font-medium">{validationError}</p>
+            </div>
+          )}
+
           <div className="space-y-3 p-5 bg-blue-50 rounded-2xl border-2 border-blue-200">
             <Label className="text-base font-bold">Team 1</Label>
             <p className="text-base font-medium">
@@ -221,7 +232,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                 type="button"
                 variant="outline"
                 size="lg"
-                onClick={() => setTeam1Score(Math.max(0, team1Score - 1))}
+                onClick={() => handleTeam1ScoreChange(Math.max(0, team1Score - 1))}
                 className="h-14 w-14 text-xl font-bold bg-white"
               >
                 −
@@ -230,14 +241,14 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                 type="number"
                 min="0"
                 value={team1Score}
-                onChange={(e) => setTeam1Score(parseInt(e.target.value) || 0)}
+                onChange={(e) => handleTeam1ScoreChange(parseInt(e.target.value) || 0)}
                 className="h-14 text-center text-3xl font-bold bg-white border-2"
               />
               <Button
                 type="button"
                 variant="outline"
                 size="lg"
-                onClick={() => setTeam1Score(team1Score + 1)}
+                onClick={() => handleTeam1ScoreChange(team1Score + 1)}
                 className="h-14 w-14 text-xl font-bold bg-white"
               >
                 +
@@ -256,7 +267,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                 type="button"
                 variant="outline"
                 size="lg"
-                onClick={() => setTeam2Score(Math.max(0, team2Score - 1))}
+                onClick={() => handleTeam2ScoreChange(Math.max(0, team2Score - 1))}
                 className="h-14 w-14 text-xl font-bold bg-white"
               >
                 −
@@ -265,14 +276,14 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                 type="number"
                 min="0"
                 value={team2Score}
-                onChange={(e) => setTeam2Score(parseInt(e.target.value) || 0)}
+                onChange={(e) => handleTeam2ScoreChange(parseInt(e.target.value) || 0)}
                 className="h-14 text-center text-3xl font-bold bg-white border-2"
               />
               <Button
                 type="button"
                 variant="outline"
                 size="lg"
-                onClick={() => setTeam2Score(team2Score + 1)}
+                onClick={() => handleTeam2ScoreChange(team2Score + 1)}
                 className="h-14 w-14 text-xl font-bold bg-white"
               >
                 +
@@ -289,7 +300,10 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                   type="button"
                   variant={tiebreakerWinner === 1 ? "default" : "outline"}
                   size="lg"
-                  onClick={() => setTiebreakerWinner(1)}
+                  onClick={() => {
+                    setTiebreakerWinner(1);
+                    setValidationError(null);
+                  }}
                   className="flex-1"
                 >
                   Team 1 Wins
@@ -298,7 +312,10 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                   type="button"
                   variant={tiebreakerWinner === 2 ? "default" : "outline"}
                   size="lg"
-                  onClick={() => setTiebreakerWinner(2)}
+                  onClick={() => {
+                    setTiebreakerWinner(2);
+                    setValidationError(null);
+                  }}
                   className="flex-1"
                 >
                   Team 2 Wins
