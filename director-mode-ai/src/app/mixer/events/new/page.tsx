@@ -55,6 +55,8 @@ function CreateEventForm() {
       'king-of-court': 'King of the Court',
       'round-robin': 'Team Round Robin',
       'single-elimination': 'Single Elimination Tournament',
+      'single-elimination-singles': 'Singles Tournament',
+      'single-elimination-doubles': 'Doubles Tournament',
     };
     return names[format] || format;
   };
