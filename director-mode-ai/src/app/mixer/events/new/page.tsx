@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import Link from 'next/link';
 import { ArrowLeft, Calendar, Users } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
-export default function CreateEventPage() {
+function CreateEventForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
@@ -24,13 +23,10 @@ export default function CreateEventPage() {
     format_notes: '',
   });
 
-  // Set default date/time and read format from URL
   useEffect(() => {
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
     const timeStr = now.toTimeString().slice(0, 5);
-    
-    // Read format from URL query parameter
     const formatFromUrl = searchParams.get('format') || '';
     
     setFormData(prev => ({
@@ -102,12 +98,16 @@ export default function CreateEventPage() {
     }
   };
 
+  const goToSelectFormat = () => {
+    router.push('/mixer/select-format');
+  };
+
   return (
     <div className="p-6 lg:p-8 max-w-2xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
         <button 
           type="button"
-          onClick={() => router.push('/mixer/select-format')} 
+          onClick={goToSelectFormat} 
           className="p-2 hover:bg-gray-100 rounded-lg"
         >
           <ArrowLeft size={20} />
@@ -169,27 +169,25 @@ export default function CreateEventPage() {
           </h2>
           
           <div className="space-y-4">
-            {formData.match_format && (
+            {formData.match_format ? (
               <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
                 <p className="text-sm text-gray-600">Selected Format:</p>
                 <p className="font-bold text-lg text-orange-700">{getFormatDisplayName(formData.match_format)}</p>
                 <button 
                   type="button"
-                  onClick={() => router.push('/mixer/select-format')} 
-                  className="text-sm text-orange-600 hover:underline"
+                  onClick={goToSelectFormat} 
+                  className="text-sm text-orange-600 hover:underline mt-1"
                 >
                   Change format →
                 </button>
               </div>
-            )}
-
-            {!formData.match_format && (
+            ) : (
               <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200">
                 <p className="text-gray-600">No format selected.</p>
                 <button 
                   type="button"
-                  onClick={() => router.push('/mixer/select-format')} 
-                  className="text-sm text-orange-600 hover:underline"
+                  onClick={goToSelectFormat} 
+                  className="text-sm text-orange-600 hover:underline mt-1"
                 >
                   Select a format →
                 </button>
@@ -261,7 +259,7 @@ export default function CreateEventPage() {
         <div className="flex gap-3">
           <button
             type="button"
-            onClick={() => router.push('/mixer/select-format')}
+            onClick={goToSelectFormat}
             className="flex-1 py-2 text-center border border-gray-300 rounded-lg hover:bg-gray-50"
           >
             Cancel
@@ -279,3 +277,10 @@ export default function CreateEventPage() {
   );
 }
 
+export default function CreateEventPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-center">Loading...</div>}>
+      <CreateEventForm />
+    </Suspense>
+  );
+}
