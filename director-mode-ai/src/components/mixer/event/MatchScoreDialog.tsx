@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -42,22 +42,42 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
   const [saving, setSaving] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Reset state when dialog opens or match changes
+  useEffect(() => {
+    if (open) {
+      setTeam1Score(match.team1_score);
+      setTeam2Score(match.team2_score);
+      setTiebreakerWinner(match.tiebreaker_winner);
+      setValidationError(null);
+      setSaving(false);
+    }
+  }, [open, match.id, match.team1_score, match.team2_score, match.tiebreaker_winner]);
+
   const isTied = team1Score === team2Score && team1Score > 0;
 
   const validateScore = (): boolean => {
+    // Clear previous error first
     setValidationError(null);
     
+    // Check for zero scores
+    if (team1Score === 0 && team2Score === 0) {
+      setValidationError("Please enter scores for both teams.");
+      return false;
+    }
+
+    // Check for ties in non-fixed formats
     if (team1Score === team2Score && scoringFormat !== "fixed_games") {
       setValidationError("Scores cannot be tied. One team must have a higher score.");
       return false;
     }
 
+    // First to X validation
     if (scoringFormat === "first_to_x" && targetGames) {
       const maxScore = Math.max(team1Score, team2Score);
       const minScore = Math.min(team1Score, team2Score);
       
       if (maxScore !== targetGames) {
-        setValidationError(`Winner must have exactly ${targetGames} games for "First to ${targetGames}" format.`);
+        setValidationError(`Winner must have exactly ${targetGames} games. Current high score: ${maxScore}`);
         return false;
       }
       
@@ -67,16 +87,17 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       }
     }
     
+    // Fixed games validation
     if (scoringFormat === "fixed_games" && targetGames) {
       const total = team1Score + team2Score;
       
       if (total !== targetGames) {
-        setValidationError(`Total games must equal ${targetGames}. Current total: ${total}`);
+        setValidationError(`Total games must equal ${targetGames}. You entered ${total} games.`);
         return false;
       }
 
       if (isTied && !tiebreakerWinner) {
-        setValidationError("Match is tied. Please select which team won the tiebreaker.");
+        setValidationError("Match is tied! Please select which team won the tiebreaker below.");
         return false;
       }
     }
@@ -86,9 +107,12 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
 
   const handleSave = async () => {
     if (!validateScore()) {
+      // Error is already set by validateScore
       return;
     }
+    
     setSaving(true);
+    setValidationError(null);
 
     const winnerTeam = isTied ? tiebreakerWinner : (team1Score > team2Score ? 1 : team2Score > team1Score ? 2 : null);
     const oldWinnerTeam = match.winner_team;
@@ -105,7 +129,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       .eq("id", match.id);
 
     if (matchError) {
-      setValidationError(`Error saving: ${matchError.message}`);
+      setValidationError(`Database error: ${matchError.message}`);
       setSaving(false);
       return;
     }
@@ -114,16 +138,10 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       .filter((id) => id !== null) as string[];
 
     if (playerIds.length === 0) {
-      setTimeout(() => {
-        toast({
-          title: "Score saved",
-          description: "Match score updated.",
-        });
-        
-        setSaving(false);
-        onScoreSaved();
-        onOpenChange(false);
-      }, 100);
+      toast({ title: "Score saved", description: "Match score updated." });
+      setSaving(false);
+      onScoreSaved();
+      onOpenChange(false);
       return;
     }
 
@@ -169,19 +187,12 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       }
     }
 
-    setTimeout(() => {
-      toast({
-        title: "Score saved",
-        description: "Match score and standings updated.",
-      });
-      
-      setSaving(false);
-      onScoreSaved();
-      onOpenChange(false);
-    }, 100);
+    toast({ title: "Score saved", description: "Match score and standings updated." });
+    setSaving(false);
+    onScoreSaved();
+    onOpenChange(false);
   };
 
-  // Clear validation error when scores change
   const handleTeam1ScoreChange = (value: number) => {
     setTeam1Score(value);
     setValidationError(null);
@@ -200,24 +211,24 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
           <DialogDescription className="text-base">
             Enter match score
             {scoringFormat === "fixed_games" && targetGames && (
-              <span className="block text-sm mt-1 font-medium">
-                Format: Fixed {targetGames} games (total must equal {targetGames})
+              <span className="block text-sm mt-1 font-medium text-orange-600">
+                ⚠️ Total must equal {targetGames} games
               </span>
             )}
             {scoringFormat === "first_to_x" && targetGames && (
-              <span className="block text-sm mt-1 font-medium">
-                Format: First to {targetGames} games
+              <span className="block text-sm mt-1 font-medium text-orange-600">
+                ⚠️ Winner needs exactly {targetGames} games
               </span>
             )}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          {/* Inline validation error - highly visible */}
+        <div className="space-y-4 py-4">
+          {/* VALIDATION ERROR - BIG AND VISIBLE */}
           {validationError && (
-            <div className="p-4 bg-red-100 border-2 border-red-400 rounded-xl flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-red-700 font-medium">{validationError}</p>
+            <div className="p-4 bg-red-100 border-2 border-red-500 rounded-xl flex items-start gap-3 animate-pulse">
+              <AlertCircle className="h-6 w-6 text-red-600 flex-shrink-0" />
+              <p className="text-red-700 font-bold text-base">{validationError}</p>
             </div>
           )}
 
@@ -292,9 +303,9 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
           </div>
 
           {scoringFormat === "fixed_games" && isTied && (
-            <div className="space-y-3 p-5 bg-red-50 rounded-2xl border-2 border-red-200">
-              <Label className="text-base font-bold text-red-700">Tiebreaker Winner</Label>
-              <p className="text-sm text-gray-600">Match is tied. Select which team won the tiebreaker:</p>
+            <div className="space-y-3 p-5 bg-yellow-50 rounded-2xl border-2 border-yellow-400">
+              <Label className="text-base font-bold text-yellow-800">⚡ Tiebreaker Required!</Label>
+              <p className="text-sm text-yellow-700">Scores are tied. Who won the tiebreaker?</p>
               <div className="flex gap-3">
                 <Button
                   type="button"
@@ -306,7 +317,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                   }}
                   className="flex-1"
                 >
-                  Team 1 Wins
+                  Team 1
                 </Button>
                 <Button
                   type="button"
@@ -318,7 +329,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
                   }}
                   className="flex-1"
                 >
-                  Team 2 Wins
+                  Team 2
                 </Button>
               </div>
             </div>
