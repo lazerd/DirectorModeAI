@@ -27,7 +27,8 @@ export default function MixerHomePage() {
   }, []);
 
   const fetchEvents = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
+    const supabase = createClient();
+const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
       setLoading(false);
