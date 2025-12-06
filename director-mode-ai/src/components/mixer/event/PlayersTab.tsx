@@ -158,6 +158,8 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   };
 
   const handleAddPlayer = async (e?: React.FormEvent) => {
+    console.log("FORM SUBMITTED!");
+    alert("Button clicked!");
     if (e) e.preventDefault();
     
     if (adding) return;
