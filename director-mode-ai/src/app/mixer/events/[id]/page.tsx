@@ -217,7 +217,7 @@ export default function EventDashboard() {
           </TabsContent>
 
           <TabsContent value="players" className="space-y-4">
-            <PlayersTab event={event} onFormatUpdated={fetchEvent} />
+            <PlayersTab event={event} onFormatUpdated={fetchEvent} onSwitchToRounds={() => setActiveTab("rounds")} />
           </TabsContent>
 
           {isTournament && (
