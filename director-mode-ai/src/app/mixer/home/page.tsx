@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Calendar, Users, Trophy, QrCode, Clock } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { Plus, Calendar, Users, Trophy, Trash2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 
 type Event = {
@@ -13,25 +13,29 @@ type Event = {
   event_date: string;
   start_time: string | null;
   num_courts: number;
+  match_format: string | null;
   created_at: string;
 };
 
 export default function MixerHomePage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
 
   useEffect(() => {
     fetchEvents();
   }, []);
 
   const fetchEvents = async () => {
-    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    const { data } = await supabase
-      .from('mixer_events')
+    const { data, error } = await supabase
+      .from('events')
       .select('*')
       .eq('user_id', user.id)
       .order('event_date', { ascending: false });
@@ -40,8 +44,51 @@ export default function MixerHomePage() {
     setLoading(false);
   };
 
-  const upcomingEvents = events.filter(e => new Date(e.event_date) >= new Date());
-  const pastEvents = events.filter(e => new Date(e.event_date) < new Date());
+  const deleteEvent = async (eventId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!confirm('Are you sure you want to delete this event? This cannot be undone.')) {
+      return;
+    }
+
+    setDeleting(eventId);
+
+    // Delete related data first
+    await supabase.from('matches').delete().eq('round_id', 
+      supabase.from('rounds').select('id').eq('event_id', eventId)
+    );
+    await supabase.from('rounds').delete().eq('event_id', eventId);
+    await supabase.from('event_players').delete().eq('event_id', eventId);
+    
+    // Delete the event
+    const { error } = await supabase.from('events').delete().eq('id', eventId);
+
+    if (!error) {
+      setEvents(events.filter(ev => ev.id !== eventId));
+    }
+    
+    setDeleting(null);
+  };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  const upcomingEvents = events.filter(e => new Date(e.event_date) >= today);
+  const pastEvents = events.filter(e => new Date(e.event_date) < today);
+
+  const getFormatLabel = (format: string | null) => {
+    const labels: Record<string, string> = {
+      'singles': '🎾 Singles',
+      'doubles': '👥 Doubles',
+      'mixed-doubles': '👫 Mixed',
+      'maximize-courts': '⚡ Optimize',
+      'king-of-court': '👑 King',
+      'round-robin': '🔄 Round Robin',
+      'single-elimination': '🏆 Tournament',
+    };
+    return labels[format || ''] || format || '';
+  };
 
   return (
     <div className="p-6 lg:p-8">
@@ -109,7 +156,13 @@ export default function MixerHomePage() {
                 <h2 className="font-display text-lg mb-3">Upcoming Events</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {upcomingEvents.map((event) => (
-                    <EventCard key={event.id} event={event} />
+                    <EventCard 
+                      key={event.id} 
+                      event={event} 
+                      onDelete={deleteEvent}
+                      deleting={deleting === event.id}
+                      getFormatLabel={getFormatLabel}
+                    />
                   ))}
                 </div>
               </div>
@@ -121,7 +174,14 @@ export default function MixerHomePage() {
                 <h2 className="font-display text-lg mb-3 text-gray-500">Past Events</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {pastEvents.map((event) => (
-                    <EventCard key={event.id} event={event} isPast />
+                    <EventCard 
+                      key={event.id} 
+                      event={event} 
+                      isPast 
+                      onDelete={deleteEvent}
+                      deleting={deleting === event.id}
+                      getFormatLabel={getFormatLabel}
+                    />
                   ))}
                 </div>
               </div>
@@ -145,46 +205,79 @@ function StatCard({
   color: 'primary' | 'success' | 'warning';
 }) {
   const colors = {
-    primary: 'bg-primary-light text-primary',
-    success: 'bg-success-light text-success',
-    warning: 'bg-warning-light text-warning',
+    primary: 'bg-blue-100 text-blue-600',
+    success: 'bg-green-100 text-green-600',
+    warning: 'bg-orange-100 text-orange-600',
   };
 
   return (
-    <div className="card p-4 flex items-center gap-4">
+    <div className="card p-4 flex items-center gap-4 bg-white rounded-xl border">
       <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${colors[color]}`}>
         <Icon size={22} />
       </div>
       <div>
         <div className="text-sm text-gray-500">{label}</div>
-        <div className="text-2xl font-display">{value}</div>
+        <div className="text-2xl font-semibold">{value}</div>
       </div>
     </div>
   );
 }
 
-function EventCard({ event, isPast }: { event: Event; isPast?: boolean }) {
+function EventCard({ 
+  event, 
+  isPast,
+  onDelete,
+  deleting,
+  getFormatLabel,
+}: { 
+  event: Event; 
+  isPast?: boolean;
+  onDelete: (id: string, e: React.MouseEvent) => void;
+  deleting: boolean;
+  getFormatLabel: (format: string | null) => string;
+}) {
   return (
     <Link
       href={`/mixer/events/${event.id}`}
-      className={`card p-4 hover:shadow-md transition-all ${isPast ? 'opacity-60' : ''}`}
+      className={`card p-4 hover:shadow-md transition-all bg-white rounded-xl border ${isPast ? 'opacity-60' : ''}`}
     >
       <div className="flex items-start justify-between mb-3">
-        <div>
-          <h3 className="font-display text-lg">{event.name}</h3>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-semibold text-lg truncate">{event.name}</h3>
           <p className="text-sm text-gray-500">
             {format(new Date(event.event_date), 'MMM d, yyyy')}
             {event.start_time && ` at ${event.start_time}`}
           </p>
         </div>
-        <span className="badge badge-mixer font-mono">{event.event_code}</span>
+        <div className="flex items-center gap-2">
+          <span className="px-2 py-1 bg-orange-100 text-orange-600 rounded-lg text-xs font-mono">
+            {event.event_code}
+          </span>
+          <button
+            onClick={(e) => onDelete(event.id, e)}
+            disabled={deleting}
+            className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+            title="Delete event"
+          >
+            {deleting ? (
+              <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+            ) : (
+              <Trash2 size={16} />
+            )}
+          </button>
+        </div>
       </div>
       
       <div className="flex items-center gap-4 text-sm text-gray-500">
         <span className="flex items-center gap-1">
           <Trophy size={14} />
-          {event.num_courts} courts
+          {event.num_courts} {event.num_courts === 1 ? 'court' : 'courts'}
         </span>
+        {event.match_format && (
+          <span className="text-xs">
+            {getFormatLabel(event.match_format)}
+          </span>
+        )}
       </div>
     </Link>
   );
