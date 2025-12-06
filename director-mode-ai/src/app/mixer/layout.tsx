@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Shuffle, Home, Calendar, Settings, Trophy, CreditCard, Menu } from 'lucide-react';
+import { Shuffle, Home, Calendar, Settings, Trophy, CreditCard } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import MixerMobileNav from '@/components/mixer/MixerMobileNav';
