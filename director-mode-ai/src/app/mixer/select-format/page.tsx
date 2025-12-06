@@ -3,14 +3,14 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Users, Trophy, Sparkles } from 'lucide-react';
+import { ArrowLeft, Users, Trophy, Sparkles, Swords } from 'lucide-react';
 
 interface FormatOption {
   id: string;
   name: string;
   description: string;
   icon: string;
-  category: 'mixer' | 'tournament';
+  category: 'mixer' | 'tournament' | 'team';
 }
 
 export default function SelectFormatPage() {
@@ -74,10 +74,18 @@ export default function SelectFormatPage() {
       icon: '🏅',
       category: 'tournament',
     },
+    {
+      id: 'team-battle',
+      name: 'Team Battle',
+      description: 'Two named teams compete! Flexible singles/doubles mix. Team with most match wins takes the victory.',
+      icon: '⚔️',
+      category: 'team',
+    },
   ];
 
   const mixerFormats = formats.filter(f => f.category === 'mixer');
   const tournamentFormats = formats.filter(f => f.category === 'tournament');
+  const teamFormats = formats.filter(f => f.category === 'team');
 
   const handleFormatClick = (formatId: string) => {
     setSelectedFormat(formatId);
@@ -108,6 +116,36 @@ export default function SelectFormatPage() {
             <Sparkles size={20} />
             Get AI Recommendation
           </button>
+        </div>
+
+        {/* Team Battle - Featured */}
+        <div className="bg-white rounded-2xl border-2 border-red-200 p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <Swords className="text-red-500" size={24} />
+            <h2 className="text-xl font-bold">Team Competition</h2>
+            <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full">NEW</span>
+          </div>
+          <p className="text-gray-600 mb-6">Two teams battle it out across multiple rounds!</p>
+          
+          <div className="grid gap-4 md:grid-cols-1">
+            {teamFormats.map((format) => (
+              <button
+                key={format.id}
+                onClick={() => handleFormatClick(format.id)}
+                className={`p-5 rounded-xl border-2 text-left transition-all hover:shadow-lg hover:border-red-400 ${
+                  selectedFormat === format.id ? 'border-red-500 bg-red-50' : 'border-gray-200'
+                }`}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-4xl">{format.icon}</span>
+                  <div>
+                    <h3 className="font-bold text-xl">{format.name}</h3>
+                    <p className="text-sm text-gray-600">{format.description}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl border-2 border-orange-200 p-6">
