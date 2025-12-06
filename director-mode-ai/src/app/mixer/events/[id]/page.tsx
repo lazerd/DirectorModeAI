@@ -106,7 +106,7 @@ export default function EventDashboard() {
 
   if (!event) return null;
 
-  const isTournament = ['singles', 'doubles', 'mixed-doubles'].includes(event.match_format || '');
+  const isTournament = event.match_format === 'tournament';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5">
