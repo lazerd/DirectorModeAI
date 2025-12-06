@@ -113,7 +113,7 @@ function CreateEventForm() {
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="font-semibold text-2xl">Create New Event</h1>
+          <h1 className="font-semibold text-2xl">Create New Event v3</h1>
           <p className="text-gray-500 text-sm">Set up your mixer or tournament</p>
         </div>
       </div>
