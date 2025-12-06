@@ -29,7 +29,6 @@ export class RoundGenerator {
   private matchHistory: Map<string, MatchHistory> = new Map();
 
   constructor(private players: Player[], private numCourts: number, private format: string) {
-    // Initialize match history for all players
     players.forEach(p => {
       this.matchHistory.set(p.player_id, {
         playerId: p.player_id,
@@ -74,11 +73,9 @@ export class RoundGenerator {
   }
 
   private recordMatch(p1: string, p2: string, p3: string | null, p4: string | null): void {
-    // Only record if all players exist in current match history
     const allPlayersExist = [p1, p2, p3, p4].filter(Boolean).every(pid => this.matchHistory.has(pid!));
     if (!allPlayersExist) return;
 
-    // Record partners
     if (p3) {
       const h1 = this.getHistory(p1);
       const h3 = this.getHistory(p3);
@@ -96,7 +93,6 @@ export class RoundGenerator {
       }
     }
 
-    // Record opponents
     [p1, p3].filter(Boolean).forEach(teammate => {
       [p2, p4].filter(Boolean).forEach(opponent => {
         if (teammate && opponent) {
@@ -110,7 +106,6 @@ export class RoundGenerator {
       });
     });
 
-    // Increment play count
     [p1, p2, p3, p4].filter(Boolean).forEach(pid => {
       if (pid) {
         const history = this.getHistory(pid);
@@ -122,18 +117,15 @@ export class RoundGenerator {
   private scoreMatchup(p1: string, p2: string, p3: string | null, p4: string | null): number {
     let score = 0;
     
-    // Prefer players who haven't played as much
     const playCount = [p1, p2, p3, p4].filter(Boolean).reduce((sum, pid) => {
       const history = pid ? this.getHistory(pid) : null;
       return sum + (history ? history.timesPlayed : 0);
     }, 0);
     score -= playCount * 10;
 
-    // Heavily penalize repeat partners (increased from -100 to -500)
     if (p3 && this.hasPlayedWith(p1, p3)) score -= 500;
     if (p4 && this.hasPlayedWith(p2, p4)) score -= 500;
 
-    // Heavily penalize repeat opponents (increased from -50 to -300)
     if (this.hasPlayedAgainst(p1, p2)) score -= 300;
     if (p3 && p4 && this.hasPlayedAgainst(p3, p4)) score -= 300;
     if (p3 && p4 && this.hasPlayedAgainst(p1, p4)) score -= 300;
@@ -148,7 +140,6 @@ export class RoundGenerator {
       const pairings = this.generateRound(round + 1);
       allRounds.push(pairings);
       
-      // Record these matches in history
       pairings.forEach(pair => {
         if (pair.player1_id && pair.player2_id) {
           this.recordMatch(
@@ -182,15 +173,37 @@ export class RoundGenerator {
       const historyA = this.getHistory(a.player_id);
       const historyB = this.getHistory(b.player_id);
       if (!historyA || !historyB) return 0;
-      // Prioritize players with more BYEs first (they need to play)
       if (historyA.byeCount !== historyB.byeCount) {
         return historyB.byeCount - historyA.byeCount;
       }
       return historyA.timesPlayed - historyB.timesPlayed;
     });
 
+    // Calculate optimal court allocation
+    const totalPlayers = available.length;
+    const maxDoublesMatches = Math.floor(totalPlayers / 4);
+    const remainingAfterDoubles = totalPlayers - (maxDoublesMatches * 4);
+    const maxSinglesMatches = Math.floor(remainingAfterDoubles / 2);
+    
+    // Determine how many of each type to maximize court usage
+    let doublesCount = Math.min(maxDoublesMatches, this.numCourts);
+    let singlesCount = Math.min(maxSinglesMatches, this.numCourts - doublesCount);
+    
+    // If we can fit more matches by using more singles, do it
+    const playersUsedWithCurrentPlan = (doublesCount * 4) + (singlesCount * 2);
+    const courtsUsed = doublesCount + singlesCount;
+    
+    if (courtsUsed < this.numCourts && available.length > playersUsedWithCurrentPlan) {
+      // Try to add more singles matches
+      const extraSingles = Math.min(
+        this.numCourts - courtsUsed,
+        Math.floor((available.length - playersUsedWithCurrentPlan) / 2)
+      );
+      singlesCount += extraSingles;
+    }
+
     // Fill courts with doubles matches first
-    while (available.length >= 4 && pairings.length < this.numCourts) {
+    for (let i = 0; i < doublesCount && available.length >= 4; i++) {
       pairings.push({
         player1_id: available[0].player_id,
         player2_id: available[1].player_id,
@@ -200,8 +213,8 @@ export class RoundGenerator {
       available.splice(0, 4);
     }
 
-    // Then singles matches if we have space and at least 2 players
-    while (available.length >= 2 && pairings.length < this.numCourts) {
+    // Then singles matches
+    for (let i = 0; i < singlesCount && available.length >= 2; i++) {
       pairings.push({
         player1_id: available[0].player_id,
         player2_id: available[1].player_id,
@@ -211,9 +224,8 @@ export class RoundGenerator {
       available.splice(0, 2);
     }
 
-    // Only assign BYEs if there's exactly 1 player left (odd number)
-    // Do NOT assign BYEs if courts are already full
-    if (available.length === 1) {
+    // Only remaining players get BYE (should be 0 or 1)
+    while (available.length > 0) {
       const byePlayer = available.shift()!;
       pairings.push({
         player1_id: byePlayer.player_id,
@@ -221,7 +233,6 @@ export class RoundGenerator {
         player3_id: null,
         player4_id: null,
       });
-      // Increment BYE count for this player
       const history = this.getHistory(byePlayer.player_id);
       if (history) history.byeCount++;
     }
@@ -233,13 +244,11 @@ export class RoundGenerator {
     const pairings: Pairing[] = [];
     const available = [...this.players];
 
-    // Sort by: 1) players with most BYEs first (they need to play), 2) least played, 3) skill
     available.sort((a, b) => {
       const historyA = this.getHistory(a.player_id);
       const historyB = this.getHistory(b.player_id);
       if (!historyA || !historyB) return 0;
       
-      // Prioritize players with fewer BYEs (they haven't sat out as much)
       if (historyA.byeCount !== historyB.byeCount) {
         return historyB.byeCount - historyA.byeCount;
       }
@@ -248,15 +257,12 @@ export class RoundGenerator {
         return historyA.timesPlayed - historyB.timesPlayed;
       }
       
-      // Use skill for tiebreaker to pair similar skill levels
       return (b.wins || 0) - (a.wins || 0);
     });
 
-    // Try to create optimal matchups
     while (available.length >= 4 && pairings.length < this.numCourts) {
       let bestMatchup: { players: Player[], score: number } | null = null;
 
-      // Try different combinations to find best non-repeat matchup
       for (let i = 0; i < Math.min(available.length - 3, 4); i++) {
         for (let j = i + 1; j < Math.min(available.length - 2, 6); j++) {
           for (let k = j + 1; k < Math.min(available.length - 1, 8); k++) {
@@ -285,7 +291,6 @@ export class RoundGenerator {
           player4_id: bestMatchup.players[3].player_id,
         });
 
-        // Remove used players
         bestMatchup.players.forEach(p => {
           const idx = available.findIndex(ap => ap.player_id === p.player_id);
           if (idx >= 0) available.splice(idx, 1);
@@ -295,7 +300,6 @@ export class RoundGenerator {
       }
     }
 
-    // Handle remaining players with BYEs
     while (available.length > 0) {
       const byePlayer = available.shift()!;
       pairings.push({
@@ -304,7 +308,6 @@ export class RoundGenerator {
         player3_id: null,
         player4_id: null,
       });
-      // Track this BYE
       const history = this.getHistory(byePlayer.player_id);
       if (history) history.byeCount++;
     }
@@ -316,40 +319,34 @@ export class RoundGenerator {
     const pairings: Pairing[] = [];
     const available = [...this.players];
 
-    // Sort by: 1) players with fewest BYEs first, 2) least played
+    // Sort: prioritize players with more BYEs (they need to play), then least played
     available.sort((a, b) => {
       const historyA = this.getHistory(a.player_id);
       const historyB = this.getHistory(b.player_id);
       if (!historyA || !historyB) return 0;
       
-      // Prioritize players who need to play (fewer BYEs)
+      // Players with MORE byes should play first
       if (historyA.byeCount !== historyB.byeCount) {
-        return historyA.byeCount - historyB.byeCount;
+        return historyB.byeCount - historyA.byeCount;
       }
       
       return historyA.timesPlayed - historyB.timesPlayed;
     });
 
-    // Try to create optimal singles matchups
+    // Fill ALL available courts with matches
     while (available.length >= 2 && pairings.length < this.numCourts) {
       let bestMatchup: { players: Player[], score: number } | null = null;
 
-      // Try different combinations to find best non-repeat matchup
-      // Check up to the first 6 players to find good pairings
       for (let i = 0; i < Math.min(available.length - 1, 6); i++) {
         for (let j = i + 1; j < Math.min(available.length, 8); j++) {
           const players = [available[i], available[j]];
           
-          // Score this singles matchup (no partners in singles)
           let score = 0;
-          
-          // Prefer players who haven't played as much
           const h0 = this.getHistory(players[0].player_id);
           const h1 = this.getHistory(players[1].player_id);
           const playCount = (h0?.timesPlayed || 0) + (h1?.timesPlayed || 0);
           score -= playCount * 10;
           
-          // Heavily penalize repeat opponents (same penalty as doubles)
           if (this.hasPlayedAgainst(players[0].player_id, players[1].player_id)) {
             score -= 300;
           }
@@ -368,13 +365,12 @@ export class RoundGenerator {
           player4_id: null,
         });
 
-        // Remove used players
         bestMatchup.players.forEach(p => {
           const idx = available.findIndex(ap => ap.player_id === p.player_id);
           if (idx >= 0) available.splice(idx, 1);
         });
       } else {
-        // Fallback: just take first 2 if no good matchup found
+        // Fallback: just take first 2
         pairings.push({
           player1_id: available[0].player_id,
           player2_id: available[1].player_id,
@@ -385,7 +381,7 @@ export class RoundGenerator {
       }
     }
 
-    // Handle BYEs for remaining players (if odd number of players)
+    // Only remaining odd player gets BYE
     while (available.length > 0) {
       const byePlayer = available.shift()!;
       pairings.push({
@@ -394,7 +390,6 @@ export class RoundGenerator {
         player3_id: null,
         player4_id: null,
       });
-      // Track this BYE
       const history = this.getHistory(byePlayer.player_id);
       if (history) history.byeCount++;
     }
