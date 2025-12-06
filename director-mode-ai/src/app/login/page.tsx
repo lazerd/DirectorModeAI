@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Trophy, Eye, EyeOff } from 'lucide-react';
@@ -35,29 +35,14 @@ function LoginForm() {
         return;
       }
 
+      // If there's a specific redirect, use it
       if (redirectTo) {
         router.push(redirectTo);
         router.refresh();
         return;
       }
 
-      const user = data.user;
-      if (user) {
-        const { data: coach } = await supabase.from('lesson_coaches').select('id, slug').eq('profile_id', user.id).not('slug', 'is', null).single();
-        if (coach) {
-          router.push('/lessons/dashboard');
-          router.refresh();
-          return;
-        }
-
-        const { data: client } = await supabase.from('lesson_clients').select('id').eq('profile_id', user.id).single();
-        if (client) {
-          router.push('/client/dashboard');
-          router.refresh();
-          return;
-        }
-      }
-
+      // Otherwise, always go to homepage - let user choose their tool
       router.push('/');
       router.refresh();
     } catch {
@@ -79,7 +64,7 @@ function LoginForm() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="you@example.com"
             required
           />
@@ -92,7 +77,7 @@ function LoginForm() {
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10"
               placeholder="••••••••"
               required
             />
