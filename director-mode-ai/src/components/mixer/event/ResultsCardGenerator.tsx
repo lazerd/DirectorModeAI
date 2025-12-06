@@ -14,6 +14,13 @@ interface EventPhoto {
   photo_url: string;
 }
 
+interface Team {
+  id: string;
+  name: string;
+  color: string;
+  score: number;
+}
+
 interface ResultsCardData {
   eventName: string;
   eventDate: string;
@@ -23,6 +30,9 @@ interface ResultsCardData {
   mostConsistent: Standing | null;
   photos: EventPhoto[];
   format: "instagram" | "facebook";
+  isTeamBattle?: boolean;
+  teams?: Team[];
+  winningTeam?: Team | null;
 }
 
 export async function generateResultsCard(data: ResultsCardData): Promise<Blob> {
