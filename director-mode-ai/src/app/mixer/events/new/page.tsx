@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, Users, Trophy, Clock } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { ArrowLeft, Calendar, Users } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
 export default function CreateEventPage() {
   const router = useRouter();
@@ -16,12 +16,24 @@ export default function CreateEventPage() {
     event_date: '',
     start_time: '',
     num_courts: 4,
-    match_format: 'doubles',
+    match_format: '',
     scoring_format: 'fixed_games',
     round_length_minutes: 20,
     target_games: 6,
     format_notes: '',
   });
+
+  // Set default date and time on mount
+  useEffect(() => {
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().slice(0, 5);
+    setFormData(prev => ({
+      ...prev,
+      event_date: dateStr,
+      start_time: timeStr,
+    }));
+  }, []);
 
   const generateEventCode = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -32,17 +44,50 @@ export default function CreateEventPage() {
     return result;
   };
 
+  // Auto-map event type to match format
+  const handleEventTypeChange = (eventType: string) => {
+    let matchFormat = '';
+    
+    switch (eventType) {
+      case 'singles':
+        matchFormat = 'singles';
+        break;
+      case 'doubles':
+        matchFormat = 'doubles';
+        break;
+      case 'mixed-doubles':
+        matchFormat = 'mixed-doubles';
+        break;
+      case 'optimize-courts':
+        matchFormat = 'maximize-courts';
+        break;
+      case 'king-of-court':
+        matchFormat = 'king-of-court';
+        break;
+      case 'round-robin':
+        matchFormat = 'round-robin';
+        break;
+      case 'tournament':
+        matchFormat = 'singles'; // default, user can change
+        break;
+      default:
+        matchFormat = '';
+    }
+    
+    setFormData({ ...formData, match_format: matchFormat });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
         setError('You must be logged in');
+        setLoading(false);
         return;
       }
 
@@ -60,16 +105,18 @@ export default function CreateEventPage() {
 
       if (insertError) {
         setError(insertError.message);
+        setLoading(false);
         return;
       }
 
       router.push(`/mixer/events/${data.id}`);
     } catch (err) {
       setError('An error occurred');
-    } finally {
       setLoading(false);
     }
   };
+
+  const isTournament = formData.match_format === 'singles' || formData.match_format === 'doubles' || formData.match_format === 'mixed-doubles';
 
   return (
     <div className="p-6 lg:p-8 max-w-2xl mx-auto">
@@ -97,7 +144,7 @@ export default function CreateEventPage() {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                 placeholder="Friday Night Mixer"
                 required
               />
@@ -110,7 +157,7 @@ export default function CreateEventPage() {
                   type="date"
                   value={formData.event_date}
                   onChange={(e) => setFormData({ ...formData, event_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                   required
                 />
               </div>
@@ -120,7 +167,7 @@ export default function CreateEventPage() {
                   type="time"
                   value={formData.start_time}
                   onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                 />
               </div>
             </div>
@@ -134,29 +181,34 @@ export default function CreateEventPage() {
           </h2>
           
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Number of Courts</label>
-                <input
-                  type="number"
-                  value={formData.num_courts}
-                  onChange={(e) => setFormData({ ...formData, num_courts: parseInt(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  min={1}
-                  max={20}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Match Format</label>
-                <select
-                  value={formData.match_format}
-                  onChange={(e) => setFormData({ ...formData, match_format: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                >
-                  <option value="doubles">Doubles</option>
-                  <option value="singles">Singles</option>
-                </select>
-              </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Event Type *</label>
+              <select
+                value={formData.match_format}
+                onChange={(e) => handleEventTypeChange(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                required
+              >
+                <option value="">Select event type...</option>
+                <option value="singles">Singles Mixer</option>
+                <option value="doubles">Doubles Mixer</option>
+                <option value="mixed-doubles">Mixed Doubles Mixer</option>
+                <option value="optimize-courts">Optimize Courts (Auto Singles/Doubles)</option>
+                <option value="king-of-court">King of the Court</option>
+                <option value="round-robin">Team Round Robin</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1">Number of Courts</label>
+              <input
+                type="number"
+                value={formData.num_courts}
+                onChange={(e) => setFormData({ ...formData, num_courts: parseInt(e.target.value) || 1 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                min={1}
+                max={20}
+              />
             </div>
 
             <div>
@@ -164,43 +216,42 @@ export default function CreateEventPage() {
               <select
                 value={formData.scoring_format}
                 onChange={(e) => setFormData({ ...formData, scoring_format: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
               >
                 <option value="fixed_games">Fixed Games (e.g., play 6 games)</option>
                 <option value="timed">Timed Rounds</option>
                 <option value="first_to_x">First to X Games</option>
-                
               </select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-  {formData.scoring_format === 'timed' && (
-    <div>
-      <label className="block text-sm font-medium mb-1">Round Length (minutes)</label>
-      <input
-        type="number"
-        value={formData.round_length_minutes}
-        onChange={(e) => setFormData({ ...formData, round_length_minutes: parseInt(e.target.value) })}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-        min={10}
-        max={60}
-      />
-    </div>
-  )}
-  {(formData.scoring_format === 'fixed_games' || formData.scoring_format === 'first_to_x') && (
-    <div>
-      <label className="block text-sm font-medium mb-1">Target Games</label>
-      <input
-        type="number"
-        value={formData.target_games}
-        onChange={(e) => setFormData({ ...formData, target_games: parseInt(e.target.value) })}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-        min={4}
-        max={12}
-      />
-    </div>
-  )}
-</div>
+              {formData.scoring_format === 'timed' && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Round Length (minutes)</label>
+                  <input
+                    type="number"
+                    value={formData.round_length_minutes}
+                    onChange={(e) => setFormData({ ...formData, round_length_minutes: parseInt(e.target.value) || 10 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    min={5}
+                    max={60}
+                  />
+                </div>
+              )}
+              {(formData.scoring_format === 'fixed_games' || formData.scoring_format === 'first_to_x') && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Target Games</label>
+                  <input
+                    type="number"
+                    value={formData.target_games}
+                    onChange={(e) => setFormData({ ...formData, target_games: parseInt(e.target.value) || 1 })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    min={1}
+                    max={21}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
