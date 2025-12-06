@@ -61,10 +61,17 @@ export default function SelectFormatPage() {
       category: 'mixer',
     },
     {
-      id: 'single-elimination',
-      name: 'Single Elimination Tournament',
-      description: 'Traditional bracket-style tournament. Win or go home.',
+      id: 'single-elimination-singles',
+      name: 'Singles Tournament',
+      description: 'Traditional bracket. 1v1 matches, win or go home.',
       icon: '🏆',
+      category: 'tournament',
+    },
+    {
+      id: 'single-elimination-doubles',
+      name: 'Doubles Tournament',
+      description: 'Traditional bracket. 2v2 team matches, win or go home.',
+      icon: '🏅',
       category: 'tournament',
     },
   ];
@@ -149,7 +156,6 @@ export default function SelectFormatPage() {
                   <span className="text-3xl">{format.icon}</span>
                   <div>
                     <h3 className="font-bold text-lg">{format.name}</h3>
-                    <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">Tournament</span>
                   </div>
                 </div>
                 <p className="text-sm text-gray-600">{format.description}</p>
