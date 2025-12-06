@@ -81,7 +81,7 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg bg-white">
         <DialogHeader>
           <DialogTitle>Edit Event Format</DialogTitle>
           <DialogDescription>Update the scoring format and court configuration for this event</DialogDescription>
