@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, GripVertical, X, Trophy, Users } from "lucide-react";
+import { Plus, GripVertical, X, Trophy, Users, Sparkles, Settings2 } from "lucide-react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -34,6 +34,11 @@ interface TeamBattleTabProps {
     num_courts: number;
   };
   onSwitchToRounds?: () => void;
+}
+
+interface CourtConfig {
+  mode: 'singles' | 'doubles' | 'mixed';
+  doublesCourts: number;
 }
 
 function SortablePlayer({ player, teamColor, onRemove }: { player: Player; teamColor: string; onRemove: (id: string) => void }) {
@@ -88,6 +93,13 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
   const [newPlayerName, setNewPlayerName] = useState("");
   const [addingToTeam, setAddingToTeam] = useState<string | null>(null);
   const [teamScores, setTeamScores] = useState<Record<string, number>>({});
+  
+  // Court configuration
+  const [courtConfig, setCourtConfig] = useState<CourtConfig>({
+    mode: 'singles',
+    doublesCourts: 0,
+  });
+  const [showConfig, setShowConfig] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -148,7 +160,6 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
   };
 
   const fetchTeamScores = async () => {
-    // Calculate team scores from completed matches
     const { data: rounds } = await supabase
       .from("rounds")
       .select("id")
@@ -172,7 +183,6 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
       return;
     }
 
-    // Get player team assignments
     const { data: eventPlayers } = await supabase
       .from("event_players")
       .select("player_id, team_id")
@@ -185,7 +195,6 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
       if (ep.team_id) playerTeamMap[ep.player_id] = ep.team_id;
     });
 
-    // Count wins per team
     const scores: Record<string, number> = {};
     matches.forEach(match => {
       const winnerPlayerId = match.winner_team === 1 ? match.player1_id : match.player2_id;
@@ -196,6 +205,68 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     });
 
     setTeamScores(scores);
+  };
+
+  // AI Optimization Logic
+  const calculateOptimalConfig = () => {
+    const team1Players = teams[0] ? getTeamPlayers(teams[0].id).length : 0;
+    const team2Players = teams[1] ? getTeamPlayers(teams[1].id).length : 0;
+    const minTeamSize = Math.min(team1Players, team2Players);
+    const totalPlayers = team1Players + team2Players;
+    const courts = event.num_courts;
+
+    if (totalPlayers < 2) {
+      return { mode: 'singles' as const, doublesCourts: 0, reason: "Need more players" };
+    }
+
+    // Try different configurations and find the one with minimum BYEs
+    let bestConfig = { mode: 'singles' as const, doublesCourts: 0, byes: Infinity, reason: "" };
+
+    // Singles only
+    const singlesCapacity = courts * 2;
+    const singlesByes = Math.max(0, totalPlayers - singlesCapacity);
+    if (singlesByes < bestConfig.byes && minTeamSize >= 1) {
+      bestConfig = { mode: 'singles', doublesCourts: 0, byes: singlesByes, reason: `${courts} singles courts, ${singlesByes} players on BYE` };
+    }
+
+    // Doubles only (need at least 2 per team per court)
+    const doublesCapacity = courts * 4;
+    const doublesByes = Math.max(0, totalPlayers - doublesCapacity);
+    const canDoAllDoubles = minTeamSize >= courts * 2;
+    if (doublesByes < bestConfig.byes && canDoAllDoubles) {
+      bestConfig = { mode: 'doubles', doublesCourts: courts, byes: doublesByes, reason: `${courts} doubles courts, ${doublesByes} players on BYE` };
+    }
+
+    // Mixed configurations
+    for (let d = 1; d < courts; d++) {
+      const s = courts - d;
+      const mixedCapacity = (d * 4) + (s * 2);
+      const mixedByes = Math.max(0, totalPlayers - mixedCapacity);
+      const canDoMixed = minTeamSize >= (d * 2) + s; // Need enough per team
+      
+      if (mixedByes < bestConfig.byes && canDoMixed) {
+        bestConfig = { 
+          mode: 'mixed', 
+          doublesCourts: d, 
+          byes: mixedByes, 
+          reason: `${d} doubles + ${s} singles courts, ${mixedByes} players on BYE` 
+        };
+      }
+    }
+
+    return bestConfig;
+  };
+
+  const applyAIRecommendation = () => {
+    const optimal = calculateOptimalConfig();
+    setCourtConfig({
+      mode: optimal.mode,
+      doublesCourts: optimal.doublesCourts,
+    });
+    toast({
+      title: "✨ AI Recommendation Applied",
+      description: optimal.reason,
+    });
   };
 
   const handleAddPlayer = async (teamId: string) => {
@@ -213,7 +284,6 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
       return;
     }
 
-    // Create player
     const { data: player, error: playerError } = await supabase
       .from("players")
       .insert([{ user_id: user.id, name: newPlayerName.trim() }])
@@ -226,10 +296,8 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
       return;
     }
 
-    // Get current team player count for strength order
     const teamPlayers = players.filter(p => p.team_id === teamId);
     
-    // Add to event with team assignment
     const { error: eventPlayerError } = await supabase
       .from("event_players")
       .insert([{ 
@@ -273,11 +341,9 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
 
     const reordered = arrayMove(teamPlayers, oldIndex, newIndex);
     
-    // Update local state
     const otherPlayers = players.filter(p => p.team_id !== teamId);
     setPlayers([...otherPlayers, ...reordered.map((p, i) => ({ ...p, strength_order: i }))]);
 
-    // Update database
     for (let i = 0; i < reordered.length; i++) {
       await supabase
         .from("event_players")
@@ -293,9 +359,31 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
   };
 
   const totalPlayers = players.length;
-  const canGenerateRounds = teams.length === 2 && 
-    getTeamPlayers(teams[0]?.id).length >= 1 && 
-    getTeamPlayers(teams[1]?.id).length >= 1;
+  const team1Count = teams[0] ? getTeamPlayers(teams[0].id).length : 0;
+  const team2Count = teams[1] ? getTeamPlayers(teams[1].id).length : 0;
+  const canGenerateRounds = teams.length === 2 && team1Count >= 1 && team2Count >= 1;
+
+  // Calculate current config stats
+  const getConfigStats = () => {
+    const { mode, doublesCourts } = courtConfig;
+    const singlesCourts = event.num_courts - doublesCourts;
+    
+    if (mode === 'singles') {
+      const capacity = event.num_courts * 2;
+      const byes = Math.max(0, totalPlayers - capacity);
+      return { singlesCourts: event.num_courts, doublesCourts: 0, capacity, byes };
+    } else if (mode === 'doubles') {
+      const capacity = event.num_courts * 4;
+      const byes = Math.max(0, totalPlayers - capacity);
+      return { singlesCourts: 0, doublesCourts: event.num_courts, capacity, byes };
+    } else {
+      const capacity = (doublesCourts * 4) + (singlesCourts * 2);
+      const byes = Math.max(0, totalPlayers - capacity);
+      return { singlesCourts, doublesCourts, capacity, byes };
+    }
+  };
+
+  const configStats = getConfigStats();
 
   if (loading) {
     return (
@@ -340,6 +428,108 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           </CardContent>
         </Card>
       )}
+
+      {/* Court Configuration */}
+      <Card className="border-2 border-purple-200 bg-purple-50/50">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5 text-purple-600" />
+              <span>Match Configuration</span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={applyAIRecommendation}
+              className="bg-white"
+            >
+              <Sparkles className="h-4 w-4 mr-2 text-purple-600" />
+              AI Optimize
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Mode Selection */}
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={() => setCourtConfig({ mode: 'singles', doublesCourts: 0 })}
+              className={`p-3 rounded-xl border-2 text-center transition-all ${
+                courtConfig.mode === 'singles' 
+                  ? 'border-purple-500 bg-purple-100' 
+                  : 'border-gray-200 bg-white hover:border-purple-300'
+              }`}
+            >
+              <p className="text-2xl mb-1">🎾</p>
+              <p className="font-semibold text-sm">Singles Only</p>
+              <p className="text-xs text-gray-500">1v1 matches</p>
+            </button>
+            <button
+              onClick={() => setCourtConfig({ mode: 'doubles', doublesCourts: event.num_courts })}
+              className={`p-3 rounded-xl border-2 text-center transition-all ${
+                courtConfig.mode === 'doubles' 
+                  ? 'border-purple-500 bg-purple-100' 
+                  : 'border-gray-200 bg-white hover:border-purple-300'
+              }`}
+            >
+              <p className="text-2xl mb-1">👥</p>
+              <p className="font-semibold text-sm">Doubles Only</p>
+              <p className="text-xs text-gray-500">2v2 matches</p>
+            </button>
+            <button
+              onClick={() => setCourtConfig({ mode: 'mixed', doublesCourts: Math.floor(event.num_courts / 2) })}
+              className={`p-3 rounded-xl border-2 text-center transition-all ${
+                courtConfig.mode === 'mixed' 
+                  ? 'border-purple-500 bg-purple-100' 
+                  : 'border-gray-200 bg-white hover:border-purple-300'
+              }`}
+            >
+              <p className="text-2xl mb-1">🎯</p>
+              <p className="font-semibold text-sm">Mixed</p>
+              <p className="text-xs text-gray-500">Singles + Doubles</p>
+            </button>
+          </div>
+
+          {/* Mixed Mode Slider */}
+          {courtConfig.mode === 'mixed' && (
+            <div className="p-4 bg-white rounded-xl border-2 border-gray-200">
+              <div className="flex justify-between text-sm mb-2">
+                <span>Singles Courts: {event.num_courts - courtConfig.doublesCourts}</span>
+                <span>Doubles Courts: {courtConfig.doublesCourts}</span>
+              </div>
+              <input
+                type="range"
+                min={1}
+                max={event.num_courts - 1}
+                value={courtConfig.doublesCourts}
+                onChange={(e) => setCourtConfig({ ...courtConfig, doublesCourts: parseInt(e.target.value) })}
+                className="w-full"
+              />
+              <div className="flex justify-between text-xs text-gray-400 mt-1">
+                <span>More Singles</span>
+                <span>More Doubles</span>
+              </div>
+            </div>
+          )}
+
+          {/* Stats */}
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div className="p-2 bg-white rounded-lg border">
+              <p className="text-lg font-bold text-blue-600">{configStats.singlesCourts}</p>
+              <p className="text-xs text-gray-500">Singles Courts</p>
+            </div>
+            <div className="p-2 bg-white rounded-lg border">
+              <p className="text-lg font-bold text-green-600">{configStats.doublesCourts}</p>
+              <p className="text-xs text-gray-500">Doubles Courts</p>
+            </div>
+            <div className="p-2 bg-white rounded-lg border">
+              <p className={`text-lg font-bold ${configStats.byes > 0 ? 'text-orange-500' : 'text-gray-400'}`}>
+                {configStats.byes}
+              </p>
+              <p className="text-xs text-gray-500">Players on BYE</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Team Columns */}
       <div className="grid md:grid-cols-2 gap-6">
@@ -439,7 +629,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           className="w-full h-14 text-lg bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700"
         >
           <Trophy className="h-5 w-5 mr-2" />
-          Continue to Rounds ({totalPlayers} players ready)
+          Continue to Rounds ({totalPlayers} players, {configStats.singlesCourts}S + {configStats.doublesCourts}D courts)
         </Button>
       )}
 
