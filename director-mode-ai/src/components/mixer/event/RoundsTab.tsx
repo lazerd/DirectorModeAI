@@ -4,13 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Plus, Check, RotateCcw, ChevronLeft, ChevronRight, RefreshCw, Shuffle, Edit } from "lucide-react";
+import { Play, Plus, Check, RotateCcw, ChevronLeft, ChevronRight, Shuffle, Edit } from "lucide-react";
 import RoundTimer from "@/components/mixer/event/RoundTimer";
 import MatchScoreDialog from "@/components/mixer/event/MatchScoreDialog";
 import TournamentMatchScoreDialog from "@/components/mixer/event/TournamentMatchScoreDialog";
 import RoundGenerationDialog from "@/components/mixer/event/RoundGenerationDialog";
 import ManualMatchEditor from "@/components/mixer/event/ManualMatchEditor";
-import { generateMultipleRounds, RoundGenerator } from "@/lib/advancedMatchGeneration";
+import { RoundGenerator } from "@/lib/advancedMatchGeneration";
 
 interface Event {
   id: string;
@@ -19,6 +19,8 @@ interface Event {
   round_length_minutes: number | null;
   match_format: string | null;
   target_games: number | null;
+  team_battle_singles_courts?: number;
+  team_battle_doubles_courts?: number;
 }
 
 interface Round {
@@ -64,6 +66,8 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
   const [showScoreDialog, setShowScoreDialog] = useState(false);
   const [showManualEditor, setShowManualEditor] = useState(false);
 
+  const isTeamBattle = event.match_format === 'team-battle';
+
   useEffect(() => {
     fetchRounds();
   }, [event.id]);
@@ -84,7 +88,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     } else {
       setRounds(data || []);
       
-      // If a specific round is selected, keep it
       const roundToFind = targetRoundId || selectedRoundId;
       if (roundToFind) {
         const selected = data?.find((r) => r.id === roundToFind);
@@ -97,7 +100,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
         }
       }
 
-      // Otherwise find the most relevant round to display
       const inProgress = data?.find((r) => r.status === "in_progress");
       if (inProgress) {
         setCurrentRound(inProgress);
@@ -110,7 +112,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
           setSelectedRoundId(upcoming.id);
           fetchMatches(upcoming.id);
         } else if (data && data.length > 0) {
-          // Show the last completed round
           const lastRound = data[data.length - 1];
           setCurrentRound(lastRound);
           setSelectedRoundId(lastRound.id);
@@ -145,10 +146,9 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     }
   };
 
-  const generateMultipleRoundsHandler = async (numRounds: number, randomize: boolean = false) => {
+  const generateMultipleRoundsHandler = async (numRounds: number) => {
     setGenerating(true);
 
-    // Get player count for smart format detection
     const { data: playerCountData } = await supabase
       .from("event_players")
       .select("player_id")
@@ -156,7 +156,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     
     const playerCount = playerCountData?.length || 0;
     
-    // Smart format detection when match_format is NULL
     let matchFormat = event.match_format;
     const wasAutoDetected = !matchFormat;
     
@@ -170,7 +169,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       }
     }
 
-    // Validate format exists
     if (!matchFormat) {
       toast({
         variant: "destructive",
@@ -181,7 +179,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       return;
     }
 
-    // Show auto-detection toast only when we actually auto-detected
     if (wasAutoDetected) {
       const formatNames: Record<string, string> = {
         singles: "Singles",
@@ -194,26 +191,29 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       });
     }
 
+    // Fetch players with team_id for team battles
     const { data: eventPlayers, error: playersError } = await supabase
       .from("event_players")
       .select(`
         player_id,
+        team_id,
         wins,
         losses,
         games_won,
         games_lost,
+        strength_order,
         players(name, gender)
       `)
       .eq("event_id", event.id)
       .order("strength_order");
 
-   const minPlayers = matchFormat === 'singles' ? 2 : 4;
-if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
-  toast({
-    variant: "destructive",
-    title: "Not enough players",
-    description: `Need at least ${minPlayers} players to generate ${matchFormat} rounds.`,
-  });
+    const minPlayers = matchFormat === 'singles' || matchFormat === 'team-battle' ? 2 : 4;
+    if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
+      toast({
+        variant: "destructive",
+        title: "Not enough players",
+        description: `Need at least ${minPlayers} players to generate rounds.`,
+      });
       setGenerating(false);
       return;
     }
@@ -226,9 +226,43 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
       losses: ep.losses,
       games_won: ep.games_won,
       games_lost: ep.games_lost,
+      team_id: ep.team_id,
     }));
 
-    // Fetch all existing rounds to get historical matches
+    // For team battle, get team IDs
+    let teamBattleConfig = null;
+    if (matchFormat === 'team-battle') {
+      const { data: teams } = await supabase
+        .from("event_teams")
+        .select("id")
+        .eq("event_id", event.id)
+        .order("created_at");
+
+      if (!teams || teams.length < 2) {
+        toast({
+          variant: "destructive",
+          title: "Teams not configured",
+          description: "Please set up both teams first.",
+        });
+        setGenerating(false);
+        return;
+      }
+
+      // Re-fetch event to get latest court config
+      const { data: freshEvent } = await supabase
+        .from("events")
+        .select("team_battle_singles_courts, team_battle_doubles_courts")
+        .eq("id", event.id)
+        .single();
+
+      teamBattleConfig = {
+        singlesCourts: freshEvent?.team_battle_singles_courts ?? event.num_courts,
+        doublesCourts: freshEvent?.team_battle_doubles_courts ?? 0,
+        team1Id: teams[0].id,
+        team2Id: teams[1].id,
+      };
+    }
+
     const { data: existingRounds } = await supabase
       .from("rounds")
       .select("id, round_number")
@@ -237,7 +271,6 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
 
     const existingRoundIds = existingRounds?.map(r => r.id) || [];
 
-    // Fetch all historical matches from previous rounds
     let historicalMatches: any[] = [];
     if (existingRoundIds.length > 0) {
       const { data } = await supabase
@@ -248,25 +281,25 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
       historicalMatches = data || [];
     }
 
-    // Create generator and seed with historical matches
     const generator = new RoundGenerator(playerData, event.num_courts, matchFormat);
 
-    // Filter historical matches to only include current players (handle deleted players)
+    // Set team battle config if applicable
+    if (teamBattleConfig) {
+      generator.setTeamBattleConfig(teamBattleConfig);
+    }
+
     const currentPlayerIds = new Set(playerData.map(p => p.player_id));
     const validHistoricalMatches = historicalMatches.filter(match => {
       const playerIds = [match.player1_id, match.player2_id, match.player3_id, match.player4_id].filter(Boolean);
       return playerIds.every(id => currentPlayerIds.has(id));
     });
 
-    // Seed with historical matches to avoid repeat pairings
     if (validHistoricalMatches.length > 0) {
       generator.seedMatchHistory(validHistoricalMatches);
     }
 
-    // Generate new rounds with historical context
     const allRoundsPairings = generator.generateMultipleRounds(numRounds);
 
-    // Create all rounds and matches
     const startingRoundNumber = rounds.length + 1;
     let newRoundId: string | null = null;
     
@@ -295,7 +328,6 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
         continue;
       }
 
-      // Save the first new round ID for auto-advance
       if (i === 0) {
         newRoundId = round.id;
       }
@@ -311,23 +343,22 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
 
     toast({
       title: `${numRounds} round${numRounds > 1 ? 's' : ''} created!`,
-      description: "Matches generated with smart rotations and balanced BYEs.",
+      description: isTeamBattle 
+        ? "Team vs Team matches generated!" 
+        : "Matches generated with smart rotations and balanced BYEs.",
     });
 
     setGenerating(false);
-    
-    // Auto-advance to the first new round
     await fetchRounds(newRoundId || undefined);
   };
 
   const generateRound = async () => {
-    await generateMultipleRoundsHandler(1, false);
+    await generateMultipleRoundsHandler(1);
   };
 
   const regenerateRound = async (roundId: string) => {
     setGenerating(true);
 
-    // Get player count for smart format detection
     const { data: playerCountData } = await supabase
       .from("event_players")
       .select("player_id")
@@ -335,7 +366,6 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
     
     const playerCount = playerCountData?.length || 0;
     
-    // Smart format detection when match_format is NULL
     let matchFormat = event.match_format;
     if (!matchFormat) {
       if (playerCount === event.num_courts * 2) {
@@ -347,7 +377,6 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
       }
     }
 
-    // Validate format exists
     if (!matchFormat) {
       toast({
         variant: "destructive",
@@ -362,6 +391,7 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
       .from("event_players")
       .select(`
         player_id,
+        team_id,
         wins,
         losses,
         games_won,
@@ -371,13 +401,13 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
       .eq("event_id", event.id)
       .order("strength_order");
 
-    const minPlayers = matchFormat === 'singles' ? 2 : 4;
-if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
-  toast({
-    variant: "destructive",
-    title: "Not enough players",
-    description: `Need at least ${minPlayers} players to generate ${matchFormat} rounds.`,
-  });
+    const minPlayers = matchFormat === 'singles' || matchFormat === 'team-battle' ? 2 : 4;
+    if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
+      toast({
+        variant: "destructive",
+        title: "Not enough players",
+        description: `Need at least ${minPlayers} players to generate rounds.`,
+      });
       setGenerating(false);
       return;
     }
@@ -390,9 +420,42 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
       losses: ep.losses,
       games_won: ep.games_won,
       games_lost: ep.games_lost,
+      team_id: ep.team_id,
     }));
 
-    // Get the current round's round_number
+    // For team battle, get team IDs
+    let teamBattleConfig = null;
+    if (matchFormat === 'team-battle') {
+      const { data: teams } = await supabase
+        .from("event_teams")
+        .select("id")
+        .eq("event_id", event.id)
+        .order("created_at");
+
+      if (!teams || teams.length < 2) {
+        toast({
+          variant: "destructive",
+          title: "Teams not configured",
+          description: "Please set up both teams first.",
+        });
+        setGenerating(false);
+        return;
+      }
+
+      const { data: freshEvent } = await supabase
+        .from("events")
+        .select("team_battle_singles_courts, team_battle_doubles_courts")
+        .eq("id", event.id)
+        .single();
+
+      teamBattleConfig = {
+        singlesCourts: freshEvent?.team_battle_singles_courts ?? event.num_courts,
+        doublesCourts: freshEvent?.team_battle_doubles_courts ?? 0,
+        team1Id: teams[0].id,
+        team2Id: teams[1].id,
+      };
+    }
+
     const { data: currentRoundData } = await supabase
       .from("rounds")
       .select("round_number")
@@ -401,16 +464,14 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
 
     const currentRoundNumber = currentRoundData?.round_number || 1;
 
-    // Step 1: Get all round IDs from previous rounds AND current round
     const { data: allRounds } = await supabase
       .from("rounds")
       .select("id")
       .eq("event_id", event.id)
-      .lte("round_number", currentRoundNumber); // Changed: <= instead of <
+      .lte("round_number", currentRoundNumber);
 
     const allRoundIds = allRounds?.map(r => r.id) || [];
 
-    // Step 2: Fetch ALL matches (including current round) to avoid
     let historicalMatches: any[] = [];
     if (allRoundIds.length > 0) {
       const { data } = await supabase
@@ -421,21 +482,20 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
       historicalMatches = data || [];
     }
 
-    // Delete existing matches for this round
     await supabase.from("matches").delete().eq("round_id", roundId);
 
-    // Create the generator and seed it with historical matches
     const generator = new RoundGenerator(playerData, event.num_courts, matchFormat);
 
-    // Seed with historical matches (if any exist)
+    if (teamBattleConfig) {
+      generator.setTeamBattleConfig(teamBattleConfig);
+    }
+
     if (historicalMatches.length > 0) {
       generator.seedMatchHistory(historicalMatches);
     }
 
-    // Generate the new round
     const pairings = generator.generateMultipleRounds(1)[0];
 
-    // Insert new matches
     const matchInserts = pairings.map((pairing, idx) => ({
       round_id: roundId,
       court_number: idx + 1,
@@ -446,7 +506,7 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
 
     toast({
       title: "Round regenerated!",
-      description: "New pairings have been created with historical context.",
+      description: "New pairings have been created.",
     });
 
     setGenerating(false);
@@ -479,10 +539,8 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
   const completeRound = async () => {
     if (!currentRound) return;
 
-    // Check if all non-BYE matches have scores entered (allow ties, but not null scores)
     const unfinishedMatches = matches.filter((m) => {
       const isByeMatch = !m.player2 && !m.player3 && !m.player4;
-      // Match is unfinished if it's not a BYE and BOTH scores are still 0
       return !isByeMatch && m.team1_score === 0 && m.team2_score === 0;
     });
     
@@ -512,13 +570,9 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
         description: "Standings have been updated.",
       });
       
-      // Clear current selection to allow auto-advance
       setSelectedRoundId(null);
-      
-      // Auto-advance to next round
       await fetchRounds();
       
-      // Find the next upcoming round or show completion message
       const { data: nextRounds } = await supabase
         .from("rounds")
         .select("*")
@@ -555,7 +609,6 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
   const restartRound = async () => {
     if (!currentRound) return;
 
-    // Reset all match scores to 0
     const { error } = await supabase
       .from("matches")
       .update({ team1_score: 0, team2_score: 0, winner_team: null })
@@ -568,7 +621,6 @@ if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
         description: error.message,
       });
     } else {
-      // Update round status back to upcoming
       await supabase
         .from("rounds")
         .update({ status: "upcoming", start_time: null, end_time: null })
