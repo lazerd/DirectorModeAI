@@ -207,12 +207,13 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       .eq("event_id", event.id)
       .order("strength_order");
 
-    if (playersError || !eventPlayers || eventPlayers.length < 4) {
-      toast({
-        variant: "destructive",
-        title: "Not enough players",
-        description: "Need at least 4 players to generate rounds.",
-      });
+   const minPlayers = matchFormat === 'singles' ? 2 : 4;
+if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
+  toast({
+    variant: "destructive",
+    title: "Not enough players",
+    description: `Need at least ${minPlayers} players to generate ${matchFormat} rounds.`,
+  });
       setGenerating(false);
       return;
     }
@@ -370,12 +371,13 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       .eq("event_id", event.id)
       .order("strength_order");
 
-    if (playersError || !eventPlayers || eventPlayers.length < 4) {
-      toast({
-        variant: "destructive",
-        title: "Not enough players",
-        description: "Need at least 4 players to regenerate round.",
-      });
+    const minPlayers = matchFormat === 'singles' ? 2 : 4;
+if (playersError || !eventPlayers || eventPlayers.length < minPlayers) {
+  toast({
+    variant: "destructive",
+    title: "Not enough players",
+    description: `Need at least ${minPlayers} players to generate ${matchFormat} rounds.`,
+  });
       setGenerating(false);
       return;
     }
