@@ -113,7 +113,7 @@ function CreateEventForm() {
           <ArrowLeft size={20} />
         </button>
         <div>
-          <h1 className="font-semibold text-2xl">Create New Event v3</h1>
+          <h1 className="font-semibold text-2xl">Create New Event</h1>
           <p className="text-gray-500 text-sm">Set up your mixer or tournament</p>
         </div>
       </div>
@@ -197,18 +197,13 @@ function CreateEventForm() {
             <div>
               <label className="block text-sm font-medium mb-1">Number of Courts</label>
               <input
-  type="number"
-  value={formData.target_games || ''}
-  onChange={(e) => setFormData({ ...formData, target_games: e.target.value === '' ? 0 : parseInt(e.target.value) })}
-  onBlur={(e) => {
-    if (!e.target.value || parseInt(e.target.value) < 1) {
-      setFormData({ ...formData, target_games: 1 });
-    }
-  }}
-  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-  min={1}
-  max={21}
-/>
+                type="number"
+                value={formData.num_courts}
+                onChange={(e) => setFormData({ ...formData, num_courts: parseInt(e.target.value) || 1 })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                min={1}
+                max={20}
+              />
             </div>
 
             <div>
@@ -243,8 +238,13 @@ function CreateEventForm() {
                   <label className="block text-sm font-medium mb-1">Target Games</label>
                   <input
                     type="number"
-                    value={formData.target_games}
-                    onChange={(e) => setFormData({ ...formData, target_games: parseInt(e.target.value) || 1 })}
+                    value={formData.target_games || ''}
+                    onChange={(e) => setFormData({ ...formData, target_games: e.target.value === '' ? 0 : parseInt(e.target.value) })}
+                    onBlur={(e) => {
+                      if (!e.target.value || parseInt(e.target.value) < 1) {
+                        setFormData(prev => ({ ...prev, target_games: 1 }));
+                      }
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                     min={1}
                     max={21}
