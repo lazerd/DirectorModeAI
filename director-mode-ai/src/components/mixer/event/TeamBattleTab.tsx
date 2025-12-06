@@ -220,7 +220,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     }
 
     // Try different configurations and find the one with minimum BYEs
-    let bestConfig = { mode: 'singles' as const, doublesCourts: 0, byes: Infinity, reason: "" };
+    let bestConfig: { mode: 'singles' | 'doubles' | 'mixed', doublesCourts: number, byes: number, reason: string } = { mode: 'singles', doublesCourts: 0, byes: Infinity, reason: "" };
 
     // Singles only
     const singlesCapacity = courts * 2;
