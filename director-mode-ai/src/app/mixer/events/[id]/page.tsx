@@ -106,7 +106,25 @@ export default function EventDashboard() {
 
   if (!event) return null;
 
-  const isTournament = event.match_format === 'single-elimination';
+  const isTournament = event.match_format === 'single-elimination' || 
+                       event.match_format === 'single-elimination-singles' || 
+                       event.match_format === 'single-elimination-doubles';
+
+  const getFormatDisplay = (format: string | null) => {
+    if (!format) return null;
+    const displays: Record<string, string> = {
+      'singles': '🎾 Singles',
+      'doubles': '👥 Doubles',
+      'mixed-doubles': '🎯 Mixed Doubles',
+      'king-of-court': '👑 King of Court',
+      'round-robin': '🔄 Round Robin',
+      'maximize-courts': '⚡ Optimize Courts',
+      'single-elimination': '🏆 Tournament',
+      'single-elimination-singles': '🏆 Singles Tournament',
+      'single-elimination-doubles': '🏅 Doubles Tournament',
+    };
+    return displays[format] || format;
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5">
@@ -160,13 +178,7 @@ export default function EventDashboard() {
               </span>
               {event.match_format && (
                 <span className="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs font-medium bg-secondary/10 text-secondary-foreground">
-                  {event.match_format === 'singles' && '🎾 Singles'}
-                  {event.match_format === 'doubles' && '👥 Doubles'}
-                  {event.match_format === 'mixed-doubles' && '🎯 Mixed Doubles'}
-                  {event.match_format === 'king-of-court' && '👑 King of Court'}
-                  {event.match_format === 'round-robin' && '🔄 Round Robin'}
-                  {event.match_format === 'maximize-courts' && '⚡ Optimize Courts'}
-                  {event.match_format === 'single-elimination' && '🏆 Tournament'}
+                  {getFormatDisplay(event.match_format)}
                 </span>
               )}
               <span className="inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs font-medium bg-accent/10 text-accent">
@@ -251,5 +263,3 @@ export default function EventDashboard() {
     </div>
   );
 }
-
-
