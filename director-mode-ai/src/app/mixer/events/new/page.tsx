@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Calendar, Users } from 'lucide-react';
+import { ArrowLeft, Calendar, Users, Swords } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 
 function CreateEventForm() {
@@ -22,6 +22,10 @@ function CreateEventForm() {
     target_games: 6,
     format_notes: '',
   });
+
+  // Team Battle specific state
+  const [team1Name, setTeam1Name] = useState('Team A');
+  const [team2Name, setTeam2Name] = useState('Team B');
 
   useEffect(() => {
     const now = new Date();
@@ -57,9 +61,12 @@ function CreateEventForm() {
       'single-elimination': 'Single Elimination Tournament',
       'single-elimination-singles': 'Singles Tournament',
       'single-elimination-doubles': 'Doubles Tournament',
+      'team-battle': 'Team Battle',
     };
     return names[format] || format;
   };
+
+  const isTeamBattle = formData.match_format === 'team-battle';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +80,15 @@ function CreateEventForm() {
         setError('You must be logged in');
         setLoading(false);
         return;
+      }
+
+      // Validate team names for team battle
+      if (isTeamBattle) {
+        if (!team1Name.trim() || !team2Name.trim()) {
+          setError('Both team names are required');
+          setLoading(false);
+          return;
+        }
       }
 
       const eventCode = generateEventCode();
@@ -91,6 +107,21 @@ function CreateEventForm() {
         setError(insertError.message);
         setLoading(false);
         return;
+      }
+
+      // Create teams for team battle
+      if (isTeamBattle) {
+        const { error: teamsError } = await supabase
+          .from('event_teams')
+          .insert([
+            { event_id: data.id, name: team1Name.trim(), color: '#3B82F6' },
+            { event_id: data.id, name: team2Name.trim(), color: '#EF4444' },
+          ]);
+
+        if (teamsError) {
+          console.error('Error creating teams:', teamsError);
+          // Don't fail the whole event creation, teams can be added later
+        }
       }
 
       router.push(`/mixer/events/${data.id}`);
@@ -189,13 +220,15 @@ function CreateEventForm() {
           
           <div className="space-y-4">
             {formData.match_format ? (
-              <div className="p-4 bg-orange-50 rounded-xl border-2 border-orange-200">
+              <div className={`p-4 rounded-xl border-2 ${isTeamBattle ? 'bg-red-50 border-red-200' : 'bg-orange-50 border-orange-200'}`}>
                 <p className="text-sm text-gray-600">Selected Format:</p>
-                <p className="font-bold text-lg text-orange-700">{getFormatDisplayName(formData.match_format)}</p>
+                <p className={`font-bold text-lg ${isTeamBattle ? 'text-red-700' : 'text-orange-700'}`}>
+                  {isTeamBattle && '⚔️ '}{getFormatDisplayName(formData.match_format)}
+                </p>
                 <button 
                   type="button"
                   onClick={goToSelectFormat} 
-                  className="text-sm text-orange-600 hover:underline mt-1"
+                  className={`text-sm hover:underline mt-1 ${isTeamBattle ? 'text-red-600' : 'text-orange-600'}`}
                 >
                   Change format →
                 </button>
@@ -210,6 +243,46 @@ function CreateEventForm() {
                 >
                   Select a format →
                 </button>
+              </div>
+            )}
+
+            {/* Team Battle Team Names */}
+            {isTeamBattle && (
+              <div className="p-4 bg-gray-50 rounded-xl border-2 border-gray-200 space-y-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Swords size={20} className="text-red-500" />
+                  <h3 className="font-semibold">Team Names</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Team 1 Name *</label>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-blue-500 flex-shrink-0"></div>
+                      <input
+                        type="text"
+                        value={team1Name}
+                        onChange={(e) => setTeam1Name(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Team A"
+                        required={isTeamBattle}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Team 2 Name *</label>
+                    <div className="flex items-center gap-2">
+                      <div className="w-4 h-4 rounded-full bg-red-500 flex-shrink-0"></div>
+                      <input
+                        type="text"
+                        value={team2Name}
+                        onChange={(e) => setTeam2Name(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-red-500"
+                        placeholder="Team B"
+                        required={isTeamBattle}
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -289,9 +362,13 @@ function CreateEventForm() {
           <button
             type="submit"
             disabled={loading || !formData.match_format}
-            className="flex-1 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 disabled:opacity-50"
+            className={`flex-1 py-2 text-white rounded-lg font-medium disabled:opacity-50 ${
+              isTeamBattle 
+                ? 'bg-red-500 hover:bg-red-600' 
+                : 'bg-orange-500 hover:bg-orange-600'
+            }`}
           >
-            {loading ? 'Creating...' : 'Create Event'}
+            {loading ? 'Creating...' : isTeamBattle ? 'Create Team Battle' : 'Create Event'}
           </button>
         </div>
       </form>
