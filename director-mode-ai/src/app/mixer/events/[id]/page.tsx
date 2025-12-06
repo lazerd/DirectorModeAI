@@ -183,7 +183,7 @@ export default function EventDashboard() {
 
       <main className="container mx-auto px-4 py-6 max-w-7xl">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className={`grid w-full max-w-3xl mx-auto ${isTournament ? 'grid-cols-6' : 'grid-cols-5'} h-auto sm:h-14 p-1 gap-1`}>
+          <TabsList className={`grid w-full max-w-3xl mx-auto ${isTournament ? 'grid-cols-5' : 'grid-cols-5'} h-auto sm:h-14 p-1 gap-1`}>
             <TabsTrigger value="share" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
               <Share2 className="h-4 w-4 sm:h-5 sm:w-5" />
               <span className="hidden sm:inline">Share</span>
@@ -198,10 +198,12 @@ export default function EventDashboard() {
                 <span className="hidden sm:inline">Bracket</span>
               </TabsTrigger>
             )}
-            <TabsTrigger value="rounds" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
-              <ListOrdered className="h-4 w-4 sm:h-5 sm:w-5" />
-              <span className="hidden sm:inline">Rounds</span>
-            </TabsTrigger>
+            {!isTournament && (
+  <TabsTrigger value="rounds" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
+    <ListOrdered className="h-4 w-4 sm:h-5 sm:w-5" />
+    <span className="hidden sm:inline">Rounds</span>
+  </TabsTrigger>
+)}
             <TabsTrigger value="standings" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
               <Trophy className="h-4 w-4 sm:h-5 sm:w-5" />
               <span className="hidden sm:inline">Standings</span>
@@ -220,11 +222,11 @@ export default function EventDashboard() {
             <PlayersTab event={event} onFormatUpdated={fetchEvent} onSwitchToRounds={() => setActiveTab("rounds")} />
           </TabsContent>
 
-          {isTournament && (
-            <TabsContent value="bracket" className="space-y-4">
-              <TournamentBracket event={event} />
-            </TabsContent>
-          )}
+          {!isTournament && (
+  <TabsContent value="rounds" className="space-y-4">
+    <RoundsTab event={event} />
+  </TabsContent>
+)}
 
           <TabsContent value="rounds" className="space-y-4">
             <RoundsTab event={event} />
