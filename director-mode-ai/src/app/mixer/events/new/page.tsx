@@ -197,13 +197,18 @@ function CreateEventForm() {
             <div>
               <label className="block text-sm font-medium mb-1">Number of Courts</label>
               <input
-                type="number"
-                value={formData.num_courts}
-                onChange={(e) => setFormData({ ...formData, num_courts: parseInt(e.target.value) || 1 })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
-                min={1}
-                max={20}
-              />
+  type="number"
+  value={formData.target_games || ''}
+  onChange={(e) => setFormData({ ...formData, target_games: e.target.value === '' ? 0 : parseInt(e.target.value) })}
+  onBlur={(e) => {
+    if (!e.target.value || parseInt(e.target.value) < 1) {
+      setFormData({ ...formData, target_games: 1 });
+    }
+  }}
+  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+  min={1}
+  max={21}
+/>
             </div>
 
             <div>
