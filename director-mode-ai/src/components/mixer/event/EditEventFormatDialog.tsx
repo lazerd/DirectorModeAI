@@ -1,14 +1,9 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/lib/supabase";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { editEventFormatSchema, type EditEventFormatFormData } from "@/lib/validationSchemas";
 
 interface Event {
   id: string;
@@ -27,35 +22,30 @@ interface EditEventFormatDialogProps {
 
 const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: EditEventFormatDialogProps) => {
   const { toast } = useToast();
-
-  const form = useForm<EditEventFormatFormData>({
-    resolver: zodResolver(editEventFormatSchema),
-    defaultValues: {
-      scoringFormat: event.scoring_format as "timed" | "fixed_games" | "first_to_x" | "pro_set" | "best_of_3_sets" | "best_of_3_tiebreak" | "flexible",
-      roundLengthMinutes: event.round_length_minutes || 30,
-      targetGames: event.target_games || 11,
-      numCourts: event.num_courts,
-    },
-  });
-
-  const scoringFormat = form.watch("scoringFormat");
-  const isTournamentFormat = scoringFormat === "flexible" || scoringFormat === "pro_set" || scoringFormat === "best_of_3_sets" || scoringFormat === "best_of_3_tiebreak";
+  const [saving, setSaving] = useState(false);
+  
+  const [scoringFormat, setScoringFormat] = useState(event.scoring_format);
+  const [roundLengthMinutes, setRoundLengthMinutes] = useState(event.round_length_minutes || 30);
+  const [targetGames, setTargetGames] = useState(event.target_games || 11);
+  const [numCourts, setNumCourts] = useState(event.num_courts);
 
   useEffect(() => {
-    form.reset({
-      scoringFormat: event.scoring_format as "timed" | "fixed_games" | "first_to_x" | "pro_set" | "best_of_3_sets" | "best_of_3_tiebreak" | "flexible",
-      roundLengthMinutes: event.round_length_minutes || 30,
-      targetGames: event.target_games || 11,
-      numCourts: event.num_courts,
-    });
-  }, [event, form]);
+    if (open) {
+      setScoringFormat(event.scoring_format);
+      setRoundLengthMinutes(event.round_length_minutes || 30);
+      setTargetGames(event.target_games || 11);
+      setNumCourts(event.num_courts);
+    }
+  }, [open, event]);
 
-  const handleSave = async (data: EditEventFormatFormData) => {
+  const handleSave = async () => {
+    setSaving(true);
+    
     const updates: any = {
-      scoring_format: data.scoringFormat,
-      round_length_minutes: data.scoringFormat === "timed" ? data.roundLengthMinutes : null,
-      target_games: data.scoringFormat !== "timed" ? data.targetGames : null,
-      num_courts: data.numCourts,
+      scoring_format: scoringFormat,
+      round_length_minutes: scoringFormat === "timed" ? roundLengthMinutes : null,
+      target_games: scoringFormat !== "timed" ? targetGames : null,
+      num_courts: numCourts,
     };
 
     const { error } = await supabase
@@ -77,6 +67,21 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
       onFormatUpdated();
       onOpenChange(false);
     }
+    setSaving(false);
+  };
+
+  const handleNumberChange = (setter: (val: number) => void, value: string) => {
+    if (value === '') {
+      setter(0);
+    } else {
+      setter(parseInt(value) || 0);
+    }
+  };
+
+  const handleNumberBlur = (setter: (val: number) => void, currentValue: number, min: number) => {
+    if (currentValue < min) {
+      setter(min);
+    }
   };
 
   return (
@@ -84,151 +89,81 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
       <DialogContent className="max-w-lg bg-white">
         <DialogHeader>
           <DialogTitle>Edit Event Format</DialogTitle>
-          <DialogDescription>Update the scoring format and court configuration for this event</DialogDescription>
+          <DialogDescription>Update the scoring format and court configuration</DialogDescription>
         </DialogHeader>
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(handleSave)} className="space-y-4 py-4">
-            <FormField
-              control={form.control}
-              name="scoringFormat"
-              render={({ field }) => (
-                 <FormItem>
-                  <FormLabel>Scoring Format</FormLabel>
-                  <FormControl>
-                    <RadioGroup value={field.value} onValueChange={field.onChange}>
-                      <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent">
-                        <RadioGroupItem value="timed" id="timed" />
-                        <FormLabel htmlFor="timed" className="flex-1 cursor-pointer">
-                          <div className="font-semibold">Timed Rounds</div>
-                          <div className="text-sm text-muted-foreground">Fixed duration per round</div>
-                        </FormLabel>
-                      </div>
-                      <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent">
-                        <RadioGroupItem value="first_to_x" id="first_to_x" />
-                        <FormLabel htmlFor="first_to_x" className="flex-1 cursor-pointer">
-                          <div className="font-semibold">First to X Games</div>
-                          <div className="text-sm text-muted-foreground">First team to reach target wins</div>
-                        </FormLabel>
-                      </div>
-                      <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent">
-                        <RadioGroupItem value="fixed_games" id="fixed_games" />
-                        <FormLabel htmlFor="fixed_games" className="flex-1 cursor-pointer">
-                          <div className="font-semibold">Fixed Games</div>
-                          <div className="text-sm text-muted-foreground">Play exactly X games per match</div>
-                        </FormLabel>
-                      </div>
-                      <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent">
-                        <RadioGroupItem value="flexible" id="flexible" />
-                        <FormLabel htmlFor="flexible" className="flex-1 cursor-pointer">
-                          <div className="font-semibold">Flexible (any score)</div>
-                          <div className="text-sm text-muted-foreground">e.g., 21-19, 11-8</div>
-                        </FormLabel>
-                      </div>
-                      <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent">
-                        <RadioGroupItem value="pro_set" id="pro_set" />
-                        <FormLabel htmlFor="pro_set" className="flex-1 cursor-pointer">
-                          <div className="font-semibold">8 Game Pro-Set</div>
-                          <div className="text-sm text-muted-foreground">e.g., 8-3</div>
-                        </FormLabel>
-                      </div>
-                      <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent">
-                        <RadioGroupItem value="best_of_3_sets" id="best_of_3_sets" />
-                        <FormLabel htmlFor="best_of_3_sets" className="flex-1 cursor-pointer">
-                          <div className="font-semibold">Best of 3 Sets</div>
-                          <div className="text-sm text-muted-foreground">e.g., 6-3, 2-6, 6-4</div>
-                        </FormLabel>
-                      </div>
-                      <div className="flex items-center space-x-2 p-3 rounded-lg border hover:bg-accent">
-                        <RadioGroupItem value="best_of_3_tiebreak" id="best_of_3_tiebreak" />
-                        <FormLabel htmlFor="best_of_3_tiebreak" className="flex-1 cursor-pointer">
-                          <div className="font-semibold">Best of 3 with 10-Point Tiebreak</div>
-                          <div className="text-sm text-muted-foreground">e.g., 6-2, 3-7, 10-7</div>
-                        </FormLabel>
-                      </div>
-                    </RadioGroup>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+        <div className="space-y-4 py-4">
+          <div>
+            <Label className="text-sm font-medium">Scoring Format</Label>
+            <select
+              value={scoringFormat}
+              onChange={(e) => setScoringFormat(e.target.value)}
+              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+            >
+              <option value="timed">Timed Rounds</option>
+              <option value="first_to_x">First to X Games</option>
+              <option value="fixed_games">Fixed Games</option>
+              <option value="flexible">Flexible (any score)</option>
+              <option value="pro_set">8 Game Pro-Set</option>
+              <option value="best_of_3_sets">Best of 3 Sets</option>
+              <option value="best_of_3_tiebreak">Best of 3 with 10-Point Tiebreak</option>
+            </select>
+          </div>
+
+          <div>
+            <Label className="text-sm font-medium">Number of Courts</Label>
+            <input
+              type="number"
+              value={numCourts || ''}
+              onChange={(e) => handleNumberChange(setNumCourts, e.target.value)}
+              onBlur={() => handleNumberBlur(setNumCourts, numCourts, 1)}
+              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+              min={1}
+              max={50}
             />
+          </div>
 
-            <FormField
-              control={form.control}
-              name="numCourts"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Number of Courts</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min="1"
-                      max="50"
-                      {...field}
-                      onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {scoringFormat === "timed" && (
-              <FormField
-                control={form.control}
-                name="roundLengthMinutes"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Round Length (minutes)</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="5"
-                        max="180"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 30)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+          {scoringFormat === "timed" && (
+            <div>
+              <Label className="text-sm font-medium">Round Length (minutes)</Label>
+              <input
+                type="number"
+                value={roundLengthMinutes || ''}
+                onChange={(e) => handleNumberChange(setRoundLengthMinutes, e.target.value)}
+                onBlur={() => handleNumberBlur(setRoundLengthMinutes, roundLengthMinutes, 5)}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+                min={5}
+                max={180}
               />
-            )}
+            </div>
+          )}
 
-            {(scoringFormat === "fixed_games" || scoringFormat === "first_to_x") && (
-              <FormField
-                control={form.control}
-                name="targetGames"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>
-                      {scoringFormat === "first_to_x" ? "Games to Win" : "Total Games"}
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min="1"
-                        max="21"
-                        {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value) || 11)}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+          {(scoringFormat === "fixed_games" || scoringFormat === "first_to_x") && (
+            <div>
+              <Label className="text-sm font-medium">
+                {scoringFormat === "first_to_x" ? "Games to Win" : "Total Games"}
+              </Label>
+              <input
+                type="number"
+                value={targetGames || ''}
+                onChange={(e) => handleNumberChange(setTargetGames, e.target.value)}
+                onBlur={() => handleNumberBlur(setTargetGames, targetGames, 1)}
+                className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+                min={1}
+                max={21}
               />
-            )}
+            </div>
+          )}
+        </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
-                {form.formState.isSubmitting ? "Saving..." : "Save Changes"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </Form>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="bg-white">
+            Cancel
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Saving..." : "Save Changes"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
