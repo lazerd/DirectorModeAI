@@ -28,7 +28,7 @@ export default function MixerHomePage() {
 
   const fetchEvents = async () => {
     const supabase = createClient();
-const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
       setLoading(false);
@@ -55,10 +55,19 @@ const { data: { user } } = await supabase.auth.getUser();
 
     setDeleting(eventId);
 
-    // Delete related data first
-    await supabase.from('matches').delete().eq('round_id', 
-      supabase.from('rounds').select('id').eq('event_id', eventId)
-    );
+    const supabase = createClient();
+
+    // Delete related data first (get round IDs, then delete matches)
+    const { data: rounds } = await supabase
+      .from('rounds')
+      .select('id')
+      .eq('event_id', eventId);
+    
+    if (rounds && rounds.length > 0) {
+      const roundIds = rounds.map(r => r.id);
+      await supabase.from('matches').delete().in('round_id', roundIds);
+    }
+    
     await supabase.from('rounds').delete().eq('event_id', eventId);
     await supabase.from('event_players').delete().eq('event_id', eventId);
     
@@ -138,13 +147,13 @@ const { data: { user } } = await supabase.auth.getUser();
             <div className="spinner" />
           </div>
         ) : events.length === 0 ? (
-          <div className="card p-12 text-center">
+          <div className="card p-12 text-center bg-white rounded-xl border">
             <Trophy size={48} className="mx-auto text-gray-300 mb-4" />
-            <h3 className="font-display text-lg mb-2">No events yet</h3>
+            <h3 className="font-semibold text-lg mb-2">No events yet</h3>
             <p className="text-gray-500 mb-4">
               Create your first event to get started with round robins and mixers.
             </p>
-            <Link href="/mixer/select-format" className="btn btn-mixer">
+            <Link href="/mixer/select-format" className="btn btn-mixer inline-flex">
               <Plus size={18} />
               Create Event
             </Link>
@@ -154,7 +163,7 @@ const { data: { user } } = await supabase.auth.getUser();
             {/* Upcoming */}
             {upcomingEvents.length > 0 && (
               <div>
-                <h2 className="font-display text-lg mb-3">Upcoming Events</h2>
+                <h2 className="font-semibold text-lg mb-3">Upcoming Events</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {upcomingEvents.map((event) => (
                     <EventCard 
@@ -172,7 +181,7 @@ const { data: { user } } = await supabase.auth.getUser();
             {/* Past */}
             {pastEvents.length > 0 && (
               <div>
-                <h2 className="font-display text-lg mb-3 text-gray-500">Past Events</h2>
+                <h2 className="font-semibold text-lg mb-3 text-gray-500">Past Events</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {pastEvents.map((event) => (
                     <EventCard 
