@@ -158,15 +158,20 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   };
 
   const handleAddPlayer = async (e?: React.FormEvent) => {
-    console.log("FORM SUBMITTED!");
-    alert("Button clicked!");
+    console.log("STEP 1: handleAddPlayer called");
     if (e) e.preventDefault();
     
-    if (adding) return;
+    if (adding) {
+      console.log("BLOCKED: already adding");
+      return;
+    }
     
-    const { data: { user } } = await supabase.auth.getUser();
+    console.log("STEP 2: Getting user...");
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    console.log("STEP 2 RESULT - User:", user, "Error:", authError);
     
     if (!user) {
+      console.log("STEP 2 FAILED: No user");
       toast({
         variant: "destructive",
         title: "Not logged in",
@@ -175,68 +180,12 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
       return;
     }
 
+    console.log("STEP 3: Setting adding=true");
     setAdding(true);
     
-    if (matchFormat === "round-robin") {
-      if (!newPlayerName.trim() || !newPlayer2Name.trim()) {
-        toast({
-          variant: "destructive",
-          title: "Both names required",
-          description: "Please enter both partner names.",
-        });
-        setAdding(false);
-        return;
-      }
-
-      setHasFormat(false);
-
-      const { data: playersData, error: playersError } = await supabase
-        .from("players")
-        .insert([
-          { user_id: user.id, name: newPlayerName.trim(), gender: newPlayerGender },
-          { user_id: user.id, name: newPlayer2Name.trim(), gender: newPlayer2Gender }
-        ])
-        .select();
-
-      if (playersError) {
-        toast({
-          variant: "destructive",
-          title: "Error adding partners",
-          description: playersError.message,
-        });
-        setAdding(false);
-        return;
-      }
-
-      const { error: eventPlayersError } = await supabase
-        .from("event_players")
-        .insert([
-          { event_id: event.id, player_id: playersData[0].id, strength_order: players.length },
-          { event_id: event.id, player_id: playersData[1].id, strength_order: players.length + 1 },
-        ]);
-
-      if (eventPlayersError) {
-        toast({
-          variant: "destructive",
-          title: "Error adding partners to event",
-          description: eventPlayersError.message,
-        });
-      } else {
-        toast({
-          title: "Partners added",
-          description: `${newPlayerName.trim()} & ${newPlayer2Name.trim()} are now partners.`,
-        });
-        setNewPlayerName("");
-        setNewPlayer2Name("");
-        setNewPlayerGender("male");
-        setNewPlayer2Gender("male");
-        fetchPlayers();
-      }
-      setAdding(false);
-      return;
-    }
-    
+    console.log("STEP 4: Checking name, value is:", newPlayerName);
     if (!newPlayerName.trim()) {
+      console.log("STEP 4 FAILED: No name");
       toast({
         variant: "destructive",
         title: "Name required",
@@ -246,15 +195,16 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
       return;
     }
 
-    setHasFormat(false);
-    
+    console.log("STEP 5: Inserting into players table...");
     const { data: player, error: playerError } = await supabase
       .from("players")
       .insert([{ user_id: user.id, name: newPlayerName.trim(), gender: newPlayerGender }])
       .select()
       .single();
+    console.log("STEP 5 RESULT - Player:", player, "Error:", playerError);
 
     if (playerError) {
+      console.log("STEP 5 FAILED:", playerError.message);
       toast({
         variant: "destructive",
         title: "Error adding player",
@@ -264,17 +214,21 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
       return;
     }
 
+    console.log("STEP 6: Inserting into event_players table...");
     const { error: eventPlayerError } = await supabase
       .from("event_players")
       .insert([{ event_id: event.id, player_id: player.id, strength_order: players.length }]);
+    console.log("STEP 6 RESULT - Error:", eventPlayerError);
 
     if (eventPlayerError) {
+      console.log("STEP 6 FAILED:", eventPlayerError.message);
       toast({
         variant: "destructive",
         title: "Error adding player to event",
         description: eventPlayerError.message,
       });
     } else {
+      console.log("STEP 7: SUCCESS! Clearing form and refreshing...");
       toast({
         title: "Player added",
         description: `${newPlayerName.trim()} has been added to the event.`,
@@ -284,6 +238,7 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
       fetchPlayers();
     }
     setAdding(false);
+    console.log("STEP 8: Done");
   };
 
   const handleFormatSelected = () => {
@@ -353,83 +308,33 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>TEST Players ({players.length})</CardTitle>
+        <CardTitle>Players ({players.length})</CardTitle>
         <CardDescription>
-          {matchFormat === "round-robin" 
-            ? "Add partner pairs. Players added together will stay as partners throughout the event."
-            : "Add players and drag to reorder by strength (strongest at top)."}
+          Add players and drag to reorder by strength (strongest at top).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {matchFormat === "round-robin" ? (
-          <form onSubmit={handleAddPlayer} className="space-y-4">
-            <div className="bg-muted/50 rounded-lg p-4 border-2 border-primary/20">
-              <p className="text-sm font-medium mb-3 text-primary">Partner Pair</p>
-              <div className="space-y-3">
-                <div className="flex gap-3">
-                  <Input
-                    placeholder="Partner 1 name"
-                    value={newPlayerName}
-                    onChange={(e) => setNewPlayerName(e.target.value)}
-                    className="flex-1 h-12 text-base"
-                  />
-                  <Select value={newPlayerGender} onValueChange={setNewPlayerGender}>
-                    <SelectTrigger className="w-[120px] h-12">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex gap-3">
-                  <Input
-                    placeholder="Partner 2 name"
-                    value={newPlayer2Name}
-                    onChange={(e) => setNewPlayer2Name(e.target.value)}
-                    className="flex-1 h-12 text-base"
-                  />
-                  <Select value={newPlayer2Gender} onValueChange={setNewPlayer2Gender}>
-                    <SelectTrigger className="w-[120px] h-12">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="male">Male</SelectItem>
-                      <SelectItem value="female">Female</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-            <Button type="submit" disabled={adding} size="lg" className="w-full">
-              <Plus className="h-5 w-5 mr-2" />
-              {adding ? "Adding..." : "Add Partner Pair"}
-            </Button>
-          </form>
-        ) : (
-          <form onSubmit={handleAddPlayer} className="flex gap-3">
-            <Input
-              placeholder="Player name"
-              value={newPlayerName}
-              onChange={(e) => setNewPlayerName(e.target.value)}
-              className="flex-1 h-12 text-base"
-            />
-            <Select value={newPlayerGender} onValueChange={setNewPlayerGender}>
-              <SelectTrigger className="w-[120px] h-12">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="male">Male</SelectItem>
-                <SelectItem value="female">Female</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button type="submit" disabled={adding} size="lg" className="px-6">
-              <Plus className="h-5 w-5 mr-2" />
-              {adding ? "..." : "Add"}
-            </Button>
-          </form>
-        )}
+        <form onSubmit={handleAddPlayer} className="flex gap-3">
+          <Input
+            placeholder="Player name"
+            value={newPlayerName}
+            onChange={(e) => setNewPlayerName(e.target.value)}
+            className="flex-1 h-12 text-base"
+          />
+          <Select value={newPlayerGender} onValueChange={setNewPlayerGender}>
+            <SelectTrigger className="w-[120px] h-12">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="male">Male</SelectItem>
+              <SelectItem value="female">Female</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button type="submit" disabled={adding} size="lg" className="px-6">
+            <Plus className="h-5 w-5 mr-2" />
+            {adding ? "..." : "Add"}
+          </Button>
+        </form>
 
         {loading ? (
           <div className="space-y-2">
@@ -445,29 +350,20 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={players} strategy={verticalListSortingStrategy}>
               <div className="space-y-3">
-                {players.map((player, index) => {
-                  const pairNumber = matchFormat === "round-robin" ? Math.floor(index / 2) + 1 : null;
-                  const isPartner1 = matchFormat === "round-robin" && index % 2 === 0;
-                  
-                  return (
-                    <div key={player.id} className="flex items-center gap-3">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shadow-md ${
-                        matchFormat === "round-robin" 
-                          ? isPartner1 ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"
-                          : "bg-primary text-primary-foreground"
-                      }`}>
-                        {matchFormat === "round-robin" ? pairNumber : index + 1}
-                      </div>
-                      <div className="flex-1">
-                        <SortablePlayer 
-                          player={player} 
-                          onRemove={handleRemovePlayer}
-                          onEdit={setEditingPlayer}
-                        />
-                      </div>
+                {players.map((player, index) => (
+                  <div key={player.id} className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold shadow-md bg-primary text-primary-foreground">
+                      {index + 1}
                     </div>
-                  );
-                })}
+                    <div className="flex-1">
+                      <SortablePlayer 
+                        player={player} 
+                        onRemove={handleRemovePlayer}
+                        onEdit={setEditingPlayer}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             </SortableContext>
           </DndContext>
@@ -475,7 +371,7 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
 
         {players.length > 0 && players.length < minPlayers && (
           <p className="text-sm text-muted-foreground bg-muted p-3 rounded-lg">
-            Add at least {minPlayers - players.length} more {minPlayers - players.length === 1 ? "player" : "players"} to fill all courts
+            Add at least {minPlayers - players.length} more player(s) to fill all courts
           </p>
         )}
 
@@ -521,4 +417,3 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     </Card>
   );
 }
-
