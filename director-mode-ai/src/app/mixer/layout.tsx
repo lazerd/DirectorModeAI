@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { Shuffle, Home, Calendar, Users, Settings, Trophy, CreditCard } from 'lucide-react';
+import { Shuffle, Home, Calendar, Settings, Trophy, CreditCard, Menu } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import MixerMobileNav from '@/components/mixer/MixerMobileNav';
 
 export default async function MixerLayout({
   children,
@@ -22,9 +23,9 @@ export default async function MixerLayout({
     .single();
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
+    <div className="min-h-screen bg-gray-50">
+      {/* Desktop Sidebar - hidden on mobile */}
+      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-white border-r border-gray-200">
         {/* Logo */}
         <div className="p-5 border-b border-gray-200">
           <Link href="/" className="flex items-center gap-2.5">
@@ -61,7 +62,7 @@ export default async function MixerLayout({
             <NavItem href="/mixer/home" icon={Home}>
               My Events
             </NavItem>
-            <NavItem href="/mixer/events/new" icon={Calendar}>
+            <NavItem href="/mixer/select-format" icon={Calendar}>
               Create Event
             </NavItem>
             <NavItem href="/mixer/subscription" icon={CreditCard}>
@@ -85,8 +86,14 @@ export default async function MixerLayout({
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1">
+      {/* Mobile Header */}
+      <MixerMobileNav 
+        userName={profile?.full_name || 'Organizer'} 
+        userInitial={profile?.full_name?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || 'U'}
+      />
+
+      {/* Main Content - with left margin on desktop for sidebar */}
+      <main className="md:ml-64 pt-16 md:pt-0 min-h-screen">
         {children}
       </main>
     </div>
