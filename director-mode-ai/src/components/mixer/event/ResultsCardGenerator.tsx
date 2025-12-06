@@ -341,7 +341,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
   footer.style.marginTop = "auto";
   footer.innerHTML = `
     <div style="font-size: ${isInstagram ? '16px' : '13px'}; font-weight: 600; margin-bottom: 6px; opacity: 0.8;">
-      Create your own tennis and pickleball events at
+      Run your next pickleball or tennis event at
     </div>
     <div style="
       font-size: ${isInstagram ? '26px' : '20px'}; 
