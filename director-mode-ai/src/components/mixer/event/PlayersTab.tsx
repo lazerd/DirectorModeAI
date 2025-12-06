@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -91,7 +91,7 @@ interface PlayersTabProps {
 
 export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) {
   const { toast } = useToast();
-  const supabase = createClient();
+  
   
   const [players, setPlayers] = useState<EventPlayer[]>([]);
   const [newPlayerName, setNewPlayerName] = useState("");
