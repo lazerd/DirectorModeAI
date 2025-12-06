@@ -15,6 +15,7 @@ import EventSummary from "@/components/mixer/event/EventSummary";
 import EditEventFormatDialog from "@/components/mixer/event/EditEventFormatDialog";
 import EventCodeQR from "@/components/mixer/event/EventCodeQR";
 import TournamentBracket from "@/components/mixer/event/TournamentBracket";
+import TeamBattleTab from "@/components/mixer/event/TeamBattleTab";
 import { format } from "date-fns";
 
 interface Event {
@@ -256,14 +257,9 @@ export default function EventDashboard() {
           </TabsContent>
 
           {isTeamBattle ? (
-            <TabsContent value="teams" className="space-y-4">
-              {/* TeamBattleTab will be created next */}
-              <div className="bg-white rounded-xl border-2 border-gray-200 p-8 text-center">
-                <Swords className="h-16 w-16 mx-auto text-red-400 mb-4" />
-                <h2 className="text-2xl font-bold mb-2">Team Battle Mode</h2>
-                <p className="text-gray-600">Team management component coming next...</p>
-              </div>
-            </TabsContent>
+  <TabsContent value="teams" className="space-y-4">
+    <TeamBattleTab event={event} onSwitchToRounds={() => setActiveTab("rounds")} />
+  </TabsContent>
           ) : (
             <TabsContent value="players" className="space-y-4">
               <PlayersTab event={event} onFormatUpdated={fetchEvent} onSwitchToRounds={() => setActiveTab("rounds")} />
