@@ -604,7 +604,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
               <div className="flex gap-3 justify-center">
                 <Button onClick={generateRound} disabled={generating} size="lg">
                   <Plus className="h-4 w-4 mr-2" />
-                  {generating ? "Generating..." : "Generate Round"}
+                  {generating ? "Generating..." : "Generate Round 1"}
                 </Button>
                 <Button 
                   onClick={() => setShowMultiRoundDialog(true)} 
