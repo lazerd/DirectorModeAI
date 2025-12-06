@@ -91,6 +91,8 @@ interface PlayersTabProps {
 
 export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) {
   const { toast } = useToast();
+  const supabase = createClient();
+  
   const [players, setPlayers] = useState<EventPlayer[]>([]);
   const [newPlayerName, setNewPlayerName] = useState("");
   const [newPlayerGender, setNewPlayerGender] = useState<string>("male");
@@ -166,10 +168,8 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
       return;
     }
     
-    const supabaseClient = createClient();
-    
     console.log("STEP 2: Getting user...");
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
     console.log("STEP 2 RESULT - User:", user, "Error:", authError);
     
     if (!user) {
@@ -198,7 +198,7 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     }
 
     console.log("STEP 5: Inserting into players table...");
-    const { data: player, error: playerError } = await supabaseClient
+    const { data: player, error: playerError } = await supabase
       .from("players")
       .insert([{ user_id: user.id, name: newPlayerName.trim(), gender: newPlayerGender }])
       .select()
@@ -217,7 +217,7 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
     }
 
     console.log("STEP 6: Inserting into event_players table...");
-    const { error: eventPlayerError } = await supabaseClient
+    const { error: eventPlayerError } = await supabase
       .from("event_players")
       .insert([{ event_id: event.id, player_id: player.id, strength_order: players.length }]);
     console.log("STEP 6 RESULT - Error:", eventPlayerError);
