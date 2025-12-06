@@ -32,12 +32,15 @@ interface TeamBattleTabProps {
   event: {
     id: string;
     num_courts: number;
+    team_battle_singles_courts?: number;
+    team_battle_doubles_courts?: number;
   };
   onSwitchToRounds?: () => void;
 }
 
 interface CourtConfig {
   mode: 'singles' | 'doubles' | 'mixed';
+  singlesCourts: number;
   doublesCourts: number;
 }
 
@@ -94,12 +97,12 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
   const [addingToTeam, setAddingToTeam] = useState<string | null>(null);
   const [teamScores, setTeamScores] = useState<Record<string, number>>({});
   
-  // Court configuration
+  // Court configuration - initialize from database
   const [courtConfig, setCourtConfig] = useState<CourtConfig>({
     mode: 'singles',
+    singlesCourts: event.num_courts,
     doublesCourts: 0,
   });
-  const [showConfig, setShowConfig] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -110,7 +113,51 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     fetchTeams();
     fetchPlayers();
     fetchTeamScores();
+    loadCourtConfig();
   }, [event.id]);
+
+  const loadCourtConfig = () => {
+    const singles = event.team_battle_singles_courts ?? event.num_courts;
+    const doubles = event.team_battle_doubles_courts ?? 0;
+    
+    let mode: 'singles' | 'doubles' | 'mixed' = 'singles';
+    if (doubles === event.num_courts) {
+      mode = 'doubles';
+    } else if (doubles > 0 && singles > 0) {
+      mode = 'mixed';
+    }
+    
+    setCourtConfig({ mode, singlesCourts: singles, doublesCourts: doubles });
+  };
+
+  const saveCourtConfig = async (newConfig: CourtConfig) => {
+    setCourtConfig(newConfig);
+    
+    await supabase
+      .from("events")
+      .update({
+        team_battle_singles_courts: newConfig.singlesCourts,
+        team_battle_doubles_courts: newConfig.doublesCourts,
+      })
+      .eq("id", event.id);
+  };
+
+  const setMode = (mode: 'singles' | 'doubles' | 'mixed') => {
+    let newConfig: CourtConfig;
+    if (mode === 'singles') {
+      newConfig = { mode, singlesCourts: event.num_courts, doublesCourts: 0 };
+    } else if (mode === 'doubles') {
+      newConfig = { mode, singlesCourts: 0, doublesCourts: event.num_courts };
+    } else {
+      newConfig = { mode, singlesCourts: Math.ceil(event.num_courts / 2), doublesCourts: Math.floor(event.num_courts / 2) };
+    }
+    saveCourtConfig(newConfig);
+  };
+
+  const setDoublesCourts = (doubles: number) => {
+    const singles = event.num_courts - doubles;
+    saveCourtConfig({ mode: 'mixed', singlesCourts: singles, doublesCourts: doubles });
+  };
 
   const fetchTeams = async () => {
     const { data, error } = await supabase
@@ -216,41 +263,47 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     const courts = event.num_courts;
 
     if (totalPlayers < 2) {
-      return { mode: 'singles' as const, doublesCourts: 0, reason: "Need more players" };
+      return { mode: 'singles' as const, singlesCourts: courts, doublesCourts: 0, byes: 0, reason: "Need more players" };
     }
 
-    // Try different configurations and find the one with minimum BYEs
-    let bestConfig: { mode: 'singles' | 'doubles' | 'mixed', doublesCourts: number, byes: number, reason: string } = { mode: 'singles', doublesCourts: 0, byes: Infinity, reason: "" };
+    let bestConfig: { mode: 'singles' | 'doubles' | 'mixed', singlesCourts: number, doublesCourts: number, byes: number, reason: string } = { 
+      mode: 'singles', singlesCourts: courts, doublesCourts: 0, byes: Infinity, reason: "" 
+    };
 
     // Singles only
-    const singlesCapacity = courts * 2;
-    const singlesByes = Math.max(0, totalPlayers - singlesCapacity);
+    const singlesCapacity = Math.min(courts, minTeamSize) * 2;
+    const singlesByes = totalPlayers - singlesCapacity;
     if (singlesByes < bestConfig.byes && minTeamSize >= 1) {
-      bestConfig = { mode: 'singles', doublesCourts: 0, byes: singlesByes, reason: `${courts} singles courts, ${singlesByes} players on BYE` };
+      bestConfig = { mode: 'singles', singlesCourts: courts, doublesCourts: 0, byes: Math.max(0, singlesByes), reason: `${courts} singles courts` };
     }
 
-    // Doubles only (need at least 2 per team per court)
-    const doublesCapacity = courts * 4;
-    const doublesByes = Math.max(0, totalPlayers - doublesCapacity);
-    const canDoAllDoubles = minTeamSize >= courts * 2;
-    if (doublesByes < bestConfig.byes && canDoAllDoubles) {
-      bestConfig = { mode: 'doubles', doublesCourts: courts, byes: doublesByes, reason: `${courts} doubles courts, ${doublesByes} players on BYE` };
+    // Doubles only
+    const doublesCapacity = Math.min(courts, Math.floor(minTeamSize / 2)) * 4;
+    const doublesByes = totalPlayers - doublesCapacity;
+    if (doublesByes < bestConfig.byes && minTeamSize >= 2) {
+      bestConfig = { mode: 'doubles', singlesCourts: 0, doublesCourts: courts, byes: Math.max(0, doublesByes), reason: `${courts} doubles courts` };
     }
 
     // Mixed configurations
     for (let d = 1; d < courts; d++) {
       const s = courts - d;
-      const mixedCapacity = (d * 4) + (s * 2);
-      const mixedByes = Math.max(0, totalPlayers - mixedCapacity);
-      const canDoMixed = minTeamSize >= (d * 2) + s; // Need enough per team
+      const doublesNeededPerTeam = d * 2;
+      const singlesNeededPerTeam = s;
+      const totalNeededPerTeam = doublesNeededPerTeam + singlesNeededPerTeam;
       
-      if (mixedByes < bestConfig.byes && canDoMixed) {
-        bestConfig = { 
-          mode: 'mixed', 
-          doublesCourts: d, 
-          byes: mixedByes, 
-          reason: `${d} doubles + ${s} singles courts, ${mixedByes} players on BYE` 
-        };
+      if (minTeamSize >= totalNeededPerTeam) {
+        const mixedCapacity = (d * 4) + (s * 2);
+        const mixedByes = totalPlayers - mixedCapacity;
+        
+        if (mixedByes < bestConfig.byes) {
+          bestConfig = { 
+            mode: 'mixed', 
+            singlesCourts: s,
+            doublesCourts: d, 
+            byes: Math.max(0, mixedByes), 
+            reason: `${d} doubles + ${s} singles` 
+          };
+        }
       }
     }
 
@@ -259,13 +312,14 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
 
   const applyAIRecommendation = () => {
     const optimal = calculateOptimalConfig();
-    setCourtConfig({
+    saveCourtConfig({
       mode: optimal.mode,
+      singlesCourts: optimal.singlesCourts,
       doublesCourts: optimal.doublesCourts,
     });
     toast({
       title: "✨ AI Recommendation Applied",
-      description: optimal.reason,
+      description: `${optimal.reason}, ${optimal.byes} players on BYE`,
     });
   };
 
@@ -365,22 +419,18 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
 
   // Calculate current config stats
   const getConfigStats = () => {
-    const { mode, doublesCourts } = courtConfig;
-    const singlesCourts = event.num_courts - doublesCourts;
+    const { singlesCourts, doublesCourts } = courtConfig;
+    const minTeamSize = Math.min(team1Count, team2Count);
     
-    if (mode === 'singles') {
-      const capacity = event.num_courts * 2;
-      const byes = Math.max(0, totalPlayers - capacity);
-      return { singlesCourts: event.num_courts, doublesCourts: 0, capacity, byes };
-    } else if (mode === 'doubles') {
-      const capacity = event.num_courts * 4;
-      const byes = Math.max(0, totalPlayers - capacity);
-      return { singlesCourts: 0, doublesCourts: event.num_courts, capacity, byes };
-    } else {
-      const capacity = (doublesCourts * 4) + (singlesCourts * 2);
-      const byes = Math.max(0, totalPlayers - capacity);
-      return { singlesCourts, doublesCourts, capacity, byes };
-    }
+    // For team battle: each singles court needs 1 player per team, each doubles needs 2 per team
+    const singlesNeededPerTeam = singlesCourts;
+    const doublesNeededPerTeam = doublesCourts * 2;
+    const totalNeededPerTeam = singlesNeededPerTeam + doublesNeededPerTeam;
+    
+    const playersUsed = Math.min(minTeamSize, totalNeededPerTeam) * 2;
+    const byes = totalPlayers - playersUsed;
+    
+    return { singlesCourts, doublesCourts, byes: Math.max(0, byes) };
   };
 
   const configStats = getConfigStats();
@@ -452,7 +502,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           {/* Mode Selection */}
           <div className="grid grid-cols-3 gap-2">
             <button
-              onClick={() => setCourtConfig({ mode: 'singles', doublesCourts: 0 })}
+              onClick={() => setMode('singles')}
               className={`p-3 rounded-xl border-2 text-center transition-all ${
                 courtConfig.mode === 'singles' 
                   ? 'border-purple-500 bg-purple-100' 
@@ -464,7 +514,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
               <p className="text-xs text-gray-500">1v1 matches</p>
             </button>
             <button
-              onClick={() => setCourtConfig({ mode: 'doubles', doublesCourts: event.num_courts })}
+              onClick={() => setMode('doubles')}
               className={`p-3 rounded-xl border-2 text-center transition-all ${
                 courtConfig.mode === 'doubles' 
                   ? 'border-purple-500 bg-purple-100' 
@@ -476,7 +526,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
               <p className="text-xs text-gray-500">2v2 matches</p>
             </button>
             <button
-              onClick={() => setCourtConfig({ mode: 'mixed', doublesCourts: Math.floor(event.num_courts / 2) })}
+              onClick={() => setMode('mixed')}
               className={`p-3 rounded-xl border-2 text-center transition-all ${
                 courtConfig.mode === 'mixed' 
                   ? 'border-purple-500 bg-purple-100' 
@@ -490,10 +540,10 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           </div>
 
           {/* Mixed Mode Slider */}
-          {courtConfig.mode === 'mixed' && (
+          {courtConfig.mode === 'mixed' && event.num_courts > 1 && (
             <div className="p-4 bg-white rounded-xl border-2 border-gray-200">
               <div className="flex justify-between text-sm mb-2">
-                <span>Singles Courts: {event.num_courts - courtConfig.doublesCourts}</span>
+                <span>Singles Courts: {courtConfig.singlesCourts}</span>
                 <span>Doubles Courts: {courtConfig.doublesCourts}</span>
               </div>
               <input
@@ -501,7 +551,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
                 min={1}
                 max={event.num_courts - 1}
                 value={courtConfig.doublesCourts}
-                onChange={(e) => setCourtConfig({ ...courtConfig, doublesCourts: parseInt(e.target.value) })}
+                onChange={(e) => setDoublesCourts(parseInt(e.target.value))}
                 className="w-full"
               />
               <div className="flex justify-between text-xs text-gray-400 mt-1">
