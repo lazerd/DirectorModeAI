@@ -106,7 +106,7 @@ export default function EventDashboard() {
 
   if (!event) return null;
 
-  const isTournament = event.match_format === 'tournament';
+  const isTournament = event.match_format === 'single-elimination';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5">
