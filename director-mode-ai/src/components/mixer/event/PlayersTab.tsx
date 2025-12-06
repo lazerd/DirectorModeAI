@@ -160,20 +160,12 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
   };
 
   const handleAddPlayer = async (e?: React.FormEvent) => {
-    console.log("STEP 1: handleAddPlayer called");
     if (e) e.preventDefault();
+    if (adding) return;
     
-    if (adding) {
-      console.log("BLOCKED: already adding");
-      return;
-    }
-    
-    console.log("STEP 2: Getting user...");
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    console.log("STEP 2 RESULT - User:", user, "Error:", authError);
+    const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
-      console.log("STEP 2 FAILED: No user");
       toast({
         variant: "destructive",
         title: "Not logged in",
@@ -182,12 +174,9 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
       return;
     }
 
-    console.log("STEP 3: Setting adding=true");
     setAdding(true);
     
-    console.log("STEP 4: Checking name, value is:", newPlayerName);
     if (!newPlayerName.trim()) {
-      console.log("STEP 4 FAILED: No name");
       toast({
         variant: "destructive",
         title: "Name required",
@@ -196,6 +185,44 @@ export default function PlayersTab({ event, onFormatUpdated }: PlayersTabProps) 
       setAdding(false);
       return;
     }
+
+    const { data: player, error: playerError } = await supabase
+      .from("players")
+      .insert([{ user_id: user.id, name: newPlayerName.trim(), gender: newPlayerGender }])
+      .select()
+      .single();
+
+    if (playerError) {
+      toast({
+        variant: "destructive",
+        title: "Error adding player",
+        description: playerError.message,
+      });
+      setAdding(false);
+      return;
+    }
+
+    const { error: eventPlayerError } = await supabase
+      .from("event_players")
+      .insert([{ event_id: event.id, player_id: player.id, strength_order: players.length }]);
+
+    if (eventPlayerError) {
+      toast({
+        variant: "destructive",
+        title: "Error adding player to event",
+        description: eventPlayerError.message,
+      });
+    } else {
+      toast({
+        title: "Player added",
+        description: `${newPlayerName.trim()} has been added to the event.`,
+      });
+      setNewPlayerName("");
+      setNewPlayerGender("male");
+      fetchPlayers();
+    }
+    setAdding(false);
+  };
 
     console.log("STEP 5: Inserting into players table...");
     const { data: player, error: playerError } = await supabase
