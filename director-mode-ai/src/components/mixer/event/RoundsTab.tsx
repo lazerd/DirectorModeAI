@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -146,7 +147,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     }
   };
 
-  const generateMultipleRoundsHandler = async (numRounds: number) => {
+  const generateMultipleRoundsHandler = async (numRounds: number, randomize: boolean = true) => {
     setGenerating(true);
 
     const { data: playerCountData } = await supabase
@@ -282,6 +283,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     }
 
     const generator = new RoundGenerator(playerData, event.num_courts, matchFormat);
+    generator.setRandomize(randomize);
 
     // Set team battle config if applicable
     if (teamBattleConfig) {
@@ -345,7 +347,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       title: `${numRounds} round${numRounds > 1 ? 's' : ''} created!`,
       description: isTeamBattle 
         ? "Team vs Team matches generated!" 
-        : "Matches generated with smart rotations and balanced BYEs.",
+        : "Matches generated with fresh randomized pairings.",
     });
 
     setGenerating(false);
@@ -353,7 +355,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
   };
 
   const generateRound = async () => {
-    await generateMultipleRoundsHandler(1);
+    await generateMultipleRoundsHandler(1, true);
   };
 
   const regenerateRound = async (roundId: string) => {
@@ -485,6 +487,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     await supabase.from("matches").delete().eq("round_id", roundId);
 
     const generator = new RoundGenerator(playerData, event.num_courts, matchFormat);
+    generator.setRandomize(true);
 
     if (teamBattleConfig) {
       generator.setTeamBattleConfig(teamBattleConfig);
@@ -506,7 +509,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
     toast({
       title: "Round regenerated!",
-      description: "New pairings have been created.",
+      description: "New randomized pairings have been created.",
     });
 
     setGenerating(false);
