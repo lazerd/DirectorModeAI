@@ -33,9 +33,20 @@ interface TeamBattleConfig {
   team2Id: string;
 }
 
+// Fisher-Yates shuffle
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 export class RoundGenerator {
   private matchHistory: Map<string, MatchHistory> = new Map();
   private teamBattleConfig: TeamBattleConfig | null = null;
+  private randomize: boolean = false;
 
   constructor(private players: Player[], private numCourts: number, private format: string) {
     players.forEach(p => {
@@ -47,6 +58,10 @@ export class RoundGenerator {
         byeCount: 0,
       });
     });
+  }
+
+  public setRandomize(randomize: boolean): void {
+    this.randomize = randomize;
   }
 
   public setTeamBattleConfig(config: TeamBattleConfig): void {
@@ -143,6 +158,14 @@ export class RoundGenerator {
     if (p3 && p4 && this.hasPlayedAgainst(p3, p4)) score -= 300;
     if (p3 && p4 && this.hasPlayedAgainst(p1, p4)) score -= 300;
     if (p3 && p4 && this.hasPlayedAgainst(p2, p3)) score -= 300;
+
+    // Add randomness: in random mode add heavy jitter, in smart mode add light jitter to break ties
+    if (this.randomize) {
+      score += Math.random() * 2000 - 1000; // heavy random noise overrides history penalties
+    } else {
+      score += Math.random() * 50 - 25; // light jitter to break ties differently each round
+    }
+
     return score;
   }
 
@@ -186,33 +209,29 @@ export class RoundGenerator {
     const config = this.teamBattleConfig!;
     const pairings: Pairing[] = [];
 
-    // Split players by team
-    const team1Players = this.players
-      .filter(p => p.team_id === config.team1Id)
-      .sort((a, b) => {
+    const sortPlayers = (players: Player[]) => {
+      const sorted = [...players];
+      if (this.randomize) {
+        return shuffle(sorted);
+      }
+      sorted.sort((a, b) => {
         const hA = this.getHistory(a.player_id);
         const hB = this.getHistory(b.player_id);
         if (!hA || !hB) return 0;
         if (hA.byeCount !== hB.byeCount) return hB.byeCount - hA.byeCount;
         return hA.timesPlayed - hB.timesPlayed;
       });
+      return sorted;
+    };
 
-    const team2Players = this.players
-      .filter(p => p.team_id === config.team2Id)
-      .sort((a, b) => {
-        const hA = this.getHistory(a.player_id);
-        const hB = this.getHistory(b.player_id);
-        if (!hA || !hB) return 0;
-        if (hA.byeCount !== hB.byeCount) return hB.byeCount - hA.byeCount;
-        return hA.timesPlayed - hB.timesPlayed;
-      });
+    const team1Players = sortPlayers(this.players.filter(p => p.team_id === config.team1Id));
+    const team2Players = sortPlayers(this.players.filter(p => p.team_id === config.team2Id));
 
     const available1 = [...team1Players];
     const available2 = [...team2Players];
 
     // Generate doubles matches first (Team1 pair vs Team2 pair)
     for (let i = 0; i < config.doublesCourts && available1.length >= 2 && available2.length >= 2; i++) {
-      // Find best Team1 pair
       let bestT1Pair: Player[] | null = null;
       let bestT1Score = -Infinity;
       
@@ -225,6 +244,8 @@ export class RoundGenerator {
           if (this.hasPlayedWith(available1[a].player_id, available1[b].player_id)) {
             score -= 500;
           }
+          if (this.randomize) score += Math.random() * 2000 - 1000;
+          else score += Math.random() * 50 - 25;
           if (score > bestT1Score) {
             bestT1Score = score;
             bestT1Pair = [available1[a], available1[b]];
@@ -232,7 +253,6 @@ export class RoundGenerator {
         }
       }
 
-      // Find best Team2 pair
       let bestT2Pair: Player[] | null = null;
       let bestT2Score = -Infinity;
       
@@ -245,6 +265,8 @@ export class RoundGenerator {
           if (this.hasPlayedWith(available2[a].player_id, available2[b].player_id)) {
             score -= 500;
           }
+          if (this.randomize) score += Math.random() * 2000 - 1000;
+          else score += Math.random() * 50 - 25;
           if (score > bestT2Score) {
             bestT2Score = score;
             bestT2Pair = [available2[a], available2[b]];
@@ -253,7 +275,6 @@ export class RoundGenerator {
       }
 
       if (bestT1Pair && bestT2Pair) {
-        // Team1 = player1 + player3, Team2 = player2 + player4
         pairings.push({
           player1_id: bestT1Pair[0].player_id,
           player2_id: bestT2Pair[0].player_id,
@@ -261,7 +282,6 @@ export class RoundGenerator {
           player4_id: bestT2Pair[1].player_id,
         });
 
-        // Remove used players
         bestT1Pair.forEach(p => {
           const idx = available1.findIndex(ap => ap.player_id === p.player_id);
           if (idx >= 0) available1.splice(idx, 1);
@@ -275,7 +295,6 @@ export class RoundGenerator {
 
     // Generate singles matches (Team1 player vs Team2 player)
     for (let i = 0; i < config.singlesCourts && available1.length >= 1 && available2.length >= 1; i++) {
-      // Find best matchup
       let bestMatch: { t1: Player, t2: Player, score: number } | null = null;
 
       for (let a = 0; a < Math.min(available1.length, 4); a++) {
@@ -287,6 +306,8 @@ export class RoundGenerator {
           if (this.hasPlayedAgainst(available1[a].player_id, available2[b].player_id)) {
             score -= 300;
           }
+          if (this.randomize) score += Math.random() * 2000 - 1000;
+          else score += Math.random() * 50 - 25;
           if (!bestMatch || score > bestMatch.score) {
             bestMatch = { t1: available1[a], t2: available2[b], score };
           }
@@ -325,15 +346,21 @@ export class RoundGenerator {
 
   private generateMaximizeCourtsRound(): Pairing[] {
     const pairings: Pairing[] = [];
-    const available = [...this.players].sort((a, b) => {
-      const historyA = this.getHistory(a.player_id);
-      const historyB = this.getHistory(b.player_id);
-      if (!historyA || !historyB) return 0;
-      if (historyA.byeCount !== historyB.byeCount) {
-        return historyB.byeCount - historyA.byeCount;
-      }
-      return historyA.timesPlayed - historyB.timesPlayed;
-    });
+    let available: Player[];
+
+    if (this.randomize) {
+      available = shuffle(this.players);
+    } else {
+      available = [...this.players].sort((a, b) => {
+        const historyA = this.getHistory(a.player_id);
+        const historyB = this.getHistory(b.player_id);
+        if (!historyA || !historyB) return 0;
+        if (historyA.byeCount !== historyB.byeCount) {
+          return historyB.byeCount - historyA.byeCount;
+        }
+        return historyA.timesPlayed - historyB.timesPlayed;
+      });
+    }
 
     const totalPlayers = available.length;
     const maxDoublesMatches = Math.floor(totalPlayers / 4);
@@ -391,23 +418,34 @@ export class RoundGenerator {
 
   private generateDoublesRound(roundNumber: number): Pairing[] {
     const pairings: Pairing[] = [];
-    const available = [...this.players];
+    let available: Player[];
 
-    available.sort((a, b) => {
-      const historyA = this.getHistory(a.player_id);
-      const historyB = this.getHistory(b.player_id);
-      if (!historyA || !historyB) return 0;
-      
-      if (historyA.byeCount !== historyB.byeCount) {
-        return historyB.byeCount - historyA.byeCount;
-      }
-      
-      if (historyA.timesPlayed !== historyB.timesPlayed) {
-        return historyA.timesPlayed - historyB.timesPlayed;
-      }
-      
-      return (b.wins || 0) - (a.wins || 0);
-    });
+    if (this.randomize) {
+      // Shuffle first, but still prioritize players with more BYEs
+      const byePlayers = this.players.filter(p => {
+        const h = this.getHistory(p.player_id);
+        return h && h.byeCount > 0;
+      });
+      const nonByePlayers = this.players.filter(p => {
+        const h = this.getHistory(p.player_id);
+        return !h || h.byeCount === 0;
+      });
+      available = [...shuffle(byePlayers), ...shuffle(nonByePlayers)];
+    } else {
+      available = [...this.players];
+      available.sort((a, b) => {
+        const historyA = this.getHistory(a.player_id);
+        const historyB = this.getHistory(b.player_id);
+        if (!historyA || !historyB) return 0;
+        if (historyA.byeCount !== historyB.byeCount) {
+          return historyB.byeCount - historyA.byeCount;
+        }
+        if (historyA.timesPlayed !== historyB.timesPlayed) {
+          return historyA.timesPlayed - historyB.timesPlayed;
+        }
+        return (b.wins || 0) - (a.wins || 0);
+      });
+    }
 
     while (available.length >= 4 && pairings.length < this.numCourts) {
       let bestMatchup: { players: Player[], score: number } | null = null;
@@ -466,19 +504,30 @@ export class RoundGenerator {
 
   private generateSinglesRound(roundNumber: number): Pairing[] {
     const pairings: Pairing[] = [];
-    const available = [...this.players];
+    let available: Player[];
 
-    available.sort((a, b) => {
-      const historyA = this.getHistory(a.player_id);
-      const historyB = this.getHistory(b.player_id);
-      if (!historyA || !historyB) return 0;
-      
-      if (historyA.byeCount !== historyB.byeCount) {
-        return historyB.byeCount - historyA.byeCount;
-      }
-      
-      return historyA.timesPlayed - historyB.timesPlayed;
-    });
+    if (this.randomize) {
+      const byePlayers = this.players.filter(p => {
+        const h = this.getHistory(p.player_id);
+        return h && h.byeCount > 0;
+      });
+      const nonByePlayers = this.players.filter(p => {
+        const h = this.getHistory(p.player_id);
+        return !h || h.byeCount === 0;
+      });
+      available = [...shuffle(byePlayers), ...shuffle(nonByePlayers)];
+    } else {
+      available = [...this.players];
+      available.sort((a, b) => {
+        const historyA = this.getHistory(a.player_id);
+        const historyB = this.getHistory(b.player_id);
+        if (!historyA || !historyB) return 0;
+        if (historyA.byeCount !== historyB.byeCount) {
+          return historyB.byeCount - historyA.byeCount;
+        }
+        return historyA.timesPlayed - historyB.timesPlayed;
+      });
+    }
 
     while (available.length >= 2 && pairings.length < this.numCourts) {
       let bestMatchup: { players: Player[], score: number } | null = null;
@@ -495,6 +544,13 @@ export class RoundGenerator {
           
           if (this.hasPlayedAgainst(players[0].player_id, players[1].player_id)) {
             score -= 300;
+          }
+
+          // Randomness
+          if (this.randomize) {
+            score += Math.random() * 2000 - 1000;
+          } else {
+            score += Math.random() * 50 - 25;
           }
 
           if (!bestMatchup || score > bestMatchup.score) {
@@ -542,10 +598,15 @@ export class RoundGenerator {
   }
 
   private generateMixedDoublesRound(roundNumber: number): Pairing[] {
-    const males = this.players.filter(p => p.gender === 'male');
-    const females = this.players.filter(p => p.gender === 'female');
-    const pairings: Pairing[] = [];
+    let males = this.players.filter(p => p.gender === 'male');
+    let females = this.players.filter(p => p.gender === 'female');
+    
+    if (this.randomize) {
+      males = shuffle(males);
+      females = shuffle(females);
+    }
 
+    const pairings: Pairing[] = [];
     const maxPairs = Math.min(males.length, females.length, this.numCourts * 2);
     
     for (let i = 0; i < Math.floor(maxPairs / 2); i++) {
