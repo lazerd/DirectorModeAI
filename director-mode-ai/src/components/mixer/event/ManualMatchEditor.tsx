@@ -1,25 +1,10 @@
 import { useState, useEffect } from "react";
-import { 
-  DndContext, 
-  DragEndEvent, 
-  DragOverlay, 
-  DragStartEvent, 
-  DragOverEvent,
-  closestCenter, 
-  PointerSensor, 
-  TouchSensor, 
-  useSensor, 
-  useSensors,
-  useDroppable 
-} from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
-import { GripVertical } from "lucide-react";
+import { ArrowLeftRight, X } from "lucide-react";
 
 interface Match {
   id: string;
@@ -34,12 +19,12 @@ interface Match {
   player4: { name: string } | null;
 }
 
-interface Player {
-  id: string;
+interface PlayerSlot {
+  uniqueId: string;
   playerId: string;
   name: string;
   matchId: string;
-  team: 1 | 2 | 0; // 0 for BYE
+  slot: "player1" | "player2" | "player3" | "player4" | "bye";
 }
 
 interface ManualMatchEditorProps {
@@ -49,235 +34,91 @@ interface ManualMatchEditorProps {
   onSaved: () => void;
 }
 
-const PlayerCard = ({ player }: { player: Player }) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: player.id,
-    data: player,
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  };
-
-  return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="cursor-move">
-      <Card className="p-2 flex items-center gap-2 bg-background hover:bg-accent/10 transition-colors border-2">
-        <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-        <span className="text-sm font-medium">{player.name}</span>
-      </Card>
-    </div>
-  );
-};
-
-const DroppableTeam = ({ id, players, label }: { id: string; players: Player[]; label?: string }) => {
-  const { setNodeRef, isOver } = useDroppable({ id });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`space-y-2 min-h-[60px] p-2 rounded-lg border-2 border-dashed transition-colors ${
-        isOver ? "border-primary bg-primary/5" : "border-muted-foreground/20"
-      }`}
-    >
-      {label && <p className="text-xs font-semibold text-muted-foreground uppercase">{label}</p>}
-      <SortableContext items={players.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-        {players.length === 0 ? (
-          <div className="text-xs text-muted-foreground text-center py-2">Drop player here</div>
-        ) : (
-          players.map((player) => <PlayerCard key={player.id} player={player} />)
-        )}
-      </SortableContext>
-    </div>
-  );
-};
-
 const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatchEditorProps) => {
   const { toast } = useToast();
-  
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 200,
-        tolerance: 5,
-      },
-    })
-  );
-  
-  const [players, setPlayers] = useState<Player[]>(() => {
-    const allPlayers: Player[] = [];
-    matches.forEach((match) => {
-      // Check if it's a BYE match (only player1)
-      const isBye = match.player1_id && !match.player2_id && !match.player3_id && !match.player4_id;
-      
-      if (match.player1_id && match.player1) {
-        allPlayers.push({
-          id: `${match.id}-player1`,
-          playerId: match.player1_id,
-          name: match.player1.name,
-          matchId: match.id,
-          team: isBye ? 0 : 1,
-        });
-      }
-      if (match.player2_id && match.player2) {
-        allPlayers.push({
-          id: `${match.id}-player2`,
-          playerId: match.player2_id,
-          name: match.player2.name,
-          matchId: match.id,
-          team: 2,
-        });
-      }
-      if (match.player3_id && match.player3) {
-        allPlayers.push({
-          id: `${match.id}-player3`,
-          playerId: match.player3_id,
-          name: match.player3.name,
-          matchId: match.id,
-          team: 1,
-        });
-      }
-      if (match.player4_id && match.player4) {
-        allPlayers.push({
-          id: `${match.id}-player4`,
-          playerId: match.player4_id,
-          name: match.player4.name,
-          matchId: match.id,
-          team: 2,
-        });
-      }
-    });
-    return allPlayers;
-  });
-  
-  // Reinitialize player state when matches change
+  const [players, setPlayers] = useState<PlayerSlot[]>([]);
+  const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // Build player list from matches
   useEffect(() => {
-    const allPlayers: Player[] = [];
+    const allPlayers: PlayerSlot[] = [];
     matches.forEach((match) => {
       const isBye = match.player1_id && !match.player2_id && !match.player3_id && !match.player4_id;
-      
+
       if (match.player1_id && match.player1) {
         allPlayers.push({
-          id: `${match.id}-player1`,
+          uniqueId: `${match.id}-p1`,
           playerId: match.player1_id,
           name: match.player1.name,
           matchId: match.id,
-          team: isBye ? 0 : 1,
+          slot: isBye ? "bye" : "player1",
         });
       }
       if (match.player2_id && match.player2) {
         allPlayers.push({
-          id: `${match.id}-player2`,
+          uniqueId: `${match.id}-p2`,
           playerId: match.player2_id,
           name: match.player2.name,
           matchId: match.id,
-          team: 2,
+          slot: "player2",
         });
       }
       if (match.player3_id && match.player3) {
         allPlayers.push({
-          id: `${match.id}-player3`,
+          uniqueId: `${match.id}-p3`,
           playerId: match.player3_id,
           name: match.player3.name,
           matchId: match.id,
-          team: 1,
+          slot: "player3",
         });
       }
       if (match.player4_id && match.player4) {
         allPlayers.push({
-          id: `${match.id}-player4`,
+          uniqueId: `${match.id}-p4`,
           playerId: match.player4_id,
           name: match.player4.name,
           matchId: match.id,
-          team: 2,
+          slot: "player4",
         });
       }
     });
     setPlayers(allPlayers);
+    setSelectedPlayer(null);
   }, [matches]);
-  
-  const [activePlayer, setActivePlayer] = useState<Player | null>(null);
-  const [saving, setSaving] = useState(false);
 
-  const handleDragStart = (event: DragStartEvent) => {
-    const player = players.find((p) => p.id === event.active.id);
-    setActivePlayer(player || null);
-  };
-
-  const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activePlayer = players.find((p) => p.id === active.id);
-    if (!activePlayer) return;
-
-    // Check if dropping over a droppable container
-    const overContainerId = over.id as string;
-    if (overContainerId.startsWith("match-") && overContainerId.includes("-team")) {
-      // Extract match ID and team from container ID
-      const [, matchId, teamStr] = overContainerId.match(/match-(.+)-team-(\d)/) || [];
-      if (matchId && teamStr) {
-        const team = parseInt(teamStr) as 0 | 1 | 2;
-        
-        // Update player's match and team
-        setPlayers((prev) =>
-          prev.map((p) =>
-            p.id === activePlayer.id
-              ? { ...p, matchId, team }
-              : p
-          )
-        );
-      }
-    }
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActivePlayer(null);
-
-    if (!over) return;
-
-    const activePlayer = players.find((p) => p.id === active.id);
-    const overPlayer = players.find((p) => p.id === over.id);
-
-    if (!activePlayer) return;
-
-    // If dropped on another player, swap positions
-    if (overPlayer && activePlayer.id !== overPlayer.id) {
+  const handlePlayerTap = (uniqueId: string) => {
+    if (!selectedPlayer) {
+      // First tap — select this player
+      setSelectedPlayer(uniqueId);
+    } else if (selectedPlayer === uniqueId) {
+      // Tapped same player — deselect
+      setSelectedPlayer(null);
+    } else {
+      // Second tap — swap the two players
       setPlayers((prev) => {
         const newPlayers = [...prev];
-        const activeIndex = newPlayers.findIndex((p) => p.id === activePlayer.id);
-        const overIndex = newPlayers.findIndex((p) => p.id === overPlayer.id);
-        
-        // Update both players' match and team to match their new positions
-        newPlayers[activeIndex] = {
-          ...newPlayers[activeIndex],
-          matchId: overPlayer.matchId,
-          team: overPlayer.team,
-        };
-        newPlayers[overIndex] = {
-          ...newPlayers[overIndex],
-          matchId: activePlayer.matchId,
-          team: activePlayer.team,
-        };
-        
+        const idx1 = newPlayers.findIndex((p) => p.uniqueId === selectedPlayer);
+        const idx2 = newPlayers.findIndex((p) => p.uniqueId === uniqueId);
+        if (idx1 >= 0 && idx2 >= 0) {
+          // Swap matchId and slot
+          const tempMatchId = newPlayers[idx1].matchId;
+          const tempSlot = newPlayers[idx1].slot;
+          newPlayers[idx1] = { ...newPlayers[idx1], matchId: newPlayers[idx2].matchId, slot: newPlayers[idx2].slot };
+          newPlayers[idx2] = { ...newPlayers[idx2], matchId: tempMatchId, slot: tempSlot };
+        }
         return newPlayers;
       });
+      setSelectedPlayer(null);
     }
   };
 
   const handleSave = async () => {
     setSaving(true);
 
-    // Build match updates from current player assignments
-    const matchUpdates: Record<string, Record<string, string | null>> = {};
-    
+    // Build match updates
+    const matchUpdates: Record<string, { player1_id: string | null; player2_id: string | null; player3_id: string | null; player4_id: string | null }> = {};
+
     matches.forEach((match) => {
       matchUpdates[match.id] = {
         player1_id: null,
@@ -287,45 +128,57 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
       };
     });
 
-    // Assign players to positions based on their match and team
+    // Place players into their assigned matches
     players.forEach((player) => {
-      const matchPlayers = players.filter((p) => p.matchId === player.matchId);
-      const isBye = matchPlayers.length === 1;
-      
-      if (isBye) {
-        matchUpdates[player.matchId].player1_id = player.playerId;
-      } else {
-        const team1Players = matchPlayers.filter((p) => p.team === 1).sort((a, b) => a.id.localeCompare(b.id));
-        const team2Players = matchPlayers.filter((p) => p.team === 2).sort((a, b) => a.id.localeCompare(b.id));
-        
-        if (team1Players[0]) matchUpdates[player.matchId].player1_id = team1Players[0].playerId;
-        if (team1Players[1]) matchUpdates[player.matchId].player3_id = team1Players[1].playerId;
-        if (team2Players[0]) matchUpdates[player.matchId].player2_id = team2Players[0].playerId;
-        if (team2Players[1]) matchUpdates[player.matchId].player4_id = team2Players[1].playerId;
+      const update = matchUpdates[player.matchId];
+      if (!update) return;
+
+      if (player.slot === "bye" || player.slot === "player1") {
+        if (!update.player1_id) {
+          update.player1_id = player.playerId;
+        } else if (!update.player3_id) {
+          update.player3_id = player.playerId;
+        }
+      } else if (player.slot === "player2") {
+        if (!update.player2_id) {
+          update.player2_id = player.playerId;
+        } else if (!update.player4_id) {
+          update.player4_id = player.playerId;
+        }
+      } else if (player.slot === "player3") {
+        if (!update.player3_id) {
+          update.player3_id = player.playerId;
+        } else if (!update.player1_id) {
+          update.player1_id = player.playerId;
+        }
+      } else if (player.slot === "player4") {
+        if (!update.player4_id) {
+          update.player4_id = player.playerId;
+        } else if (!update.player2_id) {
+          update.player2_id = player.playerId;
+        }
       }
     });
 
-    // Update all matches in database
     try {
       for (const [matchId, updates] of Object.entries(matchUpdates)) {
         const { error } = await supabase
           .from("matches")
           .update(updates)
           .eq("id", matchId);
-
         if (error) throw error;
       }
 
       toast({
-        title: "Matches updated",
-        description: "Player assignments have been saved.",
+        title: "Matches updated!",
+        description: "Player swaps have been saved.",
       });
       onSaved();
       onOpenChange(false);
     } catch (error: any) {
       toast({
         variant: "destructive",
-        title: "Error updating matches",
+        title: "Error saving",
         description: error.message,
       });
     } finally {
@@ -333,98 +186,113 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
     }
   };
 
-  // Group players by match
-  const matchesWithPlayers = matches.map((match) => {
-    const matchPlayers = players.filter((p) => p.matchId === match.id);
-    const team1 = matchPlayers.filter((p) => p.team === 1);
-    const team2 = matchPlayers.filter((p) => p.team === 2);
-    const bye = matchPlayers.filter((p) => p.team === 0);
-    const isBye = bye.length > 0;
-    
-    return {
-      match,
-      team1,
-      team2,
-      bye,
-      isBye,
-    };
-  });
+  // Group players by match for display
+  const getMatchPlayers = (matchId: string) => players.filter((p) => p.matchId === matchId);
+
+  const activeMatches = matches.filter((m) => m.player2_id || m.player3_id || m.player4_id);
+  const byeMatches = matches.filter((m) => m.player1_id && !m.player2_id && !m.player3_id && !m.player4_id);
+
+  const PlayerButton = ({ player }: { player: PlayerSlot }) => {
+    const isSelected = selectedPlayer === player.uniqueId;
+    return (
+      <button
+        onClick={() => handlePlayerTap(player.uniqueId)}
+        className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-semibold transition-all ${
+          isSelected
+            ? "bg-blue-600 text-white ring-2 ring-blue-400 ring-offset-1 scale-[1.02]"
+            : "bg-white border-2 border-gray-200 text-gray-800 hover:border-blue-300 hover:bg-blue-50 active:bg-blue-100"
+        }`}
+      >
+        {player.name}
+      </button>
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Manually Arrange Players</DialogTitle>
-          <DialogDescription className="text-base">
-            Drag and drop players between teams and courts. You can move players from BYE to matches and between teams.
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto p-0">
+        <DialogHeader className="px-5 pt-5 pb-3 sticky top-0 bg-white z-10 border-b">
+          <DialogTitle className="text-xl flex items-center gap-2">
+            <ArrowLeftRight className="h-5 w-5 text-blue-600" />
+            Swap Players
+          </DialogTitle>
+          <DialogDescription>
+            {selectedPlayer
+              ? "Now tap another player to swap them"
+              : "Tap a player to select, then tap another to swap"}
           </DialogDescription>
+          {selectedPlayer && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedPlayer(null)}
+              className="absolute top-4 right-4"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
         </DialogHeader>
 
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="space-y-4 py-4">
-            {matchesWithPlayers.map(({ match, team1, team2, bye, isBye }) => (
-              <Card key={match.id} className="p-4 space-y-3 bg-muted/30">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-bold text-lg">Court {match.court_number}</h3>
-                  {isBye && (
-                    <span className="text-sm font-semibold text-amber-600 bg-amber-100 px-3 py-1 rounded-full">
-                      BYE
-                    </span>
-                  )}
+        <div className="px-5 py-4 space-y-4">
+          {/* Active matches */}
+          {activeMatches.map((match) => {
+            const matchPlayers = getMatchPlayers(match.id);
+            const team1 = matchPlayers.filter((p) => p.slot === "player1" || p.slot === "player3");
+            const team2 = matchPlayers.filter((p) => p.slot === "player2" || p.slot === "player4");
+
+            return (
+              <Card key={match.id} className="overflow-hidden border-2">
+                <div className="bg-gray-100 px-4 py-2 border-b">
+                  <p className="font-bold text-base text-gray-800">Court {match.court_number}</p>
                 </div>
-
-                {isBye ? (
-                  <DroppableTeam
-                    id={`match-${match.id}-team-0`}
-                    players={bye}
-                  />
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+                <div className="p-3">
+                  <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
                     {/* Team 1 */}
-                    <DroppableTeam
-                      id={`match-${match.id}-team-1`}
-                      players={team1}
-                      label="Team 1"
-                    />
+                    <div className="space-y-2">
+                      {team1.map((p) => (
+                        <PlayerButton key={p.uniqueId} player={p} />
+                      ))}
+                    </div>
 
-                    {/* VS divider */}
-                    <div className="flex justify-center items-center py-4 md:py-0">
-                      <span className="text-2xl font-bold text-muted-foreground">VS</span>
+                    {/* VS */}
+                    <div className="px-2">
+                      <span className="text-lg font-bold text-gray-400">vs</span>
                     </div>
 
                     {/* Team 2 */}
-                    <DroppableTeam
-                      id={`match-${match.id}-team-2`}
-                      players={team2}
-                      label="Team 2"
-                    />
+                    <div className="space-y-2">
+                      {team2.map((p) => (
+                        <PlayerButton key={p.uniqueId} player={p} />
+                      ))}
+                    </div>
                   </div>
-                )}
+                </div>
               </Card>
-            ))}
-          </div>
+            );
+          })}
 
-          <DragOverlay>
-            {activePlayer ? (
-              <Card className="p-2 flex items-center gap-2 bg-background opacity-90 shadow-lg border-2 border-primary">
-                <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-sm font-medium">{activePlayer.name}</span>
-              </Card>
-            ) : null}
-          </DragOverlay>
-        </DndContext>
+          {/* BYE players */}
+          {byeMatches.length > 0 && (
+            <Card className="overflow-hidden border-2 border-amber-200">
+              <div className="bg-amber-50 px-4 py-2 border-b border-amber-200">
+                <p className="font-bold text-base text-amber-800">On BYE</p>
+              </div>
+              <div className="p-3 space-y-2">
+                {byeMatches.map((match) => {
+                  const byePlayer = getMatchPlayers(match.id).find((p) => p.slot === "bye");
+                  if (!byePlayer) return null;
+                  return <PlayerButton key={byePlayer.uniqueId} player={byePlayer} />;
+                })}
+              </div>
+            </Card>
+          )}
+        </div>
 
-        <DialogFooter className="gap-3 sm:gap-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)} size="lg" className="flex-1 sm:flex-1">
+        <DialogFooter className="px-5 pb-5 pt-3 sticky bottom-0 bg-white border-t gap-3 sm:gap-3">
+          <Button variant="outline" onClick={() => onOpenChange(false)} size="lg" className="flex-1">
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving} size="lg" className="flex-1 sm:flex-1">
+          <Button onClick={handleSave} disabled={saving} size="lg" className="flex-1">
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         </DialogFooter>
