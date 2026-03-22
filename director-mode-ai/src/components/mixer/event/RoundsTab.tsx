@@ -768,7 +768,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                         </Button>
                       </>
                     )}
-                    {currentRound?.status === "completed" && currentRound.round_number === rounds.length && (
+                    {(currentRound?.status === "completed" || currentRound?.status === "in_progress") && currentRound.round_number === rounds.length && (
                       <>
                         <Button onClick={generateRound} disabled={generating} size="lg">
                           <Plus className="h-5 w-5 mr-2" />
