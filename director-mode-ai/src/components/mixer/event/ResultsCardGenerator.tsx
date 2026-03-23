@@ -7,6 +7,7 @@ interface Standing {
   games_won: number;
   games_lost: number;
   win_percentage: number;
+  [key: string]: any; // allow extra fields like player_id, games_differential
 }
 
 interface EventPhoto {
@@ -73,28 +74,13 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
   container.style.gap = `${sectionGap}px`;
   container.style.overflow = "hidden";
 
-  // Header
+  // Header - just text logo, no broken image
   const header = document.createElement("div");
   header.style.display = "flex";
   header.style.alignItems = "center";
   header.style.justifyContent = "space-between";
   header.style.marginBottom = isInstagram ? "16px" : "12px";
 
-  const logoContainer = document.createElement("div");
-  logoContainer.style.display = "flex";
-  logoContainer.style.alignItems = "center";
-  logoContainer.style.gap = "16px";
-  
-  const logoImg = document.createElement("img");
-  logoImg.src = "";
-  logoImg.style.width = isInstagram ? "64px" : "52px";
-  logoImg.style.height = isInstagram ? "64px" : "52px";
-  logoImg.style.borderRadius = "12px";
-  logoImg.style.boxShadow = "0 4px 16px rgba(0,0,0,0.4)";
-  logoImg.style.background = "white";
-  logoImg.style.padding = "4px";
-  logoImg.crossOrigin = "anonymous";
-  
   const logoText = document.createElement("div");
   logoText.style.fontSize = isInstagram ? "36px" : "28px";
   logoText.style.fontWeight = "800";
@@ -102,12 +88,9 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
   logoText.style.webkitBackgroundClip = "text";
   logoText.style.backgroundClip = "text";
   logoText.style.webkitTextFillColor = "transparent";
-  logoText.style.textShadow = "0 2px 8px rgba(0,149,255,0.3)";
   logoText.textContent = "MixerModeAI";
   
-  logoContainer.appendChild(logoImg);
-  logoContainer.appendChild(logoText);
-  header.appendChild(logoContainer);
+  header.appendChild(logoText);
   container.appendChild(header);
 
   // Event title
@@ -127,11 +110,34 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
   details.style.textAlign = "center";
   details.style.opacity = "0.85";
   details.style.fontWeight = "500";
-  details.textContent = `${new Date(eventDate).toLocaleDateString()} • ${totalRounds} Rounds`;
+  const formattedDate = eventDate ? new Date(eventDate).toLocaleDateString() : "";
+  details.textContent = `${formattedDate} • ${totalRounds} Rounds`;
   container.appendChild(details);
 
-  // Photo collage
+  // Photo collage - skip photos entirely to avoid CORS issues
+  // Photos from Supabase storage often have CORS problems with html-to-image
+  // Only include if we have photos and they're likely to work
+  let usePhotos = false;
   if (photos.length > 0) {
+    // Test if first photo is accessible
+    try {
+      const testImg = new Image();
+      testImg.crossOrigin = "anonymous";
+      const photoLoaded = await Promise.race([
+        new Promise<boolean>((resolve) => {
+          testImg.onload = () => resolve(true);
+          testImg.onerror = () => resolve(false);
+          testImg.src = photos[0].photo_url;
+        }),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
+      ]);
+      usePhotos = photoLoaded;
+    } catch {
+      usePhotos = false;
+    }
+  }
+
+  if (usePhotos && photos.length > 0) {
     const photoContainer = document.createElement("div");
     photoContainer.style.display = "grid";
     photoContainer.style.gap = isInstagram ? "12px" : "10px";
@@ -155,7 +161,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
         photoContainer.style.gridTemplateColumns = "1fr 1fr";
         photoContainer.style.gridTemplateRows = "1fr 1fr";
         photoContainer.style.height = "260px";
-      } else if (photos.length === 5) {
+      } else {
         photoContainer.style.gridTemplateColumns = "repeat(6, 1fr)";
         photoContainer.style.gridTemplateRows = "1fr 1fr";
         photoContainer.style.height = "260px";
@@ -246,7 +252,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
       teamWinner.innerHTML = `
         <div style="text-align: center;">
           <div style="font-size: ${isInstagram ? '24px' : '20px'}; margin-bottom: 12px; opacity: 0.9;">
-            ⚔️ Team Battle Results ⚔️
+            Team Battle Results
           </div>
           <div style="display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 16px;">
             <div style="text-align: center;">
@@ -260,7 +266,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
             </div>
           </div>
           <div style="font-size: ${isInstagram ? '28px' : '22px'}; font-weight: 900;">
-            🏆 Winner: <span style="color: ${winningTeam.color};">${winningTeam.name}</span> 🏆
+            Winner: <span style="color: ${winningTeam.color};">${winningTeam.name}</span>
           </div>
         </div>
       `;
@@ -268,7 +274,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
       teamWinner.innerHTML = `
         <div style="text-align: center;">
           <div style="font-size: ${isInstagram ? '24px' : '20px'}; margin-bottom: 12px; opacity: 0.9;">
-            ⚔️ Team Battle Results ⚔️
+            Team Battle Results
           </div>
           <div style="display: flex; justify-content: center; align-items: center; gap: 20px; margin-bottom: 16px;">
             <div style="text-align: center;">
@@ -282,7 +288,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
             </div>
           </div>
           <div style="font-size: ${isInstagram ? '28px' : '22px'}; font-weight: 900;">
-            🤝 It's a TIE! 🤝
+            It's a TIE!
           </div>
         </div>
       `;
@@ -297,11 +303,11 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
     champion.style.boxShadow = "0 4px 20px rgba(255, 215, 0, 0.3)";
     champion.innerHTML = `
       <div style="font-size: ${isInstagram ? '28px' : '22px'}; font-weight: 900; margin-bottom: 6px; display: flex; align-items: center; gap: 12px;">
-        <span style="font-size: ${isInstagram ? '36px' : '28px'};">🏆</span>
+        <span style="font-size: ${isInstagram ? '36px' : '28px'};">&#127942;</span>
         <span>Champion: ${topThree[0].player_name}</span>
       </div>
       <div style="font-size: ${isInstagram ? '18px' : '15px'}; opacity: 0.95; font-weight: 600;">
-        ${topThree[0].wins}W-${topThree[0].losses}L • ${topThree[0].win_percentage.toFixed(0)}% Win Rate
+        ${topThree[0].wins}W-${topThree[0].losses}L | ${topThree[0].win_percentage.toFixed(0)}% Win Rate | +${topThree[0].games_won - topThree[0].games_lost} Game Diff
       </div>
     `;
     resultsContainer.appendChild(champion);
@@ -322,7 +328,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
       second.style.padding = isInstagram ? "14px" : "12px";
       second.innerHTML = `
         <div style="font-size: ${isInstagram ? '20px' : '18px'}; font-weight: 800; margin-bottom: 4px;">
-          🥈 ${topThree[1].player_name}
+          2nd: ${topThree[1].player_name}
         </div>
         <div style="font-size: ${isInstagram ? '15px' : '13px'}; opacity: 0.9; font-weight: 500;">
           ${topThree[1].wins}W-${topThree[1].losses}L
@@ -339,7 +345,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
       third.style.padding = isInstagram ? "14px" : "12px";
       third.innerHTML = `
         <div style="font-size: ${isInstagram ? '20px' : '18px'}; font-weight: 800; margin-bottom: 4px;">
-          🥉 ${topThree[2].player_name}
+          3rd: ${topThree[2].player_name}
         </div>
         <div style="font-size: ${isInstagram ? '15px' : '13px'}; opacity: 0.9; font-weight: 500;">
           ${topThree[2].wins}W-${topThree[2].losses}L
@@ -364,7 +370,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
       slayer.style.padding = isInstagram ? "12px" : "10px";
       slayer.innerHTML = `
         <div style="font-size: ${isInstagram ? '18px' : '15px'}; font-weight: 800; margin-bottom: 2px;">
-          🎯 Giant Slayer
+          Giant Slayer
         </div>
         <div style="font-size: ${isInstagram ? '15px' : '13px'}; opacity: 0.9; font-weight: 500;">
           ${giantSlayer.player_name}
@@ -381,7 +387,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
       consistent.style.padding = isInstagram ? "12px" : "10px";
       consistent.innerHTML = `
         <div style="font-size: ${isInstagram ? '18px' : '15px'}; font-weight: 800; margin-bottom: 2px;">
-          📈 Most Consistent
+          Most Consistent
         </div>
         <div style="font-size: ${isInstagram ? '15px' : '13px'}; opacity: 0.9; font-weight: 500;">
           ${mostConsistent.player_name}
@@ -422,26 +428,34 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
   document.body.appendChild(container);
 
   try {
+    // Wait for any images that are in the container
     const images = container.querySelectorAll("img");
-    await Promise.all(
-      Array.from(images).map(
-        (img, index) =>
-          new Promise<void>((resolve) => {
-            if (img.complete) {
-              resolve();
-            } else {
-              img.onload = () => resolve();
-              img.onerror = () => resolve();
-              setTimeout(() => resolve(), 5000);
-            }
-          })
-      )
-    );
+    if (images.length > 0) {
+      await Promise.all(
+        Array.from(images).map(
+          (img) =>
+            new Promise<void>((resolve) => {
+              if (img.complete) {
+                resolve();
+              } else {
+                img.onload = () => resolve();
+                img.onerror = () => {
+                  // Remove broken images instead of blocking
+                  img.style.display = "none";
+                  resolve();
+                };
+                setTimeout(() => resolve(), 3000);
+              }
+            })
+        )
+      );
+    }
 
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // Short delay for rendering
+    await new Promise(resolve => setTimeout(resolve, 500));
 
     const dataUrl = await toPng(container, {
-      quality: 0.98,
+      quality: 0.95,
       pixelRatio: 2,
       cacheBust: true,
       backgroundColor: "#1a1a2e",
