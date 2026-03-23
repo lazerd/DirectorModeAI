@@ -29,7 +29,6 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
   useEffect(() => {
     fetchStandings();
 
-    // Subscribe to realtime updates
     const channel = supabase
       .channel('standings-updates')
       .on(
@@ -72,7 +71,6 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
         ? 2
         : null;
 
-      // Only count if they played against each other
       if (player1Team && player2Team && player1Team !== player2Team) {
         if (match.winner_team === player1Team) player1Wins++;
         if (match.winner_team === player2Team) player2Wins++;
@@ -83,7 +81,6 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
   };
 
   const fetchStandings = async () => {
-    // Fetch player standings
     const { data, error } = await supabase
       .from("event_players")
       .select(`
@@ -96,7 +93,6 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
       `)
       .eq("event_id", eventId);
 
-    // Fetch all completed matches for head-to-head calculations
     const { data: matchData } = await supabase
       .from("matches")
       .select(`
@@ -134,21 +130,22 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
           };
         })
         .sort((a, b) => {
-          // 1. Sort by wins
-          if (b.wins !== a.wins) return b.wins - a.wins;
+          // 1. Win percentage (highest first)
+          if (b.win_percentage !== a.win_percentage) return b.win_percentage - a.win_percentage;
 
-          // 2. Sort by games differential
-          if (b.games_differential !== a.games_differential) {
-            return b.games_differential - a.games_differential;
-          }
+          // 2. Game differential (highest first)
+          if (b.games_differential !== a.games_differential) return b.games_differential - a.games_differential;
 
-          // 3. Head-to-head tiebreaker
+          // 3. Fewest games lost (lowest first)
+          if (a.games_lost !== b.games_lost) return a.games_lost - b.games_lost;
+
+          // 4. Head-to-head as final tiebreaker
           const h2h = calculateHeadToHead(a.player_id, b.player_id, matchData || []);
           if (h2h.player1Wins !== h2h.player2Wins) {
             return h2h.player2Wins - h2h.player1Wins;
           }
 
-          // 4. If still tied, maintain alphabetical order for consistency
+          // 5. Alphabetical for consistency
           return a.player_name.localeCompare(b.player_name);
         });
 
@@ -160,22 +157,19 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
           const current = formattedStandings[i];
           const previous = formattedStandings[i - 1];
 
-          // Check if tied with previous player
           const isTied =
-            current.wins === previous.wins &&
-            current.games_differential === previous.games_differential;
+            current.win_percentage === previous.win_percentage &&
+            current.games_differential === previous.games_differential &&
+            current.games_lost === previous.games_lost;
 
           if (isTied) {
-            // Check head-to-head
             const h2h = calculateHeadToHead(
               current.player_id,
               previous.player_id,
               matchData || []
             );
 
-            // If head-to-head is also tied, show tie indicator
             if (h2h.player1Wins === h2h.player2Wins) {
-              // Update previous rank to show tie if it doesn't already
               if (!previous.display_rank.startsWith("T-")) {
                 const rank = parseInt(previous.display_rank);
                 previous.display_rank = `T-${rank}`;
@@ -229,9 +223,9 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Trophy className="h-5 w-5 text-primary" />
-          Standings
+          Final Standings
         </CardTitle>
-        <CardDescription>Current event rankings</CardDescription>
+        <CardDescription>Complete rankings for all players</CardDescription>
       </CardHeader>
       <CardContent>
         {standings.length === 0 ? (
@@ -239,47 +233,60 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
             <p>No matches played yet</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-b-2">
-                  <TableHead className="w-12 sm:w-16 text-sm sm:text-base font-bold text-center">#</TableHead>
-                  <TableHead className="text-sm sm:text-base font-bold min-w-[120px]">Player</TableHead>
-                  <TableHead className="text-center text-sm sm:text-base font-bold w-12 sm:w-16">W</TableHead>
-                  <TableHead className="text-center text-sm sm:text-base font-bold w-12 sm:w-16">L</TableHead>
-                  <TableHead className="text-center text-sm sm:text-base font-bold w-16 sm:w-20">Win %</TableHead>
-                  <TableHead className="hidden sm:table-cell text-center text-sm sm:text-base font-bold">Games</TableHead>
-                  <TableHead className="text-center text-sm sm:text-base font-bold w-16 sm:w-20">+/-</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {standings.map((standing, index) => (
-                  <TableRow key={standing.player_name} className="border-b hover:bg-muted/50">
-                    <TableCell className="font-bold text-sm sm:text-base py-3 sm:py-4 text-center">
-                      {standing.display_rank === "1" ? (
-                        <div className="flex items-center justify-center">
-                          <Trophy className="h-5 w-5 sm:h-6 sm:w-6 text-accent" />
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center">
-                          {standing.display_rank}
-                        </div>
-                      )}
-                    </TableCell>
-                    <TableCell className="font-semibold text-sm sm:text-base py-3 sm:py-4 truncate max-w-[150px]">{standing.player_name}</TableCell>
-                    <TableCell className="text-center text-success font-bold text-sm sm:text-base py-3 sm:py-4">{standing.wins}</TableCell>
-                    <TableCell className="text-center text-muted-foreground text-sm sm:text-base py-3 sm:py-4">{standing.losses}</TableCell>
-                    <TableCell className="text-center font-semibold text-sm sm:text-base py-3 sm:py-4">{standing.win_percentage.toFixed(0)}%</TableCell>
-                    <TableCell className="hidden sm:table-cell text-center text-sm sm:text-base text-muted-foreground py-3 sm:py-4">
-                      {standing.games_won}-{standing.games_lost}
-                    </TableCell>
-                    <TableCell className="text-center text-sm sm:text-base font-medium py-3 sm:py-4">
-                      {getGamesDiff(standing.games_differential)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="space-y-3">
+            {standings.map((standing, index) => {
+              const isFirst = standing.display_rank === "1";
+              const isSecond = standing.display_rank === "2";
+              const isThird = standing.display_rank === "3";
+
+              return (
+                <div
+                  key={standing.player_id}
+                  className={`flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border-2 transition-all ${
+                    isFirst
+                      ? "border-blue-400 bg-blue-50"
+                      : isSecond
+                      ? "border-lime-400 bg-lime-50"
+                      : isThird
+                      ? "border-orange-300 bg-orange-50"
+                      : "border-gray-200 bg-white"
+                  }`}
+                >
+                  {/* Rank */}
+                  <div
+                    className={`flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-base sm:text-lg ${
+                      isFirst
+                        ? "bg-blue-500 text-white"
+                        : isSecond
+                        ? "bg-lime-500 text-white"
+                        : isThird
+                        ? "bg-orange-400 text-white"
+                        : "bg-gray-100 text-gray-600"
+                    }`}
+                  >
+                    {standing.display_rank}
+                  </div>
+
+                  {/* Player info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-base sm:text-lg truncate">{standing.player_name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {standing.wins}W - {standing.losses}L
+                    </p>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="flex-shrink-0 text-right">
+                    <p className="font-bold text-lg sm:text-xl text-blue-600">
+                      {standing.win_percentage.toFixed(0)}%
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground">
+                      {standing.games_won}-{standing.games_lost} games
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </CardContent>
