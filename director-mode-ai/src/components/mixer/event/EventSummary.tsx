@@ -15,11 +15,13 @@ import {
 } from "@/components/ui/select";
 
 interface Standing {
+  player_id: string;
   player_name: string;
   wins: number;
   losses: number;
   games_won: number;
   games_lost: number;
+  games_differential: number;
   win_percentage: number;
 }
 
@@ -51,6 +53,38 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
     fetchSummary();
   }, [eventId]);
 
+  const calculateHeadToHead = (
+    playerId1: string,
+    playerId2: string,
+    matches: any[]
+  ): { player1Wins: number; player2Wins: number } => {
+    let player1Wins = 0;
+    let player2Wins = 0;
+
+    matches.forEach((match) => {
+      const team1Players = [match.player1_id, match.player2_id].filter(Boolean);
+      const team2Players = [match.player3_id, match.player4_id].filter(Boolean);
+
+      const player1Team = team1Players.includes(playerId1)
+        ? 1
+        : team2Players.includes(playerId1)
+        ? 2
+        : null;
+      const player2Team = team1Players.includes(playerId2)
+        ? 1
+        : team2Players.includes(playerId2)
+        ? 2
+        : null;
+
+      if (player1Team && player2Team && player1Team !== player2Team) {
+        if (match.winner_team === player1Team) player1Wins++;
+        if (match.winner_team === player2Team) player2Wins++;
+      }
+    });
+
+    return { player1Wins, player2Wins };
+  };
+
   const fetchSummary = async () => {
     // Get event details
     const { data: event } = await supabase
@@ -63,7 +97,6 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
       setEventDate(event.event_date);
       setIsTeamBattle(event.match_format === 'team-battle');
       
-      // Fetch team data for team battles
       if (event.match_format === 'team-battle') {
         await fetchTeamResults();
       }
@@ -73,6 +106,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
     const { data: eventPlayers } = await supabase
       .from("event_players")
       .select(`
+        player_id,
         wins,
         losses,
         games_won,
@@ -87,23 +121,54 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
       .select("id")
       .eq("event_id", eventId);
 
+    // Fetch all completed matches for head-to-head
+    const { data: matchData } = await supabase
+      .from("matches")
+      .select(`
+        player1_id,
+        player2_id,
+        player3_id,
+        player4_id,
+        winner_team,
+        rounds!inner (event_id)
+      `)
+      .eq("rounds.event_id", eventId)
+      .not("winner_team", "is", null);
+
     if (eventPlayers) {
       const formattedStandings = eventPlayers
         .map((ep: any) => {
           const totalMatches = ep.wins + ep.losses;
+          const gamesDiff = ep.games_won - ep.games_lost;
           return {
+            player_id: ep.player_id,
             player_name: ep.players.name,
             wins: ep.wins,
             losses: ep.losses,
             games_won: ep.games_won,
             games_lost: ep.games_lost,
+            games_differential: gamesDiff,
             win_percentage: totalMatches > 0 ? (ep.wins / totalMatches) * 100 : 0,
           };
         })
         .sort((a, b) => {
-          if (b.wins !== a.wins) return b.wins - a.wins;
+          // 1. Win percentage (highest first)
           if (b.win_percentage !== a.win_percentage) return b.win_percentage - a.win_percentage;
-          return b.games_won - a.games_won;
+
+          // 2. Game differential (highest first)
+          if (b.games_differential !== a.games_differential) return b.games_differential - a.games_differential;
+
+          // 3. Fewest games lost (lowest first)
+          if (a.games_lost !== b.games_lost) return a.games_lost - b.games_lost;
+
+          // 4. Head-to-head as final tiebreaker
+          const h2h = calculateHeadToHead(a.player_id, b.player_id, matchData || []);
+          if (h2h.player1Wins !== h2h.player2Wins) {
+            return h2h.player2Wins - h2h.player1Wins;
+          }
+
+          // 5. Alphabetical for consistency
+          return a.player_name.localeCompare(b.player_name);
         });
 
       setStandings(formattedStandings);
@@ -114,7 +179,6 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
   };
 
   const fetchTeamResults = async () => {
-    // Fetch teams
     const { data: teamsData } = await supabase
       .from("event_teams")
       .select("*")
@@ -123,7 +187,6 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
 
     if (!teamsData || teamsData.length === 0) return;
 
-    // Fetch rounds
     const { data: rounds } = await supabase
       .from("rounds")
       .select("id")
@@ -136,14 +199,12 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
 
     const roundIds = rounds.map(r => r.id);
 
-    // Fetch matches
     const { data: matches } = await supabase
       .from("matches")
       .select("winner_team, player1_id, player2_id")
       .in("round_id", roundIds)
       .not("winner_team", "is", null);
 
-    // Fetch event players with team assignments
     const { data: eventPlayers } = await supabase
       .from("event_players")
       .select("player_id, team_id")
@@ -151,13 +212,11 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
 
     if (!eventPlayers) return;
 
-    // Map players to teams
     const playerTeamMap: Record<string, string> = {};
     eventPlayers.forEach(ep => {
       if (ep.team_id) playerTeamMap[ep.player_id] = ep.team_id;
     });
 
-    // Calculate team scores
     const teamScores: Record<string, number> = {};
     teamsData.forEach(t => teamScores[t.id] = 0);
 
@@ -178,19 +237,17 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
 
     setTeams(teamsWithScores);
 
-    // Determine winner
     const sortedTeams = [...teamsWithScores].sort((a, b) => b.score - a.score);
     if (sortedTeams.length >= 2 && sortedTeams[0].score > sortedTeams[1].score) {
       setWinningTeam(sortedTeams[0]);
     } else if (sortedTeams.length >= 2 && sortedTeams[0].score === sortedTeams[1].score) {
-      // It's a tie
       setWinningTeam(null);
     }
   };
 
   const exportResults = () => {
     const csv = [
-      ["Rank", "Player", "Wins", "Losses", "Win %", "Games Won", "Games Lost"],
+      ["Rank", "Player", "Wins", "Losses", "Win %", "Games Won", "Games Lost", "Game Diff"],
       ...standings.map((s, i) => [
         i + 1,
         s.player_name,
@@ -199,6 +256,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         s.win_percentage.toFixed(1) + "%",
         s.games_won,
         s.games_lost,
+        s.games_differential,
       ]),
     ]
       .map((row) => row.join(","))
@@ -221,14 +279,12 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
     setGeneratingCard(true);
 
     try {
-      // Fetch event photos
       const { data: photos } = await supabase
         .from("event_photos")
         .select("photo_url")
         .eq("event_id", eventId)
         .order("display_order");
 
-      // Generate results card
       const cardBlob = await generateResultsCard({
         eventName,
         eventDate,
@@ -243,12 +299,10 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         winningTeam: winningTeam,
       });
 
-      // Create shareable file
       const file = new File([cardBlob], `${eventName}-results.jpg`, {
         type: "image/jpeg",
       });
 
-      // Share via Web Share API (mobile) or download (desktop)
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
         await navigator.share({
           files: [file],
@@ -261,7 +315,6 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
           description: "Image shared successfully.",
         });
       } else {
-        // Fallback: Download the image
         const url = URL.createObjectURL(cardBlob);
         const a = document.createElement("a");
         a.href = url;
@@ -385,7 +438,6 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
-            {/* Score Display */}
             <div className="flex items-center justify-center gap-6 mb-6">
               <div className="text-center flex-1">
                 <div 
@@ -416,7 +468,6 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
               </div>
             </div>
 
-            {/* Winner Declaration */}
             {winningTeam ? (
               <div 
                 className="text-center p-6 rounded-2xl border-4"
@@ -426,7 +477,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
                 }}
               >
                 <Trophy className="h-12 w-12 mx-auto mb-3 text-yellow-500" />
-                <p className="text-lg font-medium text-gray-600 mb-1">🎉 Winner 🎉</p>
+                <p className="text-lg font-medium text-gray-600 mb-1">Winner</p>
                 <p 
                   className="text-4xl font-black"
                   style={{ color: winningTeam.color }}
@@ -439,7 +490,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
               </div>
             ) : teams[0].score === teams[1].score ? (
               <div className="text-center p-6 rounded-2xl border-4 border-purple-300 bg-purple-50">
-                <p className="text-3xl font-black text-purple-600">🤝 It's a TIE! 🤝</p>
+                <p className="text-3xl font-black text-purple-600">It's a TIE!</p>
                 <p className="text-lg text-gray-500 mt-2">
                   Both teams finished with {teams[0].score} wins
                 </p>
@@ -472,7 +523,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
                 </div>
                 <div>
                   <p className="text-3xl font-bold text-primary">
-                    +{topPlayer.games_won - topPlayer.games_lost}
+                    +{topPlayer.games_differential}
                   </p>
                   <p className="text-sm text-muted-foreground">Game Diff</p>
                 </div>
@@ -529,27 +580,27 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
           <div className="space-y-3">
             {standings.map((standing, index) => (
               <div
-                key={standing.player_name}
+                key={standing.player_id}
                 className={`p-4 rounded-xl border-2 flex items-center justify-between ${
                   index === 0
-                    ? "bg-primary/5 border-primary"
+                    ? "bg-blue-50 border-blue-400"
                     : index === 1
-                    ? "bg-accent/5 border-accent"
+                    ? "bg-lime-50 border-lime-400"
                     : index === 2
-                    ? "bg-muted border-muted"
-                    : "border-border"
+                    ? "bg-orange-50 border-orange-300"
+                    : "border-gray-200 bg-white"
                 }`}
               >
                 <div className="flex items-center gap-4">
                   <div
                     className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
                       index === 0
-                        ? "bg-primary text-primary-foreground"
+                        ? "bg-blue-500 text-white"
                         : index === 1
-                        ? "bg-accent text-accent-foreground"
+                        ? "bg-lime-500 text-white"
                         : index === 2
-                        ? "bg-muted-foreground text-background"
-                        : "bg-muted text-muted-foreground"
+                        ? "bg-orange-400 text-white"
+                        : "bg-gray-100 text-gray-600"
                     }`}
                   >
                     {index + 1}
@@ -562,7 +613,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-primary">
+                  <p className="text-2xl font-bold text-blue-600">
                     {standing.win_percentage.toFixed(0)}%
                   </p>
                   <p className="text-sm text-muted-foreground">
