@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Trophy, Award, TrendingUp, Download, Share2, Loader2, Swords } from "lucide-react";
 import { EventPhotosManager } from "@/components/mixer/event/EventPhotosManager";
 import { generateResultsCard } from "@/components/mixer/event/ResultsCardGenerator";
+import LogoUploader from "@/components/mixer/event/LogoUploader";
 import {
   Select,
   SelectContent,
@@ -42,12 +43,14 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
   const [standings, setStandings] = useState<Standing[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalRounds, setTotalRounds] = useState(0);
+  const [numCourts, setNumCourts] = useState(0);
   const [generatingCard, setGeneratingCard] = useState(false);
   const [shareFormat, setShareFormat] = useState<"instagram" | "facebook">("instagram");
   const [eventDate, setEventDate] = useState("");
   const [isTeamBattle, setIsTeamBattle] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [winningTeam, setWinningTeam] = useState<Team | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetchSummary();
@@ -86,23 +89,23 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
   };
 
   const fetchSummary = async () => {
-    // Get event details
     const { data: event } = await supabase
       .from("events")
-      .select("event_date, match_format")
+      .select("event_date, match_format, num_courts, logo_url")
       .eq("id", eventId)
       .single();
 
     if (event) {
       setEventDate(event.event_date);
+      setNumCourts(event.num_courts || 0);
       setIsTeamBattle(event.match_format === 'team-battle');
-      
+      if (event.logo_url) setLogoUrl(event.logo_url);
+
       if (event.match_format === 'team-battle') {
         await fetchTeamResults();
       }
     }
 
-    // Get final standings
     const { data: eventPlayers } = await supabase
       .from("event_players")
       .select(`
@@ -115,13 +118,11 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
       `)
       .eq("event_id", eventId);
 
-    // Get total rounds
     const { data: rounds } = await supabase
       .from("rounds")
       .select("id")
       .eq("event_id", eventId);
 
-    // Fetch all completed matches for head-to-head
     const { data: matchData } = await supabase
       .from("matches")
       .select(`
@@ -152,22 +153,11 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
           };
         })
         .sort((a, b) => {
-          // 1. Win percentage (highest first)
           if (b.win_percentage !== a.win_percentage) return b.win_percentage - a.win_percentage;
-
-          // 2. Game differential (highest first)
           if (b.games_differential !== a.games_differential) return b.games_differential - a.games_differential;
-
-          // 3. Fewest games lost (lowest first)
           if (a.games_lost !== b.games_lost) return a.games_lost - b.games_lost;
-
-          // 4. Head-to-head as final tiebreaker
           const h2h = calculateHeadToHead(a.player_id, b.player_id, matchData || []);
-          if (h2h.player1Wins !== h2h.player2Wins) {
-            return h2h.player2Wins - h2h.player1Wins;
-          }
-
-          // 5. Alphabetical for consistency
+          if (h2h.player1Wins !== h2h.player2Wins) return h2h.player2Wins - h2h.player1Wins;
           return a.player_name.localeCompare(b.player_name);
         });
 
@@ -289,14 +279,16 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         eventName,
         eventDate,
         totalRounds,
+        numCourts,
         topThree: standings.slice(0, 3),
         giantSlayer: getBestUpset(),
         mostConsistent: getMostConsistent(),
         photos: photos || [],
         format: shareFormat,
         isTeamBattle,
-        teams: teams,
-        winningTeam: winningTeam,
+        teams,
+        winningTeam,
+        logoUrl,
       });
 
       const file = new File([cardBlob], `${eventName}-results.jpg`, {
@@ -307,13 +299,9 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         await navigator.share({
           files: [file],
           title: `${eventName} Results`,
-          text: `Check out the results from ${eventName}! Run your next pickleball or tennis event at MixerModeAI.com`,
+          text: `Check out the results from ${eventName}! Run your next event at directormode.ai`,
         });
-
-        toast({
-          title: "Results shared!",
-          description: "Image shared successfully.",
-        });
+        toast({ title: "Results shared!", description: "Image shared successfully." });
       } else {
         const url = URL.createObjectURL(cardBlob);
         const a = document.createElement("a");
@@ -321,17 +309,13 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         a.download = `${eventName}-results.jpg`;
         a.click();
         URL.revokeObjectURL(url);
-
-        toast({
-          title: "Image downloaded!",
-          description: "Share the downloaded image on social media.",
-        });
+        toast({ title: "Image downloaded!", description: "Share the downloaded image on social media." });
       }
     } catch (error) {
       console.error("Share error:", error);
       toast({
         variant: "destructive",
-        title: "Could not share",
+        title: "Could not generate card",
         description: "Please try again or use Export CSV.",
       });
     } finally {
@@ -368,10 +352,8 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
 
   return (
     <div className="space-y-6">
-      {/* Event Photos Manager */}
       <EventPhotosManager eventId={eventId} />
 
-      {/* Header */}
       <Card className={`border-2 ${isTeamBattle ? 'bg-gradient-to-br from-blue-50 via-white to-red-50 border-purple-200' : 'bg-gradient-to-br from-primary/10 to-accent/10 border-primary/20'}`}>
         <CardHeader>
           <CardTitle className="text-3xl flex items-center gap-3">
@@ -388,6 +370,8 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            <LogoUploader eventId={eventId} onLogoChange={setLogoUrl} />
+
             <div className="flex flex-col gap-3">
               <Button onClick={exportResults} size="lg" className="w-full">
                 <Download className="h-5 w-5 mr-2" />
@@ -403,9 +387,9 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
                     <SelectItem value="facebook">Facebook</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button 
-                  onClick={shareResults} 
-                  variant="outline" 
+                <Button
+                  onClick={shareResults}
+                  variant="outline"
                   size="lg"
                   disabled={generatingCard}
                   className="w-full sm:flex-1"
@@ -428,7 +412,6 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         </CardContent>
       </Card>
 
-      {/* Team Battle Winner */}
       {isTeamBattle && teams.length === 2 && (
         <Card className="border-4 border-purple-500 bg-gradient-to-br from-blue-50 via-purple-50 to-red-50">
           <CardHeader className="bg-gradient-to-r from-blue-100 via-purple-100 to-red-100">
@@ -440,67 +423,34 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
           <CardContent className="pt-6">
             <div className="flex items-center justify-center gap-6 mb-6">
               <div className="text-center flex-1">
-                <div 
-                  className="w-6 h-6 rounded-full mx-auto mb-2"
-                  style={{ backgroundColor: teams[0].color }}
-                />
+                <div className="w-6 h-6 rounded-full mx-auto mb-2" style={{ backgroundColor: teams[0].color }} />
                 <p className="font-bold text-xl">{teams[0].name}</p>
-                <p 
-                  className="text-5xl font-black"
-                  style={{ color: teams[0].color }}
-                >
-                  {teams[0].score}
-                </p>
+                <p className="text-5xl font-black" style={{ color: teams[0].color }}>{teams[0].score}</p>
               </div>
               <div className="text-4xl font-bold text-gray-300">vs</div>
               <div className="text-center flex-1">
-                <div 
-                  className="w-6 h-6 rounded-full mx-auto mb-2"
-                  style={{ backgroundColor: teams[1].color }}
-                />
+                <div className="w-6 h-6 rounded-full mx-auto mb-2" style={{ backgroundColor: teams[1].color }} />
                 <p className="font-bold text-xl">{teams[1].name}</p>
-                <p 
-                  className="text-5xl font-black"
-                  style={{ color: teams[1].color }}
-                >
-                  {teams[1].score}
-                </p>
+                <p className="text-5xl font-black" style={{ color: teams[1].color }}>{teams[1].score}</p>
               </div>
             </div>
-
             {winningTeam ? (
-              <div 
-                className="text-center p-6 rounded-2xl border-4"
-                style={{ 
-                  backgroundColor: winningTeam.color + '15',
-                  borderColor: winningTeam.color 
-                }}
-              >
+              <div className="text-center p-6 rounded-2xl border-4" style={{ backgroundColor: winningTeam.color + '15', borderColor: winningTeam.color }}>
                 <Trophy className="h-12 w-12 mx-auto mb-3 text-yellow-500" />
                 <p className="text-lg font-medium text-gray-600 mb-1">Winner</p>
-                <p 
-                  className="text-4xl font-black"
-                  style={{ color: winningTeam.color }}
-                >
-                  {winningTeam.name}
-                </p>
-                <p className="text-lg text-gray-500 mt-2">
-                  {winningTeam.score} match wins
-                </p>
+                <p className="text-4xl font-black" style={{ color: winningTeam.color }}>{winningTeam.name}</p>
+                <p className="text-lg text-gray-500 mt-2">{winningTeam.score} match wins</p>
               </div>
             ) : teams[0].score === teams[1].score ? (
               <div className="text-center p-6 rounded-2xl border-4 border-purple-300 bg-purple-50">
                 <p className="text-3xl font-black text-purple-600">It's a TIE!</p>
-                <p className="text-lg text-gray-500 mt-2">
-                  Both teams finished with {teams[0].score} wins
-                </p>
+                <p className="text-lg text-gray-500 mt-2">Both teams finished with {teams[0].score} wins</p>
               </div>
             ) : null}
           </CardContent>
         </Card>
       )}
 
-      {/* Individual Champion (for non-team battles) */}
       {!isTeamBattle && topPlayer && (
         <Card className="border-2 border-primary">
           <CardHeader className="bg-primary/5">
@@ -522,9 +472,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
                   <p className="text-sm text-muted-foreground">Win Rate</p>
                 </div>
                 <div>
-                  <p className="text-3xl font-bold text-primary">
-                    +{topPlayer.games_differential}
-                  </p>
+                  <p className="text-3xl font-bold text-primary">+{topPlayer.games_differential}</p>
                   <p className="text-sm text-muted-foreground">Game Diff</p>
                 </div>
               </div>
@@ -533,7 +481,6 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         </Card>
       )}
 
-      {/* Awards */}
       <div className="grid gap-4 md:grid-cols-2">
         {bestUpset && (
           <Card>
@@ -545,13 +492,10 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
             </CardHeader>
             <CardContent>
               <p className="text-xl font-semibold">{bestUpset.player_name}</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                {bestUpset.wins} wins with impressive upsets
-              </p>
+              <p className="text-sm text-muted-foreground mt-1">{bestUpset.wins} wins with impressive upsets</p>
             </CardContent>
           </Card>
         )}
-
         {mostConsistent && (
           <Card>
             <CardHeader>
@@ -562,15 +506,12 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
             </CardHeader>
             <CardContent>
               <p className="text-xl font-semibold">{mostConsistent.player_name}</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                +{mostConsistent.games_won - mostConsistent.games_lost} game differential
-              </p>
+              <p className="text-sm text-muted-foreground mt-1">+{mostConsistent.games_won - mostConsistent.games_lost} game differential</p>
             </CardContent>
           </Card>
         )}
       </div>
 
-      {/* Final Standings */}
       <Card>
         <CardHeader>
           <CardTitle>Final Standings</CardTitle>
@@ -607,18 +548,12 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
                   </div>
                   <div>
                     <p className="font-semibold text-lg">{standing.player_name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {standing.wins}W - {standing.losses}L
-                    </p>
+                    <p className="text-sm text-muted-foreground">{standing.wins}W - {standing.losses}L</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-blue-600">
-                    {standing.win_percentage.toFixed(0)}%
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {standing.games_won}-{standing.games_lost} games
-                  </p>
+                  <p className="text-2xl font-bold text-blue-600">{standing.win_percentage.toFixed(0)}%</p>
+                  <p className="text-sm text-muted-foreground">{standing.games_won}-{standing.games_lost} games</p>
                 </div>
               </div>
             ))}
