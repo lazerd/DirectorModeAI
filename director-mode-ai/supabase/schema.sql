@@ -1,6 +1,6 @@
 -- ============================================
 -- Director Mode AI - Unified Database Schema
--- Supports: MixerMode, LastMinuteLesson, StringingMode
+-- Supports: MixerMode, LastMinuteLesson, StringingMode, CourtConnect
 -- ============================================
 
 -- Enable extensions
@@ -355,6 +355,180 @@ CREATE TABLE IF NOT EXISTS stringing_job_feedback (
 
 
 -- ============================================
+-- COURTCONNECT: Players, Events, Invitations
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS cc_players (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  profile_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+
+  display_name TEXT NOT NULL,
+  bio TEXT,
+  phone TEXT,
+
+  -- Default / primary sport
+  primary_sport TEXT DEFAULT 'tennis' CHECK (primary_sport IN ('tennis', 'pickleball', 'padel', 'squash', 'badminton', 'racquetball', 'table_tennis')),
+
+  -- Availability preferences
+  preferred_days TEXT[], -- e.g. {'monday','wednesday','friday'}
+  preferred_times TEXT[] DEFAULT '{}', -- e.g. {'morning','evening'}
+
+  -- Organization context
+  organization_id UUID,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cc_player_sports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  player_id UUID NOT NULL REFERENCES cc_players(id) ON DELETE CASCADE,
+
+  sport TEXT NOT NULL CHECK (sport IN ('tennis', 'pickleball', 'padel', 'squash', 'badminton', 'racquetball', 'table_tennis')),
+
+  -- Dual rating system
+  ntrp_rating NUMERIC(2,1) CHECK (ntrp_rating >= 1.0 AND ntrp_rating <= 7.0),
+  utr_rating NUMERIC(4,2) CHECK (utr_rating >= 1.00 AND utr_rating <= 16.50),
+
+  -- Self-rated vs verified
+  is_self_rated BOOLEAN DEFAULT true,
+  admin_override BOOLEAN DEFAULT false,
+  admin_override_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  admin_override_at TIMESTAMPTZ,
+
+  -- Friendly label (e.g. "Advanced", "3.5 NTRP")
+  level_label TEXT,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(player_id, sport)
+);
+
+CREATE TABLE IF NOT EXISTS cc_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_by UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+
+  title TEXT NOT NULL,
+  description TEXT,
+
+  -- Event type
+  event_type TEXT NOT NULL CHECK (event_type IN ('doubles', 'singles', 'clinic', 'social', 'practice', 'tournament', 'open_play')),
+  sport TEXT NOT NULL CHECK (sport IN ('tennis', 'pickleball', 'padel', 'squash', 'badminton', 'racquetball', 'table_tennis')),
+
+  -- When & where
+  event_date DATE NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME,
+  timezone TEXT DEFAULT 'America/New_York',
+  location TEXT,
+  court_count INTEGER DEFAULT 1,
+
+  -- Capacity & auto-close
+  max_players INTEGER NOT NULL,
+  auto_close BOOLEAN DEFAULT true,
+
+  -- Skill filtering
+  skill_min NUMERIC(2,1), -- NTRP min
+  skill_max NUMERIC(2,1), -- NTRP max
+
+  -- Visibility
+  is_public BOOLEAN DEFAULT true,
+
+  -- Status
+  status TEXT DEFAULT 'open' CHECK (status IN ('open', 'closed', 'cancelled', 'completed')),
+
+  -- Organization context
+  organization_id UUID,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cc_event_players (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event_id UUID NOT NULL REFERENCES cc_events(id) ON DELETE CASCADE,
+  player_id UUID REFERENCES cc_players(id) ON DELETE SET NULL,
+
+  -- For non-registered players invited by email
+  guest_name TEXT,
+  guest_email TEXT,
+
+  -- RSVP status
+  status TEXT DEFAULT 'invited' CHECK (status IN ('invited', 'accepted', 'waitlisted', 'declined', 'removed')),
+
+  -- Ordering for waitlist
+  response_order INTEGER,
+
+  invited_at TIMESTAMPTZ DEFAULT NOW(),
+  responded_at TIMESTAMPTZ,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE(event_id, player_id)
+);
+
+CREATE TABLE IF NOT EXISTS cc_invitations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  event_id UUID NOT NULL REFERENCES cc_events(id) ON DELETE CASCADE,
+
+  -- Who was invited
+  player_id UUID REFERENCES cc_players(id) ON DELETE SET NULL,
+  email TEXT NOT NULL,
+
+  -- Tracking
+  sent_at TIMESTAMPTZ DEFAULT NOW(),
+  opened_at TIMESTAMPTZ,
+
+  -- Status
+  status TEXT DEFAULT 'sent' CHECK (status IN ('sent', 'delivered', 'opened', 'bounced', 'failed')),
+
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ============================================
+-- PLAYERVAULT: Director Club Roster CRM
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS cc_vault_players (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  director_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+
+  -- Basic info
+  full_name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  gender TEXT CHECK (gender IN ('male', 'female', 'non_binary', 'prefer_not_to_say')),
+  date_of_birth DATE,
+  age INTEGER, -- computed or manually entered
+
+  -- Ratings
+  usta_rating NUMERIC(2,1) CHECK (usta_rating >= 1.0 AND usta_rating <= 7.0),
+  utr_rating NUMERIC(4,2) CHECK (utr_rating >= 1.00 AND utr_rating <= 16.50),
+  utr_id TEXT, -- UTR profile ID for lookups
+  rating_source TEXT DEFAULT 'manual' CHECK (rating_source IN ('manual', 'utr_api', 'usta_api')),
+
+  -- Sport preferences
+  primary_sport TEXT DEFAULT 'tennis' CHECK (primary_sport IN ('tennis', 'pickleball', 'padel', 'squash', 'badminton', 'racquetball', 'table_tennis')),
+  sports TEXT[] DEFAULT '{}',
+
+  -- Club context
+  organization_id UUID,
+  membership_status TEXT DEFAULT 'active' CHECK (membership_status IN ('active', 'inactive', 'guest')),
+
+  -- CourtConnect link (set when imported to CourtConnect)
+  cc_player_id UUID REFERENCES cc_players(id) ON DELETE SET NULL,
+
+  -- Notes
+  notes TEXT,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+
+-- ============================================
 -- INDEXES
 -- ============================================
 
@@ -385,6 +559,28 @@ CREATE INDEX IF NOT EXISTS idx_stringing_rackets_customer ON stringing_rackets(c
 CREATE INDEX IF NOT EXISTS idx_stringing_jobs_customer ON stringing_jobs(customer_id);
 CREATE INDEX IF NOT EXISTS idx_stringing_jobs_status ON stringing_jobs(status);
 CREATE INDEX IF NOT EXISTS idx_stringing_catalog_stock ON stringing_catalog(in_stock);
+
+-- CourtConnect
+CREATE INDEX IF NOT EXISTS idx_cc_players_profile ON cc_players(profile_id);
+CREATE INDEX IF NOT EXISTS idx_cc_players_sport ON cc_players(primary_sport);
+CREATE INDEX IF NOT EXISTS idx_cc_player_sports_player ON cc_player_sports(player_id);
+CREATE INDEX IF NOT EXISTS idx_cc_player_sports_sport ON cc_player_sports(sport);
+CREATE INDEX IF NOT EXISTS idx_cc_events_created_by ON cc_events(created_by);
+CREATE INDEX IF NOT EXISTS idx_cc_events_sport ON cc_events(sport);
+CREATE INDEX IF NOT EXISTS idx_cc_events_date ON cc_events(event_date);
+CREATE INDEX IF NOT EXISTS idx_cc_events_status ON cc_events(status);
+CREATE INDEX IF NOT EXISTS idx_cc_event_players_event ON cc_event_players(event_id);
+CREATE INDEX IF NOT EXISTS idx_cc_event_players_player ON cc_event_players(player_id);
+CREATE INDEX IF NOT EXISTS idx_cc_event_players_status ON cc_event_players(status);
+CREATE INDEX IF NOT EXISTS idx_cc_invitations_event ON cc_invitations(event_id);
+CREATE INDEX IF NOT EXISTS idx_cc_invitations_email ON cc_invitations(email);
+
+-- PlayerVault
+CREATE INDEX IF NOT EXISTS idx_cc_vault_director ON cc_vault_players(director_id);
+CREATE INDEX IF NOT EXISTS idx_cc_vault_email ON cc_vault_players(email);
+CREATE INDEX IF NOT EXISTS idx_cc_vault_sport ON cc_vault_players(primary_sport);
+CREATE INDEX IF NOT EXISTS idx_cc_vault_membership ON cc_vault_players(membership_status);
+CREATE INDEX IF NOT EXISTS idx_cc_vault_cc_link ON cc_vault_players(cc_player_id);
 
 
 -- ============================================
@@ -479,6 +675,50 @@ CREATE POLICY "Staff can manage jobs" ON stringing_jobs
   FOR ALL USING (auth.uid() IS NOT NULL);
 CREATE POLICY "Staff can manage feedback" ON stringing_job_feedback
   FOR ALL USING (auth.uid() IS NOT NULL);
+
+-- CourtConnect: players manage own profiles, events are public to view
+ALTER TABLE cc_players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cc_player_sports ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cc_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cc_event_players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cc_invitations ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage own player profile" ON cc_players
+  FOR ALL USING (profile_id = auth.uid());
+CREATE POLICY "Auth users can view all players" ON cc_players
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Users can manage own sport ratings" ON cc_player_sports
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM cc_players WHERE id = player_id AND profile_id = auth.uid())
+  );
+CREATE POLICY "Auth users can view sport ratings" ON cc_player_sports
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "Users can manage own events" ON cc_events
+  FOR ALL USING (created_by = auth.uid());
+CREATE POLICY "Public can view public events" ON cc_events
+  FOR SELECT USING (is_public = true);
+
+CREATE POLICY "Event creators can manage event players" ON cc_event_players
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM cc_events WHERE id = event_id AND created_by = auth.uid())
+  );
+CREATE POLICY "Players can manage own RSVPs" ON cc_event_players
+  FOR UPDATE USING (
+    EXISTS (SELECT 1 FROM cc_players WHERE id = player_id AND profile_id = auth.uid())
+  );
+CREATE POLICY "Public can view event players" ON cc_event_players
+  FOR SELECT USING (true);
+
+CREATE POLICY "Auth users can manage invitations" ON cc_invitations
+  FOR ALL USING (auth.uid() IS NOT NULL);
+
+-- PlayerVault: directors manage their own roster
+ALTER TABLE cc_vault_players ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Directors can manage own vault" ON cc_vault_players
+  FOR ALL USING (director_id = auth.uid());
 
 
 -- ============================================
@@ -593,4 +833,12 @@ CREATE TRIGGER update_stringing_rackets_updated_at BEFORE UPDATE ON stringing_ra
 CREATE TRIGGER update_stringing_catalog_updated_at BEFORE UPDATE ON stringing_catalog
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER update_stringing_jobs_updated_at BEFORE UPDATE ON stringing_jobs
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_cc_players_updated_at BEFORE UPDATE ON cc_players
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_cc_player_sports_updated_at BEFORE UPDATE ON cc_player_sports
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_cc_events_updated_at BEFORE UPDATE ON cc_events
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER update_cc_vault_players_updated_at BEFORE UPDATE ON cc_vault_players
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();

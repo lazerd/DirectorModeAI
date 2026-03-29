@@ -32,6 +32,8 @@
   --lessons-light: 210, 100%, 95%;
   --stringing: 280, 70%, 50%;
   --stringing-light: 280, 70%, 95%;
+  --courtconnect: 152, 76%, 42%;
+  --courtconnect-light: 152, 76%, 95%;
   
   /* Neutrals */
   --background: 210, 40%, 98%;
@@ -209,6 +211,15 @@ h1, h2, h3, h4, h5, h6 {
   background: hsl(280, 70%, 40%);
 }
 
+.btn-courtconnect {
+  background: hsl(var(--courtconnect));
+  color: white;
+}
+
+.btn-courtconnect:hover:not(:disabled) {
+  background: hsl(152, 76%, 34%);
+}
+
 .btn-sm {
   padding: 0.375rem 0.875rem;
   font-size: 0.8125rem;
@@ -330,6 +341,11 @@ select.input {
   color: hsl(280, 70%, 35%);
 }
 
+.badge-courtconnect {
+  background: hsl(var(--courtconnect-light));
+  color: hsl(152, 76%, 28%);
+}
+
 /* ========================================
    Spinner
    ======================================== */
@@ -363,6 +379,10 @@ select.input {
 
 .bg-gradient-stringing {
   background: linear-gradient(135deg, hsl(var(--stringing)) 0%, hsl(300, 70%, 50%) 100%);
+}
+
+.bg-gradient-courtconnect {
+  background: linear-gradient(135deg, hsl(var(--courtconnect)) 0%, hsl(165, 76%, 42%) 100%);
 }
 
 .bg-gradient-subtle {
@@ -400,6 +420,10 @@ select.input {
 
 .tool-card-stringing:hover::before {
   background: linear-gradient(135deg, hsl(var(--stringing)) 0%, hsl(300, 70%, 50%) 100%);
+}
+
+.tool-card-courtconnect:hover::before {
+  background: linear-gradient(135deg, hsl(var(--courtconnect)) 0%, hsl(165, 76%, 42%) 100%);
 }
 
 .tool-card:hover {

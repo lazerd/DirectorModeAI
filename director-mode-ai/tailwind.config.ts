@@ -46,6 +46,10 @@ const config: Config = {
           DEFAULT: "hsl(280, 70%, 50%)",
           light: "hsl(280, 70%, 95%)",
         },
+        courtconnect: {
+          DEFAULT: "hsl(152, 76%, 42%)",
+          light: "hsl(152, 76%, 95%)",
+        },
       },
       fontFamily: {
         sans: ["Inter", "system-ui", "sans-serif"],

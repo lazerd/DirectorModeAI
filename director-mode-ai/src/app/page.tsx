@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Shuffle, Clock, Wrench, ArrowRight, LogOut, User, Calendar, UserCircle, Trophy } from "lucide-react";
+import { Shuffle, Clock, Wrench, ArrowRight, LogOut, User, Calendar, UserCircle, Trophy, Users, GraduationCap, Database, ExternalLink } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 export default function HomePage() {
@@ -76,7 +76,7 @@ export default function HomePage() {
             <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
               <Shuffle className="text-white" size={20} />
             </div>
-            <span className="font-bold text-xl">Director Mode AI</span>
+            <span className="font-bold text-xl">ClubMode AI</span>
           </div>
           <div className="flex items-center gap-4">
             {loading ? (
@@ -113,11 +113,11 @@ export default function HomePage() {
             The Complete Tennis and Racket Sports Platform
           </div>
           <h1 className="text-5xl md:text-6xl font-bold mb-6">
-            Three Powerful Tools.<br />
+            Six Powerful Tools.<br />
             <span className="text-blue-600">One Platform.</span>
           </h1>
           <p className="text-xl text-gray-600 mb-8">
-            Everything you need to run events, manage lessons, and operate your pro shop.
+            Everything you need to run events, manage lessons, match players, track your roster, and operate your pro shop.
           </p>
         </div>
       </section>
@@ -126,7 +126,7 @@ export default function HomePage() {
       <section className="py-16 px-4">
         <div className="max-w-6xl mx-auto">
           <h2 className="text-center text-sm font-semibold text-gray-500 uppercase tracking-wide mb-8">For Coaches, Directors & Pro Shops</h2>
-          <div className="grid md:grid-cols-3 gap-6">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div onClick={() => goToTool("/mixer/home")} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
               <div className="w-16 h-16 bg-orange-100 rounded-2xl flex items-center justify-center mb-6">
                 <Shuffle className="text-orange-600" size={28} />
@@ -162,6 +162,42 @@ export default function HomePage() {
                 {user ? "Open Tool" : "Sign in"} <ArrowRight size={18} />
               </div>
             </div>
+
+            <div onClick={() => goToTool("/courtconnect/home")} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
+              <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mb-6">
+                <Users className="text-emerald-600" size={28} />
+              </div>
+              <span className="inline-block px-3 py-1 bg-emerald-100 text-emerald-600 rounded-full text-xs font-semibold mb-4">PLAYERS</span>
+              <h3 className="text-2xl font-bold mb-3">CourtConnect</h3>
+              <p className="text-gray-600 mb-6">Match with players, create events, manage RSVPs.</p>
+              <div className="flex items-center gap-2 text-emerald-600 font-semibold">
+                {user ? "Open Tool" : "Sign in"} <ArrowRight size={18} />
+              </div>
+            </div>
+
+            <div onClick={() => goToTool("/courtconnect/vault")} className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
+              <div className="w-16 h-16 bg-teal-100 rounded-2xl flex items-center justify-center mb-6">
+                <Database className="text-teal-600" size={28} />
+              </div>
+              <span className="inline-block px-3 py-1 bg-teal-100 text-teal-600 rounded-full text-xs font-semibold mb-4">ROSTER</span>
+              <h3 className="text-2xl font-bold mb-3">PlayerVault</h3>
+              <p className="text-gray-600 mb-6">Club roster CRM with UTR lookup and bulk import.</p>
+              <div className="flex items-center gap-2 text-teal-600 font-semibold">
+                {user ? "Open Tool" : "Sign in"} <ArrowRight size={18} />
+              </div>
+            </div>
+
+            <a href="https://coachmode.ai" target="_blank" rel="noopener noreferrer" className="bg-white rounded-2xl border-2 p-8 hover:shadow-xl cursor-pointer group">
+              <div className="w-16 h-16 bg-violet-100 rounded-2xl flex items-center justify-center mb-6">
+                <GraduationCap className="text-violet-600" size={28} />
+              </div>
+              <span className="inline-block px-3 py-1 bg-violet-100 text-violet-600 rounded-full text-xs font-semibold mb-4">COACHING AI</span>
+              <h3 className="text-2xl font-bold mb-3">CoachMode.ai</h3>
+              <p className="text-gray-600 mb-6">AI-powered coaching tools, drills, and player development.</p>
+              <div className="flex items-center gap-2 text-violet-600 font-semibold">
+                Visit CoachMode.ai <ExternalLink size={16} />
+              </div>
+            </a>
           </div>
         </div>
       </section>
@@ -179,7 +215,7 @@ export default function HomePage() {
                 Book lessons, check your stringing orders, and view events - all in one place.
               </p>
             </div>
-            <div className="grid md:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-4 gap-4">
               <Link href="/client/dashboard" className="flex flex-col items-center gap-2 p-4 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors">
                 <Calendar className="h-8 w-8 text-blue-600" />
                 <span className="font-semibold text-blue-900">My Lessons</span>
@@ -194,6 +230,11 @@ export default function HomePage() {
                 <Trophy className="h-8 w-8 text-orange-600" />
                 <span className="font-semibold text-orange-900">Events</span>
                 <span className="text-xs text-orange-600">Mixers & tournaments</span>
+              </Link>
+              <Link href="/courtconnect/events" className="flex flex-col items-center gap-2 p-4 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors">
+                <Users className="h-8 w-8 text-emerald-600" />
+                <span className="font-semibold text-emerald-900">Find Players</span>
+                <span className="text-xs text-emerald-600">Match & play</span>
               </Link>
             </div>
             <div className="text-center mt-6">
@@ -219,6 +260,15 @@ export default function HomePage() {
               <Link href="/stringing/jobs" className="flex items-center justify-center gap-3 p-4 bg-pink-500 text-white rounded-xl font-semibold hover:bg-pink-600">
                 <Wrench size={20} /> Stringing
               </Link>
+              <Link href="/courtconnect/home" className="flex items-center justify-center gap-3 p-4 bg-emerald-500 text-white rounded-xl font-semibold hover:bg-emerald-600">
+                <Users size={20} /> CourtConnect
+              </Link>
+              <Link href="/courtconnect/vault" className="flex items-center justify-center gap-3 p-4 bg-teal-500 text-white rounded-xl font-semibold hover:bg-teal-600">
+                <Database size={20} /> PlayerVault
+              </Link>
+              <a href="https://coachmode.ai" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-3 p-4 bg-violet-500 text-white rounded-xl font-semibold hover:bg-violet-600">
+                <GraduationCap size={20} /> CoachMode.ai
+              </a>
             </div>
           </div>
         </section>
