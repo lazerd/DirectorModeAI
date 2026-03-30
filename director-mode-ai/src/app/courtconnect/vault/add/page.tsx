@@ -118,15 +118,23 @@ export default function AddVaultPlayerPage() {
     setUtrSearching(false);
   };
 
+  const [utrImported, setUtrImported] = useState(false);
+
   const selectUtrPlayer = (result: UTRResult) => {
-    setForm(prev => ({
-      ...prev,
-      full_name: result.displayName || prev.full_name,
-      utr_rating: result.singlesUtr?.toString() || result.doublesUtr?.toString() || prev.utr_rating,
-      utr_id: result.utrId || prev.utr_id,
-    }));
+    const newName = result.displayName || '';
+    const newUtr = result.singlesUtr?.toString() || result.doublesUtr?.toString() || '';
+    const newUtrId = result.utrId || '';
+
+    setForm({
+      ...form,
+      full_name: newName || form.full_name,
+      utr_rating: newUtr || form.utr_rating,
+      utr_id: newUtrId || form.utr_id,
+    });
     setUtrResults([]);
     setUtrSearchName('');
+    setUtrImported(true);
+    setTimeout(() => setUtrImported(false), 3000);
   };
 
   const handleSave = async (addAnother: boolean = false) => {
@@ -246,23 +254,27 @@ export default function AddVaultPlayerPage() {
         {utrResults.length > 0 && (
           <div className="space-y-2 max-h-48 overflow-y-auto">
             <p className="text-xs text-[#D3FB52] mb-1">{utrResults.length} result{utrResults.length !== 1 ? 's' : ''} found — click to import:</p>
-            {utrResults.map((result, idx) => (
-              <div
-                key={result.utrId || `utr-${idx}`}
-                role="button"
-                tabIndex={0}
-                onClick={() => selectUtrPlayer(result)}
-                onKeyDown={e => e.key === 'Enter' && selectUtrPlayer(result)}
-                className="w-full text-left p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg hover:border-[#D3FB52]/30 hover:bg-[#D3FB52]/5 transition-colors cursor-pointer"
-              >
-                <div className="font-medium text-white">{result.displayName}</div>
-                <div className="text-sm text-white/50">
-                  {result.singlesUtr ? `Singles UTR: ${result.singlesUtr}` : ''}
-                  {result.doublesUtr ? ` | Doubles UTR: ${result.doublesUtr}` : ''}
-                  {result.location ? ` | ${result.location}` : ''}
-                </div>
-              </div>
-            ))}
+            {utrResults.map((result, idx) => {
+              const handleClick = () => {
+                selectUtrPlayer(result);
+              };
+              return (
+                <button
+                  key={`utr-result-${idx}`}
+                  type="button"
+                  onClick={handleClick}
+                  className="w-full text-left p-4 bg-white/[0.03] border-2 border-white/[0.08] rounded-lg hover:border-[#D3FB52]/50 hover:bg-[#D3FB52]/10 active:bg-[#D3FB52]/20 transition-all cursor-pointer"
+                >
+                  <div className="font-semibold text-white text-base">{result.displayName}</div>
+                  <div className="text-sm text-white/50 mt-1">
+                    {result.singlesUtr ? `Singles UTR: ${result.singlesUtr}` : ''}
+                    {result.doublesUtr ? ` | Doubles UTR: ${result.doublesUtr}` : ''}
+                    {result.location ? ` | ${result.location}` : ''}
+                  </div>
+                  <div className="text-xs text-[#D3FB52] mt-2 font-medium">Click to import this player</div>
+                </button>
+              );
+            })}
           </div>
         )}
 
@@ -270,7 +282,13 @@ export default function AddVaultPlayerPage() {
           <p className="text-sm text-white/30 text-center py-2">Searching UTR...</p>
         )}
 
-        {utrResults.length === 0 && !utrSearching && utrSearchName.length > 2 && (
+        {utrImported && (
+          <div className="flex items-center gap-2 p-3 bg-[#D3FB52]/10 border border-[#D3FB52]/20 rounded-lg mt-2">
+            <span className="text-[#D3FB52] text-sm font-medium">UTR data imported! Check the form below.</span>
+          </div>
+        )}
+
+        {utrResults.length === 0 && !utrSearching && !utrImported && utrSearchName.length > 2 && (
           <p className="text-xs text-white/30 mt-1">Type a name and click Search UTR to find players.</p>
         )}
       </div>
