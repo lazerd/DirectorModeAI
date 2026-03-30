@@ -121,11 +121,11 @@ export default function EventBoardPage() {
       <div className="card p-4 mb-6">
         <div className="flex flex-wrap gap-3">
           <div className="flex-1 min-w-[200px] relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none z-10" />
             <input
               type="text"
               placeholder="Search events..."
-              className="input pl-9"
+              className="input pl-10"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />

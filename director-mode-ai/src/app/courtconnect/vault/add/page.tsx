@@ -45,7 +45,7 @@ export default function AddVaultPlayerPage() {
   const [utrSearchName, setUtrSearchName] = useState('');
   const [utrSearching, setUtrSearching] = useState(false);
   const [utrResults, setUtrResults] = useState<UTRResult[]>([]);
-  const [showUtrSearch, setShowUtrSearch] = useState(false);
+  // UTR search is always visible
 
   // Form
   const [form, setForm] = useState({
@@ -125,8 +125,8 @@ export default function AddVaultPlayerPage() {
       utr_rating: result.singlesUtr?.toString() || result.doublesUtr?.toString() || '',
       utr_id: result.utrId,
     }));
-    setShowUtrSearch(false);
     setUtrResults([]);
+    setUtrSearchName('');
   };
 
   const handleSave = async (addAnother: boolean = false) => {
@@ -216,63 +216,58 @@ export default function AddVaultPlayerPage() {
         <div className="alert alert-error mb-6"><p>{error}</p></div>
       )}
 
-      {/* UTR Lookup */}
-      <div className="card p-4 mb-6">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-sm">UTR Lookup</h2>
+      {/* UTR Lookup — always visible */}
+      <div className="card p-5 mb-6 border-[#D3FB52]/20">
+        <div className="flex items-center gap-2 mb-3">
+          <Search size={18} className="text-[#D3FB52]" />
+          <h2 className="font-semibold text-white">Auto-Import from UTR</h2>
+        </div>
+        <p className="text-white/40 text-sm mb-3">Search a player&apos;s name to pull their UTR rating automatically.</p>
+
+        <div className="flex gap-2 mb-3">
+          <input
+            type="text"
+            className="input flex-1"
+            placeholder="Search player name on UTR..."
+            value={utrSearchName}
+            onChange={e => setUtrSearchName(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleUtrSearch()}
+          />
           <button
-            onClick={() => setShowUtrSearch(!showUtrSearch)}
-            className="btn btn-ghost btn-sm"
+            onClick={handleUtrSearch}
+            className="btn bg-[#D3FB52] text-[#002838] hover:bg-[#c5f035] btn-sm font-semibold"
+            disabled={utrSearching}
           >
-            <Search size={14} />
-            {showUtrSearch ? 'Hide' : 'Search UTR'}
+            {utrSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+            Search UTR
           </button>
         </div>
 
-        {showUtrSearch && (
-          <div>
-            <div className="flex gap-2 mb-3">
-              <input
-                type="text"
-                className="input flex-1"
-                placeholder="Search player name on UTR..."
-                value={utrSearchName}
-                onChange={e => setUtrSearchName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleUtrSearch()}
-              />
+        {utrResults.length > 0 && (
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {utrResults.map(result => (
               <button
-                onClick={handleUtrSearch}
-                className="btn btn-courtconnect btn-sm"
-                disabled={utrSearching}
+                key={result.utrId}
+                onClick={() => selectUtrPlayer(result)}
+                className="w-full text-left p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg hover:border-[#D3FB52]/30 hover:bg-[#D3FB52]/5 transition-colors"
               >
-                {utrSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                Search
+                <div className="font-medium text-white">{result.displayName}</div>
+                <div className="text-sm text-white/50">
+                  {result.singlesUtr && `Singles UTR: ${result.singlesUtr}`}
+                  {result.doublesUtr && ` | Doubles UTR: ${result.doublesUtr}`}
+                  {result.location && ` | ${result.location}`}
+                </div>
               </button>
-            </div>
-
-            {utrResults.length > 0 && (
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {utrResults.map(result => (
-                  <button
-                    key={result.utrId}
-                    onClick={() => selectUtrPlayer(result)}
-                    className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-courtconnect-light transition-colors"
-                  >
-                    <div className="font-medium">{result.displayName}</div>
-                    <div className="text-sm text-gray-500">
-                      {result.singlesUtr && `Singles UTR: ${result.singlesUtr}`}
-                      {result.doublesUtr && ` | Doubles UTR: ${result.doublesUtr}`}
-                      {result.location && ` | ${result.location}`}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {utrSearching && (
-              <p className="text-sm text-gray-400 text-center py-2">Searching UTR...</p>
-            )}
+            ))}
           </div>
+        )}
+
+        {utrSearching && (
+          <p className="text-sm text-white/30 text-center py-2">Searching UTR...</p>
+        )}
+
+        {utrResults.length === 0 && !utrSearching && utrSearchName.length > 2 && (
+          <p className="text-xs text-white/30 mt-1">Type a name and click Search UTR to find players.</p>
         )}
       </div>
 
