@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Calendar, MapPin, Users, Clock, Mail, UserPlus, CheckCircle, XCircle, Clock3, Send, X } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Users, Clock, Mail, UserPlus, CheckCircle, XCircle, Clock3, Send, X, MessageSquare, Shuffle, Flag } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 
@@ -49,6 +50,7 @@ type AvailablePlayer = {
 
 export default function EventDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const eventId = params.id as string;
 
   const [event, setEvent] = useState<Event | null>(null);
@@ -66,6 +68,16 @@ export default function EventDetailPage() {
   const [inviteMode, setInviteMode] = useState<'select' | 'skill'>('skill');
   const [inviting, setInviting] = useState(false);
   const [inviteResult, setInviteResult] = useState<{ sent: number; failed: number } | null>(null);
+
+  // Message dialog state
+  const [showMessageDialog, setShowMessageDialog] = useState(false);
+  const [messageSubject, setMessageSubject] = useState('');
+  const [messageBody, setMessageBody] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const [messageResult, setMessageResult] = useState<{ sent: number } | null>(null);
+
+  // Mixer bridge state
+  const [creatingMixer, setCreatingMixer] = useState(false);
 
   useEffect(() => {
     fetchEvent();
@@ -251,6 +263,72 @@ export default function EventDetailPage() {
     );
   };
 
+  const handleSendMessage = async () => {
+    if (!messageBody.trim()) return;
+    setSendingMessage(true);
+    setMessageResult(null);
+
+    try {
+      const res = await fetch('/api/courtconnect/message-players', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          eventId,
+          subject: messageSubject || undefined,
+          message: messageBody,
+        }),
+      });
+      const data = await res.json();
+      setMessageResult({ sent: data.sent || 0 });
+      setMessageBody('');
+      setMessageSubject('');
+    } catch {
+      setMessageResult({ sent: 0 });
+    }
+
+    setSendingMessage(false);
+  };
+
+  const handleStartMixer = async () => {
+    if (!currentUserId) return;
+    setCreatingMixer(true);
+
+    try {
+      const res = await fetch('/api/courtconnect/create-mixer-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ccEventId: eventId, userId: currentUserId }),
+      });
+      const data = await res.json();
+      if (data.success && data.mixerEventId) {
+        router.push(`/mixer/events/${data.mixerEventId}`);
+      }
+    } catch (err) {
+      console.error('Failed to create mixer event:', err);
+    }
+
+    setCreatingMixer(false);
+  };
+
+  const handleMarkComplete = async () => {
+    const supabase = createClient();
+    await supabase
+      .from('cc_events')
+      .update({ status: 'completed' })
+      .eq('id', eventId);
+    fetchEvent();
+  };
+
+  const handleCancelEvent = async () => {
+    if (!confirm('Cancel this event? All players will be notified.')) return;
+    const supabase = createClient();
+    await supabase
+      .from('cc_events')
+      .update({ status: 'cancelled' })
+      .eq('id', eventId);
+    fetchEvent();
+  };
+
   const sportLabel = (sport: string) =>
     sport.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
 
@@ -347,15 +425,65 @@ export default function EventDetailPage() {
         )}
 
         {/* Creator actions */}
-        {isCreator && event.status === 'open' && (
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <button
-              onClick={openInviteDialog}
-              className="btn btn-courtconnect"
-            >
-              <Send size={16} />
-              Invite Players
-            </button>
+        {isCreator && (event.status === 'open' || event.status === 'closed') && (
+          <div className="mt-6 pt-4 border-t border-white/[0.06]">
+            <div className="flex flex-wrap gap-2">
+              {event.status === 'open' && (
+                <button onClick={openInviteDialog} className="btn btn-courtconnect btn-sm">
+                  <Send size={14} /> Invite Players
+                </button>
+              )}
+              {acceptedPlayers.length > 0 && (
+                <>
+                  <button onClick={() => setShowMessageDialog(true)} className="btn btn-sm bg-blue-500/20 text-blue-400 hover:bg-blue-500/30">
+                    <MessageSquare size={14} /> Message Players
+                  </button>
+                  <button
+                    onClick={handleStartMixer}
+                    disabled={creatingMixer || acceptedPlayers.length < 2}
+                    className="btn btn-sm bg-orange-500/20 text-orange-400 hover:bg-orange-500/30"
+                  >
+                    <Shuffle size={14} /> {creatingMixer ? 'Creating...' : 'Start Round Robin'}
+                  </button>
+                </>
+              )}
+              {event.status === 'open' && (
+                <button onClick={handleMarkComplete} className="btn btn-sm bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30">
+                  <Flag size={14} /> Mark Complete
+                </button>
+              )}
+              <button onClick={handleCancelEvent} className="btn btn-ghost btn-sm text-red-400 hover:bg-red-500/10">
+                <X size={14} /> Cancel Event
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Completed/Cancelled status banner */}
+        {event.status === 'completed' && isCreator && (
+          <div className="mt-6 pt-4 border-t border-white/[0.06]">
+            <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+              <CheckCircle size={18} className="text-emerald-400" />
+              <span className="text-emerald-400 font-medium text-sm">Event completed</span>
+              {acceptedPlayers.length >= 2 && (
+                <button
+                  onClick={handleStartMixer}
+                  disabled={creatingMixer}
+                  className="btn btn-sm bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 ml-auto"
+                >
+                  <Shuffle size={14} /> {creatingMixer ? 'Creating...' : 'Create Round Robin'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {event.status === 'cancelled' && (
+          <div className="mt-6 pt-4 border-t border-white/[0.06]">
+            <div className="flex items-center gap-3 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <XCircle size={18} className="text-red-400" />
+              <span className="text-red-400 font-medium text-sm">Event cancelled</span>
+            </div>
           </div>
         )}
 
@@ -600,6 +728,66 @@ export default function EventDetailPage() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Message Players Dialog */}
+      {showMessageDialog && (
+        <div className="modal-overlay" onClick={() => setShowMessageDialog(false)}>
+          <div className="modal w-full max-w-lg p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">Message Confirmed Players</h2>
+              <button onClick={() => setShowMessageDialog(false)} className="p-1.5 hover:bg-white/10 rounded-lg">
+                <X size={18} className="text-white/60" />
+              </button>
+            </div>
+
+            <p className="text-sm text-white/50 mb-4">
+              Send a message to all {acceptedPlayers.length} confirmed player{acceptedPlayers.length !== 1 ? 's' : ''}.
+            </p>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="label text-white/70 text-sm">Subject (optional)</label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder={`About: ${event.title}`}
+                  value={messageSubject}
+                  onChange={e => setMessageSubject(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="label text-white/70 text-sm">Message *</label>
+                <textarea
+                  className="input"
+                  rows={4}
+                  placeholder="Type your message to all confirmed players..."
+                  value={messageBody}
+                  onChange={e => setMessageBody(e.target.value)}
+                />
+              </div>
+            </div>
+
+            {messageResult && (
+              <div className="alert alert-success mb-4">
+                <p className="text-sm">Message sent to {messageResult.sent} player{messageResult.sent !== 1 ? 's' : ''}!</p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleSendMessage}
+                className="btn btn-courtconnect flex-1"
+                disabled={sendingMessage || !messageBody.trim()}
+              >
+                {sendingMessage ? <div className="spinner" /> : (
+                  <><MessageSquare size={16} /> Send to {acceptedPlayers.length} Player{acceptedPlayers.length !== 1 ? 's' : ''}</>
+                )}
+              </button>
+              <button onClick={() => setShowMessageDialog(false)} className="btn btn-ghost">Close</button>
             </div>
           </div>
         </div>
