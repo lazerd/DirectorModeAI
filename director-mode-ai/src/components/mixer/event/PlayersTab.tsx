@@ -7,7 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, GripVertical, X, Pencil, Play } from "lucide-react";
+import { Plus, GripVertical, X, Pencil, Play, Database } from "lucide-react";
+import VaultPicker from "@/components/shared/VaultPicker";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -106,6 +107,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
   const [matchFormat, setMatchFormat] = useState<string | null>(null);
   const [editingPlayer, setEditingPlayer] = useState<EventPlayer | null>(null);
   const [hasRounds, setHasRounds] = useState(false);
+  const [showVaultPicker, setShowVaultPicker] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -235,6 +237,32 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
       fetchPlayers();
     }
     setAdding(false);
+  };
+
+  const handleVaultImport = async (vaultPlayers: { id: string; full_name: string; gender: string | null; email: string | null }[]) => {
+    setShowVaultPicker(false);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    for (const vp of vaultPlayers) {
+      const { data: player } = await supabase
+        .from("players")
+        .insert([{ user_id: user.id, name: vp.full_name, gender: vp.gender === 'female' ? 'female' : 'male' }])
+        .select()
+        .single();
+
+      if (player) {
+        await supabase
+          .from("event_players")
+          .insert([{ event_id: event.id, player_id: player.id, strength_order: players.length }]);
+      }
+    }
+
+    toast({
+      title: "Players imported",
+      description: `${vaultPlayers.length} player${vaultPlayers.length !== 1 ? 's' : ''} imported from PlayerVault.`,
+    });
+    fetchPlayers();
   };
 
   const handleGenerateRound1 = async () => {
@@ -446,6 +474,10 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
             {adding ? "..." : "Add"}
           </Button>
         </form>
+        <Button variant="outline" onClick={() => setShowVaultPicker(true)} className="w-full">
+          <Database className="h-4 w-4 mr-2" />
+          Import from PlayerVault
+        </Button>
 
         {loading ? (
           <div className="space-y-2">
@@ -543,6 +575,14 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
           open={!!editingPlayer}
           onOpenChange={(open) => !open && setEditingPlayer(null)}
           onPlayerUpdated={fetchPlayers}
+        />
+      )}
+      {showVaultPicker && (
+        <VaultPicker
+          onSelect={() => {}}
+          onClose={() => setShowVaultPicker(false)}
+          multiSelect
+          onMultiSelect={handleVaultImport}
         />
       )}
     </Card>

@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Search, Users, Mail, Phone, Trash2, Check, X, Copy, UserPlus } from 'lucide-react';
+import { Plus, Search, Users, Mail, Phone, Trash2, Check, X, Copy, UserPlus, Database } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import VaultPicker from '@/components/shared/VaultPicker';
 
 type Client = {
   id: string;
@@ -22,6 +23,7 @@ export default function ClientsPage() {
   const [coachId, setCoachId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'approved' | 'pending'>('approved');
+  const [showVaultPicker, setShowVaultPicker] = useState(false);
 
   useEffect(() => { initCoach(); }, []);
 
@@ -81,6 +83,30 @@ export default function ClientsPage() {
     }
   };
 
+  const handleVaultImport = async (player: { full_name: string; email: string | null; phone: string | null }) => {
+    if (!coachId || !player.email) {
+      setShowVaultPicker(false);
+      return;
+    }
+    setShowVaultPicker(false);
+    const supabase = createClient();
+    const { data: client } = await supabase.from('lesson_clients').insert({
+      name: player.full_name,
+      email: player.email,
+      phone: player.phone || null,
+    }).select().single();
+
+    if (client) {
+      await supabase.from('lesson_client_coaches').insert({
+        client_id: client.id,
+        coach_id: coachId,
+        status: 'approved',
+        approved_at: new Date().toISOString(),
+      });
+      fetchClients(coachId);
+    }
+  };
+
   const approveClient = async (clientCoachId: string) => {
     const supabase = createClient();
     await supabase
@@ -128,9 +154,14 @@ export default function ClientsPage() {
           <h1 className="font-semibold text-2xl">My Clients</h1>
           <p className="text-gray-500 text-sm">Manage your lesson clients</p>
         </div>
-        <button onClick={() => setShowAddClient(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
-          <Plus size={18} />Add Client
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => setShowVaultPicker(true)} className="flex items-center gap-2 px-4 py-2 border border-white/10 text-white/70 rounded-lg font-medium hover:bg-white/5">
+            <Database size={18} />Import from Vault
+          </button>
+          <button onClick={() => setShowAddClient(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">
+            <Plus size={18} />Add Client
+          </button>
+        </div>
       </div>
 
       {/* Coach Code Section */}
@@ -254,6 +285,13 @@ export default function ClientsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {showVaultPicker && (
+        <VaultPicker
+          onSelect={handleVaultImport}
+          onClose={() => setShowVaultPicker(false)}
+        />
       )}
     </div>
   );

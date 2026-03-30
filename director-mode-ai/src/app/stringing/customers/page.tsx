@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Users, Mail, Phone, ChevronRight } from 'lucide-react';
+import { Plus, Search, Users, Mail, Phone, ChevronRight, Database } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import VaultPicker from '@/components/shared/VaultPicker';
 
 type Customer = {
   id: string;
@@ -20,6 +21,7 @@ export default function CustomersPage() {
   const [search, setSearch] = useState('');
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ full_name: '', email: '', phone: '', notes: '' });
+  const [showVaultPicker, setShowVaultPicker] = useState(false);
 
   useEffect(() => {
     fetchCustomers();
@@ -56,7 +58,21 @@ export default function CustomersPage() {
     }
   };
 
-  const filteredCustomers = customers.filter(c => 
+  const handleVaultImport = async (player: { full_name: string; email: string | null; phone: string | null; notes: string | null }) => {
+    setShowVaultPicker(false);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('stringing_customers')
+      .insert({
+        full_name: player.full_name,
+        email: player.email || null,
+        phone: player.phone || null,
+        notes: player.notes || null,
+      });
+    if (!error) fetchCustomers();
+  };
+
+  const filteredCustomers = customers.filter(c =>
     c.full_name.toLowerCase().includes(search.toLowerCase()) ||
     (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
   );
@@ -70,13 +86,22 @@ export default function CustomersPage() {
             <h1 className="font-semibold text-2xl">Customers</h1>
             <p className="text-gray-500 text-sm">Manage stringing customers</p>
           </div>
-          <button
-            onClick={() => setShowAddCustomer(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700"
-          >
-            <Plus size={18} />
-            Add Customer
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setShowVaultPicker(true)}
+              className="flex items-center gap-2 px-4 py-2 border border-white/10 text-white/70 rounded-lg font-medium hover:bg-white/5"
+            >
+              <Database size={18} />
+              Import from Vault
+            </button>
+            <button
+              onClick={() => setShowAddCustomer(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700"
+            >
+              <Plus size={18} />
+              Add Customer
+            </button>
+          </div>
         </div>
 
         {/* Search */}
@@ -211,6 +236,13 @@ export default function CustomersPage() {
           </div>
         )}
       </div>
+
+      {showVaultPicker && (
+        <VaultPicker
+          onSelect={handleVaultImport}
+          onClose={() => setShowVaultPicker(false)}
+        />
+      )}
     </div>
   );
 }
