@@ -121,9 +121,9 @@ export default function AddVaultPlayerPage() {
   const selectUtrPlayer = (result: UTRResult) => {
     setForm(prev => ({
       ...prev,
-      full_name: prev.full_name || result.displayName,
-      utr_rating: result.singlesUtr?.toString() || result.doublesUtr?.toString() || '',
-      utr_id: result.utrId,
+      full_name: result.displayName || prev.full_name,
+      utr_rating: result.singlesUtr?.toString() || result.doublesUtr?.toString() || prev.utr_rating,
+      utr_id: result.utrId || prev.utr_id,
     }));
     setUtrResults([]);
     setUtrSearchName('');
@@ -245,19 +245,23 @@ export default function AddVaultPlayerPage() {
 
         {utrResults.length > 0 && (
           <div className="space-y-2 max-h-48 overflow-y-auto">
-            {utrResults.map(result => (
-              <button
-                key={result.utrId}
+            <p className="text-xs text-[#D3FB52] mb-1">{utrResults.length} result{utrResults.length !== 1 ? 's' : ''} found — click to import:</p>
+            {utrResults.map((result, idx) => (
+              <div
+                key={result.utrId || `utr-${idx}`}
+                role="button"
+                tabIndex={0}
                 onClick={() => selectUtrPlayer(result)}
-                className="w-full text-left p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg hover:border-[#D3FB52]/30 hover:bg-[#D3FB52]/5 transition-colors"
+                onKeyDown={e => e.key === 'Enter' && selectUtrPlayer(result)}
+                className="w-full text-left p-3 bg-white/[0.03] border border-white/[0.06] rounded-lg hover:border-[#D3FB52]/30 hover:bg-[#D3FB52]/5 transition-colors cursor-pointer"
               >
                 <div className="font-medium text-white">{result.displayName}</div>
                 <div className="text-sm text-white/50">
-                  {result.singlesUtr && `Singles UTR: ${result.singlesUtr}`}
-                  {result.doublesUtr && ` | Doubles UTR: ${result.doublesUtr}`}
-                  {result.location && ` | ${result.location}`}
+                  {result.singlesUtr ? `Singles UTR: ${result.singlesUtr}` : ''}
+                  {result.doublesUtr ? ` | Doubles UTR: ${result.doublesUtr}` : ''}
+                  {result.location ? ` | ${result.location}` : ''}
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         )}
