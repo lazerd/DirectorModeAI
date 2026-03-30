@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
       .eq('event_id', eventId)
       .eq('status', 'waitlisted');
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://director-mode-ai.vercel.app';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
     const eventUrl = `${baseUrl}/courtconnect/events/${eventId}`;
 
     const statusEmoji = rsvpStatus === 'accepted' ? '✅' : rsvpStatus === 'waitlisted' ? '⏳' : '❌';
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     `;
 
     await resend.emails.send({
-      from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@mixermodeai.com>',
+      from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
       to: creator.email,
       subject: `${statusEmoji} ${playerName} ${statusLabel.toLowerCase()} - ${event.title}`,
       html: emailHtml,
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
 
           if (promotedProfile?.email) {
             await resend.emails.send({
-              from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@mixermodeai.com>',
+              from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
               to: promotedProfile.email,
               subject: `🎉 You're in! Spot opened for ${event.title}`,
               html: `

@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, sent: 0, message: 'No matching players found' });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://director-mode-ai.vercel.app';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
     const eventUrl = `${baseUrl}/courtconnect/events/${eventId}`;
 
     const sportLabel = event.sport.replace('_', ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -185,7 +185,7 @@ export async function POST(request: NextRequest) {
 
       try {
         await resend.emails.send({
-          from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@mixermodeai.com>',
+          from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
           to: player.email,
           replyTo: creator?.email,
           subject: `You're invited: ${event.title} - ${sportLabel} ${typeLabel}`,

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Shuffle, Home, Calendar, Settings, Trophy, CreditCard } from 'lucide-react';
+import { Shuffle, Home, Calendar, Settings, CreditCard, Zap } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import MixerMobileNav from '@/components/mixer/MixerMobileNav';
@@ -23,35 +23,35 @@ export default async function MixerLayout({
     .single();
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#001820]">
       {/* Desktop Sidebar - hidden on mobile */}
-      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-white border-r border-gray-200">
+      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-[#002838] border-r border-white/[0.06]">
         {/* Logo */}
-        <div className="p-5 border-b border-gray-200">
+        <div className="p-5 border-b border-white/[0.06]">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-mixer flex items-center justify-center">
-              <Shuffle size={18} className="text-white" />
+            <div className="w-9 h-9 rounded-xl bg-orange-500/20 flex items-center justify-center">
+              <Shuffle size={18} className="text-orange-400" />
             </div>
             <div>
-              <span className="font-display text-lg block leading-tight">MixerMode</span>
-              <span className="text-xs text-gray-500">Events AI</span>
+              <span className="font-display text-lg block leading-tight text-white">MixerMode</span>
+              <span className="text-xs text-white/40">Events AI</span>
             </div>
           </Link>
         </div>
 
         {/* User */}
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-white/[0.06]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-mixer-light flex items-center justify-center">
-              <span className="text-mixer font-semibold">
+            <div className="w-10 h-10 rounded-xl bg-orange-400/10 flex items-center justify-center">
+              <span className="text-orange-400 font-semibold">
                 {profile?.full_name?.charAt(0) || user.email?.charAt(0)?.toUpperCase()}
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate text-sm">
+              <div className="font-medium truncate text-sm text-white">
                 {profile?.full_name || 'Organizer'}
               </div>
-              <div className="text-xs text-gray-500 truncate">{user.email}</div>
+              <div className="text-xs text-white/40 truncate">{user.email}</div>
             </div>
           </div>
         </div>
@@ -75,20 +75,20 @@ export default async function MixerLayout({
         </nav>
 
         {/* Back to Platform */}
-        <div className="p-4 border-t border-gray-200">
+        <div className="p-4 border-t border-white/[0.06]">
           <Link
             href="/"
-            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+            className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/50 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
           >
-            <Trophy size={18} />
-            Back to Platform
+            <Zap size={18} />
+            Back to ClubMode
           </Link>
         </div>
       </aside>
 
       {/* Mobile Header */}
-      <MixerMobileNav 
-        userName={profile?.full_name || 'Organizer'} 
+      <MixerMobileNav
+        userName={profile?.full_name || 'Organizer'}
         userInitial={profile?.full_name?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || 'U'}
       />
 
@@ -113,7 +113,7 @@ function NavItem({
     <li>
       <Link
         href={href}
-        className="flex items-center gap-3 px-4 py-2.5 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+        className="flex items-center gap-3 px-4 py-2.5 text-white/60 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
       >
         <Icon size={20} />
         <span className="font-medium">{children}</span>

@@ -299,7 +299,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         await navigator.share({
           files: [file],
           title: `${eventName} Results`,
-          text: `Check out the results from ${eventName}! Run your next event at directormode.ai`,
+          text: `Check out the results from ${eventName}! Run your next event at club.coachmode.ai`,
         });
         toast({ title: "Results shared!", description: "Image shared successfully." });
       } else {

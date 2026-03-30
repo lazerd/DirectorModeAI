@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
       // Send reminder to client
       try {
         await resend.emails.send({
-          from: 'LastMinute Lessons <notifications@mixermodeai.com>',
+          from: 'LastMinute Lessons <notifications@coachmode.ai>',
           to: client.email,
           subject: `Reminder: Lesson with ${coachName} tomorrow`,
           html: `
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
                 <a href="${calendarLinks.outlookUrl}" style="display: inline-block; background: #0078d4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none;">📅 Outlook</a>
               </div>
               <p style="color: #666; font-size: 14px; margin-top: 24px;">
-                Need to cancel? <a href="https://director-mode-ai.vercel.app/client/dashboard" style="color: #2563eb;">Manage your lessons</a>
+                Need to cancel? <a href="https://club.coachmode.ai/client/dashboard" style="color: #2563eb;">Manage your lessons</a>
               </p>
             </div>
           `

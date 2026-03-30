@@ -16,7 +16,7 @@ const EventCodeQR = ({ eventCode, eventName }: EventCodeQRProps) => {
   const [publicUrl, setPublicUrl] = useState("");
 
   useEffect(() => {
-    const url = `https://director-mode-ai.vercel.app/event/${eventCode}`;
+    const url = `https://club.coachmode.ai/event/${eventCode}`;
     setPublicUrl(url);
 
     if (canvasRef.current) {

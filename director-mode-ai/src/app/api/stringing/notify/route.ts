@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data, error } = await resend.emails.send({
-      from: 'StringingMode <notifications@mixermodeai.com>',
+      from: 'StringingMode <notifications@coachmode.ai>',
       to: [to],
       subject: '🎾 Your Racket is Ready for Pickup!',
       html: `

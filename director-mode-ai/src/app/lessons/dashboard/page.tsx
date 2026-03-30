@@ -241,7 +241,7 @@ export default function DashboardPage() {
           <div>
             <p className="font-medium text-blue-900">Share your booking link with students</p>
             {coachSlug ? (
-              <p className="text-sm text-blue-600">director-mode-ai.vercel.app/coach/{coachSlug}</p>
+              <p className="text-sm text-blue-600">club.coachmode.ai/coach/{coachSlug}</p>
             ) : (
               <p className="text-sm text-blue-600">Set up your link in <a href="/lessons/settings" className="underline">Settings</a></p>
             )}

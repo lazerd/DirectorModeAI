@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     await resend.emails.send({
-      from: 'LastMinute Lessons <notifications@mixermodeai.com>',
+      from: 'LastMinute Lessons <notifications@coachmode.ai>',
       to: coachEmail,
       subject: `New Client Request: ${clientName} wants to book lessons`,
       html: `
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
           </div>
           
           <p>Go to your dashboard to approve or decline this request.</p>
-          <a href="https://director-mode-ai.vercel.app/lessons/clients" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View Client Requests</a>
+          <a href="https://club.coachmode.ai/lessons/clients" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View Client Requests</a>
         </div>
       `
     });

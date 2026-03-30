@@ -34,13 +34,13 @@ export async function POST(request: NextRequest) {
       : `<p><strong>${otherPartyName}</strong> has cancelled your scheduled lesson:</p>`;
 
     const dashboardUrl = isCoachNotification
-      ? 'https://director-mode-ai.vercel.app/lessons/dashboard'
-      : 'https://director-mode-ai.vercel.app/client/dashboard';
+      ? 'https://club.coachmode.ai/lessons/dashboard'
+      : 'https://club.coachmode.ai/client/dashboard';
 
     const buttonText = isCoachNotification ? 'View Dashboard' : 'Book Another Lesson';
 
     await resend.emails.send({
-      from: 'LastMinute Lessons <notifications@mixermodeai.com>',
+      from: 'LastMinute Lessons <notifications@coachmode.ai>',
       to: recipientEmail,
       subject,
       html: `

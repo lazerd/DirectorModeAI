@@ -118,16 +118,16 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+    <div className="min-h-screen bg-[#001820] flex items-center justify-center p-6">
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center gap-2.5 mb-8">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-            <Trophy size={22} className="text-white" />
+          <div className="w-10 h-10 rounded-xl bg-[#D3FB52] flex items-center justify-center">
+            <Trophy size={22} className="text-[#002838]" />
           </div>
-          <span className="font-semibold text-2xl">Director Mode AI</span>
+          <span className="font-semibold text-2xl text-white">ClubMode AI</span>
         </div>
 
-        <Suspense fallback={<div className="bg-white rounded-xl border p-6 text-center">Loading...</div>}>
+        <Suspense fallback={<div className="rounded-xl border border-white/10 bg-white/[0.03] p-6 text-center text-white/50">Loading...</div>}>
           <LoginForm />
         </Suspense>
       </div>

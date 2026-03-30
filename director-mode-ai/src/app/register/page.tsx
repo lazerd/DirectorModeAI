@@ -55,31 +55,30 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-subtle flex">
+    <div className="min-h-screen bg-[#001820] flex">
       {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-primary p-12 flex-col justify-between relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-white/5 rounded-full -translate-y-1/2 translate-x-1/2" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-white/5 rounded-full translate-y-1/2 -translate-x-1/2" />
-        <div className="absolute top-1/2 right-1/4 w-32 h-32 bg-white/5 rounded-full" />
-        
+      <div className="hidden lg:flex lg:w-1/2 bg-[#002838] p-12 flex-col justify-between relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-96 h-96 bg-[#D3FB52]/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl" />
+        <div className="absolute bottom-0 left-0 w-64 h-64 bg-emerald-500/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-3xl" />
+
         <div className="relative">
           <Link href="/" className="flex items-center gap-3 text-white">
-            <div className="w-11 h-11 rounded-xl bg-white/20 flex items-center justify-center">
-              <Trophy size={24} />
+            <div className="w-11 h-11 rounded-xl bg-[#D3FB52] flex items-center justify-center">
+              <Trophy size={24} className="text-[#002838]" />
             </div>
-            <span className="font-display text-2xl">Director Mode AI</span>
+            <span className="font-display text-2xl">ClubMode AI</span>
           </Link>
         </div>
         <div className="text-white relative">
           <h1 className="font-display text-4xl mb-4">
             Get started<br />in minutes
           </h1>
-          <p className="text-white/80 text-lg mb-8 leading-relaxed">
+          <p className="text-white/60 text-lg mb-8 leading-relaxed">
             Create your free account to access events, lessons, and pro shop tools.
           </p>
         </div>
-        <div className="text-white/60 text-sm relative">
-          © {new Date().getFullYear()} Director Mode AI
+        <div className="text-white/40 text-sm relative">
+          &copy; {new Date().getFullYear()} ClubMode AI
         </div>
       </div>
 
@@ -88,15 +87,15 @@ export default function RegisterPage() {
         <div className="w-full max-w-md">
           {/* Mobile Logo */}
           <div className="lg:hidden flex items-center justify-center gap-2.5 mb-8">
-            <div className="w-10 h-10 rounded-xl bg-gradient-primary flex items-center justify-center">
-              <Trophy size={22} className="text-white" />
+            <div className="w-10 h-10 rounded-xl bg-[#D3FB52] flex items-center justify-center">
+              <Trophy size={22} className="text-[#002838]" />
             </div>
-            <span className="font-display text-2xl">Director Mode AI</span>
+            <span className="font-display text-2xl text-white">ClubMode AI</span>
           </div>
 
           <div className="card p-6 sm:p-8">
-            <h2 className="font-display text-2xl mb-2">Create your account</h2>
-            <p className="text-gray-500 mb-6">
+            <h2 className="font-display text-2xl mb-2 text-white">Create your account</h2>
+            <p className="text-white/50 mb-6">
               Start managing events, lessons, and more
             </p>
 

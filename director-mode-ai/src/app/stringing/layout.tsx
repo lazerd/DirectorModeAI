@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Wrench, ClipboardList, Users, Package, Settings, LogOut, Trophy } from 'lucide-react';
+import { Wrench, ClipboardList, Users, Package, Zap } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 
@@ -22,35 +22,35 @@ export default async function StringingLayout({
     .single();
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="min-h-screen bg-[#001820] flex">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <aside className="w-64 bg-[#002838] border-r border-white/[0.06] flex flex-col">
         {/* Logo */}
-        <div className="p-5 border-b border-gray-200">
+        <div className="p-5 border-b border-white/[0.06]">
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-stringing flex items-center justify-center">
-              <Wrench size={18} className="text-white" />
+            <div className="w-9 h-9 rounded-xl bg-pink-500/20 flex items-center justify-center">
+              <Wrench size={18} className="text-pink-400" />
             </div>
             <div>
-              <span className="font-display text-lg block leading-tight">StringingMode</span>
-              <span className="text-xs text-gray-500">Pro Shop</span>
+              <span className="font-display text-lg block leading-tight text-white">StringingMode</span>
+              <span className="text-xs text-white/40">Pro Shop</span>
             </div>
           </Link>
         </div>
 
         {/* User */}
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-white/[0.06]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-stringing-light flex items-center justify-center">
-              <span className="text-stringing font-semibold">
+            <div className="w-10 h-10 rounded-xl bg-pink-400/10 flex items-center justify-center">
+              <span className="text-pink-400 font-semibold">
                 {profile?.full_name?.charAt(0) || user.email?.charAt(0)?.toUpperCase()}
               </span>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-medium truncate text-sm">
+              <div className="font-medium truncate text-sm text-white">
                 {profile?.full_name || 'Staff'}
               </div>
-              <div className="text-xs text-gray-500 truncate">{user.email}</div>
+              <div className="text-xs text-white/40 truncate">{user.email}</div>
             </div>
           </div>
         </div>
@@ -71,13 +71,13 @@ export default async function StringingLayout({
         </nav>
 
         {/* Back to Platform */}
-        <div className="p-4 border-t border-gray-200">
+        <div className="p-4 border-t border-white/[0.06]">
           <Link
             href="/"
-            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+            className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/50 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
           >
-            <Trophy size={18} />
-            Back to Platform
+            <Zap size={18} />
+            Back to ClubMode
           </Link>
         </div>
       </aside>
@@ -103,7 +103,7 @@ function NavItem({
     <li>
       <Link
         href={href}
-        className="flex items-center gap-3 px-4 py-2.5 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+        className="flex items-center gap-3 px-4 py-2.5 text-white/60 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
       >
         <Icon size={20} />
         <span className="font-medium">{children}</span>

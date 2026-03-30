@@ -439,7 +439,7 @@ export async function generateResultsCard(data: ResultsCardData): Promise<Blob> 
 
   ctx.fillStyle = "white";
   ctx.font = "900 22px system-ui";
-  ctx.fillText("directormode.ai", W / 2, footerY + 22);
+  ctx.fillText("club.coachmode.ai", W / 2, footerY + 22);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(

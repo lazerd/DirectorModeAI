@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Director Mode AI - Tennis & Racket Sports Platform",
-  description: "Complete platform for tennis professionals: Events & Mixers, Lesson Booking, and Pro Shop Stringing",
+  title: "ClubMode AI - The Complete Racquet Sports Platform",
+  description: "Six powerful tools for racquet sports clubs: Events, Lessons, Stringing, Player Matching, Roster Management, and AI Coaching.",
 };
 
 export default function RootLayout({
