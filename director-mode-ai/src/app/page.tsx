@@ -9,6 +9,7 @@ import {
   Sparkles, Check, ChevronRight, Zap, Shield, BarChart3
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import ProductShowcase from "@/components/shared/ProductShowcase";
 
 export default function HomePage() {
   const router = useRouter();
@@ -235,6 +236,9 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+
+      {/* Product Showcase */}
+      <ProductShowcase />
 
       {/* Tools Grid */}
       <section className="py-20 px-6 bg-[#001820]">
