@@ -118,27 +118,32 @@ export default function AddVaultPlayerPage() {
     setUtrSearching(false);
   };
 
-  const [utrImported, setUtrImported] = useState(false);
-  const [selectedUtr, setSelectedUtr] = useState<UTRResult | null>(null);
-
-  // When a UTR player is selected, update form via useEffect to avoid stale closure
-  useEffect(() => {
-    if (!selectedUtr) return;
-    setForm(prev => ({
-      ...prev,
-      full_name: selectedUtr.displayName || prev.full_name,
-      utr_rating: selectedUtr.singlesUtr?.toString() || selectedUtr.doublesUtr?.toString() || prev.utr_rating,
-      utr_id: selectedUtr.utrId || prev.utr_id,
-    }));
-    setSelectedUtr(null);
-    setUtrImported(true);
-    setTimeout(() => setUtrImported(false), 3000);
-  }, [selectedUtr]);
+  const [utrImported, setUtrImported] = useState('');
 
   const selectUtrPlayer = (result: UTRResult) => {
-    setSelectedUtr(result);
+    // Extract values with fallbacks for any data format
+    const name = String(result.displayName || '');
+    const singles = result.singlesUtr != null ? String(result.singlesUtr) : '';
+    const doubles = result.doublesUtr != null ? String(result.doublesUtr) : '';
+    const utrVal = singles || doubles;
+    const utrId = String(result.utrId || '');
+
+    // Debug: show what we got
+    const debugMsg = `Name: "${name}" | UTR: "${utrVal}" (singles=${singles}, doubles=${doubles}) | ID: "${utrId}"`;
+    setUtrImported(debugMsg);
+
+    // Force update each field individually
+    setForm(prev => {
+      const updated = { ...prev };
+      if (name) updated.full_name = name;
+      if (utrVal) updated.utr_rating = utrVal;
+      if (utrId) updated.utr_id = utrId;
+      return updated;
+    });
+
     setUtrResults([]);
     setUtrSearchName('');
+    setTimeout(() => setUtrImported(''), 8000);
   };
 
   const handleSave = async (addAnother: boolean = false) => {
@@ -287,8 +292,9 @@ export default function AddVaultPlayerPage() {
         )}
 
         {utrImported && (
-          <div className="flex items-center gap-2 p-3 bg-[#D3FB52]/10 border border-[#D3FB52]/20 rounded-lg mt-2">
-            <span className="text-[#D3FB52] text-sm font-medium">UTR data imported! Check the form below.</span>
+          <div className="p-3 bg-[#D3FB52]/10 border border-[#D3FB52]/20 rounded-lg mt-2">
+            <p className="text-[#D3FB52] text-sm font-medium mb-1">UTR data imported!</p>
+            <p className="text-white/50 text-xs font-mono break-all">{utrImported}</p>
           </div>
         )}
 
