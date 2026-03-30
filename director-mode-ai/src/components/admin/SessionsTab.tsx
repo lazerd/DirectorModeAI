@@ -13,8 +13,6 @@ interface SessionsData {
   uniqueVisitorsOverTime: { date: string; visitors: number }[];
 }
 
-const ADMIN_KEY = 'masterdirector!';
-
 function formatDuration(ms: number): string {
   if (ms === 0) return '—';
   const totalSeconds = Math.round(ms / 1000);
@@ -29,7 +27,7 @@ export default function SessionsTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/admin/sessions', { headers: { 'X-Admin-Key': ADMIN_KEY } })
+    fetch('/api/admin/sessions')
       .then((r) => r.json())
       .then(setData)
       .catch(console.error)

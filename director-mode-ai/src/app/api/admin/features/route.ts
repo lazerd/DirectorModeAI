@@ -1,16 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { isAdminRequest } from '@/lib/adminAuth';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const ADMIN_PASSWORD = 'masterdirector!';
-
 export async function GET(request: NextRequest) {
-  const adminKey = request.headers.get('X-Admin-Key');
-  if (adminKey !== ADMIN_PASSWORD) {
+  if (!(await isAdminRequest(request))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

@@ -14,14 +14,12 @@ interface OverviewData {
   roleBreakdown: Record<string, number>;
 }
 
-const ADMIN_KEY = 'masterdirector!';
-
 export default function OverviewTab() {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/admin/overview', { headers: { 'X-Admin-Key': ADMIN_KEY } })
+    fetch('/api/admin/overview')
       .then((r) => r.json())
       .then(setData)
       .catch(console.error)

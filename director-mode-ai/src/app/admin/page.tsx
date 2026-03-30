@@ -1,14 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Shield, Lock, LogOut, BarChart3, Package, Sparkles, Monitor } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Shield, Lock, LogOut, BarChart3, Package, Sparkles, Monitor, RefreshCw } from 'lucide-react';
 import OverviewTab from '@/components/admin/OverviewTab';
 import ProductsTab from '@/components/admin/ProductsTab';
 import FeaturesTab from '@/components/admin/FeaturesTab';
 import SessionsTab from '@/components/admin/SessionsTab';
-
-const ADMIN_PASSWORD = 'masterdirector!';
-const AUTH_KEY = 'clubmode_admin_auth';
 
 type Tab = 'overview' | 'products' | 'features' | 'sessions';
 
@@ -23,31 +20,66 @@ export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [checking, setChecking] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
+  // Check existing session on mount
   useEffect(() => {
-    const stored = sessionStorage.getItem(AUTH_KEY);
-    if (stored === 'true') setAuthenticated(true);
-    setChecking(false);
+    fetch('/api/admin/auth')
+      .then((r) => {
+        if (r.ok) setAuthenticated(true);
+      })
+      .catch(() => {})
+      .finally(() => setChecking(false));
   }, []);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === ADMIN_PASSWORD) {
-      sessionStorage.setItem(AUTH_KEY, 'true');
-      setAuthenticated(true);
-      setError('');
-    } else {
-      setError('Incorrect password');
+    setLoginLoading(true);
+    setError('');
+
+    try {
+      const res = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+
+      if (res.ok) {
+        setAuthenticated(true);
+        setError('');
+      } else {
+        setError('Incorrect password');
+      }
+    } catch {
+      setError('Connection error. Please try again.');
+    } finally {
+      setLoginLoading(false);
     }
   };
 
-  const handleLogout = () => {
-    sessionStorage.removeItem(AUTH_KEY);
+  const handleLogout = async () => {
+    await fetch('/api/admin/auth', { method: 'DELETE' });
     setAuthenticated(false);
     setPassword('');
   };
+
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    setRefreshKey((k) => k + 1);
+    setTimeout(() => setRefreshing(false), 500);
+  }, []);
+
+  // Auto-refresh every 60 seconds
+  useEffect(() => {
+    if (!autoRefresh || !authenticated) return;
+    const interval = setInterval(handleRefresh, 60000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, authenticated, handleRefresh]);
 
   if (checking) {
     return (
@@ -94,9 +126,10 @@ export default function AdminPage() {
 
             <button
               type="submit"
-              className="w-full py-3 bg-[#D3FB52] text-[#001820] font-semibold rounded-lg hover:bg-[#D3FB52]/90 transition-colors"
+              disabled={loginLoading}
+              className="w-full py-3 bg-[#D3FB52] text-[#001820] font-semibold rounded-lg hover:bg-[#D3FB52]/90 transition-colors disabled:opacity-50"
             >
-              Enter Dashboard
+              {loginLoading ? 'Verifying...' : 'Enter Dashboard'}
             </button>
           </form>
         </div>
@@ -115,13 +148,36 @@ export default function AdminPage() {
               <Shield className="w-6 h-6 text-[#D3FB52]" />
               <h1 className="text-lg font-bold text-white">ClubMode AI <span className="text-[#D3FB52]">Analytics</span></h1>
             </div>
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Log Out
-            </button>
+            <div className="flex items-center gap-4">
+              {/* Auto-refresh toggle */}
+              <button
+                onClick={() => setAutoRefresh(!autoRefresh)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                  autoRefresh
+                    ? 'border-[#D3FB52]/50 text-[#D3FB52] bg-[#D3FB52]/10'
+                    : 'border-white/10 text-white/40 hover:text-white/60'
+                }`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full ${autoRefresh ? 'bg-[#D3FB52] animate-pulse' : 'bg-white/30'}`} />
+                {autoRefresh ? 'Live' : 'Auto'}
+              </button>
+              {/* Manual refresh */}
+              <button
+                onClick={handleRefresh}
+                className="flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
+                title="Refresh data"
+              >
+                <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+              </button>
+              {/* Logout */}
+              <button
+                onClick={handleLogout}
+                className="flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Log Out
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -154,10 +210,10 @@ export default function AdminPage() {
 
       {/* Tab Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'overview' && <OverviewTab />}
-        {activeTab === 'products' && <ProductsTab />}
-        {activeTab === 'features' && <FeaturesTab />}
-        {activeTab === 'sessions' && <SessionsTab />}
+        {activeTab === 'overview' && <OverviewTab key={`overview-${refreshKey}`} />}
+        {activeTab === 'products' && <ProductsTab key={`products-${refreshKey}`} />}
+        {activeTab === 'features' && <FeaturesTab key={`features-${refreshKey}`} />}
+        {activeTab === 'sessions' && <SessionsTab key={`sessions-${refreshKey}`} />}
       </main>
     </div>
   );

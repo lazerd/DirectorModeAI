@@ -10,8 +10,6 @@ interface FeaturesData {
   topPages: { path: string; views: number }[];
 }
 
-const ADMIN_KEY = 'masterdirector!';
-
 const PRODUCT_COLORS: Record<string, string> = {
   mixer: '#fb923c',
   lessons: '#60a5fa',
@@ -27,7 +25,7 @@ export default function FeaturesTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/admin/features', { headers: { 'X-Admin-Key': ADMIN_KEY } })
+    fetch('/api/admin/features')
       .then((r) => r.json())
       .then(setData)
       .catch(console.error)

@@ -13,8 +13,6 @@ interface ProductData {
   details: Record<string, unknown>;
 }
 
-const ADMIN_KEY = 'masterdirector!';
-
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string; style?: React.CSSProperties }>> = {
   Trophy,
   GraduationCap,
@@ -28,7 +26,7 @@ export default function ProductsTab() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/admin/products', { headers: { 'X-Admin-Key': ADMIN_KEY } })
+    fetch('/api/admin/products')
       .then((r) => r.json())
       .then((data) => setProducts(data.products || []))
       .catch(console.error)
