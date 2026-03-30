@@ -128,7 +128,7 @@ export default function AddVaultPlayerPage() {
     const doubles = result.doublesUtr != null ? String(result.doublesUtr) : '';
     const utrId = String(result.utrId || '');
 
-    setUtrImported(`Imported: ${name} | Singles: ${singles || 'N/A'} | Doubles: ${doubles || 'N/A'}`);
+    setUtrImported(`Imported ${name}${singles ? ` — Singles UTR: ${singles}` : ''}${doubles ? ` — Doubles UTR: ${doubles}` : ''}`);
 
     setForm(prev => {
       const updated = { ...prev };
@@ -293,8 +293,7 @@ export default function AddVaultPlayerPage() {
 
         {utrImported && (
           <div className="p-3 bg-[#D3FB52]/10 border border-[#D3FB52]/20 rounded-lg mt-2">
-            <p className="text-[#D3FB52] text-sm font-medium mb-1">UTR data imported!</p>
-            <p className="text-white/50 text-xs font-mono break-all">{utrImported}</p>
+            <p className="text-[#D3FB52] text-sm font-medium">{utrImported}</p>
           </div>
         )}
 
