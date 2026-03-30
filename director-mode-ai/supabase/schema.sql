@@ -505,7 +505,9 @@ CREATE TABLE IF NOT EXISTS cc_vault_players (
 
   -- Ratings
   usta_rating NUMERIC(2,1) CHECK (usta_rating >= 1.0 AND usta_rating <= 7.0),
-  utr_rating NUMERIC(4,2) CHECK (utr_rating >= 1.00 AND utr_rating <= 16.50),
+  utr_singles NUMERIC(4,2) CHECK (utr_singles >= 1.00 AND utr_singles <= 16.50),
+  utr_doubles NUMERIC(4,2) CHECK (utr_doubles >= 1.00 AND utr_doubles <= 16.50),
+  utr_rating NUMERIC(4,2) CHECK (utr_rating >= 1.00 AND utr_rating <= 16.50), -- legacy, use utr_singles/utr_doubles
   utr_id TEXT, -- UTR profile ID for lookups
   rating_source TEXT DEFAULT 'manual' CHECK (rating_source IN ('manual', 'utr_api', 'usta_api')),
 

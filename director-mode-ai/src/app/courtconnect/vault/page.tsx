@@ -31,7 +31,8 @@ type VaultPlayer = {
   gender: string | null;
   age: number | null;
   usta_rating: number | null;
-  utr_rating: number | null;
+  utr_singles: number | null;
+  utr_doubles: number | null;
   primary_sport: string;
   membership_status: string;
   cc_player_id: string | null;
@@ -251,7 +252,8 @@ export default function PlayerVaultPage() {
                 <th>Email</th>
                 <th>Sport</th>
                 <th>NTRP</th>
-                <th>UTR</th>
+                <th>Singles UTR</th>
+                <th>Doubles UTR</th>
                 <th>Gender</th>
                 <th>Age</th>
                 <th>Status</th>
@@ -282,7 +284,8 @@ export default function PlayerVaultPage() {
                     <span className="badge badge-courtconnect text-xs">{sportLabel(player.primary_sport)}</span>
                   </td>
                   <td className="text-sm">{player.usta_rating || '—'}</td>
-                  <td className="text-sm">{player.utr_rating || '—'}</td>
+                  <td className="text-sm">{player.utr_singles || '—'}</td>
+                  <td className="text-sm">{player.utr_doubles || '—'}</td>
                   <td className="text-sm text-gray-500">{genderLabel(player.gender)}</td>
                   <td className="text-sm text-gray-500">{player.age || '—'}</td>
                   <td>

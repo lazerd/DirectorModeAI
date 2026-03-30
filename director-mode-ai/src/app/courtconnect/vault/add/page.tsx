@@ -56,7 +56,8 @@ export default function AddVaultPlayerPage() {
     date_of_birth: '',
     age: '',
     usta_rating: '',
-    utr_rating: '',
+    utr_singles: '',
+    utr_doubles: '',
     utr_id: '',
     primary_sport: 'tennis',
     membership_status: 'active',
@@ -84,7 +85,8 @@ export default function AddVaultPlayerPage() {
         date_of_birth: data.date_of_birth || '',
         age: data.age?.toString() || '',
         usta_rating: data.usta_rating?.toString() || '',
-        utr_rating: data.utr_rating?.toString() || '',
+        utr_singles: data.utr_singles?.toString() || data.utr_rating?.toString() || '',
+        utr_doubles: data.utr_doubles?.toString() || '',
         utr_id: data.utr_id || '',
         primary_sport: data.primary_sport || 'tennis',
         membership_status: data.membership_status || 'active',
@@ -121,22 +123,18 @@ export default function AddVaultPlayerPage() {
   const [utrImported, setUtrImported] = useState('');
 
   const selectUtrPlayer = (result: UTRResult) => {
-    // Extract values with fallbacks for any data format
     const name = String(result.displayName || '');
     const singles = result.singlesUtr != null ? String(result.singlesUtr) : '';
     const doubles = result.doublesUtr != null ? String(result.doublesUtr) : '';
-    const utrVal = singles || doubles;
     const utrId = String(result.utrId || '');
 
-    // Debug: show what we got
-    const debugMsg = `Name: "${name}" | UTR: "${utrVal}" (singles=${singles}, doubles=${doubles}) | ID: "${utrId}"`;
-    setUtrImported(debugMsg);
+    setUtrImported(`Imported: ${name} | Singles: ${singles || 'N/A'} | Doubles: ${doubles || 'N/A'}`);
 
-    // Force update each field individually
     setForm(prev => {
       const updated = { ...prev };
       if (name) updated.full_name = name;
-      if (utrVal) updated.utr_rating = utrVal;
+      if (singles) updated.utr_singles = singles;
+      if (doubles) updated.utr_doubles = doubles;
       if (utrId) updated.utr_id = utrId;
       return updated;
     });
@@ -163,7 +161,8 @@ export default function AddVaultPlayerPage() {
       date_of_birth: form.date_of_birth || null,
       age: form.age ? parseInt(form.age) : null,
       usta_rating: form.usta_rating ? parseFloat(form.usta_rating) : null,
-      utr_rating: form.utr_rating ? parseFloat(form.utr_rating) : null,
+      utr_singles: form.utr_singles ? parseFloat(form.utr_singles) : null,
+      utr_doubles: form.utr_doubles ? parseFloat(form.utr_doubles) : null,
       utr_id: form.utr_id || null,
       rating_source: form.utr_id ? 'utr_api' : 'manual',
       primary_sport: form.primary_sport,
@@ -196,7 +195,8 @@ export default function AddVaultPlayerPage() {
         date_of_birth: '',
         age: '',
         usta_rating: '',
-        utr_rating: '',
+        utr_singles: '',
+        utr_doubles: '',
         utr_id: '',
         primary_sport: prev.primary_sport,
         membership_status: prev.membership_status,
@@ -380,9 +380,9 @@ export default function AddVaultPlayerPage() {
         </div>
 
         {/* Ratings */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="label">USTA/NTRP Rating (1.0 - 7.0)</label>
+            <label className="label">NTRP (1.0 - 7.0)</label>
             <input
               type="number"
               className="input"
@@ -396,8 +396,8 @@ export default function AddVaultPlayerPage() {
           </div>
           <div>
             <label className="label">
-              UTR Rating (1 - 16.5)
-              {form.utr_id && <span className="text-xs text-courtconnect ml-2">via UTR lookup</span>}
+              Singles UTR
+              {form.utr_id && <span className="text-xs text-[#D3FB52] ml-1">via UTR</span>}
             </label>
             <input
               type="number"
@@ -405,9 +405,25 @@ export default function AddVaultPlayerPage() {
               min={1}
               max={16.5}
               step={0.01}
-              value={form.utr_rating}
-              onChange={e => updateForm('utr_rating', e.target.value)}
+              value={form.utr_singles}
+              onChange={e => updateForm('utr_singles', e.target.value)}
               placeholder="e.g. 8.50"
+            />
+          </div>
+          <div>
+            <label className="label">
+              Doubles UTR
+              {form.utr_id && <span className="text-xs text-[#D3FB52] ml-1">via UTR</span>}
+            </label>
+            <input
+              type="number"
+              className="input"
+              min={1}
+              max={16.5}
+              step={0.01}
+              value={form.utr_doubles}
+              onChange={e => updateForm('utr_doubles', e.target.value)}
+              placeholder="e.g. 7.20"
             />
           </div>
         </div>
