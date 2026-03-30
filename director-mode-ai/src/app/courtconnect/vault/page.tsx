@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Upload, Users, Filter, Trash2, ArrowRightCircle } from 'lucide-react';
+import { Plus, Search, Upload, Users, Filter, Trash2, ArrowRightCircle, FileUp } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 const SPORTS = [
@@ -149,10 +149,16 @@ export default function PlayerVaultPage() {
             {totalPlayers} players &middot; {connectedPlayers} connected to CourtConnect
           </p>
         </div>
-        <Link href="/courtconnect/vault/add" className="btn btn-courtconnect">
-          <Plus size={18} />
-          Add Player
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/courtconnect/vault/import" className="btn bg-white/10 text-white hover:bg-white/20">
+            <FileUp size={18} />
+            CSV Import
+          </Link>
+          <Link href="/courtconnect/vault/add" className="btn btn-courtconnect">
+            <Plus size={18} />
+            Add Player
+          </Link>
+        </div>
       </div>
 
       {/* Filters */}
