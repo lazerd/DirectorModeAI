@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Users, Home, CalendarPlus, UserCircle, Globe, Zap, Database } from 'lucide-react';
+import { Users, Home, CalendarPlus, UserCircle, Globe, Zap, Database, BarChart3, Building2, Bell } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import CourtConnectMobileNav from '@/components/courtconnect/CourtConnectMobileNav';
@@ -73,6 +73,15 @@ export default async function CourtConnectLayout({
             </NavItem>
             <NavItem href="/courtconnect/vault" icon={Database}>
               PlayerVault
+            </NavItem>
+            <NavItem href="/courtconnect/dashboard" icon={BarChart3}>
+              Analytics
+            </NavItem>
+            <NavItem href="/courtconnect/club" icon={Building2}>
+              Club Profile
+            </NavItem>
+            <NavItem href="/courtconnect/notifications" icon={Bell}>
+              Notifications
             </NavItem>
             <NavItem href="/courtconnect/profile" icon={UserCircle}>
               My Profile

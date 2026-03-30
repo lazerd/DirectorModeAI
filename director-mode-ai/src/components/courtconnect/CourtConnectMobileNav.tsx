@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Users, Home, CalendarPlus, UserCircle, Globe, Database, Zap, Menu, X } from 'lucide-react';
+import { Users, Home, CalendarPlus, UserCircle, Globe, Database, Zap, Menu, X, BarChart3, Building2, Bell } from 'lucide-react';
 
 interface CourtConnectMobileNavProps {
   userName: string;
@@ -53,6 +53,9 @@ export default function CourtConnectMobileNav({ userName, userInitial }: CourtCo
                 <MobileNavItem href="/courtconnect/events/new" icon={CalendarPlus} onClick={() => setIsOpen(false)}>Create Event</MobileNavItem>
                 <MobileNavItem href="/courtconnect/players" icon={Users} onClick={() => setIsOpen(false)}>Players</MobileNavItem>
                 <MobileNavItem href="/courtconnect/vault" icon={Database} onClick={() => setIsOpen(false)}>PlayerVault</MobileNavItem>
+                <MobileNavItem href="/courtconnect/dashboard" icon={BarChart3} onClick={() => setIsOpen(false)}>Analytics</MobileNavItem>
+                <MobileNavItem href="/courtconnect/club" icon={Building2} onClick={() => setIsOpen(false)}>Club Profile</MobileNavItem>
+                <MobileNavItem href="/courtconnect/notifications" icon={Bell} onClick={() => setIsOpen(false)}>Notifications</MobileNavItem>
                 <MobileNavItem href="/courtconnect/profile" icon={UserCircle} onClick={() => setIsOpen(false)}>My Profile</MobileNavItem>
               </ul>
             </nav>
