@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { trackEvent } from '@/lib/analytics';
 import { 
   ArrowLeft, 
   Search, 
@@ -248,6 +249,7 @@ export default function NewStringingJobPage() {
       return;
     }
 
+    trackEvent('feature_use', 'create_job', 'stringing');
     router.push('/stringing/jobs');
   };
 

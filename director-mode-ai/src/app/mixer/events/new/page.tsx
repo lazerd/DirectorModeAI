@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowLeft, Calendar, Users, Swords } from 'lucide-react';
+import { trackEvent } from '@/lib/analytics';
 import { supabase } from '@/lib/supabase';
 
 function CreateEventForm() {
@@ -124,6 +125,7 @@ function CreateEventForm() {
         }
       }
 
+      trackEvent('feature_use', 'create_event', 'mixer');
       router.push(`/mixer/events/${data.id}`);
     } catch (err) {
       setError('An error occurred');

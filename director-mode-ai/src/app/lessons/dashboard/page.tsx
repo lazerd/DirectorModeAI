@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Send, Plus, Trash2, ChevronLeft, ChevronRight, Link, Check, Copy, LogOut } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { trackEvent } from '@/lib/analytics';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay } from 'date-fns';
 
 type Slot = { 
@@ -129,6 +130,7 @@ export default function DashboardPage() {
       location: newSlot.location || null,
       status: 'open'
     });
+    trackEvent('feature_use', 'create_slot', 'lessons');
     setShowAddSlot(false);
     setNewSlot({ date: '', start_time: '09:00', end_time: '10:00', location: '' });
     fetchSlots(coachId);

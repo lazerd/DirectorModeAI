@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { trackEvent } from '@/lib/analytics';
 import { ArrowLeft, Calendar, MapPin, Users, Clock, Mail, UserPlus, CheckCircle, XCircle, Clock3, Send, X, MessageSquare, Shuffle, Flag } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -185,6 +186,7 @@ export default function EventDetailPage() {
       console.error('Failed to send RSVP notification:', err);
     }
 
+    trackEvent('feature_use', 'rsvp', 'courtconnect');
     setMyRsvpStatus(newStatus);
     setRsvpLoading(false);
     fetchEvent();

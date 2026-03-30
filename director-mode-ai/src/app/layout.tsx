@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AnalyticsTracker from "@/components/shared/AnalyticsTracker";
 
 export const metadata: Metadata = {
   title: "ClubMode AI - The Complete Racquet Sports Platform",
@@ -13,7 +14,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <AnalyticsTracker />
+        {children}
+      </body>
     </html>
   );
 }

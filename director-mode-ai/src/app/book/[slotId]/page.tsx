@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Calendar, Clock, MapPin, CheckCircle, XCircle, Loader2, User } from 'lucide-react';
+import { trackEvent } from '@/lib/analytics';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 
@@ -165,6 +166,7 @@ export default function BookSlotPage() {
     if (error) {
       setError('Failed to book slot. Please try again.');
     } else {
+      trackEvent('feature_use', 'book_lesson', 'lessons');
       setBooked(true);
     }
 

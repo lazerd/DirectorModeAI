@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { trackEvent } from '@/lib/analytics';
 import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 
@@ -94,6 +95,7 @@ export default function CreateEventPage() {
       return;
     }
 
+    trackEvent('feature_use', 'create_event', 'courtconnect');
     router.push(`/courtconnect/events/${data.id}`);
   };
 

@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { trackEvent } from '@/lib/analytics';
 import { ArrowLeft, Upload, FileText, Check, AlertCircle, Download, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -195,6 +196,7 @@ export default function CSVImportPage() {
       }
     }
 
+    trackEvent('feature_use', 'import_players', 'vault', { success, failed });
     setImportResult({ success, failed });
     setImporting(false);
 

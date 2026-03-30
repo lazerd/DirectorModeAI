@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Calendar, Clock, Users, Send, Plus, Trash2 } from 'lucide-react';
+import { trackEvent } from '@/lib/analytics';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 
@@ -64,6 +65,7 @@ export default function BlastPage() {
     setSending(true);
     const supabase = createClient();
     await supabase.from('lesson_slots').update({ notifications_sent: true, notified_at: new Date().toISOString() }).in('id', slots.map(s => s.id));
+    trackEvent('feature_use', 'send_blast', 'lessons');
     alert(`Blast sent to ${clients.length} clients for ${slots.length} slots!`);
     setSending(false);
     if (coachId) fetchSlots(coachId);

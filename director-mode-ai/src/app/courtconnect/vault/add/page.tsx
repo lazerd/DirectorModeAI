@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import { trackEvent } from '@/lib/analytics';
 import { ArrowLeft, Search, Save, Plus, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -202,6 +203,7 @@ export default function AddVaultPlayerPage() {
         membership_status: prev.membership_status,
         notes: '',
       }));
+    trackEvent('feature_use', 'add_player', 'vault');
     } else {
       router.push('/courtconnect/vault');
     }

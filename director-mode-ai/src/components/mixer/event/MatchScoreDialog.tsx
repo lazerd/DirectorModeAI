@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/lib/supabase";
+import { trackEvent } from '@/lib/analytics';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -187,6 +188,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       }
     }
 
+    trackEvent('feature_use', 'record_score', 'mixer');
     toast({ title: "Score saved", description: "Match score and standings updated." });
     setSaving(false);
     onScoreSaved();

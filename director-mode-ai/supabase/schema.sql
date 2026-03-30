@@ -947,3 +947,30 @@ CREATE TRIGGER update_cc_clubs_updated_at BEFORE UPDATE ON cc_clubs
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER update_cc_notif_prefs_updated_at BEFORE UPDATE ON cc_notification_preferences
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+
+-- ============================================
+-- ANALYTICS EVENTS (Owner Dashboard)
+-- ============================================
+
+CREATE TABLE analytics_events (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  event_name TEXT NOT NULL,
+  product TEXT,
+  user_id UUID REFERENCES auth.users(id),
+  session_id TEXT,
+  metadata JSONB DEFAULT '{}',
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX idx_analytics_events_type ON analytics_events(event_type);
+CREATE INDEX idx_analytics_events_created ON analytics_events(created_at);
+CREATE INDEX idx_analytics_events_product ON analytics_events(product);
+CREATE INDEX idx_analytics_events_user ON analytics_events(user_id);
+CREATE INDEX idx_analytics_events_session ON analytics_events(session_id);
+
+ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow insert for all" ON analytics_events
+  FOR INSERT WITH CHECK (true);
