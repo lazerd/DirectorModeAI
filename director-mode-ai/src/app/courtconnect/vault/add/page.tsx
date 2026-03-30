@@ -119,22 +119,26 @@ export default function AddVaultPlayerPage() {
   };
 
   const [utrImported, setUtrImported] = useState(false);
+  const [selectedUtr, setSelectedUtr] = useState<UTRResult | null>(null);
 
-  const selectUtrPlayer = (result: UTRResult) => {
-    const newName = result.displayName || '';
-    const newUtr = result.singlesUtr?.toString() || result.doublesUtr?.toString() || '';
-    const newUtrId = result.utrId || '';
-
-    setForm({
-      ...form,
-      full_name: newName || form.full_name,
-      utr_rating: newUtr || form.utr_rating,
-      utr_id: newUtrId || form.utr_id,
-    });
-    setUtrResults([]);
-    setUtrSearchName('');
+  // When a UTR player is selected, update form via useEffect to avoid stale closure
+  useEffect(() => {
+    if (!selectedUtr) return;
+    setForm(prev => ({
+      ...prev,
+      full_name: selectedUtr.displayName || prev.full_name,
+      utr_rating: selectedUtr.singlesUtr?.toString() || selectedUtr.doublesUtr?.toString() || prev.utr_rating,
+      utr_id: selectedUtr.utrId || prev.utr_id,
+    }));
+    setSelectedUtr(null);
     setUtrImported(true);
     setTimeout(() => setUtrImported(false), 3000);
+  }, [selectedUtr]);
+
+  const selectUtrPlayer = (result: UTRResult) => {
+    setSelectedUtr(result);
+    setUtrResults([]);
+    setUtrSearchName('');
   };
 
   const handleSave = async (addAnother: boolean = false) => {
