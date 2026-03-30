@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Shuffle, Home, Calendar, Settings, Trophy, CreditCard, Menu, X } from 'lucide-react';
+import { Shuffle, Home, Calendar, Settings, Zap, CreditCard, Menu, X } from 'lucide-react';
 
 interface MixerMobileNavProps {
   userName: string;
@@ -15,17 +15,17 @@ export default function MixerMobileNav({ userName, userInitial }: MixerMobileNav
   return (
     <>
       {/* Mobile Header Bar */}
-      <header className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 flex items-center justify-between px-4 z-50">
+      <header className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#002838] border-b border-white/[0.06] flex items-center justify-between px-4 z-50">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-mixer flex items-center justify-center">
-            <Shuffle size={16} className="text-white" />
+          <div className="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center">
+            <Shuffle size={16} className="text-orange-400" />
           </div>
-          <span className="font-display text-base">MixerMode</span>
+          <span className="font-display text-base text-white">MixerMode</span>
         </Link>
-        
+
         <button
           onClick={() => setIsOpen(!isOpen)}
-          className="p-2 hover:bg-gray-100 rounded-lg"
+          className="p-2 hover:bg-white/10 rounded-lg text-white/70"
         >
           {isOpen ? <X size={24} /> : <Menu size={24} />}
         </button>
@@ -34,27 +34,23 @@ export default function MixerMobileNav({ userName, userInitial }: MixerMobileNav
       {/* Mobile Menu Overlay */}
       {isOpen && (
         <div className="md:hidden fixed inset-0 z-40 pt-16">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/50" 
+          <div
+            className="absolute inset-0 bg-black/60"
             onClick={() => setIsOpen(false)}
           />
-          
-          {/* Menu Panel */}
-          <div className="absolute top-16 right-0 w-64 bg-white h-[calc(100vh-4rem)] border-l border-gray-200 overflow-y-auto">
-            {/* User */}
-            <div className="p-4 border-b border-gray-200">
+
+          <div className="absolute top-16 right-0 w-64 bg-[#002838] h-[calc(100vh-4rem)] border-l border-white/[0.06] overflow-y-auto">
+            <div className="p-4 border-b border-white/[0.06]">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-mixer-light flex items-center justify-center">
-                  <span className="text-mixer font-semibold">{userInitial}</span>
+                <div className="w-10 h-10 rounded-xl bg-orange-400/10 flex items-center justify-center">
+                  <span className="text-orange-400 font-semibold">{userInitial}</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate text-sm">{userName}</div>
+                  <div className="font-medium truncate text-sm text-white">{userName}</div>
                 </div>
               </div>
             </div>
 
-            {/* Navigation */}
             <nav className="p-3">
               <ul className="space-y-1">
                 <MobileNavItem href="/mixer/home" icon={Home} onClick={() => setIsOpen(false)}>
@@ -72,15 +68,14 @@ export default function MixerMobileNav({ userName, userInitial }: MixerMobileNav
               </ul>
             </nav>
 
-            {/* Back to Platform */}
-            <div className="p-4 border-t border-gray-200 mt-auto">
+            <div className="p-4 border-t border-white/[0.06] mt-auto">
               <Link
                 href="/"
                 onClick={() => setIsOpen(false)}
-                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+                className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/50 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
               >
-                <Trophy size={18} />
-                Back to Platform
+                <Zap size={18} />
+                Back to ClubMode
               </Link>
             </div>
           </div>
@@ -106,7 +101,7 @@ function MobileNavItem({
       <Link
         href={href}
         onClick={onClick}
-        className="flex items-center gap-3 px-4 py-3 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors"
+        className="flex items-center gap-3 px-4 py-3 text-white/60 hover:text-white hover:bg-white/5 rounded-xl transition-colors"
       >
         <Icon size={20} />
         <span className="font-medium">{children}</span>

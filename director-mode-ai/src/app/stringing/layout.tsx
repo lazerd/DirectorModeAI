@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Wrench, ClipboardList, Users, Package, Zap } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import StringingMobileNav from '@/components/stringing/StringingMobileNav';
 
 export default async function StringingLayout({
   children,
@@ -22,9 +23,9 @@ export default async function StringingLayout({
     .single();
 
   return (
-    <div className="min-h-screen bg-[#001820] flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-[#002838] border-r border-white/[0.06] flex flex-col">
+    <div className="min-h-screen bg-[#001820]">
+      {/* Desktop Sidebar */}
+      <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-[#002838] border-r border-white/[0.06]">
         {/* Logo */}
         <div className="p-5 border-b border-white/[0.06]">
           <Link href="/" className="flex items-center gap-2.5">
@@ -82,8 +83,14 @@ export default async function StringingLayout({
         </div>
       </aside>
 
+      {/* Mobile Header */}
+      <StringingMobileNav
+        userName={profile?.full_name || 'Staff'}
+        userInitial={profile?.full_name?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || 'S'}
+      />
+
       {/* Main Content */}
-      <main className="flex-1">
+      <main className="md:ml-64 pt-16 md:pt-0 min-h-screen">
         {children}
       </main>
     </div>

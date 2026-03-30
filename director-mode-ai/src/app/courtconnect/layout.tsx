@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Users, Home, CalendarPlus, UserCircle, Globe, Zap, Database } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
+import CourtConnectMobileNav from '@/components/courtconnect/CourtConnectMobileNav';
 
 export default async function CourtConnectLayout({
   children,
@@ -91,8 +92,14 @@ export default async function CourtConnectLayout({
         </div>
       </aside>
 
+      {/* Mobile Header */}
+      <CourtConnectMobileNav
+        userName={profile?.full_name || 'Player'}
+        userInitial={profile?.full_name?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || 'P'}
+      />
+
       {/* Main Content */}
-      <main className="md:ml-64 flex-1 min-h-screen">
+      <main className="md:ml-64 pt-16 md:pt-0 flex-1 min-h-screen">
         {children}
       </main>
     </div>

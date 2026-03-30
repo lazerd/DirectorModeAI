@@ -1,0 +1,82 @@
+'use client';
+
+import { useState } from 'react';
+import Link from 'next/link';
+import { Users, Home, CalendarPlus, UserCircle, Globe, Database, Zap, Menu, X } from 'lucide-react';
+
+interface CourtConnectMobileNavProps {
+  userName: string;
+  userInitial: string;
+}
+
+export default function CourtConnectMobileNav({ userName, userInitial }: CourtConnectMobileNavProps) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <>
+      <header className="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#002838] border-b border-white/[0.06] flex items-center justify-between px-4 z-50">
+        <Link href="/" className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+            <Users size={16} className="text-emerald-400" />
+          </div>
+          <span className="font-display text-base text-white">CourtConnect</span>
+        </Link>
+
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="p-2 hover:bg-white/10 rounded-lg text-white/70"
+        >
+          {isOpen ? <X size={24} /> : <Menu size={24} />}
+        </button>
+      </header>
+
+      {isOpen && (
+        <div className="md:hidden fixed inset-0 z-40 pt-16">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setIsOpen(false)} />
+
+          <div className="absolute top-16 right-0 w-64 bg-[#002838] h-[calc(100vh-4rem)] border-l border-white/[0.06] overflow-y-auto">
+            <div className="p-4 border-b border-white/[0.06]">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-400/10 flex items-center justify-center">
+                  <span className="text-emerald-400 font-semibold">{userInitial}</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate text-sm text-white">{userName}</div>
+                </div>
+              </div>
+            </div>
+
+            <nav className="p-3">
+              <ul className="space-y-1">
+                <MobileNavItem href="/courtconnect/home" icon={Home} onClick={() => setIsOpen(false)}>Dashboard</MobileNavItem>
+                <MobileNavItem href="/courtconnect/events" icon={Globe} onClick={() => setIsOpen(false)}>Event Board</MobileNavItem>
+                <MobileNavItem href="/courtconnect/events/new" icon={CalendarPlus} onClick={() => setIsOpen(false)}>Create Event</MobileNavItem>
+                <MobileNavItem href="/courtconnect/players" icon={Users} onClick={() => setIsOpen(false)}>Players</MobileNavItem>
+                <MobileNavItem href="/courtconnect/vault" icon={Database} onClick={() => setIsOpen(false)}>PlayerVault</MobileNavItem>
+                <MobileNavItem href="/courtconnect/profile" icon={UserCircle} onClick={() => setIsOpen(false)}>My Profile</MobileNavItem>
+              </ul>
+            </nav>
+
+            <div className="p-4 border-t border-white/[0.06] mt-auto">
+              <Link href="/" onClick={() => setIsOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/50 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                <Zap size={18} />
+                Back to ClubMode
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function MobileNavItem({ href, icon: Icon, children, onClick }: { href: string; icon: React.ElementType; children: React.ReactNode; onClick: () => void }) {
+  return (
+    <li>
+      <Link href={href} onClick={onClick} className="flex items-center gap-3 px-4 py-3 text-white/60 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+        <Icon size={20} />
+        <span className="font-medium">{children}</span>
+      </Link>
+    </li>
+  );
+}
