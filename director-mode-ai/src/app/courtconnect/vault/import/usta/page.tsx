@@ -179,7 +179,7 @@ export default function UstaImportPage() {
           utr_singles: r.utr_singles,
           utr_doubles: r.utr_doubles,
           utr_rating: r.utr_singles, // legacy column, keep in sync with singles
-          rating_source: 'usta_import',
+          rating_source: 'manual', // CHECK constraint limits to a known set; 'manual' is the safe default
           primary_sport: 'tennis',
           notes: teamName ? `Imported from ${teamName}` : 'Imported from USTA team page',
         }));
