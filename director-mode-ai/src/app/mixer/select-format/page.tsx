@@ -16,6 +16,37 @@ interface FormatOption {
 export default function SelectFormatPage() {
   const router = useRouter();
   const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiResult, setAiResult] = useState<{ format: string; reason: string } | null>(null);
+  const [aiInput, setAiInput] = useState({ player_count: '', court_count: '', vibe: 'social' });
+
+  const requestAiRecommendation = async () => {
+    setAiLoading(true);
+    setAiError(null);
+    setAiResult(null);
+    try {
+      const res = await fetch('/api/mixer/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          player_count: aiInput.player_count ? parseInt(aiInput.player_count, 10) : undefined,
+          court_count: aiInput.court_count ? parseInt(aiInput.court_count, 10) : undefined,
+          vibe: aiInput.vibe,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.format) {
+        throw new Error(data.error || 'No recommendation returned');
+      }
+      setAiResult({ format: data.format, reason: data.reason });
+    } catch (err: any) {
+      setAiError(err.message || 'Failed to get recommendation');
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const formats: FormatOption[] = [
     {
@@ -112,10 +143,81 @@ export default function SelectFormatPage() {
           <p className="text-gray-600 mb-4">
             Not sure which format to choose? Let AI analyze your event details and recommend the perfect format.
           </p>
-          <button className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 flex items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => setAiOpen(o => !o)}
+            className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 flex items-center justify-center gap-2"
+          >
             <Sparkles size={20} />
-            Get AI Recommendation
+            {aiOpen ? 'Hide AI Helper' : 'Get AI Recommendation'}
           </button>
+
+          {aiOpen && (
+            <div className="mt-4 p-4 bg-white rounded-xl border border-blue-200 space-y-3">
+              <div className="grid sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Players</label>
+                  <input
+                    type="number"
+                    min={2}
+                    value={aiInput.player_count}
+                    onChange={(e) => setAiInput({ ...aiInput, player_count: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                    placeholder="e.g. 12"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Courts</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={aiInput.court_count}
+                    onChange={(e) => setAiInput({ ...aiInput, court_count: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                    placeholder="e.g. 3"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Vibe</label>
+                  <select
+                    value={aiInput.vibe}
+                    onChange={(e) => setAiInput({ ...aiInput, vibe: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg text-gray-900"
+                  >
+                    <option value="social">Social mixer</option>
+                    <option value="competitive">Competitive league</option>
+                    <option value="tournament">Tournament / bracket</option>
+                  </select>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={requestAiRecommendation}
+                disabled={aiLoading}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {aiLoading ? 'Thinking...' : 'Recommend a format'}
+              </button>
+
+              {aiError && (
+                <div className="text-sm text-red-600">{aiError}</div>
+              )}
+
+              {aiResult && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="text-sm text-gray-700 mb-2">{aiResult.reason}</div>
+                  <button
+                    type="button"
+                    onClick={() => handleFormatClick(aiResult.format)}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
+                  >
+                    Use this format →
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Team Battle - Featured */}
