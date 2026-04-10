@@ -249,6 +249,7 @@ export default function StringingJobsPage() {
                 key={job.id}
                 job={job}
                 onStatusChange={updateJobStatus}
+                onSendReminder={sendNotificationEmail}
                 sendingEmail={sendingEmail === job.id}
               />
             ))}
@@ -292,10 +293,12 @@ function StatCard({
 function JobCard({
   job,
   onStatusChange,
+  onSendReminder,
   sendingEmail,
 }: {
   job: Job;
   onStatusChange: (id: string, status: string) => void;
+  onSendReminder: (job: Job) => Promise<boolean>;
   sendingEmail: boolean;
 }) {
   const statusColors = {
@@ -366,12 +369,28 @@ function JobCard({
             </button>
           )}
           {job.status === 'done' && (
-            <button
-              onClick={() => onStatusChange(job.id, 'picked_up')}
-              className="btn btn-sm btn-secondary"
-            >
-              Picked Up
-            </button>
+            <>
+              {job.customer.email && (
+                <button
+                  onClick={async () => {
+                    const ok = await onSendReminder(job);
+                    if (ok) alert(`Reminder email sent to ${job.customer.full_name}.`);
+                  }}
+                  className="btn btn-sm btn-ghost"
+                  disabled={sendingEmail}
+                  title={`Send pickup reminder to ${job.customer.email}`}
+                >
+                  <Mail size={14} />
+                  {sendingEmail ? 'Sending...' : 'Remind'}
+                </button>
+              )}
+              <button
+                onClick={() => onStatusChange(job.id, 'picked_up')}
+                className="btn btn-sm btn-secondary"
+              >
+                Picked Up
+              </button>
+            </>
           )}
         </div>
       </div>
