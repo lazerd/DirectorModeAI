@@ -113,7 +113,7 @@ const FormatSelector = ({ eventId, playerCount, courtCount, onFormatSelected, on
     setLoading(true);
     
     const { error } = await supabase
-      .from("mixer_events")
+      .from("events")
       .update({ match_format: formatId })
       .eq("id", eventId);
 

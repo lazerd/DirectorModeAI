@@ -163,7 +163,7 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
     try {
       for (const [matchId, updates] of Object.entries(matchUpdates)) {
         const { error } = await supabase
-          .from("mixer_matches")
+          .from("matches")
           .update(updates)
           .eq("id", matchId);
         if (error) throw error;

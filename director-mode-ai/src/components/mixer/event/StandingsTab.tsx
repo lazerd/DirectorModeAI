@@ -82,7 +82,7 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
 
   const fetchStandings = async () => {
     const { data, error } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select(`
         player_id,
         wins,
@@ -94,7 +94,7 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
       .eq("event_id", eventId);
 
     const { data: matchData } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .select(`
         player1_id,
         player2_id,

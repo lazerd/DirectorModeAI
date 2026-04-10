@@ -49,7 +49,7 @@ export default function EventDashboard() {
 
   const fetchEvent = async () => {
     const { data, error } = await supabase
-      .from("mixer_events")
+      .from("events")
       .select("*")
       .eq("id", params.id)
       .maybeSingle();
@@ -75,20 +75,10 @@ export default function EventDashboard() {
   };
 
   const endEvent = async () => {
-    const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
-    if (!eventId) {
-      toast({
-        variant: "destructive",
-        title: "Error ending event",
-        description: "Missing event id.",
-      });
-      return;
-    }
-
     const { error } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .update({ status: "completed", end_time: new Date().toISOString() })
-      .eq("event_id", eventId)
+      .eq("event_id", params.id)
       .neq("status", "completed");
 
     if (error) {
@@ -97,15 +87,14 @@ export default function EventDashboard() {
         title: "Error ending event",
         description: error.message,
       });
-      return;
+    } else {
+      setEventEnded(true);
+      setActiveTab("summary");
+      toast({
+        title: "Event completed!",
+        description: "View final results and export data.",
+      });
     }
-
-    setEventEnded(true);
-    setActiveTab("summary");
-    toast({
-      title: "Event completed!",
-      description: "View final results and export data.",
-    });
   };
 
   if (loading) {
@@ -197,7 +186,7 @@ export default function EventDashboard() {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold">{event.name}</h1>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              {format(new Date(event.event_date), "MM/dd/yyyy")}
+              {format(new Date(event.event_date), "EEEE, MMMM d, yyyy")}
               {event.start_time && ` at ${event.start_time}`}
             </p>
             <div className="flex flex-wrap gap-2 sm:gap-3 mt-2">

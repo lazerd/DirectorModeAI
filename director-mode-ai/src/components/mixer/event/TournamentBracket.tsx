@@ -58,7 +58,7 @@ const TournamentBracket = ({ event }: TournamentBracketProps) => {
     
     // Fetch all rounds for this event
     const { data: roundsData, error: roundsError } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .select("id, round_number")
       .eq("event_id", event.id)
       .order("round_number");
@@ -80,7 +80,7 @@ const TournamentBracket = ({ event }: TournamentBracketProps) => {
 
     // Fetch all matches for all rounds
     const { data: matchesData, error: matchesError } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .select(`
         *,
         player1:players!matches_player1_id_fkey(name),
@@ -138,7 +138,7 @@ const TournamentBracket = ({ event }: TournamentBracketProps) => {
 
     // Get players ordered by strength
     const { data: eventPlayers, error: playersError } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select(`
         player_id,
         players(name)
@@ -168,7 +168,7 @@ const TournamentBracket = ({ event }: TournamentBracketProps) => {
     const roundIds: { [roundNum: number]: string } = {};
     for (let roundNum = 1; roundNum <= bracket.totalRounds; roundNum++) {
       const { data: round, error: roundError } = await supabase
-        .from("mixer_rounds")
+        .from("rounds")
         .insert([
           {
             event_id: event.id,
@@ -198,7 +198,7 @@ const TournamentBracket = ({ event }: TournamentBracketProps) => {
       
       for (const bracketMatch of roundMatches) {
         const { data: match, error: matchError } = await supabase
-          .from("mixer_matches")
+          .from("matches")
           .insert([{
             round_id: roundIds[roundNum],
             court_number: bracketMatch.courtNumber || 0,
@@ -227,7 +227,7 @@ const TournamentBracket = ({ event }: TournamentBracketProps) => {
         
         if (matchId && feedsIntoMatchId) {
           await supabase
-            .from("mixer_matches")
+            .from("matches")
             .update({ feeds_into_match_id: feedsIntoMatchId })
             .eq("id", matchId);
         }
@@ -248,7 +248,7 @@ const TournamentBracket = ({ event }: TournamentBracketProps) => {
         if (isDoubles) {
           if (isTopSeed) {
             await supabase
-              .from("mixer_matches")
+              .from("matches")
               .update({
                 player1_id: bracketMatch.player1_id,
                 player2_id: bracketMatch.player2_id,
@@ -256,7 +256,7 @@ const TournamentBracket = ({ event }: TournamentBracketProps) => {
               .eq("id", feedsIntoMatchId);
           } else {
             await supabase
-              .from("mixer_matches")
+              .from("matches")
               .update({
                 player3_id: bracketMatch.player1_id,
                 player4_id: bracketMatch.player2_id,
@@ -267,12 +267,12 @@ const TournamentBracket = ({ event }: TournamentBracketProps) => {
           // Singles
           if (isTopSeed) {
             await supabase
-              .from("mixer_matches")
+              .from("matches")
               .update({ player1_id: bracketMatch.player1_id })
               .eq("id", feedsIntoMatchId);
           } else {
             await supabase
-              .from("mixer_matches")
+              .from("matches")
               .update({ player2_id: bracketMatch.player1_id })
               .eq("id", feedsIntoMatchId);
           }

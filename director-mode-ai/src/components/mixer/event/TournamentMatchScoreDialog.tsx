@@ -70,7 +70,7 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
     const wasScored = oldWinnerTeam !== null;
 
     const { error: matchError } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .update({
         team1_score: team1Score,
         team2_score: team2Score,
@@ -107,7 +107,7 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
     }
 
     const { data: standings } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select("*")
       .eq("event_id", eventId)
       .in("player_id", playerIds);
@@ -144,14 +144,14 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
       }).filter(Boolean);
 
       for (const update of updates) {
-        await supabase.from("mixer_players").update(update).eq("id", update!.id);
+        await supabase.from("event_players").update(update).eq("id", update!.id);
       }
     }
 
     // Automatic advancement: find next match and advance winner
     try {
       const { data: currentMatch } = await supabase
-        .from("mixer_matches")
+        .from("matches")
         .select("feeds_into_match_id")
         .eq("id", match.id)
         .single();
@@ -159,7 +159,7 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
       if (currentMatch?.feeds_into_match_id) {
         // Get the event to determine if it's singles or doubles
         const { data: event } = await supabase
-          .from("mixer_events")
+          .from("events")
           .select("match_format")
           .eq("id", eventId)
           .single();
@@ -168,7 +168,7 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
 
         // Get all matches in current round to find position
         const { data: currentRoundData } = await supabase
-          .from("mixer_rounds")
+          .from("rounds")
           .select("id")
           .eq("id", match.round_id)
           .single();
@@ -176,7 +176,7 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
         if (currentRoundData) {
           // Find all matches that feed into the same next match
           const { data: siblingMatches } = await supabase
-            .from("mixer_matches")
+            .from("matches")
             .select("id, court_number")
             .eq("feeds_into_match_id", currentMatch.feeds_into_match_id)
             .order("court_number");
@@ -193,7 +193,7 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
 
             if (isTopSeed) {
               await supabase
-                .from("mixer_matches")
+                .from("matches")
                 .update({
                   player1_id: winnerPlayerIds.player1_id,
                   player2_id: winnerPlayerIds.player2_id,
@@ -201,7 +201,7 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
                 .eq("id", currentMatch.feeds_into_match_id);
             } else {
               await supabase
-                .from("mixer_matches")
+                .from("matches")
                 .update({
                   player3_id: winnerPlayerIds.player1_id,
                   player4_id: winnerPlayerIds.player2_id,
@@ -214,12 +214,12 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
 
             if (isTopSeed) {
               await supabase
-                .from("mixer_matches")
+                .from("matches")
                 .update({ player1_id: winnerPlayerId })
                 .eq("id", currentMatch.feeds_into_match_id);
             } else {
               await supabase
-                .from("mixer_matches")
+                .from("matches")
                 .update({ player2_id: winnerPlayerId })
                 .eq("id", currentMatch.feeds_into_match_id);
             }
@@ -246,7 +246,7 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
     setClearing(true);
     
     const { error } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .update({
         team1_score: 0,
         team2_score: 0,

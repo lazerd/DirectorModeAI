@@ -90,7 +90,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
 
   const fetchSummary = async () => {
     const { data: event } = await supabase
-      .from("mixer_events")
+      .from("events")
       .select("event_date, match_format, num_courts, logo_url")
       .eq("id", eventId)
       .single();
@@ -107,7 +107,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
     }
 
     const { data: eventPlayers } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select(`
         player_id,
         wins,
@@ -119,12 +119,12 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
       .eq("event_id", eventId);
 
     const { data: rounds } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .select("id")
       .eq("event_id", eventId);
 
     const { data: matchData } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .select(`
         player1_id,
         player2_id,
@@ -178,7 +178,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
     if (!teamsData || teamsData.length === 0) return;
 
     const { data: rounds } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .select("id")
       .eq("event_id", eventId);
 
@@ -190,13 +190,13 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
     const roundIds = rounds.map(r => r.id);
 
     const { data: matches } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .select("winner_team, player1_id, player2_id")
       .in("round_id", roundIds)
       .not("winner_team", "is", null);
 
     const { data: eventPlayers } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select("player_id, team_id")
       .eq("event_id", eventId);
 

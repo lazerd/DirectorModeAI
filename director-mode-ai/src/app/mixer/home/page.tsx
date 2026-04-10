@@ -36,7 +36,7 @@ export default function MixerHomePage() {
     }
 
     const { data } = await supabase
-      .from('mixer_events')
+      .from('events')
       .select('*')
       .eq('user_id', user.id)
       .order('event_date', { ascending: false });
@@ -57,18 +57,18 @@ export default function MixerHomePage() {
     const supabase = createClient();
 
     const { data: rounds } = await supabase
-      .from('mixer_rounds')
+      .from('rounds')
       .select('id')
       .eq('event_id', eventId);
     
     if (rounds && rounds.length > 0) {
       const roundIds = rounds.map(r => r.id);
-      await supabase.from('mixer_matches').delete().in('round_id', roundIds);
+      await supabase.from('matches').delete().in('round_id', roundIds);
     }
     
-    await supabase.from('mixer_rounds').delete().eq('event_id', eventId);
-    await supabase.from('mixer_players').delete().eq('event_id', eventId);
-    await supabase.from('mixer_events').delete().eq('id', eventId);
+    await supabase.from('rounds').delete().eq('event_id', eventId);
+    await supabase.from('event_players').delete().eq('event_id', eventId);
+    await supabase.from('events').delete().eq('id', eventId);
 
     setEvents(events.filter(ev => ev.id !== eventId));
     setDeleting(null);
@@ -102,19 +102,19 @@ export default function MixerHomePage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8">
+    <div className="p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="font-semibold text-2xl sm:text-3xl mb-1">My Events</h1>
           <p className="text-gray-500">Manage your mixers and tournaments</p>
         </div>
-        <Link href="/mixer/select-format" className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600">
+        <Link href="/mixer/select-format" className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600">
           <Plus size={18} />
           Create Event
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-xl border p-4 flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-orange-100 text-orange-600">
             <Calendar size={22} />
@@ -170,7 +170,7 @@ export default function MixerHomePage() {
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-lg truncate">{event.name}</h3>
                         <p className="text-sm text-gray-500">
-                          {format(new Date(event.event_date), 'MM/dd/yyyy')}
+                          {format(new Date(event.event_date), 'MMM d, yyyy')}
                           {event.start_time && ` at ${event.start_time}`}
                         </p>
                       </div>
@@ -205,7 +205,7 @@ export default function MixerHomePage() {
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-lg truncate">{event.name}</h3>
                         <p className="text-sm text-gray-500">
-                          {format(new Date(event.event_date), 'MM/dd/yyyy')}
+                          {format(new Date(event.event_date), 'MMM d, yyyy')}
                           {event.start_time && ` at ${event.start_time}`}
                         </p>
                       </div>

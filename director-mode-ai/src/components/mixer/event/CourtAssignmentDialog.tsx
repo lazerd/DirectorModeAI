@@ -45,7 +45,7 @@ const CourtAssignmentDialog = ({ match, open, onOpenChange, onCourtAssigned, tot
     setSaving(true);
 
     const { error } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .update({ court_number: parseInt(selectedCourt) })
       .eq("id", match.id);
 

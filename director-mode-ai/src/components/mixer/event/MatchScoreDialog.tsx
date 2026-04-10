@@ -120,7 +120,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
     const wasScored = oldWinnerTeam !== null;
 
     const { error: matchError } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .update({
         team1_score: team1Score,
         team2_score: team2Score,
@@ -147,7 +147,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
     }
 
     const { data: standings } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select("*")
       .eq("event_id", eventId)
       .in("player_id", playerIds);
@@ -184,7 +184,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
       }).filter(Boolean);
 
       for (const update of updates) {
-        await supabase.from("mixer_players").update(update).eq("id", update!.id);
+        await supabase.from("event_players").update(update).eq("id", update!.id);
       }
     }
 

@@ -75,7 +75,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
   const fetchRounds = async (targetRoundId?: string) => {
     const { data, error } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .select("*")
       .eq("event_id", event.id)
       .order("round_number");
@@ -125,7 +125,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
   const fetchMatches = async (roundId: string) => {
     const { data, error } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .select(`
         *,
         player1:players!matches_player1_id_fkey(name),
@@ -151,7 +151,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     setGenerating(true);
 
     const { data: playerCountData } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select("player_id")
       .eq("event_id", event.id);
     
@@ -194,7 +194,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
     // Fetch players with team_id for team battles
     const { data: eventPlayers, error: playersError } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select(`
         player_id,
         team_id,
@@ -251,7 +251,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
       // Re-fetch event to get latest court config
       const { data: freshEvent } = await supabase
-        .from("mixer_events")
+        .from("events")
         .select("team_battle_singles_courts, team_battle_doubles_courts")
         .eq("id", event.id)
         .single();
@@ -265,7 +265,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     }
 
     const { data: existingRounds } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .select("id, round_number")
       .eq("event_id", event.id)
       .order("round_number");
@@ -275,7 +275,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     let historicalMatches: any[] = [];
     if (existingRoundIds.length > 0) {
       const { data } = await supabase
-        .from("mixer_matches")
+        .from("matches")
         .select("player1_id, player2_id, player3_id, player4_id")
         .in("round_id", existingRoundIds);
       
@@ -310,7 +310,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       const roundNumber = startingRoundNumber + i;
 
       const { data: round, error: roundError } = await supabase
-        .from("mixer_rounds")
+        .from("rounds")
         .insert([
           {
             event_id: event.id,
@@ -340,7 +340,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
         ...pairing,
       }));
 
-      await supabase.from("mixer_matches").insert(matchInserts);
+      await supabase.from("matches").insert(matchInserts);
     }
 
     toast({
@@ -362,7 +362,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     setGenerating(true);
 
     const { data: playerCountData } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select("player_id")
       .eq("event_id", event.id);
     
@@ -390,7 +390,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     }
 
     const { data: eventPlayers, error: playersError } = await supabase
-      .from("mixer_players")
+      .from("event_players")
       .select(`
         player_id,
         team_id,
@@ -445,7 +445,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       }
 
       const { data: freshEvent } = await supabase
-        .from("mixer_events")
+        .from("events")
         .select("team_battle_singles_courts, team_battle_doubles_courts")
         .eq("id", event.id)
         .single();
@@ -459,7 +459,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     }
 
     const { data: currentRoundData } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .select("round_number")
       .eq("id", roundId)
       .single();
@@ -467,7 +467,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     const currentRoundNumber = currentRoundData?.round_number || 1;
 
     const { data: allRounds } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .select("id")
       .eq("event_id", event.id)
       .lte("round_number", currentRoundNumber);
@@ -477,14 +477,14 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     let historicalMatches: any[] = [];
     if (allRoundIds.length > 0) {
       const { data } = await supabase
-        .from("mixer_matches")
+        .from("matches")
         .select("player1_id, player2_id, player3_id, player4_id")
         .in("round_id", allRoundIds);
       
       historicalMatches = data || [];
     }
 
-    await supabase.from("mixer_matches").delete().eq("round_id", roundId);
+    await supabase.from("matches").delete().eq("round_id", roundId);
 
     const generator = new RoundGenerator(playerData, event.num_courts, matchFormat);
     generator.setRandomize(true);
@@ -505,7 +505,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       ...pairing,
     }));
 
-    await supabase.from("mixer_matches").insert(matchInserts);
+    await supabase.from("matches").insert(matchInserts);
 
     toast({
       title: "Round regenerated!",
@@ -520,7 +520,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     if (!currentRound) return;
 
     const { error } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .update({ status: "in_progress", start_time: new Date().toISOString() })
       .eq("id", currentRound.id);
 
@@ -557,7 +557,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     }
 
     const { error } = await supabase
-      .from("mixer_rounds")
+      .from("rounds")
       .update({ status: "completed", end_time: new Date().toISOString() })
       .eq("id", currentRound.id);
 
@@ -577,7 +577,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       await fetchRounds();
       
       const { data: nextRounds } = await supabase
-        .from("mixer_rounds")
+        .from("rounds")
         .select("*")
         .eq("event_id", event.id)
         .eq("status", "upcoming")
@@ -613,7 +613,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     if (!currentRound) return;
 
     const { error } = await supabase
-      .from("mixer_matches")
+      .from("matches")
       .update({ team1_score: 0, team2_score: 0, winner_team: null })
       .eq("round_id", currentRound.id);
 
@@ -625,7 +625,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       });
     } else {
       await supabase
-        .from("mixer_rounds")
+        .from("rounds")
         .update({ status: "upcoming", start_time: null, end_time: null })
         .eq("id", currentRound.id);
 
