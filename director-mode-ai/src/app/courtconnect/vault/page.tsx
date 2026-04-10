@@ -40,7 +40,27 @@ type VaultPlayer = {
   created_at: string;
 };
 
-type SortKey = 'name' | 'utr_singles_desc' | 'utr_singles_asc' | 'utr_doubles_desc' | 'utr_doubles_asc';
+type SortKey =
+  | 'name_asc'
+  | 'name_desc'
+  | 'last_name_asc'
+  | 'last_name_desc'
+  | 'gender'
+  | 'ntrp_desc'
+  | 'ntrp_asc'
+  | 'age_desc'
+  | 'age_asc'
+  | 'created_desc'
+  | 'created_asc'
+  | 'utr_singles_desc'
+  | 'utr_singles_asc'
+  | 'utr_doubles_desc'
+  | 'utr_doubles_asc';
+
+const getLastName = (fullName: string): string => {
+  const parts = fullName.trim().split(/\s+/);
+  return parts[parts.length - 1] || fullName;
+};
 
 export default function PlayerVaultPage() {
   const [players, setPlayers] = useState<VaultPlayer[]>([]);
@@ -48,7 +68,7 @@ export default function PlayerVaultPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sportFilter, setSportFilter] = useState('');
   const [genderFilter, setGenderFilter] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortKey, setSortKey] = useState<SortKey>('name_asc');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ success: number; skipped: number } | null>(null);
@@ -86,22 +106,37 @@ export default function PlayerVaultPage() {
     )
     .slice()
     .sort((a, b) => {
-      // Null UTRs always sink to the bottom regardless of asc/desc so they
-      // don't pollute the top of the rated list.
-      const byRating = (av: number | null, bv: number | null, desc: boolean) => {
+      // Null numerics always sink to the bottom regardless of direction so
+      // unrated / missing players never pollute the top.
+      const byNum = (av: number | null, bv: number | null, desc: boolean) => {
         if (av == null && bv == null) return a.full_name.localeCompare(b.full_name);
         if (av == null) return 1;
         if (bv == null) return -1;
         return desc ? bv - av : av - bv;
       };
+      const byStr = (av: string | null, bv: string | null, desc: boolean) => {
+        if (!av && !bv) return a.full_name.localeCompare(b.full_name);
+        if (!av) return 1;
+        if (!bv) return -1;
+        return desc ? bv.localeCompare(av) : av.localeCompare(bv);
+      };
       switch (sortKey) {
-        case 'utr_singles_desc': return byRating(a.utr_singles, b.utr_singles, true);
-        case 'utr_singles_asc':  return byRating(a.utr_singles, b.utr_singles, false);
-        case 'utr_doubles_desc': return byRating(a.utr_doubles, b.utr_doubles, true);
-        case 'utr_doubles_asc':  return byRating(a.utr_doubles, b.utr_doubles, false);
-        case 'name':
-        default:
-          return a.full_name.localeCompare(b.full_name);
+        case 'name_asc':         return a.full_name.localeCompare(b.full_name);
+        case 'name_desc':        return b.full_name.localeCompare(a.full_name);
+        case 'last_name_asc':    return getLastName(a.full_name).localeCompare(getLastName(b.full_name));
+        case 'last_name_desc':   return getLastName(b.full_name).localeCompare(getLastName(a.full_name));
+        case 'gender':           return byStr(a.gender, b.gender, false);
+        case 'ntrp_desc':        return byNum(a.usta_rating, b.usta_rating, true);
+        case 'ntrp_asc':         return byNum(a.usta_rating, b.usta_rating, false);
+        case 'age_desc':         return byNum(a.age, b.age, true);
+        case 'age_asc':          return byNum(a.age, b.age, false);
+        case 'created_desc':     return b.created_at.localeCompare(a.created_at);
+        case 'created_asc':      return a.created_at.localeCompare(b.created_at);
+        case 'utr_singles_desc': return byNum(a.utr_singles, b.utr_singles, true);
+        case 'utr_singles_asc':  return byNum(a.utr_singles, b.utr_singles, false);
+        case 'utr_doubles_desc': return byNum(a.utr_doubles, b.utr_doubles, true);
+        case 'utr_doubles_asc':  return byNum(a.utr_doubles, b.utr_doubles, false);
+        default:                 return a.full_name.localeCompare(b.full_name);
       }
     });
 
@@ -215,11 +250,29 @@ export default function PlayerVaultPage() {
             onChange={e => setSortKey(e.target.value as SortKey)}
             aria-label="Sort players"
           >
-            <option value="name">Sort: Name</option>
-            <option value="utr_singles_desc">Sort: Singles UTR (high → low)</option>
-            <option value="utr_singles_asc">Sort: Singles UTR (low → high)</option>
-            <option value="utr_doubles_desc">Sort: Doubles UTR (high → low)</option>
-            <option value="utr_doubles_asc">Sort: Doubles UTR (low → high)</option>
+            <optgroup label="Name">
+              <option value="name_asc">Name (A → Z)</option>
+              <option value="name_desc">Name (Z → A)</option>
+              <option value="last_name_asc">Last name (A → Z)</option>
+              <option value="last_name_desc">Last name (Z → A)</option>
+            </optgroup>
+            <optgroup label="Attributes">
+              <option value="gender">Gender</option>
+              <option value="age_desc">Age (oldest → youngest)</option>
+              <option value="age_asc">Age (youngest → oldest)</option>
+            </optgroup>
+            <optgroup label="Ratings">
+              <option value="ntrp_desc">NTRP (high → low)</option>
+              <option value="ntrp_asc">NTRP (low → high)</option>
+              <option value="utr_singles_desc">Singles UTR (high → low)</option>
+              <option value="utr_singles_asc">Singles UTR (low → high)</option>
+              <option value="utr_doubles_desc">Doubles UTR (high → low)</option>
+              <option value="utr_doubles_asc">Doubles UTR (low → high)</option>
+            </optgroup>
+            <optgroup label="Added">
+              <option value="created_desc">Date added (newest first)</option>
+              <option value="created_asc">Date added (oldest first)</option>
+            </optgroup>
           </select>
         </div>
       </div>
