@@ -101,9 +101,9 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
         player3_id,
         player4_id,
         winner_team,
-        mixer_rounds!inner (event_id)
+        rounds!inner (event_id)
       `)
-      .eq("mixer_rounds.event_id", eventId)
+      .eq("rounds.event_id", eventId)
       .not("winner_team", "is", null);
 
     if (error) {
