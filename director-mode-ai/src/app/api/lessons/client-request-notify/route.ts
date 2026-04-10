@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     await resend.emails.send({
-      from: 'LastMinute Lessons <notifications@coachmode.ai>',
+      from: process.env.RESEND_FROM_EMAIL || 'CoachMode Lessons <noreply@coachmode.ai>',
       to: coachEmail,
       subject: `New Client Request: ${clientName} wants to book lessons`,
       html: `

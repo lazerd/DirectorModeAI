@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data, error } = await resend.emails.send({
-      from: 'StringingMode <notifications@coachmode.ai>',
+      from: process.env.RESEND_FROM_EMAIL || 'CoachMode Stringing <noreply@coachmode.ai>',
       to: [to],
       subject: '🎾 Your Racket is Ready for Pickup!',
       html: `

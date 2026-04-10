@@ -108,7 +108,7 @@ export async function GET(request: NextRequest) {
       // Send reminder to client
       try {
         await resend.emails.send({
-          from: 'LastMinute Lessons <notifications@coachmode.ai>',
+          from: process.env.RESEND_FROM_EMAIL || 'CoachMode Lessons <noreply@coachmode.ai>',
           to: client.email,
           subject: `Reminder: Lesson with ${coachName} tomorrow`,
           html: `
