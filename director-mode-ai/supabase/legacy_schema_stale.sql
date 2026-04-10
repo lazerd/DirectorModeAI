@@ -1,5 +1,18 @@
 -- ============================================
--- Director Mode AI - Unified Database Schema
+-- ⚠️  STALE — DO NOT USE AS REFERENCE
+-- ============================================
+--
+-- This file was the original "intended" schema. Production has drifted
+-- significantly from it (audited 2026-04-10). It is preserved here only
+-- for historical reference. Do NOT trust the table names, columns, or
+-- relationships in this file when writing queries.
+--
+-- Source of truth: the live Supabase database. Use the dump script at
+-- supabase/dump_schema.sh, or run `\d <table>` in the SQL editor.
+-- See supabase/README.md for the table directory.
+--
+-- ============================================
+-- Director Mode AI - Unified Database Schema (legacy)
 -- Supports: MixerMode, LastMinuteLesson, StringingMode, CourtConnect
 -- ============================================
 --
