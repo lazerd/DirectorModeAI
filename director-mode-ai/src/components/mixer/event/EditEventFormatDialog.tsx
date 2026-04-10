@@ -49,7 +49,7 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
     };
 
     const { error } = await supabase
-      .from("events")
+      .from("mixer_events")
       .update(updates)
       .eq("id", event.id);
 

@@ -81,7 +81,7 @@ export default function PublicEvent() {
 
     try {
       const { data: eventData, error: eventError } = await supabase
-        .from("events")
+        .from("mixer_events")
         .select("*")
         .eq("event_code", eventCode.toUpperCase())
         .single();
@@ -105,7 +105,7 @@ export default function PublicEvent() {
     if (!eventCode) return;
 
     const { data: eventData } = await supabase
-      .from("events")
+      .from("mixer_events")
       .select("id")
       .eq("event_code", eventCode.toUpperCase())
       .single();
@@ -113,7 +113,7 @@ export default function PublicEvent() {
     if (!eventData) return;
 
     const { data, error } = await supabase
-      .from("event_players")
+      .from("mixer_players")
       .select(`
         wins,
         losses,
@@ -145,7 +145,7 @@ export default function PublicEvent() {
     if (!eventCode) return;
 
     const { data: eventData } = await supabase
-      .from("events")
+      .from("mixer_events")
       .select("id")
       .eq("event_code", eventCode.toUpperCase())
       .single();
@@ -153,7 +153,7 @@ export default function PublicEvent() {
     if (!eventData) return;
 
     const { data: roundsData, error } = await supabase
-      .from("rounds")
+      .from("mixer_rounds")
       .select(`
         id,
         round_number,
@@ -247,7 +247,7 @@ export default function PublicEvent() {
           <div className="flex flex-wrap gap-2 sm:gap-3 text-xs sm:text-sm text-muted-foreground">
             <div className="flex items-center gap-1">
               <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
-              <span className="truncate">{format(new Date(event.event_date), "MMM d, yyyy")}</span>
+              <span className="truncate">{format(new Date(event.event_date), "MM/dd/yyyy")}</span>
             </div>
             {event.start_time && (
               <div className="flex items-center gap-1">

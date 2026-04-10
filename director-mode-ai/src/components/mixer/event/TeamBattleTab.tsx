@@ -134,7 +134,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     setCourtConfig(newConfig);
     
     await supabase
-      .from("events")
+      .from("mixer_events")
       .update({
         team_battle_singles_courts: newConfig.singlesCourts,
         team_battle_doubles_courts: newConfig.doublesCourts,
@@ -175,7 +175,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
 
   const fetchPlayers = async () => {
     const { data, error } = await supabase
-      .from("event_players")
+      .from("mixer_players")
       .select(`
         id,
         player_id,
@@ -208,7 +208,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
 
   const fetchTeamScores = async () => {
     const { data: rounds } = await supabase
-      .from("rounds")
+      .from("mixer_rounds")
       .select("id")
       .eq("event_id", event.id);
 
@@ -220,7 +220,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     const roundIds = rounds.map(r => r.id);
     
     const { data: matches } = await supabase
-      .from("matches")
+      .from("mixer_matches")
       .select("winner_team, player1_id, player2_id")
       .in("round_id", roundIds)
       .not("winner_team", "is", null);
@@ -231,7 +231,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     }
 
     const { data: eventPlayers } = await supabase
-      .from("event_players")
+      .from("mixer_players")
       .select("player_id, team_id")
       .eq("event_id", event.id);
 
@@ -353,7 +353,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     const teamPlayers = players.filter(p => p.team_id === teamId);
     
     const { error: eventPlayerError } = await supabase
-      .from("event_players")
+      .from("mixer_players")
       .insert([{ 
         event_id: event.id, 
         player_id: player.id, 
@@ -373,7 +373,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
 
   const handleRemovePlayer = async (eventPlayerId: string) => {
     const { error } = await supabase
-      .from("event_players")
+      .from("mixer_players")
       .delete()
       .eq("id", eventPlayerId);
 
@@ -400,7 +400,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
 
     for (let i = 0; i < reordered.length; i++) {
       await supabase
-        .from("event_players")
+        .from("mixer_players")
         .update({ strength_order: i })
         .eq("id", reordered[i].event_player_id);
     }

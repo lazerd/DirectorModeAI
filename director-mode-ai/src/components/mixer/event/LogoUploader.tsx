@@ -21,7 +21,7 @@ const LogoUploader = ({ eventId, onLogoChange }: LogoUploaderProps) => {
 
   const fetchLogo = async () => {
     const { data } = await supabase
-      .from("events")
+      .from("mixer_events")
       .select("logo_url")
       .eq("id", eventId)
       .single();
@@ -73,7 +73,7 @@ const LogoUploader = ({ eventId, onLogoChange }: LogoUploaderProps) => {
       const publicUrl = urlData.publicUrl + "?t=" + Date.now();
 
       const { error: updateError } = await supabase
-        .from("events")
+        .from("mixer_events")
         .update({ logo_url: publicUrl })
         .eq("id", eventId);
 
@@ -101,7 +101,7 @@ const LogoUploader = ({ eventId, onLogoChange }: LogoUploaderProps) => {
   const removeLogo = async () => {
     try {
       await supabase
-        .from("events")
+        .from("mixer_events")
         .update({ logo_url: null })
         .eq("id", eventId);
 

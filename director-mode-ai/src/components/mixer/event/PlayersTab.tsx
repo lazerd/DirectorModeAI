@@ -124,7 +124,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
 
   const checkEventFormat = async () => {
     const { data } = await supabase
-      .from("events")
+      .from("mixer_events")
       .select("match_format")
       .eq("id", event.id)
       .single();
@@ -135,7 +135,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
 
   const checkExistingRounds = async () => {
     const { data } = await supabase
-      .from("rounds")
+      .from("mixer_rounds")
       .select("id")
       .eq("event_id", event.id)
       .limit(1);
@@ -145,7 +145,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
 
   const fetchPlayers = async () => {
     const { data, error } = await supabase
-      .from("event_players")
+      .from("mixer_players")
       .select(`
         id,
         player_id,
@@ -218,7 +218,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
     }
 
     const { error: eventPlayerError } = await supabase
-      .from("event_players")
+      .from("mixer_players")
       .insert([{ event_id: event.id, player_id: player.id, strength_order: players.length }]);
 
     if (eventPlayerError) {
@@ -253,7 +253,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
 
       if (player) {
         await supabase
-          .from("event_players")
+          .from("mixer_players")
           .insert([{ event_id: event.id, player_id: player.id, strength_order: players.length }]);
       }
     }
@@ -289,7 +289,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
 
     // Fetch full player data
     const { data: eventPlayers, error: playersError } = await supabase
-      .from("event_players")
+      .from("mixer_players")
       .select(`
         player_id,
         wins,
@@ -327,7 +327,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
 
     // Create round in database
     const { data: round, error: roundError } = await supabase
-      .from("rounds")
+      .from("mixer_rounds")
       .insert([{
         event_id: event.id,
         round_number: 1,
@@ -353,7 +353,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
       ...pairing,
     }));
 
-    const { error: matchError } = await supabase.from("matches").insert(matchInserts);
+    const { error: matchError } = await supabase.from("mixer_matches").insert(matchInserts);
 
     if (matchError) {
       toast({
@@ -391,7 +391,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
 
   const handleRemovePlayer = async (eventPlayerId: string) => {
     const { error } = await supabase
-      .from("event_players")
+      .from("mixer_players")
       .delete()
       .eq("id", eventPlayerId);
 
@@ -423,7 +423,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
 
     for (let i = 0; i < newPlayers.length; i++) {
       await supabase
-        .from("event_players")
+        .from("mixer_players")
         .update({ strength_order: i })
         .eq("id", newPlayers[i].id);
     }

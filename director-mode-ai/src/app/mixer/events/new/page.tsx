@@ -95,7 +95,7 @@ function CreateEventForm() {
       const eventCode = generateEventCode();
 
       const { data, error: insertError } = await supabase
-        .from('events')
+        .from('mixer_events')
         .insert({
           ...formData,
           user_id: user.id,
@@ -155,7 +155,7 @@ function CreateEventForm() {
   };
 
   return (
-    <div className="p-6 lg:p-8 max-w-2xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto">
       <div className="flex items-center gap-4 mb-6">
         <button 
           type="button"
@@ -171,7 +171,7 @@ function CreateEventForm() {
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="font-semibold text-lg mb-4 flex items-center gap-2">
             <Calendar size={20} className="text-orange-500" />
             Event Details
@@ -190,7 +190,7 @@ function CreateEventForm() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Date *</label>
                 <input
@@ -214,7 +214,7 @@ function CreateEventForm() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="font-semibold text-lg mb-4 flex items-center gap-2">
             <Users size={20} className="text-orange-500" />
             Format Settings
@@ -255,7 +255,7 @@ function CreateEventForm() {
                   <Swords size={20} className="text-red-500" />
                   <h3 className="font-semibold">Team Names</h3>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium mb-1">Team 1 Name *</label>
                     <div className="flex items-center gap-2">
@@ -314,7 +314,7 @@ function CreateEventForm() {
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {formData.scoring_format === 'timed' && (
                 <div>
                   <label className="block text-sm font-medium mb-1">Round Length (minutes)</label>
