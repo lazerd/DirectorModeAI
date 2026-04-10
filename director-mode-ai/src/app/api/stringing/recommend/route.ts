@@ -1,13 +1,49 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+const MAX_TEXT_LENGTH = 256;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 10;
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(key: string): boolean {
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || bucket.resetAt < now) {
+    rateBuckets.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (bucket.count >= RATE_LIMIT_MAX) return false;
+  bucket.count += 1;
+  return true;
+}
+
+function clampText(v: unknown): string | undefined {
+  return typeof v === 'string' ? v.slice(0, MAX_TEXT_LENGTH) : undefined;
+}
+
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { level, play_style, arm_issues, preference, durability_needs } = body;
+    // Auth: only signed-in users can hit this — it costs us LLM tokens.
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Per-user rate limit so a compromised account can't burn the budget.
+    if (!checkRateLimit(user.id)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
+    const raw = await request.json().catch(() => ({}));
+    const level = clampText(raw?.level) ?? 'intermediate';
+    const play_style = clampText(raw?.play_style) ?? '';
+    const arm_issues = clampText(raw?.arm_issues) ?? '';
+    const preference = clampText(raw?.preference) ?? 'balanced';
+    const durability_needs = Boolean(raw?.durability_needs);
 
     // Get available strings from catalog
-    const supabase = await createClient();
     const { data: strings } = await supabase
       .from('stringing_catalog')
       .select('*')
