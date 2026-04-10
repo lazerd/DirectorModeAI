@@ -175,30 +175,52 @@ export default function ClientDashboardPage() {
       }
     }
 
-    // Get upcoming events from the populated `events` table.
-    // NOTE: this is intentionally not user-scoped yet — the schema does not
-    // expose a clean owner→client linkage from auth.user to event participation,
-    // so the tab currently surfaces all upcoming events. Tighten this when the
-    // player↔auth user mapping is in place.
+    // Get upcoming events the current user is actually a player in.
+    // Path: auth user → players.linked_user_id → event_players → events
     const todayIso = new Date().toISOString().split('T')[0];
-    const { data: events, error: eventsErr } = await supabase
-      .from('events')
-      .select('id, name, event_code, event_date')
-      .gte('event_date', todayIso)
-      .order('event_date', { ascending: true })
-      .limit(20);
 
-    if (eventsErr) console.error('events query failed:', eventsErr);
+    const { data: linkedPlayers, error: playersErr } = await supabase
+      .from('players')
+      .select('id')
+      .eq('linked_user_id', user.id);
 
-    if (events) {
-      setMixerEvents(events.map((e: any) => ({
-        id: e.id,
-        name: e.name,
-        date: e.event_date,
-        location: null,
-        status: 'upcoming',
-        event_code: e.event_code,
-      })));
+    if (playersErr) console.error('linked players lookup failed:', playersErr);
+
+    const playerIds = (linkedPlayers ?? []).map(p => p.id);
+
+    if (playerIds.length > 0) {
+      const { data: participations, error: epErr } = await supabase
+        .from('event_players')
+        .select('event_id')
+        .in('player_id', playerIds);
+
+      if (epErr) console.error('event_players lookup failed:', epErr);
+
+      const eventIds = Array.from(
+        new Set((participations ?? []).map(p => p.event_id))
+      );
+
+      if (eventIds.length > 0) {
+        const { data: events, error: eventsErr } = await supabase
+          .from('events')
+          .select('id, name, event_code, event_date')
+          .in('id', eventIds)
+          .gte('event_date', todayIso)
+          .order('event_date', { ascending: true });
+
+        if (eventsErr) console.error('events query failed:', eventsErr);
+
+        if (events) {
+          setMixerEvents(events.map((e: any) => ({
+            id: e.id,
+            name: e.name,
+            date: e.event_date,
+            location: null,
+            status: 'upcoming',
+            event_code: e.event_code,
+          })));
+        }
+      }
     }
 
     setLoading(false);
