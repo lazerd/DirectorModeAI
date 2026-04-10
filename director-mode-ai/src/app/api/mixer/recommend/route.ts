@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
 type RequestBody = {
   player_count?: number;
@@ -6,6 +7,35 @@ type RequestBody = {
   duration_minutes?: number;
   vibe?: 'social' | 'competitive' | 'tournament' | string;
 };
+
+const MAX_VIBE_LENGTH = 64;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 10;
+const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function checkRateLimit(key: string): boolean {
+  const now = Date.now();
+  const bucket = rateBuckets.get(key);
+  if (!bucket || bucket.resetAt < now) {
+    rateBuckets.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    return true;
+  }
+  if (bucket.count >= RATE_LIMIT_MAX) return false;
+  bucket.count += 1;
+  return true;
+}
+
+function sanitizeBody(raw: unknown): RequestBody {
+  if (!raw || typeof raw !== 'object') return {};
+  const r = raw as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  return {
+    player_count: num(r.player_count),
+    court_count: num(r.court_count),
+    duration_minutes: num(r.duration_minutes),
+    vibe: typeof r.vibe === 'string' ? r.vibe.slice(0, MAX_VIBE_LENGTH) : undefined,
+  };
+}
 
 const FORMAT_OPTIONS = [
   { id: 'doubles', name: 'Doubles', good_for: 'social mixers, 8+ players' },
@@ -67,7 +97,20 @@ function heuristicRecommendation(body: RequestBody) {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as RequestBody;
+    // Auth: only signed-in users can hit this — it costs us LLM tokens.
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Per-user rate limit so a compromised account can't burn the budget.
+    if (!checkRateLimit(user.id)) {
+      return NextResponse.json({ error: 'Too many requests' }, { status: 429 });
+    }
+
+    const raw = await request.json().catch(() => ({}));
+    const body = sanitizeBody(raw);
 
     const aiApiKey = process.env.AI_API_KEY;
     const aiProvider = process.env.AI_PROVIDER || 'openai';
