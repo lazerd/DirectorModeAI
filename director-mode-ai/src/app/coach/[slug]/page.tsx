@@ -265,7 +265,7 @@ export default function CoachPublicPage() {
             coachName: coach.display_name,
             clientName: clientName,
             clientEmail: clientEmail,
-            slotDate: format(parseISO(selectedSlot.start_time), 'EEEE, MMMM d, yyyy'),
+            slotDate: format(parseISO(selectedSlot.start_time), 'MM/dd/yyyy'),
             slotTime: format(parseISO(selectedSlot.start_time), 'h:mm a') + ' - ' + format(parseISO(selectedSlot.end_time), 'h:mm a'),
             location: selectedSlot.location
           })
@@ -404,7 +404,7 @@ export default function CoachPublicPage() {
             <div className="bg-white rounded-xl border mb-6">
               <div className="p-4 border-b flex items-center justify-between">
                 <button onClick={() => setCurrentWeek(subWeeks(currentWeek, 1))} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft className="h-5 w-5" /></button>
-                <h2 className="font-semibold">{format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d, yyyy')}</h2>
+                <h2 className="font-semibold">{format(weekStart, 'MMM d')} - {format(weekEnd, 'MM/dd/yyyy')}</h2>
                 <button onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight className="h-5 w-5" /></button>
               </div>
 
@@ -445,7 +445,7 @@ export default function CoachPublicPage() {
             <div className="bg-blue-50 rounded-xl p-4 mb-6 space-y-3">
               <div className="flex items-center gap-3">
                 <Calendar className="h-5 w-5 text-blue-600" />
-                <span className="font-medium">{format(parseISO(selectedSlot.start_time), 'EEEE, MMMM d, yyyy')}</span>
+                <span className="font-medium">{format(parseISO(selectedSlot.start_time), 'MM/dd/yyyy')}</span>
               </div>
               <div className="flex items-center gap-3">
                 <Clock className="h-5 w-5 text-blue-600" />

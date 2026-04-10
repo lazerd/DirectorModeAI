@@ -401,7 +401,7 @@ export default function EventDetailPage() {
         <div className="grid grid-cols-2 gap-4 text-sm">
           <div className="flex items-center gap-2 text-gray-600">
             <Calendar size={16} />
-            {format(new Date(event.event_date), 'EEEE, MMMM d, yyyy')}
+            {format(new Date(event.event_date), 'MM/dd/yyyy')}
           </div>
           <div className="flex items-center gap-2 text-gray-600">
             <Clock size={16} />

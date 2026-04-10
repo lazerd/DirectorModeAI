@@ -250,7 +250,7 @@ export default function CustomerDetailPage() {
                             {job.status.replace('_', ' ')}
                           </span>
                           <span className="text-xs text-gray-400">
-                            {format(new Date(job.created_at), 'MMM d, yyyy')}
+                            {format(new Date(job.created_at), 'MM/dd/yyyy')}
                           </span>
                         </div>
                         
@@ -272,7 +272,7 @@ export default function CustomerDetailPage() {
                         {job.picked_up_at && (
                           <div className="text-xs text-gray-400 mt-2 flex items-center gap-1">
                             <CheckCircle size={12} />
-                            Picked up {format(new Date(job.picked_up_at), 'MMM d, yyyy')}
+                            Picked up {format(new Date(job.picked_up_at), 'MM/dd/yyyy')}
                           </div>
                         )}
                       </div>

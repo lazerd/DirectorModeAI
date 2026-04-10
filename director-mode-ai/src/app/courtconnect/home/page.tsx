@@ -194,7 +194,7 @@ export default function CourtConnectHomePage() {
                 <div className="space-y-1.5 text-sm text-gray-500">
                   <div className="flex items-center gap-2">
                     <Calendar size={14} />
-                    {format(new Date(event.event_date), 'EEE, MMM d, yyyy')}
+                    {format(new Date(event.event_date), 'MM/dd/yyyy')}
                   </div>
                   <div className="flex items-center gap-2">
                     <Clock size={14} />
