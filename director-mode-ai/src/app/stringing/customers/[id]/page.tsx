@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Mail, Phone, User, Calendar, CheckCircle, Clock, Package } from 'lucide-react';
+import { ArrowLeft, Mail, Phone, User, Calendar, CheckCircle, Clock, Package, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 
@@ -50,6 +50,7 @@ export default function CustomerDetailPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [rackets, setRackets] = useState<Racket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (params.id) {
@@ -100,6 +101,35 @@ export default function CustomerDetailPage() {
     setLoading(false);
   };
 
+  const deleteCustomer = async () => {
+    if (!customer) return;
+    const jobCount = jobs.length;
+    const racketCount = rackets.length;
+    const related =
+      jobCount || racketCount
+        ? ` This also removes ${jobCount} job${jobCount === 1 ? '' : 's'} and ${racketCount} racket${racketCount === 1 ? '' : 's'} tied to this customer.`
+        : '';
+    if (!confirm(`Delete ${customer.full_name}?${related} This cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('stringing_customers')
+      .delete()
+      .eq('id', customer.id);
+
+    if (error) {
+      alert(`Failed to delete customer: ${error.message}`);
+      setDeleting(false);
+      return;
+    }
+
+    router.push('/stringing/customers');
+    router.refresh();
+  };
+
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
       pending: 'bg-yellow-100 text-yellow-700',
@@ -148,6 +178,20 @@ export default function CustomerDetailPage() {
             <h1 className="font-display text-2xl">{customer.full_name}</h1>
             <p className="text-gray-500 text-sm">Customer since {format(new Date(customer.created_at), 'MMM yyyy')}</p>
           </div>
+          <button
+            onClick={deleteCustomer}
+            disabled={deleting}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50"
+            title={`Delete ${customer.full_name}`}
+            aria-label={`Delete ${customer.full_name}`}
+          >
+            {deleting ? (
+              <div className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
+            ) : (
+              <Trash2 size={16} />
+            )}
+            {deleting ? 'Deleting...' : 'Delete'}
+          </button>
         </div>
 
         {/* Customer Info Card */}
