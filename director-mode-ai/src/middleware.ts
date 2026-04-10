@@ -36,6 +36,7 @@ export async function middleware(request: NextRequest) {
   const protectedPaths = [
     '/mixer/home',
     '/mixer/events',
+    '/mixer/leagues',
     '/mixer/subscription',
     '/mixer/settings',
     '/lessons/dashboard',

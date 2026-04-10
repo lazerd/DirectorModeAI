@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Shuffle, Home, Calendar, Settings, CreditCard, Zap } from 'lucide-react';
+import { Shuffle, Home, Calendar, Settings, CreditCard, Zap, Trophy } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import MixerMobileNav from '@/components/mixer/MixerMobileNav';
@@ -64,6 +64,9 @@ export default async function MixerLayout({
             </NavItem>
             <NavItem href="/mixer/select-format" icon={Calendar}>
               Create Event
+            </NavItem>
+            <NavItem href="/mixer/leagues" icon={Trophy}>
+              Leagues
             </NavItem>
             <NavItem href="/mixer/subscription" icon={CreditCard}>
               Subscription
