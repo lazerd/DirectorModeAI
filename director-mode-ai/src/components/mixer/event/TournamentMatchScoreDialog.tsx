@@ -141,10 +141,10 @@ const TournamentMatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, e
           games_won: currentStats.games_won - oldGamesWon + gamesWon,
           games_lost: currentStats.games_lost - oldGamesLost + gamesLost,
         };
-      }).filter(Boolean);
+      }).filter((u): u is NonNullable<typeof u> => u !== null);
 
       for (const update of updates) {
-        await supabase.from("event_players").update(update).eq("id", update!.id);
+        await supabase.from("event_players").update(update).eq("id", update.id);
       }
     }
 
