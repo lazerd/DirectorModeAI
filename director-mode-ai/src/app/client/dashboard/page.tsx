@@ -175,15 +175,20 @@ export default function ClientDashboardPage() {
       }
     }
 
-    // Get upcoming mixer events (no status column — filter by event_date)
+    // Get upcoming events from the populated `events` table.
+    // NOTE: this is intentionally not user-scoped yet — the schema does not
+    // expose a clean owner→client linkage from auth.user to event participation,
+    // so the tab currently surfaces all upcoming events. Tighten this when the
+    // player↔auth user mapping is in place.
     const todayIso = new Date().toISOString().split('T')[0];
     const { data: events, error: eventsErr } = await supabase
-      .from('mixer_events')
+      .from('events')
       .select('id, name, event_code, event_date')
       .gte('event_date', todayIso)
-      .order('event_date', { ascending: true });
+      .order('event_date', { ascending: true })
+      .limit(20);
 
-    if (eventsErr) console.error('Mixer events query failed:', eventsErr);
+    if (eventsErr) console.error('events query failed:', eventsErr);
 
     if (events) {
       setMixerEvents(events.map((e: any) => ({
