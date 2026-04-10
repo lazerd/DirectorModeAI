@@ -2,6 +2,21 @@
 -- Director Mode AI - Unified Database Schema
 -- Supports: MixerMode, LastMinuteLesson, StringingMode, CourtConnect
 -- ============================================
+--
+-- ⚠️  STALE: this file does NOT match production as of 2026-04-10.
+--
+-- Production has additional legacy tables that this file does not
+-- declare (events, players, rounds, matches, event_players) and the
+-- live MixerMode code reads/writes them — not the mixer_* tables
+-- defined below. Several tables here are also missing columns the
+-- code uses (e.g. lesson_coaches.display_name/slug, lesson_clients
+-- linkage to auth users, lesson_slots.booked_by_client_id).
+--
+-- Do NOT trust this file when reasoning about what the production
+-- DB looks like. Run `pg_dump --schema-only` against the live
+-- Supabase project (or `\d <table>` in the SQL editor) to get the
+-- real picture before changing any query.
+-- ============================================
 
 -- Enable extensions
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
