@@ -20,6 +20,8 @@ export default function ClubSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [clubId, setClubId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
 
   const [form, setForm] = useState({
     name: '',
@@ -48,7 +50,7 @@ export default function ClubSettingsPage() {
       .from('cc_clubs')
       .select('*')
       .eq('owner_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (club) {
       setClubId(club.id);
@@ -73,7 +75,7 @@ export default function ClubSettingsPage() {
         .from('profiles')
         .select('email, organization_name')
         .eq('id', user.id)
-        .single();
+        .maybeSingle();
       if (profile) {
         setForm(prev => ({
           ...prev,
@@ -110,17 +112,31 @@ export default function ClubSettingsPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.slug) return;
+    setError(null);
+
+    if (!form.name.trim()) {
+      setError('Club name is required.');
+      return;
+    }
+    if (!form.slug.trim()) {
+      setError('A URL slug is required.');
+      return;
+    }
+
     setSaving(true);
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSaving(false); return; }
+    if (!user) {
+      setError('You must be signed in.');
+      setSaving(false);
+      return;
+    }
 
     const clubData = {
       owner_id: user.id,
-      name: form.name,
-      slug: form.slug,
+      name: form.name.trim(),
+      slug: form.slug.trim(),
       description: form.description || null,
       website: form.website || null,
       phone: form.phone || null,
@@ -135,12 +151,30 @@ export default function ClubSettingsPage() {
     };
 
     if (clubId) {
-      await supabase.from('cc_clubs').update(clubData).eq('id', clubId);
+      const { error: updateErr } = await supabase
+        .from('cc_clubs')
+        .update(clubData)
+        .eq('id', clubId);
+      if (updateErr) {
+        setError(`Failed to save club: ${updateErr.message}`);
+        setSaving(false);
+        return;
+      }
     } else {
-      const { data } = await supabase.from('cc_clubs').insert(clubData).select().single();
-      if (data) setClubId(data.id);
+      const { data, error: insertErr } = await supabase
+        .from('cc_clubs')
+        .insert(clubData)
+        .select()
+        .single();
+      if (insertErr || !data) {
+        setError(`Failed to create club: ${insertErr?.message || 'Unknown error'}`);
+        setSaving(false);
+        return;
+      }
+      setClubId(data.id);
     }
 
+    setSavedAt(Date.now());
     setSaving(false);
   };
 
@@ -279,7 +313,15 @@ export default function ClubSettingsPage() {
           </label>
         </div>
 
-        <button onClick={handleSave} className="btn bg-[#D3FB52] text-[#002838] hover:bg-[#c5f035] w-full btn-lg font-semibold" disabled={saving || !form.name || !form.slug}>
+        {error && (
+          <div className="alert alert-error text-sm" role="alert">
+            {error}
+          </div>
+        )}
+        {savedAt && !error && (
+          <div className="text-sm text-green-400">Saved.</div>
+        )}
+        <button type="button" onClick={handleSave} className="btn bg-[#D3FB52] text-[#002838] hover:bg-[#c5f035] w-full btn-lg font-semibold" disabled={saving || !form.name || !form.slug}>
           {saving ? <div className="spinner" /> : <><Save size={18} /> {clubId ? 'Save Changes' : 'Create Club'}</>}
         </button>
       </div>
