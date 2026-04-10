@@ -38,6 +38,7 @@ type MixerEvent = {
   date: string;
   location: string | null;
   status: string;
+  event_code: string;
 };
 
 type Tab = 'lessons' | 'stringing' | 'events';
@@ -128,28 +129,71 @@ export default function ClientDashboardPage() {
       }
     }
 
-    // Get stringing jobs by email
+    // Get stringing jobs by customer email
     if (user.email) {
-      const { data: jobs } = await supabase
+      const { data: customers, error: custErr } = await supabase
         .from('stringing_customers')
-        .select('id, created_at, racket_brand, racket_model, string_brand, string_model, tension, status')
-        .eq('email', user.email)
-        .order('created_at', { ascending: false });
+        .select('id')
+        .eq('email', user.email);
 
-      if (jobs) {
-        setStringingJobs(jobs);
+      if (custErr) console.error('Stringing customer lookup failed:', custErr);
+
+      const customerIds = (customers || []).map(c => c.id);
+
+      if (customerIds.length > 0) {
+        const { data: jobs, error: jobsErr } = await supabase
+          .from('stringing_jobs')
+          .select(`
+            id,
+            created_at,
+            status,
+            main_tension_lbs,
+            cross_tension_lbs,
+            custom_string_name,
+            stringing_rackets ( brand, model ),
+            stringing_catalog ( brand, name )
+          `)
+          .in('customer_id', customerIds)
+          .order('created_at', { ascending: false });
+
+        if (jobsErr) console.error('Stringing jobs query failed:', jobsErr);
+
+        if (jobs) {
+          setStringingJobs(jobs.map((j: any) => ({
+            id: j.id,
+            created_at: j.created_at,
+            racket_brand: j.stringing_rackets?.brand ?? null,
+            racket_model: j.stringing_rackets?.model ?? null,
+            string_brand: j.stringing_catalog?.brand ?? null,
+            string_model: j.stringing_catalog?.name ?? j.custom_string_name ?? null,
+            tension: j.cross_tension_lbs
+              ? `${j.main_tension_lbs}/${j.cross_tension_lbs} lbs`
+              : `${j.main_tension_lbs} lbs`,
+            status: j.status,
+          })));
+        }
       }
     }
 
-    // Get active mixer events
-    const { data: events } = await supabase
+    // Get upcoming mixer events (no status column — filter by event_date)
+    const todayIso = new Date().toISOString().split('T')[0];
+    const { data: events, error: eventsErr } = await supabase
       .from('mixer_events')
-      .select('id, name, date, location, status')
-      .in('status', ['upcoming', 'in_progress', 'active'])
-      .order('date', { ascending: true });
+      .select('id, name, event_code, event_date')
+      .gte('event_date', todayIso)
+      .order('event_date', { ascending: true });
+
+    if (eventsErr) console.error('Mixer events query failed:', eventsErr);
 
     if (events) {
-      setMixerEvents(events);
+      setMixerEvents(events.map((e: any) => ({
+        id: e.id,
+        name: e.name,
+        date: e.event_date,
+        location: null,
+        status: 'upcoming',
+        event_code: e.event_code,
+      })));
     }
 
     setLoading(false);
@@ -190,7 +234,7 @@ export default function ClientDashboardPage() {
               recipientName: lesson.coach_name,
               cancelledBy: 'client',
               otherPartyName: clientName,
-              slotDate: format(parseISO(lesson.start_time), 'EEEE, MMMM d, yyyy'),
+              slotDate: format(parseISO(lesson.start_time), 'MM/dd/yyyy'),
               slotTime: format(parseISO(lesson.start_time), 'h:mm a') + ' - ' + format(parseISO(lesson.end_time), 'h:mm a'),
               location: lesson.location
             })
@@ -220,7 +264,7 @@ export default function ClientDashboardPage() {
         <div className="max-w-4xl mx-auto px-4">
           <div className="flex items-center justify-between h-14">
             <div className="flex items-center gap-6">
-              <Link href="/" className="font-bold text-lg text-blue-600">ClubMode</Link>
+              <Link href="/" className="font-bold text-lg text-blue-600">CoachMode</Link>
             </div>
             <div className="flex items-center gap-3">
               <span className="text-sm text-gray-600">{clientName}</span>
@@ -436,7 +480,7 @@ export default function ClientDashboardPage() {
                           </span>
                         </div>
                         <p className="text-xs text-gray-400 mt-2">
-                          {format(parseISO(job.created_at), 'MMM d, yyyy')}
+                          {format(parseISO(job.created_at), 'MM/dd/yyyy')}
                         </p>
                       </div>
                     </div>
@@ -480,7 +524,7 @@ export default function ClientDashboardPage() {
                           <ExternalLink className="h-4 w-4 text-gray-400" />
                         </div>
                         <p className="text-xs text-gray-400 mt-2">
-                          {format(parseISO(event.date), 'EEE, MMM d, yyyy')}
+                          {format(parseISO(event.date), 'MM/dd/yyyy')}
                         </p>
                       </div>
                     </div>
