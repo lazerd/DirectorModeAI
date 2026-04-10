@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Users, Mail, Phone, ChevronRight, Database } from 'lucide-react';
+import { Plus, Search, Users, Mail, Phone, ChevronRight, Database, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import VaultPicker from '@/components/shared/VaultPicker';
 
@@ -22,6 +22,7 @@ export default function CustomersPage() {
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ full_name: '', email: '', phone: '', notes: '' });
   const [showVaultPicker, setShowVaultPicker] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCustomers();
@@ -56,6 +57,32 @@ export default function CustomersPage() {
       setShowAddCustomer(false);
       fetchCustomers();
     }
+  };
+
+  const deleteCustomer = async (customer: Customer, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const confirmed = confirm(
+      `Delete ${customer.full_name}? This also removes any rackets and stringing jobs tied to this customer. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(customer.id);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('stringing_customers')
+      .delete()
+      .eq('id', customer.id);
+
+    if (error) {
+      alert(`Failed to delete customer: ${error.message}`);
+      setDeletingId(null);
+      return;
+    }
+
+    setCustomers(prev => prev.filter(c => c.id !== customer.id));
+    setDeletingId(null);
   };
 
   const handleVaultImport = async (player: { full_name: string; email: string | null; phone: string | null; notes: string | null }) => {
@@ -229,7 +256,22 @@ export default function CustomersPage() {
                       </div>
                     </div>
                   </div>
-                  <ChevronRight size={20} className="text-gray-400" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => deleteCustomer(customer, e)}
+                      disabled={deletingId === customer.id}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                      title={`Delete ${customer.full_name}`}
+                      aria-label={`Delete ${customer.full_name}`}
+                    >
+                      {deletingId === customer.id ? (
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
+                    </button>
+                    <ChevronRight size={20} className="text-gray-400" />
+                  </div>
                 </Link>
               ))}
             </div>
