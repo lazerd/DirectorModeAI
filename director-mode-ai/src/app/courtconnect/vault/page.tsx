@@ -40,12 +40,15 @@ type VaultPlayer = {
   created_at: string;
 };
 
+type SortKey = 'name' | 'utr_singles_desc' | 'utr_singles_asc' | 'utr_doubles_desc' | 'utr_doubles_asc';
+
 export default function PlayerVaultPage() {
   const [players, setPlayers] = useState<VaultPlayer[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sportFilter, setSportFilter] = useState('');
   const [genderFilter, setGenderFilter] = useState('');
+  const [sortKey, setSortKey] = useState<SortKey>('name');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ success: number; skipped: number } | null>(null);
@@ -75,11 +78,32 @@ export default function PlayerVaultPage() {
     setLoading(false);
   };
 
-  const filtered = players.filter(p =>
-    !searchQuery ||
-    p.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    p.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filtered = players
+    .filter(p =>
+      !searchQuery ||
+      p.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      p.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .slice()
+    .sort((a, b) => {
+      // Null UTRs always sink to the bottom regardless of asc/desc so they
+      // don't pollute the top of the rated list.
+      const byRating = (av: number | null, bv: number | null, desc: boolean) => {
+        if (av == null && bv == null) return a.full_name.localeCompare(b.full_name);
+        if (av == null) return 1;
+        if (bv == null) return -1;
+        return desc ? bv - av : av - bv;
+      };
+      switch (sortKey) {
+        case 'utr_singles_desc': return byRating(a.utr_singles, b.utr_singles, true);
+        case 'utr_singles_asc':  return byRating(a.utr_singles, b.utr_singles, false);
+        case 'utr_doubles_desc': return byRating(a.utr_doubles, b.utr_doubles, true);
+        case 'utr_doubles_asc':  return byRating(a.utr_doubles, b.utr_doubles, false);
+        case 'name':
+        default:
+          return a.full_name.localeCompare(b.full_name);
+      }
+    });
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev =>
@@ -180,6 +204,18 @@ export default function PlayerVaultPage() {
           </select>
           <select className="input w-auto" value={genderFilter} onChange={e => setGenderFilter(e.target.value)}>
             {GENDERS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+          </select>
+          <select
+            className="input w-auto"
+            value={sortKey}
+            onChange={e => setSortKey(e.target.value as SortKey)}
+            aria-label="Sort players"
+          >
+            <option value="name">Sort: Name</option>
+            <option value="utr_singles_desc">Sort: Singles UTR (high → low)</option>
+            <option value="utr_singles_asc">Sort: Singles UTR (low → high)</option>
+            <option value="utr_doubles_desc">Sort: Doubles UTR (high → low)</option>
+            <option value="utr_doubles_asc">Sort: Doubles UTR (low → high)</option>
           </select>
         </div>
       </div>
