@@ -277,7 +277,7 @@ export default function DashboardPage() {
       <div className="bg-white rounded-xl border mb-6">
         <div className="p-4 border-b flex items-center justify-between">
           <button onClick={() => setCurrentWeek(subWeeks(currentWeek, 1))} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronLeft size={20} /></button>
-          <h2 className="font-semibold text-lg">{format(weekStart, 'MMM d')} - {format(weekEnd, 'MM/dd/yyyy')}</h2>
+          <h2 className="font-semibold text-lg">{format(weekStart, 'MM/dd')} - {format(weekEnd, 'MM/dd/yyyy')}</h2>
           <button onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))} className="p-2 hover:bg-gray-100 rounded-lg"><ChevronRight size={20} /></button>
         </div>
 

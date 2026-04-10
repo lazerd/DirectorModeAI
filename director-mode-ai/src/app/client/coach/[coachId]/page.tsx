@@ -196,7 +196,7 @@ export default function CoachCalendarPage() {
               <ChevronLeft className="h-5 w-5" />
             </button>
             <h2 className="font-semibold">
-              {format(weekStart, 'MMM d')} - {format(weekEnd, 'MM/dd/yyyy')}
+              {format(weekStart, 'MM/dd')} - {format(weekEnd, 'MM/dd/yyyy')}
             </h2>
             <button
               onClick={() => setCurrentWeek(addWeeks(currentWeek, 1))}
