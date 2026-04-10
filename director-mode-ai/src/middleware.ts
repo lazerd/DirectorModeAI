@@ -34,7 +34,7 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   const protectedPaths = ['/mixer/home', '/mixer/events', '/lessons/dashboard', '/stringing/jobs'];
-  const isProtectedPath = protectedPaths.some(path => 
+  const isProtectedPath = protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path)
   );
 
@@ -42,6 +42,14 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirect', request.nextUrl.pathname);
+    return NextResponse.redirect(url);
+  }
+
+  // Block unconfirmed users from protected pages — they must verify their email first.
+  if (isProtectedPath && user && !user.email_confirmed_at && !user.confirmed_at) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/verify-email';
+    if (user.email) url.searchParams.set('email', user.email);
     return NextResponse.redirect(url);
   }
 

@@ -29,7 +29,7 @@ export default function RegisterPage() {
 
     try {
       const supabase = createClient();
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -44,7 +44,13 @@ export default function RegisterPage() {
         return;
       }
 
-      // Redirect to home after signup
+      // If Supabase has email confirmation enabled, signUp returns no session.
+      // Send the user to a confirmation screen instead of the dashboard.
+      if (!data.session) {
+        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
+
       router.push('/');
       router.refresh();
     } catch {
