@@ -75,10 +75,20 @@ export default function EventDashboard() {
   };
 
   const endEvent = async () => {
+    const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
+    if (!eventId) {
+      toast({
+        variant: "destructive",
+        title: "Error ending event",
+        description: "Missing event id.",
+      });
+      return;
+    }
+
     const { error } = await supabase
       .from("rounds")
       .update({ status: "completed", end_time: new Date().toISOString() })
-      .eq("event_id", params.id)
+      .eq("event_id", eventId)
       .neq("status", "completed");
 
     if (error) {
@@ -87,14 +97,15 @@ export default function EventDashboard() {
         title: "Error ending event",
         description: error.message,
       });
-    } else {
-      setEventEnded(true);
-      setActiveTab("summary");
-      toast({
-        title: "Event completed!",
-        description: "View final results and export data.",
-      });
+      return;
     }
+
+    setEventEnded(true);
+    setActiveTab("summary");
+    toast({
+      title: "Event completed!",
+      description: "View final results and export data.",
+    });
   };
 
   if (loading) {
