@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Shuffle, Home, Calendar, Settings, Zap, CreditCard, Menu, X } from 'lucide-react';
+import { Shuffle, Home, Calendar, Settings, Zap, CreditCard, Menu, X, Trophy } from 'lucide-react';
 
 interface MixerMobileNavProps {
   userName: string;
@@ -58,6 +58,9 @@ export default function MixerMobileNav({ userName, userInitial }: MixerMobileNav
                 </MobileNavItem>
                 <MobileNavItem href="/mixer/select-format" icon={Calendar} onClick={() => setIsOpen(false)}>
                   Create Event
+                </MobileNavItem>
+                <MobileNavItem href="/mixer/leagues" icon={Trophy} onClick={() => setIsOpen(false)}>
+                  Leagues
                 </MobileNavItem>
                 <MobileNavItem href="/mixer/subscription" icon={CreditCard} onClick={() => setIsOpen(false)}>
                   Subscription
