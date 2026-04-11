@@ -289,6 +289,15 @@ export default function LeagueDetailPage() {
       }
       closeAddEntry();
       fetchAll();
+      // If the entry was waitlisted (draws already generated for this
+      // category), tell the director explicitly so they don't wonder why
+      // it didn't appear in the bracket.
+      if (data.waitlisted) {
+        alert(
+          "Entry added, but draws for this category have already been generated, so it was placed on the waitlist. " +
+          "To include it in the bracket, regenerate draws for this category (destroys existing matches)."
+        );
+      }
     } catch (err: any) {
       setAddEntryError(err.message || 'Network error');
     } finally {

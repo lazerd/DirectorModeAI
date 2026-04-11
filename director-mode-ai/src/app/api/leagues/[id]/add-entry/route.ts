@@ -137,6 +137,19 @@ export async function POST(
         })
       : computeCompositeRating(captainInputs);
 
+    // Late-add check: if draws have already been generated for this
+    // category, the late entry cannot be slotted into any existing flight
+    // (the bracket is frozen). Instead of creating an orphan row, we mark
+    // the entry as 'waitlisted' so it's visible in the director dashboard
+    // and counts toward future regenerate-draws calls, without polluting
+    // the paid-count used for "ready to generate" gates. The director's
+    // UI surfaces the waitlisted state via the existing EntryRow pill.
+    const { data: existingFlights } = await admin
+      .from('league_flights')
+      .select('id')
+      .eq('category_id', (category as any).id);
+    const drawsAlreadyGenerated = !!(existingFlights && existingFlights.length > 0);
+
     // Tokens (still needed so the player can get match emails later)
     const captainToken = generateToken();
     const partnerToken = doubles ? generateToken() : null;
@@ -167,7 +180,7 @@ export async function POST(
       rating_source: rating.source,
       rating_confidence: rating.confidence,
       payment_status: markPaid ? 'paid' : 'pending',
-      entry_status: 'active',
+      entry_status: drawsAlreadyGenerated ? 'waitlisted' : 'active',
     };
 
     const { data: newEntry, error: insertErr } = await admin
@@ -186,6 +199,7 @@ export async function POST(
       success: true,
       entryId: (newEntry as any).id,
       composite: (newEntry as any).composite_score,
+      waitlisted: drawsAlreadyGenerated,
     });
   } catch (err: any) {
     console.error('Add entry error:', err);
