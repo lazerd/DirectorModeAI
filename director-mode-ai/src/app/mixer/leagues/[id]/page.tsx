@@ -20,11 +20,16 @@ import {
   UserMinus,
   GitBranch,
   UserPlus,
+  Trophy,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 import QRCode from 'qrcode';
 import { CATEGORY_LABELS, formatMoney, isDoubles, type CategoryKey } from '@/lib/leagueUtils';
+import FlightBracketView, {
+  type BracketMatch,
+  type BracketFlight,
+} from '@/components/leagues/FlightBracketView';
 
 const NTRP_OPTIONS = ['2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0'];
 
@@ -36,6 +41,7 @@ type League = {
   start_date: string;
   end_date: string;
   status: string;
+  league_type: 'compass' | 'round_robin' | 'single_elimination';
   venmo_handle: string | null;
   zelle_handle: string | null;
   stripe_payment_link: string | null;
@@ -96,6 +102,7 @@ type Entry = {
   payment_status: string;
   entry_status: string;
   flight_id: string | null;
+  seed_in_flight: number | null;
   created_at: string;
 };
 
@@ -103,6 +110,9 @@ type Flight = {
   id: string;
   category_id: string;
   flight_name: string;
+  size: number;
+  num_rounds: number;
+  status: string;
 };
 
 export default function LeagueDetailPage() {
@@ -113,7 +123,9 @@ export default function LeagueDetailPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [flights, setFlights] = useState<Flight[]>([]);
+  const [allMatches, setAllMatches] = useState<BracketMatch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedBracketCategoryId, setExpandedBracketCategoryId] = useState<string | null>(null);
   const [seedingCategoryId, setSeedingCategoryId] = useState<string | null>(null);
   const [seedOverrides, setSeedOverrides] = useState<Record<string, string>>({});
   const [savingSeeds, setSavingSeeds] = useState(false);
@@ -136,13 +148,27 @@ export default function LeagueDetailPage() {
       supabase.from('leagues').select('*').eq('id', id).single(),
       supabase.from('league_categories').select('*').eq('league_id', id).order('category_key'),
       supabase.from('league_entries').select('*').eq('league_id', id).order('created_at', { ascending: false }),
-      supabase.from('league_flights').select('id, category_id, flight_name').eq('league_id', id),
+      supabase.from('league_flights').select('id, category_id, flight_name, size, num_rounds, status').eq('league_id', id),
     ]);
     if (l.error) setError(l.error.message);
     setLeague((l.data as League) || null);
     setCategories((c.data as Category[]) || []);
     setEntries((e.data as Entry[]) || []);
-    setFlights((f.data as Flight[]) || []);
+    const flightList = ((f.data as Flight[]) || []);
+    setFlights(flightList);
+
+    // Load all matches for the flights in this league
+    if (flightList.length > 0) {
+      const flightIds = flightList.map(fl => fl.id);
+      const { data: matchData } = await supabase
+        .from('league_matches')
+        .select('id, flight_id, round, match_index, bracket_position, entry_a_id, entry_b_id, score, winner_entry_id, status, deadline')
+        .in('flight_id', flightIds);
+      setAllMatches(((matchData as any[]) || []) as BracketMatch[]);
+    } else {
+      setAllMatches([]);
+    }
+
     setLoading(false);
   }, [id]);
 
@@ -615,6 +641,19 @@ export default function LeagueDetailPage() {
                         </button>
                       </>
                     )}
+                    {hasFlights && (
+                      <button
+                        onClick={() =>
+                          setExpandedBracketCategoryId(
+                            expandedBracketCategoryId === cat.id ? null : cat.id
+                          )
+                        }
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded"
+                      >
+                        <Trophy size={12} />
+                        {expandedBracketCategoryId === cat.id ? 'Hide bracket' : 'View bracket'}
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -777,6 +816,35 @@ export default function LeagueDetailPage() {
                     ))}
                   </div>
                 ) : null}
+
+                {/* Inline bracket view for this category */}
+                {hasFlights && expandedBracketCategoryId === cat.id && (
+                  <div className="mt-5 pt-5 border-t border-gray-200 space-y-8">
+                    {flights
+                      .filter(f => f.category_id === cat.id)
+                      .sort((a, b) => a.flight_name.localeCompare(b.flight_name))
+                      .map(flight => {
+                        const flightEntries = catEntries
+                          .filter(e => e.flight_id === flight.id)
+                          .map(e => ({
+                            id: e.id,
+                            captain_name: e.captain_name,
+                            partner_name: e.partner_name,
+                            seed_in_flight: e.seed_in_flight,
+                          }));
+                        const flightMatches = allMatches.filter(m => m.flight_id === flight.id);
+                        return (
+                          <FlightBracketView
+                            key={flight.id}
+                            flight={flight as unknown as BracketFlight}
+                            entries={flightEntries}
+                            matches={flightMatches}
+                            leagueType={league.league_type || 'compass'}
+                          />
+                        );
+                      })}
+                  </div>
+                )}
               </section>
             );
           })}
