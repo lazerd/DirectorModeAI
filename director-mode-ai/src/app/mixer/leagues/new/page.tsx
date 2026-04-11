@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Trophy, Calendar, DollarSign, Link as LinkIcon, AlertCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { slugify, CATEGORY_ORDER, CATEGORY_LABELS, type CategoryKey } from '@/lib/leagueUtils';
+import { slugify, CATEGORY_ORDER, CATEGORY_LABELS, isDoubles, type CategoryKey } from '@/lib/leagueUtils';
 
 type CategoryConfig = {
   key: CategoryKey;
@@ -226,33 +226,45 @@ export default function NewLeaguePage() {
             <DollarSign size={18} className="text-orange-500" />
             Categories &amp; fees
           </h2>
-          <p className="text-sm text-gray-500 mb-4">
+          <p className="text-sm text-gray-500 mb-1">
             Enable the divisions you want to run. Set each fee independently.
           </p>
+          <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mb-4">
+            <strong>Heads up:</strong> singles fees are charged <strong>per player</strong>, doubles fees are charged <strong>per team</strong> (the captain pays once for both players). If you want each doubles player to pay the same as each singles player, set the doubles fee to 2× the singles fee.
+          </p>
           <div className="space-y-3">
-            {categories.map(cat => (
-              <div key={cat.key} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
-                <input
-                  type="checkbox"
-                  checked={cat.enabled}
-                  onChange={e => updateCategory(cat.key, { enabled: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <div className="flex-1 text-sm font-medium text-gray-900">{CATEGORY_LABELS[cat.key]}</div>
-                <div className="flex items-center gap-1">
-                  <span className="text-gray-400 text-sm">$</span>
+            {categories.map(cat => {
+              const doubles = isDoubles(cat.key);
+              return (
+                <div key={cat.key} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg">
                   <input
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={cat.entry_fee}
-                    onChange={e => updateCategory(cat.key, { entry_fee: e.target.value })}
-                    disabled={!cat.enabled}
-                    className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right text-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                    type="checkbox"
+                    checked={cat.enabled}
+                    onChange={e => updateCategory(cat.key, { enabled: e.target.checked })}
+                    className="w-4 h-4"
                   />
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-gray-900">{CATEGORY_LABELS[cat.key]}</div>
+                    <div className="text-xs text-gray-400">{doubles ? 'Charged per team' : 'Charged per player'}</div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="text-gray-400 text-sm">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={cat.entry_fee}
+                      onChange={e => updateCategory(cat.key, { entry_fee: e.target.value })}
+                      disabled={!cat.enabled}
+                      className="w-20 px-2 py-1 border border-gray-300 rounded text-sm text-right text-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
+                    />
+                    <span className="text-xs text-gray-500 whitespace-nowrap ml-1">
+                      / {doubles ? 'team' : 'player'}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </section>
 

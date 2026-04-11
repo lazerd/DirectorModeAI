@@ -136,7 +136,14 @@ export default function RegisterForm({ leagueSlug, leagueName, categories, payme
               }`}
             >
               <div className="font-medium text-sm">{cat.label}</div>
-              <div className="text-xs text-white/50 mt-0.5">{cat.feeLabel}</div>
+              <div className="text-xs text-white/50 mt-0.5">
+                {cat.feeLabel}
+                {cat.feeCents > 0 && (
+                  <span className="text-white/30 ml-1">
+                    / {cat.key === 'men_doubles' || cat.key === 'women_doubles' ? 'team' : 'player'}
+                  </span>
+                )}
+              </div>
             </button>
           ))}
         </div>
