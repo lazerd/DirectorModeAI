@@ -448,8 +448,9 @@ export default function LeagueDetailPage() {
     const supabase = createClient();
     // For each entry with an override, update manual_seed. For entries whose
     // override is empty, clear manual_seed (null).
+    const cat = categories.find(c => c.id === seedingCategoryId);
     const catEntries = entries.filter(
-      e => e.category_id === seedingCategoryId && e.payment_status === 'paid' && e.entry_status === 'active'
+      e => e.category_id === seedingCategoryId && e.payment_status === 'paid' && e.entry_status !== 'withdrawn'
     );
     for (const e of catEntries) {
       const override = seedOverrides[e.id];
@@ -461,6 +462,43 @@ export default function LeagueDetailPage() {
           .eq('id', e.id);
       }
     }
+
+    // If draws already exist for this category, auto-regenerate so the new
+    // seeds actually move players around in the bracket. Otherwise the
+    // seeds are just stored for the next Generate Draws click.
+    const hasExistingFlights = cat && flights.some(f => f.category_id === cat.id);
+    if (cat && hasExistingFlights && league) {
+      try {
+        const delRes = await fetch(`/api/leagues/${league.id}/delete-draws`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ categoryKey: cat.category_key }),
+        });
+        const delData = await delRes.json();
+        if (!delRes.ok) {
+          alert(
+            `Seeds saved, but couldn't regenerate draws: ${delData.error}.\n\n` +
+            `If you have confirmed match results, clear them first or use "Regenerate" after manually cleaning up.`
+          );
+          setSavingSeeds(false);
+          closeSeeding();
+          fetchAll();
+          return;
+        }
+        const genRes = await fetch(`/api/leagues/${league.id}/generate-draws`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ categoryKey: cat.category_key }),
+        });
+        const genData = await genRes.json();
+        if (!genRes.ok) {
+          alert(`Seeds saved and old draws deleted, but regenerate failed: ${genData.error}`);
+        }
+      } catch (err: any) {
+        alert(`Seeds saved, but regenerate failed: ${err.message}`);
+      }
+    }
+
     setSavingSeeds(false);
     closeSeeding();
     fetchAll();
@@ -702,24 +740,24 @@ export default function LeagueDetailPage() {
                       {isAdding ? <X size={12} /> : <UserPlus size={12} />}
                       {isAdding ? 'Cancel' : 'Add entry'}
                     </button>
+                    {paidCount >= 2 && (
+                      <button
+                        onClick={() => (isSeeding ? closeSeeding() : openSeeding(cat))}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded"
+                      >
+                        <GitBranch size={12} />
+                        {isSeeding ? 'Cancel seeding' : 'Edit seeding'}
+                      </button>
+                    )}
                     {!hasFlights && paidCount >= 2 && (
-                      <>
-                        <button
-                          onClick={() => (isSeeding ? closeSeeding() : openSeeding(cat))}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded"
-                        >
-                          <GitBranch size={12} />
-                          {isSeeding ? 'Cancel seeding' : 'Edit seeding'}
-                        </button>
-                        <button
-                          onClick={() => generateDrawsForCategory(cat)}
-                          disabled={isGenerating}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-orange-500 text-white hover:bg-orange-600 rounded disabled:opacity-50"
-                        >
-                          {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
-                          {isGenerating ? 'Generating…' : 'Generate draws'}
-                        </button>
-                      </>
+                      <button
+                        onClick={() => generateDrawsForCategory(cat)}
+                        disabled={isGenerating}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-orange-500 text-white hover:bg-orange-600 rounded disabled:opacity-50"
+                      >
+                        {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                        {isGenerating ? 'Generating…' : 'Generate draws'}
+                      </button>
                     )}
                     {hasFlights && (
                       <>
@@ -754,12 +792,13 @@ export default function LeagueDetailPage() {
 
                 {isSeeding && (
                   <SeedingEditor
-                    entries={catEntries.filter(e => e.payment_status === 'paid' && e.entry_status === 'active')}
+                    entries={catEntries.filter(e => e.payment_status === 'paid' && e.entry_status !== 'withdrawn')}
                     overrides={seedOverrides}
                     onChange={(entryId, v) => setSeedOverrides(prev => ({ ...prev, [entryId]: v }))}
                     onSave={saveSeeding}
                     onCancel={closeSeeding}
                     saving={savingSeeds}
+                    willRegenerate={hasFlights}
                   />
                 )}
 
@@ -1040,6 +1079,7 @@ function SeedingEditor({
   onSave,
   onCancel,
   saving,
+  willRegenerate,
 }: {
   entries: Entry[];
   overrides: Record<string, string>;
@@ -1047,6 +1087,7 @@ function SeedingEditor({
   onSave: () => void;
   onCancel: () => void;
   saving: boolean;
+  willRegenerate?: boolean;
 }) {
   // Preview ordering: manual_seed (from overrides or existing) first, then composite desc
   const effectiveSeed = (e: Entry): number => {
@@ -1069,6 +1110,11 @@ function SeedingEditor({
         (1 and 2) are kept apart in round 1 by the bracket algorithm, so you don&apos;t need to manually
         avoid that.
       </div>
+      {willRegenerate && (
+        <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 mb-3">
+          <strong>⚠️ Heads up:</strong> draws already exist for this category. Saving will <strong>delete and regenerate</strong> the bracket using your new seeds. Any confirmed match results will block the regenerate — clear them first.
+        </div>
+      )}
       <div className="space-y-1.5">
         {sorted.map((e, idx) => (
           <div key={e.id} className="flex items-center gap-2 text-sm">
@@ -1106,7 +1152,9 @@ function SeedingEditor({
           disabled={saving}
           className="flex-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
         >
-          {saving ? 'Saving…' : 'Save seed overrides'}
+          {saving
+            ? (willRegenerate ? 'Regenerating…' : 'Saving…')
+            : (willRegenerate ? 'Save & regenerate draws' : 'Save seed overrides')}
         </button>
       </div>
     </div>
