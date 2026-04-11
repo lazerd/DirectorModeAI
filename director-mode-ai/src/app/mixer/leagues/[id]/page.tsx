@@ -19,11 +19,14 @@ import {
   Bell,
   UserMinus,
   GitBranch,
+  UserPlus,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 import QRCode from 'qrcode';
-import { CATEGORY_LABELS, formatMoney, type CategoryKey } from '@/lib/leagueUtils';
+import { CATEGORY_LABELS, formatMoney, isDoubles, type CategoryKey } from '@/lib/leagueUtils';
+
+const NTRP_OPTIONS = ['2.5', '3.0', '3.5', '4.0', '4.5', '5.0', '5.5', '6.0'];
 
 type League = {
   id: string;
@@ -44,6 +47,36 @@ type Category = {
   entry_fee_cents: number;
   is_enabled: boolean;
 };
+
+type NewEntryForm = {
+  categoryKey: CategoryKey;
+  captainName: string;
+  captainEmail: string;
+  captainPhone: string;
+  captainNtrp: string;
+  captainWtn: string;
+  partnerName: string;
+  partnerEmail: string;
+  partnerPhone: string;
+  partnerNtrp: string;
+  partnerWtn: string;
+  markPaid: boolean;
+};
+
+const emptyNewEntry = (key: CategoryKey): NewEntryForm => ({
+  categoryKey: key,
+  captainName: '',
+  captainEmail: '',
+  captainPhone: '',
+  captainNtrp: '',
+  captainWtn: '',
+  partnerName: '',
+  partnerEmail: '',
+  partnerPhone: '',
+  partnerNtrp: '',
+  partnerWtn: '',
+  markPaid: true,
+});
 
 type Entry = {
   id: string;
@@ -77,6 +110,10 @@ export default function LeagueDetailPage() {
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generateResult, setGenerateResult] = useState<string | null>(null);
+  const [addingToCategory, setAddingToCategory] = useState<string | null>(null);
+  const [newEntry, setNewEntry] = useState<NewEntryForm>(emptyNewEntry('men_singles'));
+  const [savingEntry, setSavingEntry] = useState(false);
+  const [addEntryError, setAddEntryError] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     if (!id) return;
@@ -127,6 +164,66 @@ export default function LeagueDetailPage() {
       return;
     }
     fetchAll();
+  };
+
+  const openAddEntry = (cat: Category) => {
+    setNewEntry(emptyNewEntry(cat.category_key));
+    setAddingToCategory(cat.id);
+    setAddEntryError(null);
+  };
+
+  const closeAddEntry = () => {
+    setAddingToCategory(null);
+    setAddEntryError(null);
+  };
+
+  const submitAddEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!league) return;
+    setAddEntryError(null);
+
+    if (!newEntry.captainName || !newEntry.captainEmail || !newEntry.captainNtrp) {
+      setAddEntryError('Name, email, and NTRP are required.');
+      return;
+    }
+    const doubles = isDoubles(newEntry.categoryKey);
+    if (doubles && (!newEntry.partnerName || !newEntry.partnerNtrp)) {
+      setAddEntryError('Partner name and NTRP are required for doubles.');
+      return;
+    }
+
+    setSavingEntry(true);
+    try {
+      const res = await fetch(`/api/leagues/${league.id}/add-entry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryKey: newEntry.categoryKey,
+          captainName: newEntry.captainName,
+          captainEmail: newEntry.captainEmail,
+          captainPhone: newEntry.captainPhone || null,
+          captainNtrp: parseFloat(newEntry.captainNtrp),
+          captainWtn: newEntry.captainWtn ? parseFloat(newEntry.captainWtn) : null,
+          partnerName: doubles ? newEntry.partnerName : null,
+          partnerEmail: doubles ? newEntry.partnerEmail || null : null,
+          partnerPhone: doubles ? newEntry.partnerPhone || null : null,
+          partnerNtrp: doubles ? parseFloat(newEntry.partnerNtrp) : null,
+          partnerWtn: doubles && newEntry.partnerWtn ? parseFloat(newEntry.partnerWtn) : null,
+          markPaid: newEntry.markPaid,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAddEntryError(data.error || `HTTP ${res.status}`);
+        return;
+      }
+      closeAddEntry();
+      fetchAll();
+    } catch (err: any) {
+      setAddEntryError(err.message || 'Network error');
+    } finally {
+      setSavingEntry(false);
+    }
   };
 
   const sendReminders = async () => {
@@ -418,19 +515,166 @@ export default function LeagueDetailPage() {
         <div className="lg:col-span-2 space-y-4">
           {categories.map(cat => {
             const catEntries = entriesByCategory[cat.id] || [];
+            const doubles = isDoubles(cat.category_key);
+            const isAdding = addingToCategory === cat.id;
             return (
               <section key={cat.id} className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="font-semibold text-base text-gray-900">{CATEGORY_LABELS[cat.category_key]}</h2>
                   <div className="flex items-center gap-3 text-sm text-gray-500">
-                    <span>{formatMoney(cat.entry_fee_cents)}</span>
+                    <span>
+                      {formatMoney(cat.entry_fee_cents)}
+                      <span className="text-gray-400 text-xs ml-1">/ {doubles ? 'team' : 'player'}</span>
+                    </span>
                     <span>·</span>
                     <span>{catEntries.length} {catEntries.length === 1 ? 'entry' : 'entries'}</span>
+                    <button
+                      onClick={() => (isAdding ? closeAddEntry() : openAddEntry(cat))}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50 rounded"
+                    >
+                      {isAdding ? <X size={12} /> : <UserPlus size={12} />}
+                      {isAdding ? 'Cancel' : 'Add entry'}
+                    </button>
                   </div>
                 </div>
-                {catEntries.length === 0 ? (
+
+                {isAdding && (
+                  <form onSubmit={submitAddEntry} className="bg-orange-50 border border-orange-200 rounded-lg p-3 sm:p-4 mb-3 space-y-3">
+                    <div className="text-xs uppercase tracking-wide text-orange-700 font-semibold">
+                      {doubles ? 'Captain' : 'Player'}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <input
+                        required
+                        placeholder="Full name *"
+                        value={newEntry.captainName}
+                        onChange={e => setNewEntry(prev => ({ ...prev, captainName: e.target.value }))}
+                        className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900 sm:col-span-2"
+                      />
+                      <input
+                        required
+                        type="email"
+                        placeholder="Email *"
+                        value={newEntry.captainEmail}
+                        onChange={e => setNewEntry(prev => ({ ...prev, captainEmail: e.target.value }))}
+                        className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                      />
+                      <input
+                        type="tel"
+                        placeholder="Phone"
+                        value={newEntry.captainPhone}
+                        onChange={e => setNewEntry(prev => ({ ...prev, captainPhone: e.target.value }))}
+                        className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                      />
+                      <select
+                        required
+                        value={newEntry.captainNtrp}
+                        onChange={e => setNewEntry(prev => ({ ...prev, captainNtrp: e.target.value }))}
+                        className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                      >
+                        <option value="">NTRP *</option>
+                        {NTRP_OPTIONS.map(n => <option key={n} value={n}>NTRP {n}</option>)}
+                      </select>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min={1}
+                        max={40}
+                        placeholder="WTN (optional)"
+                        value={newEntry.captainWtn}
+                        onChange={e => setNewEntry(prev => ({ ...prev, captainWtn: e.target.value }))}
+                        className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                      />
+                    </div>
+
+                    {doubles && (
+                      <>
+                        <div className="text-xs uppercase tracking-wide text-orange-700 font-semibold pt-2 border-t border-orange-200">Partner</div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <input
+                            required
+                            placeholder="Partner name *"
+                            value={newEntry.partnerName}
+                            onChange={e => setNewEntry(prev => ({ ...prev, partnerName: e.target.value }))}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900 sm:col-span-2"
+                          />
+                          <input
+                            type="email"
+                            placeholder="Partner email"
+                            value={newEntry.partnerEmail}
+                            onChange={e => setNewEntry(prev => ({ ...prev, partnerEmail: e.target.value }))}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                          />
+                          <input
+                            type="tel"
+                            placeholder="Partner phone"
+                            value={newEntry.partnerPhone}
+                            onChange={e => setNewEntry(prev => ({ ...prev, partnerPhone: e.target.value }))}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                          />
+                          <select
+                            required
+                            value={newEntry.partnerNtrp}
+                            onChange={e => setNewEntry(prev => ({ ...prev, partnerNtrp: e.target.value }))}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                          >
+                            <option value="">Partner NTRP *</option>
+                            {NTRP_OPTIONS.map(n => <option key={n} value={n}>NTRP {n}</option>)}
+                          </select>
+                          <input
+                            type="number"
+                            step="0.1"
+                            min={1}
+                            max={40}
+                            placeholder="Partner WTN"
+                            value={newEntry.partnerWtn}
+                            onChange={e => setNewEntry(prev => ({ ...prev, partnerWtn: e.target.value }))}
+                            className="px-2 py-1.5 border border-gray-300 rounded text-sm text-gray-900"
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    <label className="flex items-center gap-2 text-xs text-gray-700">
+                      <input
+                        type="checkbox"
+                        checked={newEntry.markPaid}
+                        onChange={e => setNewEntry(prev => ({ ...prev, markPaid: e.target.checked }))}
+                        className="w-3.5 h-3.5"
+                      />
+                      Mark as paid
+                    </label>
+
+                    {addEntryError && (
+                      <div className="text-xs text-red-600 flex items-start gap-1">
+                        <AlertCircle size={12} className="mt-0.5" />
+                        {addEntryError}
+                      </div>
+                    )}
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={closeAddEntry}
+                        className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingEntry}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-3 py-1.5 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
+                      >
+                        {savingEntry && <Loader2 size={12} className="animate-spin" />}
+                        {savingEntry ? 'Adding…' : 'Add entry'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {catEntries.length === 0 && !isAdding ? (
                   <p className="text-sm text-gray-400 italic">No entries yet.</p>
-                ) : (
+                ) : catEntries.length > 0 ? (
                   <div className="divide-y divide-gray-100">
                     {catEntries.map(entry => (
                       <EntryRow
@@ -441,7 +685,7 @@ export default function LeagueDetailPage() {
                       />
                     ))}
                   </div>
-                )}
+                ) : null}
               </section>
             );
           })}
