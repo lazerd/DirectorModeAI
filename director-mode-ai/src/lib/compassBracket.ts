@@ -146,28 +146,34 @@ export function generateNextRound(
 
   if (size === 16) {
     if (completedRound === 1) {
-      // R1 → R2: split winners into East, losers into West
+      // R1 → R2: split winners into East (championship path), losers into West (consolation path).
+      // The E1-E2 pair is made from the winners of R1 M1 and M2, E3-E4 from M3 and M4, etc.
+      // This preserves the top-of-draw vs bottom-of-draw seeding split.
       const east = sorted.map(r => r.winnerId);
       const west = sorted.map(r => r.loserId);
-      return [
+      return sequentialIndex([
         ...pairForNextRound(east, 2, 'E'),
         ...pairForNextRound(west, 2, 'W'),
-      ];
+      ]);
     }
     if (completedRound === 2) {
-      // R2 → R3: each of E and W split into a winners' consolation-class and a losers'
+      // R2 → R3: four directional sub-brackets.
+      //   NE = East R2 winners   (2W-0L, championship semi, going for 1st-4th)
+      //   SE = East R2 losers    (1W-1L, consolation for R1 winners, going for 5th-8th)
+      //   NW = West R2 winners   (1W-1L, consolation for R1 losers, going for 9th-12th)
+      //   SW = West R2 losers    (0W-2L, bottom bracket, going for 13th-16th)
       const eastMatches = sorted.filter(r => r.bracketPosition.startsWith('E'));
       const westMatches = sorted.filter(r => r.bracketPosition.startsWith('W'));
-      const ne = eastMatches.map(r => r.winnerId);  // Championship semi
-      const se = eastMatches.map(r => r.loserId);   // 5-8 consolation
-      const nw = westMatches.map(r => r.winnerId);  // 9-12 consolation
-      const sw = westMatches.map(r => r.loserId);   // 13-16 bottom
-      return [
+      const ne = eastMatches.map(r => r.winnerId);
+      const se = eastMatches.map(r => r.loserId);
+      const nw = westMatches.map(r => r.winnerId);
+      const sw = westMatches.map(r => r.loserId);
+      return sequentialIndex([
         ...pairForNextRound(ne, 3, 'NE'),
         ...pairForNextRound(se, 3, 'SE'),
         ...pairForNextRound(nw, 3, 'NW'),
         ...pairForNextRound(sw, 3, 'SW'),
-      ];
+      ]);
     }
     if (completedRound === 3) {
       // R3 → R4: finals — within each of NE/SE/NW/SW, winner vs winner (1st place)
@@ -207,10 +213,10 @@ export function generateNextRound(
       // R1 → R2: split winners east, losers west. 4 players each, 2 matches each.
       const east = sorted.map(r => r.winnerId);
       const west = sorted.map(r => r.loserId);
-      return [
+      return sequentialIndex([
         ...pairForNextRound(east, 2, 'E'),
         ...pairForNextRound(west, 2, 'W'),
-      ];
+      ]);
     }
     if (completedRound === 2) {
       // R2 → R3: final for each of NE/SE/NW/SW (one match each, 4 matches total)
@@ -261,6 +267,10 @@ export function generateNextRound(
  * Given an ordered list of player IDs, pair them up for the next round.
  * For a bracket of 8: produces 4 matches (pairs 0-1, 2-3, 4-5, 6-7).
  * For a bracket of 4: produces 2 matches (pairs 0-1, 2-3).
+ *
+ * matchIndex is intentionally set to 0 here — the caller combines the
+ * output from multiple prefixes and must assign unique, sequential
+ * matchIndex values across the whole round via sequentialIndex().
  */
 function pairForNextRound(
   playerIds: string[],
@@ -271,13 +281,24 @@ function pairForNextRound(
   for (let i = 0; i < playerIds.length; i += 2) {
     matches.push({
       round,
-      matchIndex: matches.length + (prefix.length > 1 ? 100 : 0) + (prefix.charCodeAt(0) * 10),
+      matchIndex: 0, // overwritten by sequentialIndex()
       bracketPosition: `${prefix}-R${round}-M${i / 2 + 1}`,
       entryAId: playerIds[i] || null,
       entryBId: playerIds[i + 1] || null,
     });
   }
   return matches;
+}
+
+/**
+ * Assigns sequential match_index values (0, 1, 2, …) to a list of matches.
+ * This is the only correct way to avoid UNIQUE(flight_id, round, match_index)
+ * collisions when combining matches from multiple directional sub-brackets
+ * (NE, SE, NW, SW) into a single round's output. Must be called AFTER all
+ * pairForNextRound calls for a given round are concatenated.
+ */
+function sequentialIndex(matches: CompassMatch[]): CompassMatch[] {
+  return matches.map((m, idx) => ({ ...m, matchIndex: idx }));
 }
 
 /**
