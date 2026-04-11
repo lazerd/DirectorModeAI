@@ -14,6 +14,8 @@ import {
   ExternalLink,
   AlertCircle,
   Download,
+  Zap,
+  Loader2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
@@ -70,6 +72,8 @@ export default function LeagueDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [generateResult, setGenerateResult] = useState<string | null>(null);
 
   const fetchAll = useCallback(async () => {
     if (!id) return;
@@ -125,6 +129,44 @@ export default function LeagueDetailPage() {
     a.href = qrDataUrl;
     a.download = `${league.slug}-qr.png`;
     a.click();
+  };
+
+  const generateDraws = async () => {
+    if (!league) return;
+    const paidCount = entries.filter(e => e.payment_status === 'paid' && e.entry_status === 'active').length;
+    if (paidCount === 0) {
+      alert('No paid active entries to place in draws.');
+      return;
+    }
+    if (!confirm(
+      `Generate draws for ${paidCount} paid entries now? This will create flights, seed players, send Round 1 emails, and flip the league to running status.`
+    )) return;
+
+    setGenerating(true);
+    setGenerateResult(null);
+    try {
+      const res = await fetch(`/api/leagues/${league.id}/generate-draws`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setGenerateResult(`Error: ${data.error || 'Unknown'}`);
+        return;
+      }
+      const summary = (data.results || [])
+        .map((r: any) =>
+          r.skipped
+            ? `${r.category}: already generated`
+            : r.cancelled
+              ? `${r.category}: cancelled (${r.waitlisted} refunds needed)`
+              : `${r.category}: ${r.flightsCreated} flights, ${r.matchesCreated} R1 matches${r.waitlisted > 0 ? `, ${r.waitlisted} waitlisted` : ''}`
+        )
+        .join(' · ');
+      setGenerateResult(`Done. ${summary}. Sent ${data.emailCount || 0} player emails.`);
+      fetchAll();
+    } catch (err: any) {
+      setGenerateResult(`Error: ${err.message || 'Unknown'}`);
+    } finally {
+      setGenerating(false);
+    }
   };
 
   if (loading) {
@@ -254,6 +296,65 @@ export default function LeagueDetailPage() {
               <PaymentRailRow label="Stripe" value={league.stripe_payment_link ? 'Link configured' : null} />
             </div>
           </section>
+
+          {/* Generate draws action */}
+          {league.status === 'open' && (
+            <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+              <h2 className="font-semibold text-base mb-2 text-gray-900">Generate draws</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Ready to close registration? This slices all paid entries into compass draws (16s first,
+                8s second, waitlist below 8), creates Round 1 matches, and emails every player.
+              </p>
+              <button
+                onClick={generateDraws}
+                disabled={generating}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 disabled:opacity-50"
+              >
+                {generating ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                {generating ? 'Generating…' : 'Generate draws'}
+              </button>
+              {generateResult && (
+                <p className="text-xs text-gray-600 mt-2">{generateResult}</p>
+              )}
+            </section>
+          )}
+          {(league.status === 'running' || league.status === 'completed') && (
+            <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+              <h2 className="font-semibold text-base mb-2 text-gray-900">Bracket progression</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Auto-confirms reported scores past the 24h window and advances flights whose current round
+                is complete. Runs any time you click.
+              </p>
+              <button
+                onClick={async () => {
+                  setGenerating(true);
+                  setGenerateResult(null);
+                  try {
+                    const res = await fetch(`/api/leagues/progress?leagueId=${league.id}`, { method: 'POST' });
+                    const data = await res.json();
+                    if (!res.ok) {
+                      setGenerateResult(`Error: ${data.error}`);
+                    } else {
+                      const s = data.summary;
+                      setGenerateResult(
+                        `Auto-confirmed ${s.autoConfirmed}, generated ${s.nextRoundsGenerated} new rounds ` +
+                        `(${s.newMatches} matches), completed ${s.flightsCompleted} flights. ${s.emailsSent} emails sent.`
+                      );
+                      fetchAll();
+                    }
+                  } finally {
+                    setGenerating(false);
+                  }
+                }}
+                disabled={generating}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {generating ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
+                {generating ? 'Advancing…' : 'Advance brackets'}
+              </button>
+              {generateResult && <p className="text-xs text-gray-600 mt-2">{generateResult}</p>}
+            </section>
+          )}
         </div>
 
         {/* Right column: entries grouped by category */}

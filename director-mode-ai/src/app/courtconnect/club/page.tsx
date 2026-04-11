@@ -167,7 +167,10 @@ export default function ClubSettingsPage() {
         .select()
         .single();
       if (insertErr || !data) {
-        setError(`Failed to create club: ${insertErr?.message || 'Unknown error'}`);
+        const hint = insertErr?.message?.includes('cc_clubs') || insertErr?.message?.includes('schema cache')
+          ? ' (The cc_clubs table may be missing — run supabase/migrations/cc_clubs.sql in the Supabase SQL Editor.)'
+          : '';
+        setError(`Failed to create club: ${insertErr?.message || 'Unknown error'}${hint}`);
         setSaving(false);
         return;
       }
