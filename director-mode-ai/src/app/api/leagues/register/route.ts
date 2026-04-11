@@ -233,6 +233,7 @@ export async function POST(request: Request) {
     if (doubles && partnerEmail && partnerToken) {
       const origin = new URL(request.url).origin;
       const confirmUrl = `${origin}/leagues/confirm-partner/${partnerToken}`;
+      const leagueInfoUrl = `${origin}/leagues/${(league as any).slug}`;
       const categoryLabel = CATEGORY_LABELS[categoryKey];
       const leagueName = (league as any).name;
 
@@ -250,11 +251,15 @@ export async function POST(request: Request) {
                 <div style="color: #6b7280; font-size: 14px; margin-top: 4px;">${categoryLabel}</div>
               </div>
               <p>Click the button below to confirm you're playing. If you didn't expect this email or don't want to play, just ignore it.</p>
-              <p style="margin: 24px 0;">
+              <p style="margin: 24px 0 12px;">
                 <a href="${confirmUrl}" style="display: inline-block; background: #ea580c; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Confirm partnership</a>
               </p>
+              <p style="margin: 0 0 24px;">
+                <a href="${leagueInfoUrl}" style="display: inline-block; background: transparent; color: #ea580c; border: 1.5px solid #ea580c; padding: 10px 22px; border-radius: 8px; text-decoration: none; font-weight: 500;">View league details</a>
+              </p>
               <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
-                This confirmation link is unique to you and expires when registration closes.
+                This confirmation link is unique to you and expires when registration closes. Once the draws
+                are made, the league page will also have a live bracket view.
               </p>
             </div>
           `,

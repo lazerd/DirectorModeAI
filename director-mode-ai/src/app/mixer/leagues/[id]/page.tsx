@@ -130,6 +130,8 @@ export default function LeagueDetailPage() {
   const [scoreInput, setScoreInput] = useState('');
   const [scoreWinnerId, setScoreWinnerId] = useState<string | null>(null);
   const [savingScore, setSavingScore] = useState(false);
+  const [deletingScore, setDeletingScore] = useState(false);
+  const [scoreModalError, setScoreModalError] = useState<string | null>(null);
   const [regeneratingCategoryId, setRegeneratingCategoryId] = useState<string | null>(null);
   const [seedingCategoryId, setSeedingCategoryId] = useState<string | null>(null);
   const [seedOverrides, setSeedOverrides] = useState<Record<string, string>>({});
@@ -277,17 +279,20 @@ export default function LeagueDetailPage() {
     setScoreEntryMatch(match);
     setScoreInput(match.score || '');
     setScoreWinnerId(match.winner_entry_id || null);
+    setScoreModalError(null);
   };
 
   const closeScoreEntry = () => {
     setScoreEntryMatch(null);
     setScoreInput('');
     setScoreWinnerId(null);
+    setScoreModalError(null);
   };
 
   const submitScore = async () => {
     if (!scoreEntryMatch || !scoreInput.trim() || !scoreWinnerId) return;
     setSavingScore(true);
+    setScoreModalError(null);
     try {
       const res = await fetch(`/api/leagues/matches/${scoreEntryMatch.id}/admin-report`, {
         method: 'POST',
@@ -296,13 +301,45 @@ export default function LeagueDetailPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(`Failed to save score: ${data.error}`);
+        setScoreModalError(data.error || `Failed to save score (HTTP ${res.status})`);
         return;
       }
       closeScoreEntry();
       fetchAll();
+    } catch (err: any) {
+      setScoreModalError(err?.message || 'Network error');
     } finally {
       setSavingScore(false);
+    }
+  };
+
+  const deleteScore = async () => {
+    if (!scoreEntryMatch) return;
+    if (
+      !confirm(
+        'Clear this result? The match will go back to pending and the entries will stay in place. ' +
+          'If the winner has already advanced to later rounds, you will need to clear those first.'
+      )
+    ) {
+      return;
+    }
+    setDeletingScore(true);
+    setScoreModalError(null);
+    try {
+      const res = await fetch(`/api/leagues/matches/${scoreEntryMatch.id}/admin-report`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setScoreModalError(data.error || `Failed to clear result (HTTP ${res.status})`);
+        return;
+      }
+      closeScoreEntry();
+      fetchAll();
+    } catch (err: any) {
+      setScoreModalError(err?.message || 'Network error');
+    } finally {
+      setDeletingScore(false);
     }
   };
 
@@ -670,10 +707,11 @@ export default function LeagueDetailPage() {
 
           {(league.status === 'running' || league.status === 'completed') && (
             <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
-              <h2 className="font-semibold text-base mb-2 text-gray-900">Bracket progression</h2>
+              <h2 className="font-semibold text-base mb-2 text-gray-900">Lock in overdue reports</h2>
               <p className="text-xs text-gray-500 mb-3">
-                Auto-confirms reported scores past the 24h window and advances flights whose current round
-                is complete. Runs any time you click.
+                Winners advance automatically as soon as you enter a score. This button is only
+                for <strong>player-reported</strong> scores that are past the 24-hour dispute window
+                but haven&apos;t been locked in yet. Runs any time you click.
               </p>
               <button
                 onClick={async () => {
@@ -687,8 +725,10 @@ export default function LeagueDetailPage() {
                     } else {
                       const s = data.summary;
                       setGenerateResult(
-                        `Auto-confirmed ${s.autoConfirmed}, generated ${s.nextRoundsGenerated} new rounds ` +
-                        `(${s.newMatches} matches), completed ${s.flightsCompleted} flights. ${s.emailsSent} emails sent.`
+                        `Locked in ${s.autoConfirmed} overdue score${s.autoConfirmed === 1 ? '' : 's'}, ` +
+                        `filled ${s.newSlotsFilled} bracket slot${s.newSlotsFilled === 1 ? '' : 's'}, ` +
+                        `completed ${s.flightsCompleted} flight${s.flightsCompleted === 1 ? '' : 's'}. ` +
+                        `${s.emailsSent} email${s.emailsSent === 1 ? '' : 's'} sent.`
                       );
                       fetchAll();
                     }
@@ -700,7 +740,7 @@ export default function LeagueDetailPage() {
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50"
               >
                 {generating ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                {generating ? 'Advancing…' : 'Advance brackets'}
+                {generating ? 'Locking in…' : 'Lock in overdue reports'}
               </button>
               {generateResult && <p className="text-xs text-gray-600 mt-2">{generateResult}</p>}
             </section>
@@ -998,15 +1038,19 @@ export default function LeagueDetailPage() {
             className="bg-white rounded-xl p-5 max-w-md w-full"
             onClick={e => e.stopPropagation()}
           >
-            <h3 className="font-semibold text-lg mb-1 text-gray-900">Enter score</h3>
+            <h3 className="font-semibold text-lg mb-1 text-gray-900">
+              {scoreEntryMatch.winner_entry_id ? 'Edit result' : 'Enter score'}
+            </h3>
             <p className="text-xs text-gray-500 mb-4">
               Admin-entered scores skip the 24-hour dispute window and lock in immediately.
+              Winners advance automatically as soon as you save.
             </p>
             {(() => {
               const a = entries.find(e => e.id === scoreEntryMatch.entry_a_id);
               const b = entries.find(e => e.id === scoreEntryMatch.entry_b_id);
               const aLabel = a ? `${a.captain_name}${a.partner_name ? ' & ' + a.partner_name : ''}` : 'Team A';
               const bLabel = b ? `${b.captain_name}${b.partner_name ? ' & ' + b.partner_name : ''}` : 'Team B';
+              const hasExistingResult = !!scoreEntryMatch.winner_entry_id;
               return (
                 <div className="space-y-4">
                   <div>
@@ -1045,23 +1089,40 @@ export default function LeagueDetailPage() {
                       </label>
                     </div>
                   </div>
+                  {scoreModalError && (
+                    <div className="flex gap-2 text-xs text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                      <div>{scoreModalError}</div>
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={closeScoreEntry}
                       className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+                      disabled={savingScore || deletingScore}
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       onClick={submitScore}
-                      disabled={!scoreInput.trim() || !scoreWinnerId || savingScore}
+                      disabled={!scoreInput.trim() || !scoreWinnerId || savingScore || deletingScore}
                       className="flex-1 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm font-medium"
                     >
-                      {savingScore ? 'Saving…' : 'Save score'}
+                      {savingScore ? 'Saving…' : hasExistingResult ? 'Save changes' : 'Save score'}
                     </button>
                   </div>
+                  {hasExistingResult && (
+                    <button
+                      type="button"
+                      onClick={deleteScore}
+                      disabled={savingScore || deletingScore}
+                      className="w-full py-2 border border-red-200 text-red-700 rounded-lg hover:bg-red-50 text-sm font-medium disabled:opacity-50"
+                    >
+                      {deletingScore ? 'Clearing…' : 'Delete result'}
+                    </button>
+                  )}
                 </div>
               );
             })()}

@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Users, Trophy, ListOrdered, Flag, Award, Settings, Share2, GitBranch, Swords } from "lucide-react";
+import { shareMixerEvent } from "@/lib/share";
 import PlayersTab from "@/components/mixer/event/PlayersTab";
 import RoundsTab from "@/components/mixer/event/RoundsTab";
 import StandingsTab from "@/components/mixer/event/StandingsTab";
@@ -72,6 +73,27 @@ export default function EventDashboard() {
       setEvent(data);
     }
     setLoading(false);
+  };
+
+  const handleShareEvent = async () => {
+    if (!event) return;
+    const result = await shareMixerEvent({
+      eventName: event.name,
+      eventCode: event.event_code,
+    });
+    if (result === "copied") {
+      toast({
+        title: "Link copied!",
+        description: "Paste it into SMS, email, or your team chat to share with players.",
+      });
+    } else if (result === "failed") {
+      toast({
+        variant: "destructive",
+        title: "Share failed",
+        description: "Couldn't copy or share the link. Try the Share tab instead.",
+      });
+    }
+    // "shared" and "cancelled" don't need a toast — OS feedback is enough.
   };
 
   const endEvent = async () => {
@@ -166,6 +188,17 @@ export default function EventDashboard() {
             </Button>
             
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <Button
+                variant="default"
+                size="lg"
+                onClick={handleShareEvent}
+                className="w-full sm:w-auto bg-[#D3FB52] text-[#001820] hover:bg-[#D3FB52]/90 font-semibold"
+              >
+                <Share2 className="h-5 w-5 mr-2" />
+                <span className="hidden sm:inline">Share with players</span>
+                <span className="sm:hidden">Share</span>
+              </Button>
+
               <Button variant="outline" size="lg" onClick={() => setShowEditFormatDialog(true)} className="w-full sm:w-auto bg-white">
                 <Settings className="h-5 w-5 mr-2" />
                 <span className="hidden sm:inline">Edit Format</span>

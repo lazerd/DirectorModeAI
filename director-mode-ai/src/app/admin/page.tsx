@@ -1,19 +1,21 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Shield, Lock, LogOut, BarChart3, Package, Sparkles, Monitor, RefreshCw } from 'lucide-react';
+import { Shield, Lock, LogOut, BarChart3, Package, Sparkles, Monitor, RefreshCw, Beaker } from 'lucide-react';
 import OverviewTab from '@/components/admin/OverviewTab';
 import ProductsTab from '@/components/admin/ProductsTab';
 import FeaturesTab from '@/components/admin/FeaturesTab';
 import SessionsTab from '@/components/admin/SessionsTab';
+import TestingTab from '@/components/admin/TestingTab';
 
-type Tab = 'overview' | 'products' | 'features' | 'sessions';
+type Tab = 'overview' | 'products' | 'features' | 'sessions' | 'testing';
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
   { id: 'products', label: 'Products', icon: Package },
   { id: 'features', label: 'Features', icon: Sparkles },
   { id: 'sessions', label: 'Sessions', icon: Monitor },
+  { id: 'testing', label: 'Testing', icon: Beaker },
 ];
 
 export default function AdminPage() {
@@ -214,6 +216,7 @@ export default function AdminPage() {
         {activeTab === 'products' && <ProductsTab key={`products-${refreshKey}`} />}
         {activeTab === 'features' && <FeaturesTab key={`features-${refreshKey}`} />}
         {activeTab === 'sessions' && <SessionsTab key={`sessions-${refreshKey}`} />}
+        {activeTab === 'testing' && <TestingTab key={`testing-${refreshKey}`} />}
       </main>
     </div>
   );

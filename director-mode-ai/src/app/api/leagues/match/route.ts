@@ -250,10 +250,13 @@ export async function POST(request: Request) {
       .maybeSingle();
     const { data: league } = await admin
       .from('leagues')
-      .select('name')
+      .select('name, slug')
       .eq('id', (flight as any)?.league_id || '')
       .maybeSingle();
     const origin = new URL(request.url).origin;
+    const publicBracketUrl = (league as any)?.slug
+      ? `${origin}/leagues/${(league as any).slug}/bracket`
+      : null;
 
     const sendOne = async (email: string | null, tokenOut: string | null, name: string) => {
       if (!email || !tokenOut) return;
@@ -273,9 +276,17 @@ export async function POST(request: Request) {
               </div>
               <p>If this is correct, do nothing — it'll lock in automatically in 24 hours and the bracket will advance.</p>
               <p>If it's wrong, click here to dispute:</p>
-              <p style="margin: 24px 0;">
+              <p style="margin: 24px 0 12px;">
                 <a href="${disputeUrl}" style="display: inline-block; background: #dc2626; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Review / dispute</a>
               </p>
+              ${publicBracketUrl ? `
+                <p style="margin: 0 0 24px;">
+                  <a href="${publicBracketUrl}" style="display: inline-block; background: transparent; color: #ea580c; border: 1.5px solid #ea580c; padding: 10px 22px; border-radius: 8px; text-decoration: none; font-weight: 500;">View live bracket</a>
+                </p>
+                <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                  The bracket page is public — share it with anyone.
+                </p>
+              ` : ''}
             </div>
           `,
         });

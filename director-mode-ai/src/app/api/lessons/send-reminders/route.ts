@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { runSweep, getAllRunningLeagueIds } from '@/lib/leagueProgression';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -146,10 +147,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ 
-      message: `Sent ${sentCount} reminder(s)`, 
+    // Piggyback the daily leagues dispute-window sweep onto this cron.
+    // Vercel Hobby is capped at 2 daily crons and we're already at that
+    // limit with this route + /api/courtconnect/event-reminders, so instead
+    // of adding a third cron we import runSweep directly and run it inline
+    // here. Scope is every league currently in 'running' status across all
+    // directors. Errors are logged but do not fail the lesson-reminder
+    // response — the two jobs are independent.
+    let leaguesSweep: { leaguesScanned: number; summary: any } | null = null;
+    try {
+      const leagueIds = await getAllRunningLeagueIds();
+      const origin = new URL(request.url).origin;
+      const summary = await runSweep(leagueIds, origin);
+      leaguesSweep = { leaguesScanned: leagueIds.length, summary };
+    } catch (sweepError) {
+      console.error('Leagues sweep (from lessons cron) failed:', sweepError);
+    }
+
+    return NextResponse.json({
+      message: `Sent ${sentCount} reminder(s)`,
       sent: sentCount,
-      checked: slots.length 
+      checked: slots.length,
+      leaguesSweep,
     });
 
   } catch (error) {

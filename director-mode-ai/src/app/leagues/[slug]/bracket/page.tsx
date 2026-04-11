@@ -3,12 +3,14 @@ import { notFound } from 'next/navigation';
 import { Trophy, Calendar, ArrowLeft } from 'lucide-react';
 import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { CATEGORY_LABELS, CATEGORY_ORDER, type CategoryKey } from '@/lib/leagueUtils';
-import FlightBracketView, {
+import { type CategoryKey } from '@/lib/leagueUtils';
+import {
   type BracketEntry,
   type BracketMatch,
   type BracketFlight,
 } from '@/components/leagues/FlightBracketView';
+import LiveBracketRefresher from '@/components/leagues/LiveBracketRefresher';
+import BracketShareButton from '@/components/leagues/BracketShareButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,32 +61,26 @@ export default async function PublicBracketPage({ params }: { params: Promise<{ 
     category_key: categoryKeyById.get(f.category_id) || 'men_singles',
   }));
 
-  // Group flights by category
-  const flightsByCategory = new Map<CategoryKey, FlightRow[]>();
-  for (const f of flights) {
-    if (!flightsByCategory.has(f.category_key)) flightsByCategory.set(f.category_key, []);
-    flightsByCategory.get(f.category_key)!.push(f);
-  }
-  for (const [, list] of flightsByCategory) list.sort((a, b) => a.flight_name.localeCompare(b.flight_name));
-
-  const entriesByFlightId = new Map<string, BracketEntry[]>();
+  // Shape entries + matches into plain Record<flightId, T[]> so they survive
+  // the server → client boundary (Maps don't serialize across that edge).
+  const entriesByFlightId: Record<string, BracketEntry[]> = {};
   for (const e of (entries as any[]) || []) {
     if (!e.flight_id) continue;
-    const list = entriesByFlightId.get(e.flight_id) || [];
+    const list = entriesByFlightId[e.flight_id] || [];
     list.push({
       id: e.id,
       captain_name: e.captain_name,
       partner_name: e.partner_name,
       seed_in_flight: e.seed_in_flight,
     });
-    entriesByFlightId.set(e.flight_id, list);
+    entriesByFlightId[e.flight_id] = list;
   }
 
-  const matchesByFlightId = new Map<string, BracketMatch[]>();
+  const matchesByFlightId: Record<string, BracketMatch[]> = {};
   for (const m of (matches as any[]) || []) {
-    const list = matchesByFlightId.get(m.flight_id) || [];
+    const list = matchesByFlightId[m.flight_id] || [];
     list.push(m as BracketMatch);
-    matchesByFlightId.set(m.flight_id, list);
+    matchesByFlightId[m.flight_id] = list;
   }
 
   return (
@@ -98,13 +94,17 @@ export default async function PublicBracketPage({ params }: { params: Promise<{ 
             <div className="text-xs text-gray-500">Brackets &amp; Results</div>
             <h1 className="font-semibold text-lg truncate">{l.name}</h1>
           </div>
-          <Link
-            href={`/leagues/${l.slug}`}
-            className="text-xs text-gray-600 hover:text-gray-900 inline-flex items-center gap-1 px-3 py-1.5 border border-gray-200 rounded-lg"
-          >
-            <ArrowLeft size={12} />
-            Back to signup
-          </Link>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <BracketShareButton leagueName={l.name} leagueSlug={l.slug} />
+            <Link
+              href={`/leagues/${l.slug}`}
+              className="text-xs text-gray-600 hover:text-gray-900 inline-flex items-center gap-1 px-3 py-1.5 border border-gray-200 rounded-lg"
+            >
+              <ArrowLeft size={12} />
+              <span className="hidden sm:inline">Back to signup</span>
+              <span className="sm:hidden">Back</span>
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -120,29 +120,13 @@ export default async function PublicBracketPage({ params }: { params: Promise<{ 
           </span>
         </div>
 
-        {flights.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
-            Draws haven&apos;t been generated yet.
-          </div>
-        ) : (
-          CATEGORY_ORDER.filter(k => flightsByCategory.has(k)).map(catKey => (
-            <section key={catKey} className="mb-10">
-              <h2 className="font-semibold text-xl mb-4">{CATEGORY_LABELS[catKey]}</h2>
-              <div className="space-y-8">
-                {(flightsByCategory.get(catKey) || []).map(flight => (
-                  <div key={flight.id} className="bg-white border border-gray-200 rounded-xl p-4 sm:p-6">
-                    <FlightBracketView
-                      flight={flight}
-                      entries={entriesByFlightId.get(flight.id) || []}
-                      matches={matchesByFlightId.get(flight.id) || []}
-                      leagueType={leagueType}
-                    />
-                  </div>
-                ))}
-              </div>
-            </section>
-          ))
-        )}
+        <LiveBracketRefresher
+          leagueId={l.id}
+          leagueType={leagueType}
+          initialFlights={flights}
+          initialEntriesByFlightId={entriesByFlightId}
+          initialMatchesByFlightId={matchesByFlightId}
+        />
 
         <div className="text-center text-xs text-gray-400 mt-8 py-6 border-t border-gray-200">
           Powered by <Link href="/" className="text-orange-600 hover:underline">CoachMode AI</Link>

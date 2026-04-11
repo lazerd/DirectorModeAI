@@ -32,12 +32,13 @@ export async function POST(
 
     const { data: league } = await admin
       .from('leagues')
-      .select('id, name, director_id')
+      .select('id, name, slug, director_id')
       .eq('id', leagueId)
       .maybeSingle();
     if (!league || (league as any).director_id !== user.id) {
       return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     }
+    const leagueSlug = (league as any).slug as string;
 
     // Get all flights for this league
     const { data: flights } = await admin
@@ -76,6 +77,7 @@ export async function POST(
     const byId = new Map(((entries as any[]) || []).map(e => [e.id, e]));
 
     const origin = new URL(_request.url).origin;
+    const publicBracketUrl = `${origin}/leagues/${leagueSlug}/bracket`;
     let sent = 0;
 
     for (const m of pendingMatches as any[]) {
@@ -101,8 +103,14 @@ export async function POST(
                   <div style="font-weight: 600;">vs ${opponent}</div>
                   <div style="color: #6b7280; font-size: 14px; margin-top: 8px;">Deadline: <strong>${m.deadline}</strong></div>
                 </div>
-                <p style="margin: 24px 0;">
+                <p style="margin: 24px 0 12px;">
                   <a href="${reportUrl}" style="display: inline-block; background: #ea580c; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Report score</a>
+                </p>
+                <p style="margin: 0 0 24px;">
+                  <a href="${publicBracketUrl}" style="display: inline-block; background: transparent; color: #ea580c; border: 1.5px solid #ea580c; padding: 10px 22px; border-radius: 8px; text-decoration: none; font-weight: 500;">View live bracket</a>
+                </p>
+                <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                  The bracket page is public — share it with anyone.
                 </p>
               </div>
             `,

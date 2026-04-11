@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Users, Trophy, Sparkles, Swords } from 'lucide-react';
+import { ArrowLeft, Users, Trophy, Sparkles, Swords, Compass } from 'lucide-react';
 
 interface FormatOption {
   id: string;
@@ -282,7 +282,7 @@ export default function SelectFormatPage() {
             <h2 className="text-xl font-bold">Tournament Formats</h2>
           </div>
           <p className="text-gray-600 mb-6">Competitive formats with brackets and elimination rounds</p>
-          
+
           <div className="grid gap-4 md:grid-cols-2">
             {tournamentFormats.map((format) => (
               <button
@@ -301,6 +301,31 @@ export default function SelectFormatPage() {
                 <p className="text-sm text-gray-600">{format.description}</p>
               </button>
             ))}
+
+            {/* Compass Draw — routed to the Leagues flow because compass draws
+                need the league data model (flights, seeded entries, category
+                draws, email score-reporting). This card is a shortcut into
+                that flow so directors can start a compass from the Mixer
+                event-creation surface as well as from the Leagues menu. */}
+            <Link
+              href="/mixer/leagues/new?type=compass"
+              className="p-4 rounded-xl border-2 border-gray-200 text-left transition-all hover:shadow-lg hover:border-yellow-400 group"
+            >
+              <div className="flex items-center gap-3 mb-2">
+                <Compass className="text-yellow-500 group-hover:text-yellow-600" size={32} />
+                <div>
+                  <h3 className="font-bold text-lg">Compass Draw</h3>
+                  <span className="inline-block text-[10px] font-semibold text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded mt-0.5">
+                    League-based · 8 or 16 players
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-gray-600">
+                Every player plays the same number of matches. Winners advance East, losers West, and
+                the field splits into Compass / Plate / Bowl / Shield sub-brackets. Opens the Leagues
+                flow to set entry categories, seeds, and dates.
+              </p>
+            </Link>
           </div>
         </div>
       </main>

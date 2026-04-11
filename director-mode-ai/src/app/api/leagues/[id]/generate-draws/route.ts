@@ -25,6 +25,7 @@ import { assignEntriesToFlights, CATEGORY_LABELS, type CategoryKey } from '@/lib
 import { generateRound1, roundDeadline, type CompassEntry } from '@/lib/compassBracket';
 import { generateRoundRobin } from '@/lib/roundRobinBracket';
 import { generateSingleEliminationRound1 } from '@/lib/singleEliminationBracket';
+import { buildRoundMatchEmailHtml } from '@/lib/leagueProgression';
 
 type LeagueType = 'compass' | 'round_robin' | 'single_elimination';
 
@@ -91,9 +92,10 @@ export async function POST(
       opponentEmail: string | null;
       opponentPhone: string | null;
       categoryLabel: string;
+      bracketPosition: string | null;
       leagueName: string;
-      captainToken: string;
-      partnerToken?: string | null;
+      token: string;
+      roundNumber: number;
       deadline: string;
     }> = [];
 
@@ -271,6 +273,12 @@ export async function POST(
           const opponentA = `${b.captain_name}${b.partner_name ? ' & ' + b.partner_name : ''}`;
           const opponentB = `${a.captain_name}${a.partner_name ? ' & ' + a.partner_name : ''}`;
 
+          const matchRound = (m as any).round || 1;
+          const matchDeadline = roundDeadline(leagueStart, matchRound)
+            .toISOString()
+            .split('T')[0];
+          const bracketPosition = (m as any).bracketPosition || null;
+
           // Captain of A
           playerEmailsToSend.push({
             email: a.captain_email,
@@ -279,9 +287,11 @@ export async function POST(
             opponentEmail: b.captain_email,
             opponentPhone: b.captain_phone,
             categoryLabel,
+            bracketPosition,
             leagueName: (league as any).name,
-            captainToken: a.captain_token,
-            deadline: roundDeadline(leagueStart, (m as any).round || 1).toISOString().split('T')[0],
+            token: a.captain_token,
+            roundNumber: matchRound,
+            deadline: matchDeadline,
           });
           // Partner of A
           if (a.partner_email && a.partner_token) {
@@ -292,9 +302,11 @@ export async function POST(
               opponentEmail: b.captain_email,
               opponentPhone: b.captain_phone,
               categoryLabel,
+              bracketPosition,
               leagueName: (league as any).name,
-              captainToken: a.partner_token,
-              deadline: roundDeadline(leagueStart, (m as any).round || 1).toISOString().split('T')[0],
+              token: a.partner_token,
+              roundNumber: matchRound,
+              deadline: matchDeadline,
             });
           }
           // Captain of B
@@ -305,9 +317,11 @@ export async function POST(
             opponentEmail: a.captain_email,
             opponentPhone: a.captain_phone,
             categoryLabel,
+            bracketPosition,
             leagueName: (league as any).name,
-            captainToken: b.captain_token,
-            deadline: roundDeadline(leagueStart, (m as any).round || 1).toISOString().split('T')[0],
+            token: b.captain_token,
+            roundNumber: matchRound,
+            deadline: matchDeadline,
           });
           // Partner of B
           if (b.partner_email && b.partner_token) {
@@ -318,9 +332,11 @@ export async function POST(
               opponentEmail: a.captain_email,
               opponentPhone: a.captain_phone,
               categoryLabel,
+              bracketPosition,
               leagueName: (league as any).name,
-              captainToken: b.partner_token,
-              deadline: roundDeadline(leagueStart, (m as any).round || 1).toISOString().split('T')[0],
+              token: b.partner_token,
+              roundNumber: matchRound,
+              deadline: matchDeadline,
             });
           }
         }
@@ -351,41 +367,45 @@ export async function POST(
       .eq('id', leagueId)
       .eq('status', 'open');
 
+    // Test leagues (name prefixed with [TEST]) skip email delivery so the
+    // seeded @example.com addresses don't burn Resend quota or clutter the
+    // inbox during demo / compass-draw QA runs.
+    const isTestLeague = ((league as any).name || '').startsWith('[TEST]');
+
     // Fire-and-forget emails (don't block the response)
     const origin = new URL(request.url).origin;
+    const publicBracketUrl = `${origin}/leagues/${(league as any).slug}/bracket`;
     const fromAddress = process.env.RESEND_FROM_EMAIL || 'CoachMode Leagues <noreply@mail.coachmode.ai>';
+    if (isTestLeague) {
+      // Skip — but still return emailCount=0 so the response shape is stable.
+      return NextResponse.json({
+        success: true,
+        results,
+        emailCount: 0,
+        skippedEmails: playerEmailsToSend.length,
+      });
+    }
     (async () => {
       for (const msg of playerEmailsToSend) {
-        const reportUrl = `${origin}/leagues/match/${msg.captainToken}`;
+        const reportUrl = `${origin}/leagues/match/${msg.token}`;
         try {
           await resend.emails.send({
             from: fromAddress,
             to: msg.email,
-            subject: `Round 1: ${msg.leagueName} — deadline ${msg.deadline}`,
-            html: `
-              <div style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #ea580c; margin-top: 0;">Round 1 is on</h2>
-                <p>Hi ${msg.name},</p>
-                <p>The draws for <strong>${msg.leagueName}</strong> are live. Here's your first match:</p>
-                <div style="background: #fff7ed; border-left: 4px solid #ea580c; padding: 14px 18px; border-radius: 6px; margin: 16px 0;">
-                  <div style="color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;">${msg.categoryLabel}</div>
-                  <div style="font-weight: 600; font-size: 16px; margin-top: 4px;">vs ${msg.opponentName}</div>
-                  <div style="color: #6b7280; font-size: 14px; margin-top: 8px;">Deadline: <strong>${msg.deadline}</strong></div>
-                </div>
-                <p>Schedule the match directly with your opponent:</p>
-                <ul style="color: #374151;">
-                  <li><strong>Email:</strong> ${msg.opponentEmail || 'not provided'}</li>
-                  ${msg.opponentPhone ? `<li><strong>Phone:</strong> ${msg.opponentPhone}</li>` : ''}
-                </ul>
-                <p>When the match is finished, any player can report the score here:</p>
-                <p style="margin: 24px 0;">
-                  <a href="${reportUrl}" style="display: inline-block; background: #ea580c; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Report score</a>
-                </p>
-                <p style="color: #6b7280; font-size: 12px; margin-top: 32px;">
-                  Save this email — the link is your unique score-reporting URL. If your opponent reports first, you'll get another email with a dispute button.
-                </p>
-              </div>
-            `,
+            subject: `Round ${msg.roundNumber}: ${msg.leagueName} — deadline ${msg.deadline}`,
+            html: buildRoundMatchEmailHtml({
+              roundNumber: msg.roundNumber,
+              playerName: msg.name,
+              opponentName: msg.opponentName,
+              opponentEmail: msg.opponentEmail,
+              opponentPhone: msg.opponentPhone,
+              leagueName: msg.leagueName,
+              categoryLabel: msg.categoryLabel,
+              bracketPosition: msg.bracketPosition,
+              deadline: msg.deadline,
+              reportUrl,
+              publicBracketUrl,
+            }),
           });
         } catch (e) {
           console.error(`Email send failed for ${msg.email}:`, e);

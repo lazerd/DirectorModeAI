@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Trophy, Calendar, AlertCircle } from 'lucide-react';
+import { Trophy, Calendar, AlertCircle, GitBranch, ArrowRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { CATEGORY_LABELS, CATEGORY_ORDER, formatMoney, type CategoryKey } from '@/lib/leagueUtils';
@@ -69,6 +69,33 @@ export default async function PublicLeaguePage({ params }: { params: Promise<{ s
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6 sm:py-8">
+        {/* Live bracket CTA — shown prominently when the league is running or
+            done, since the whole point of the public page at that stage is
+            to see the compass draw, not the registration form. */}
+        {(l.status === 'running' || l.status === 'completed') && (
+          <Link
+            href={`/leagues/${l.slug}/bracket`}
+            className="group block mb-6 rounded-xl border border-[#D3FB52]/40 bg-gradient-to-br from-[#D3FB52]/15 to-[#D3FB52]/5 px-5 py-4 hover:border-[#D3FB52] hover:from-[#D3FB52]/25 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className="w-11 h-11 rounded-xl bg-[#D3FB52] flex items-center justify-center flex-shrink-0">
+                <GitBranch size={20} className="text-[#002838]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-[#D3FB52] text-base leading-tight">
+                  {l.status === 'running' ? 'View the live bracket' : 'View final results'}
+                </div>
+                <div className="text-xs text-white/50 mt-0.5">
+                  {l.status === 'running'
+                    ? 'Compass draw, standings, and match results — updated as scores come in.'
+                    : 'Final placements, full bracket tree, and match history.'}
+                </div>
+              </div>
+              <ArrowRight size={18} className="text-[#D3FB52] flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </Link>
+        )}
+
         {/* Hero block */}
         <section className="bg-white/5 border border-white/10 rounded-xl p-5 sm:p-6 mb-6">
           <div className="flex items-start gap-2 text-sm text-white/60 mb-3">
@@ -122,17 +149,6 @@ export default async function PublicLeaguePage({ params }: { params: Promise<{ s
               stripe: l.stripe_payment_link,
             }}
           />
-        )}
-
-        {(l.status === 'running' || l.status === 'completed') && (
-          <div className="mt-6 text-center">
-            <Link
-              href={`/leagues/${l.slug}/bracket`}
-              className="inline-flex items-center gap-2 text-sm text-[#D3FB52] hover:underline"
-            >
-              View brackets &amp; standings →
-            </Link>
-          </div>
         )}
 
         <div className="text-center text-xs text-white/30 mt-8 py-6 border-t border-white/10">
