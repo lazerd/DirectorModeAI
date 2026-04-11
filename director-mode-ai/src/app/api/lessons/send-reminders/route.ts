@@ -1,7 +1,11 @@
 import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { runSweep, getAllRunningLeagueIds } from '@/lib/leagueProgression';
+import {
+  runSweep,
+  getAllRunningLeagueIds,
+  sendMatchReminders,
+} from '@/lib/leagueProgression';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -147,21 +151,43 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Piggyback the daily leagues dispute-window sweep onto this cron.
-    // Vercel Hobby is capped at 2 daily crons and we're already at that
-    // limit with this route + /api/courtconnect/event-reminders, so instead
-    // of adding a third cron we import runSweep directly and run it inline
-    // here. Scope is every league currently in 'running' status across all
-    // directors. Errors are logged but do not fail the lesson-reminder
-    // response — the two jobs are independent.
+    // Piggyback the daily leagues housekeeping onto this cron. Vercel
+    // Hobby is capped at 2 daily crons and we're already at that limit
+    // with this route + /api/courtconnect/event-reminders, so instead of
+    // adding new cron entries we import the league helpers directly and
+    // run them inline here. Scope is every league currently in 'running'
+    // status across all directors. Each block is wrapped in its own
+    // try/catch so one failure doesn't taint the others or the lesson
+    // reminder response.
+    const origin = new URL(request.url).origin;
+    let leagueIds: string[] = [];
+    try {
+      leagueIds = await getAllRunningLeagueIds();
+    } catch (e) {
+      console.error('Failed to fetch running league ids:', e);
+    }
+
+    // 1. 24-hour dispute-window sweep — auto-confirm overdue reported
+    //    scores and advance winners/losers into the next round.
     let leaguesSweep: { leaguesScanned: number; summary: any } | null = null;
     try {
-      const leagueIds = await getAllRunningLeagueIds();
-      const origin = new URL(request.url).origin;
       const summary = await runSweep(leagueIds, origin);
       leaguesSweep = { leaguesScanned: leagueIds.length, summary };
     } catch (sweepError) {
       console.error('Leagues sweep (from lessons cron) failed:', sweepError);
+    }
+
+    // 2. Automated match reminders — send "your match is coming up" emails
+    //    to any pending match whose deadline lands on today+3 or today+1
+    //    (two reminders per match, no state column required). This makes
+    //    the director's manual "Send reminders" button optional — the
+    //    nightly cron handles routine nagging automatically.
+    let reminders: { leaguesScanned: number; matchesConsidered: number; remindersSent: number } | null = null;
+    try {
+      const summary = await sendMatchReminders(leagueIds, origin, 'cron');
+      reminders = summary;
+    } catch (reminderError) {
+      console.error('Leagues reminders (from lessons cron) failed:', reminderError);
     }
 
     return NextResponse.json({
@@ -169,6 +195,7 @@ export async function GET(request: NextRequest) {
       sent: sentCount,
       checked: slots.length,
       leaguesSweep,
+      leaguesReminders: reminders,
     });
 
   } catch (error) {

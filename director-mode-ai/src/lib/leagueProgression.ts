@@ -541,6 +541,178 @@ export async function getAllRunningLeagueIds(): Promise<string[]> {
   return ((data as any[]) || []).map(l => l.id);
 }
 
+// ----------------------------------------------------------------------------
+// Match reminder emails (shared between director button + daily cron)
+// ----------------------------------------------------------------------------
+
+export type ReminderSummary = {
+  leaguesScanned: number;
+  matchesConsidered: number;
+  remindersSent: number;
+};
+
+/**
+ * Send "your match is coming up" reminder emails for pending matches with
+ * upcoming deadlines. Two modes:
+ *
+ *   - mode='manual'  — called from the director's "Send reminders" button
+ *                      on the league dashboard. Sends for every pending
+ *                      match with a deadline in the next 0–3 days. Hitting
+ *                      the button twice in a row will re-send, which is
+ *                      fine because the director made that choice.
+ *
+ *   - mode='cron'    — called from the daily 8am UTC /api/lessons cron
+ *                      for every running league. Uses a narrow filter so
+ *                      each match gets at most two reminders during its
+ *                      lifecycle: one when it hits exactly 3 days out,
+ *                      and one when it hits exactly 1 day out. No state
+ *                      tracking column needed — deadline is a DATE so
+ *                      date-diff comparisons are stable across cron runs.
+ *
+ * Both modes share the same fetch, the same per-match email template, and
+ * the same recipient list (captain + partner for both sides of the match).
+ */
+export async function sendMatchReminders(
+  leagueIds: string[],
+  requestOrigin: string,
+  mode: 'manual' | 'cron'
+): Promise<ReminderSummary> {
+  const admin = getSupabaseAdmin();
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const FROM =
+    process.env.RESEND_FROM_EMAIL ||
+    'CoachMode Leagues <noreply@mail.coachmode.ai>';
+
+  const summary: ReminderSummary = {
+    leaguesScanned: 0,
+    matchesConsidered: 0,
+    remindersSent: 0,
+  };
+
+  // Date math: compute today (UTC), today+1, today+3 as yyyy-mm-dd strings
+  // so they compare directly against the match.deadline DATE column.
+  const today = new Date();
+  const fmt = (d: Date) => d.toISOString().split('T')[0];
+  const todayStr = fmt(today);
+  const plus1 = new Date(today); plus1.setUTCDate(plus1.getUTCDate() + 1);
+  const plus3 = new Date(today); plus3.setUTCDate(plus3.getUTCDate() + 3);
+  const plus1Str = fmt(plus1);
+  const plus3Str = fmt(plus3);
+
+  for (const lid of leagueIds) {
+    summary.leaguesScanned += 1;
+
+    const { data: league } = await admin
+      .from('leagues')
+      .select('id, name, slug')
+      .eq('id', lid)
+      .maybeSingle();
+    if (!league) continue;
+    const leagueName = (league as any).name as string;
+    const leagueSlug = (league as any).slug as string;
+    const publicBracketUrl = `${requestOrigin}/leagues/${leagueSlug}/bracket`;
+
+    // Every flight in this league.
+    const { data: flights } = await admin
+      .from('league_flights')
+      .select('id')
+      .eq('league_id', lid);
+    const flightIds = ((flights as any[]) || []).map(f => f.id);
+    if (flightIds.length === 0) continue;
+
+    // Pending matches whose deadline falls in the target window. Cron mode
+    // narrows to exactly +3 days or exactly +1 day; manual mode uses the
+    // broad today…+3 range (inclusive of overdue).
+    let query = admin
+      .from('league_matches')
+      .select(
+        'id, flight_id, round, deadline, bracket_position, entry_a_id, entry_b_id'
+      )
+      .in('flight_id', flightIds)
+      .eq('status', 'pending');
+
+    if (mode === 'cron') {
+      query = query.in('deadline', [plus1Str, plus3Str]);
+    } else {
+      query = query.lte('deadline', plus3Str).gte('deadline', todayStr);
+    }
+
+    const { data: pendingMatches } = await query;
+    const matches = (pendingMatches as any[]) || [];
+    summary.matchesConsidered += matches.length;
+    if (matches.length === 0) continue;
+
+    // Bulk-load the entries referenced so we can address every player.
+    const entryIdSet = new Set<string>();
+    for (const m of matches) {
+      if (m.entry_a_id) entryIdSet.add(m.entry_a_id);
+      if (m.entry_b_id) entryIdSet.add(m.entry_b_id);
+    }
+    if (entryIdSet.size === 0) continue;
+    const { data: entries } = await admin
+      .from('league_entries')
+      .select(
+        'id, captain_name, captain_email, captain_token, partner_name, partner_email, partner_token'
+      )
+      .in('id', Array.from(entryIdSet));
+    const byId = new Map(((entries as any[]) || []).map(e => [e.id, e]));
+
+    for (const m of matches) {
+      const a = byId.get(m.entry_a_id);
+      const b = byId.get(m.entry_b_id);
+      if (!a || !b) continue;
+      const opponentOfA = `${b.captain_name}${b.partner_name ? ' & ' + b.partner_name : ''}`;
+      const opponentOfB = `${a.captain_name}${a.partner_name ? ' & ' + a.partner_name : ''}`;
+
+      const sendOne = async (
+        email: string | null,
+        token: string | null,
+        name: string,
+        opponent: string
+      ) => {
+        if (!email || !token) return;
+        const reportUrl = `${requestOrigin}/leagues/match/${token}`;
+        try {
+          await resend.emails.send({
+            from: FROM,
+            to: email,
+            subject: `Reminder: your R${m.round} match vs ${opponent} — deadline ${m.deadline}`,
+            html: `
+              <div style="font-family: -apple-system, sans-serif; max-width: 600px; padding: 20px;">
+                <h2 style="color: #ea580c;">Match reminder</h2>
+                <p>Hi ${name}, just a heads-up — your Round ${m.round} match still hasn't been reported.</p>
+                <div style="background: #fff7ed; border-left: 4px solid #ea580c; padding: 14px 18px; border-radius: 6px; margin: 16px 0;">
+                  <div style="font-weight: 600;">vs ${opponent}</div>
+                  <div style="color: #6b7280; font-size: 14px; margin-top: 8px;">Deadline: <strong>${m.deadline}</strong></div>
+                </div>
+                <p style="margin: 24px 0 12px;">
+                  <a href="${reportUrl}" style="display: inline-block; background: #ea580c; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Report score</a>
+                </p>
+                <p style="margin: 0 0 24px;">
+                  <a href="${publicBracketUrl}" style="display: inline-block; background: transparent; color: #ea580c; border: 1.5px solid #ea580c; padding: 10px 22px; border-radius: 8px; text-decoration: none; font-weight: 500;">View live bracket</a>
+                </p>
+                <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                  ${leagueName} · The bracket page is public — share it with anyone.
+                </p>
+              </div>
+            `,
+          });
+          summary.remindersSent += 1;
+        } catch (e) {
+          console.error('reminder failed:', e);
+        }
+      };
+
+      await sendOne(a.captain_email, a.captain_token, a.captain_name, opponentOfA);
+      if (a.partner_email) await sendOne(a.partner_email, a.partner_token, a.partner_name || 'Player', opponentOfA);
+      await sendOne(b.captain_email, b.captain_token, b.captain_name, opponentOfB);
+      if (b.partner_email) await sendOne(b.partner_email, b.partner_token, b.partner_name || 'Player', opponentOfB);
+    }
+  }
+
+  return summary;
+}
+
 export type DownstreamMatch = {
   id: string;
   round: number;
