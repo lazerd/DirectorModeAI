@@ -16,6 +16,9 @@ import {
   Download,
   Zap,
   Loader2,
+  Bell,
+  UserMinus,
+  GitBranch,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
@@ -113,6 +116,30 @@ export default function LeagueDetailPage() {
       return;
     }
     setEntries(prev => prev.map(e => (e.id === entry.id ? { ...e, payment_status: next } : e)));
+  };
+
+  const withdrawEntry = async (entry: Entry) => {
+    if (!confirm(`Withdraw ${entry.captain_name}? This flags them for a refund if they'd paid.`)) return;
+    const res = await fetch(`/api/leagues/entries/${entry.id}/withdraw`, { method: 'POST' });
+    if (!res.ok) {
+      const d = await res.json();
+      alert(`Failed: ${d.error}`);
+      return;
+    }
+    fetchAll();
+  };
+
+  const sendReminders = async () => {
+    if (!league) return;
+    setGenerating(true);
+    try {
+      const res = await fetch(`/api/leagues/${league.id}/send-reminders`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) setGenerateResult(`Error: ${data.error}`);
+      else setGenerateResult(`Sent ${data.sent} reminder emails across ${data.matches || 0} matches.`);
+    } finally {
+      setGenerating(false);
+    }
   };
 
   const copyUrl = () => {
@@ -263,6 +290,19 @@ export default function LeagueDetailPage() {
                 </button>
               </div>
             )}
+            {(league.status === 'running' || league.status === 'completed') && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <a
+                  href={`${publicUrl}/bracket`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                >
+                  <GitBranch size={12} />
+                  Public brackets page
+                </a>
+              </div>
+            )}
           </section>
 
           {/* Stats */}
@@ -318,6 +358,23 @@ export default function LeagueDetailPage() {
               )}
             </section>
           )}
+          {league.status === 'running' && (
+            <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+              <h2 className="font-semibold text-base mb-2 text-gray-900">Send reminders</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Email every player whose current match is within 3 days of the deadline and hasn&apos;t been reported yet.
+              </p>
+              <button
+                onClick={sendReminders}
+                disabled={generating}
+                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 disabled:opacity-50"
+              >
+                {generating ? <Loader2 size={16} className="animate-spin" /> : <Bell size={16} />}
+                Send reminders
+              </button>
+            </section>
+          )}
+
           {(league.status === 'running' || league.status === 'completed') && (
             <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
               <h2 className="font-semibold text-base mb-2 text-gray-900">Bracket progression</h2>
@@ -376,7 +433,12 @@ export default function LeagueDetailPage() {
                 ) : (
                   <div className="divide-y divide-gray-100">
                     {catEntries.map(entry => (
-                      <EntryRow key={entry.id} entry={entry} onTogglePay={() => togglePayment(entry)} />
+                      <EntryRow
+                        key={entry.id}
+                        entry={entry}
+                        onTogglePay={() => togglePayment(entry)}
+                        onWithdraw={() => withdrawEntry(entry)}
+                      />
                     ))}
                   </div>
                 )}
@@ -402,11 +464,23 @@ function PaymentRailRow({ label, value }: { label: string; value: string | null 
   );
 }
 
-function EntryRow({ entry, onTogglePay }: { entry: Entry; onTogglePay: () => void }) {
+function EntryRow({
+  entry,
+  onTogglePay,
+  onWithdraw,
+}: {
+  entry: Entry;
+  onTogglePay: () => void;
+  onWithdraw: () => void;
+}) {
   const isPaid = entry.payment_status === 'paid';
   const isPendingPartner = entry.entry_status === 'pending_confirm';
+  const isWithdrawn = entry.entry_status === 'withdrawn';
+  const isWaitlisted = entry.entry_status === 'waitlisted';
+  const refundPending = entry.payment_status === 'refund_pending';
+
   return (
-    <div className="py-3 flex items-center gap-3 text-sm">
+    <div className={`py-3 flex items-center gap-3 text-sm ${isWithdrawn ? 'opacity-40' : ''}`}>
       <div className="flex-1 min-w-0">
         <div className="font-medium text-gray-900 truncate">
           {entry.captain_name}
@@ -414,30 +488,51 @@ function EntryRow({ entry, onTogglePay }: { entry: Entry; onTogglePay: () => voi
             <> &amp; <span>{entry.partner_name}</span></>
           )}
         </div>
-        <div className="text-xs text-gray-500 flex items-center gap-3">
+        <div className="text-xs text-gray-500 flex items-center gap-3 flex-wrap">
           <span className="truncate">{entry.captain_email}</span>
           {entry.captain_ntrp != null && <span>NTRP {entry.captain_ntrp}</span>}
           {entry.captain_utr != null && <span>UTR {entry.captain_utr}</span>}
+          {entry.composite_score != null && (
+            <span className="text-orange-600">score {entry.composite_score}</span>
+          )}
           {isPendingPartner && (
             <span className="text-yellow-600 inline-flex items-center gap-0.5">
               <AlertCircle size={10} /> awaiting partner
             </span>
           )}
+          {isWaitlisted && <span className="text-gray-400">waitlisted</span>}
+          {isWithdrawn && <span className="text-gray-400">withdrawn</span>}
+          {refundPending && <span className="text-red-600">refund pending</span>}
         </div>
       </div>
       <button
         onClick={onTogglePay}
         className={`px-2 py-1 rounded-full text-xs font-medium ${
-          isPaid ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'
+          refundPending
+            ? 'bg-red-100 text-red-700'
+            : isPaid
+              ? 'bg-green-100 text-green-700'
+              : 'bg-yellow-100 text-yellow-700'
         }`}
         title="Toggle payment status"
       >
-        {isPaid ? (
+        {refundPending ? (
+          <span>refund</span>
+        ) : isPaid ? (
           <span className="inline-flex items-center gap-1"><Check size={12} /> paid</span>
         ) : (
           <span className="inline-flex items-center gap-1"><X size={12} /> pending</span>
         )}
       </button>
+      {!isWithdrawn && (
+        <button
+          onClick={onWithdraw}
+          className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded"
+          title="Withdraw entry"
+        >
+          <UserMinus size={14} />
+        </button>
+      )}
     </div>
   );
 }

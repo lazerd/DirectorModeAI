@@ -124,6 +124,17 @@ export default async function PublicLeaguePage({ params }: { params: Promise<{ s
           />
         )}
 
+        {(l.status === 'running' || l.status === 'completed') && (
+          <div className="mt-6 text-center">
+            <Link
+              href={`/leagues/${l.slug}/bracket`}
+              className="inline-flex items-center gap-2 text-sm text-[#D3FB52] hover:underline"
+            >
+              View brackets &amp; standings →
+            </Link>
+          </div>
+        )}
+
         <div className="text-center text-xs text-white/30 mt-8 py-6 border-t border-white/10">
           Powered by <Link href="/" className="text-[#D3FB52] hover:underline">CoachMode AI</Link>
         </div>
