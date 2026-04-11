@@ -91,10 +91,18 @@ type Entry = {
   partner_email: string | null;
   partner_confirmed_at: string | null;
   composite_score: number | null;
+  manual_seed: number | null;
   rating_source: string | null;
   payment_status: string;
   entry_status: string;
+  flight_id: string | null;
   created_at: string;
+};
+
+type Flight = {
+  id: string;
+  category_id: string;
+  flight_name: string;
 };
 
 export default function LeagueDetailPage() {
@@ -104,7 +112,12 @@ export default function LeagueDetailPage() {
   const [league, setLeague] = useState<League | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [flights, setFlights] = useState<Flight[]>([]);
   const [loading, setLoading] = useState(true);
+  const [seedingCategoryId, setSeedingCategoryId] = useState<string | null>(null);
+  const [seedOverrides, setSeedOverrides] = useState<Record<string, string>>({});
+  const [savingSeeds, setSavingSeeds] = useState(false);
+  const [generatingCategoryId, setGeneratingCategoryId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -119,15 +132,17 @@ export default function LeagueDetailPage() {
     if (!id) return;
     setLoading(true);
     const supabase = createClient();
-    const [l, c, e] = await Promise.all([
+    const [l, c, e, f] = await Promise.all([
       supabase.from('leagues').select('*').eq('id', id).single(),
       supabase.from('league_categories').select('*').eq('league_id', id).order('category_key'),
       supabase.from('league_entries').select('*').eq('league_id', id).order('created_at', { ascending: false }),
+      supabase.from('league_flights').select('id, category_id, flight_name').eq('league_id', id),
     ]);
     if (l.error) setError(l.error.message);
     setLeague((l.data as League) || null);
     setCategories((c.data as Category[]) || []);
     setEntries((e.data as Entry[]) || []);
+    setFlights((f.data as Flight[]) || []);
     setLoading(false);
   }, [id]);
 
@@ -255,42 +270,94 @@ export default function LeagueDetailPage() {
     a.click();
   };
 
-  const generateDraws = async () => {
+  const generateDrawsForCategory = async (cat: Category) => {
     if (!league) return;
-    const paidCount = entries.filter(e => e.payment_status === 'paid' && e.entry_status === 'active').length;
-    if (paidCount === 0) {
-      alert('No paid active entries to place in draws.');
+    const catEntries = entries.filter(
+      e => e.category_id === cat.id && e.payment_status === 'paid' && e.entry_status === 'active'
+    );
+    if (catEntries.length < 2) {
+      alert(`Not enough paid active entries in ${CATEGORY_LABELS[cat.category_key]} (${catEntries.length}).`);
       return;
     }
     if (!confirm(
-      `Generate draws for ${paidCount} paid entries now? This will create flights, seed players, send Round 1 emails, and flip the league to running status.`
+      `Generate draws for ${CATEGORY_LABELS[cat.category_key]}?\n\n` +
+      `${catEntries.length} paid entries will be seeded and Round 1 emails will go out immediately. ` +
+      `Other categories are not affected.`
     )) return;
 
-    setGenerating(true);
+    setGeneratingCategoryId(cat.id);
     setGenerateResult(null);
     try {
-      const res = await fetch(`/api/leagues/${league.id}/generate-draws`, { method: 'POST' });
+      const res = await fetch(`/api/leagues/${league.id}/generate-draws`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryKey: cat.category_key }),
+      });
       const data = await res.json();
       if (!res.ok) {
         setGenerateResult(`Error: ${data.error || 'Unknown'}`);
         return;
       }
-      const summary = (data.results || [])
-        .map((r: any) =>
-          r.skipped
-            ? `${r.category}: already generated`
-            : r.cancelled
-              ? `${r.category}: cancelled (${r.waitlisted} refunds needed)`
-              : `${r.category}: ${r.flightsCreated} flights, ${r.matchesCreated} R1 matches${r.waitlisted > 0 ? `, ${r.waitlisted} waitlisted` : ''}`
-        )
-        .join(' · ');
-      setGenerateResult(`Done. ${summary}. Sent ${data.emailCount || 0} player emails.`);
+      const r = (data.results || [])[0];
+      if (!r) {
+        setGenerateResult('No results returned.');
+      } else if (r.skipped) {
+        setGenerateResult(`${r.category}: already generated.`);
+      } else if (r.cancelled) {
+        setGenerateResult(`${r.category}: cancelled (${r.waitlisted} refunds needed).`);
+      } else {
+        setGenerateResult(
+          `${r.category}: ${r.flightsCreated} flight${r.flightsCreated === 1 ? '' : 's'}, ${r.matchesCreated} matches created. Sent ${data.emailCount || 0} player emails.`
+        );
+      }
       fetchAll();
     } catch (err: any) {
       setGenerateResult(`Error: ${err.message || 'Unknown'}`);
     } finally {
-      setGenerating(false);
+      setGeneratingCategoryId(null);
     }
+  };
+
+  // --- Seeding preview + edit ---
+  const openSeeding = (cat: Category) => {
+    setSeedingCategoryId(cat.id);
+    // Seed the override map with current manual_seed values
+    const initial: Record<string, string> = {};
+    entries
+      .filter(e => e.category_id === cat.id && e.payment_status === 'paid' && e.entry_status === 'active')
+      .forEach(e => {
+        if (e.manual_seed != null) initial[e.id] = String(e.manual_seed);
+      });
+    setSeedOverrides(initial);
+  };
+
+  const closeSeeding = () => {
+    setSeedingCategoryId(null);
+    setSeedOverrides({});
+  };
+
+  const saveSeeding = async () => {
+    if (!seedingCategoryId) return;
+    setSavingSeeds(true);
+    const supabase = createClient();
+    // For each entry with an override, update manual_seed. For entries whose
+    // override is empty, clear manual_seed (null).
+    const catEntries = entries.filter(
+      e => e.category_id === seedingCategoryId && e.payment_status === 'paid' && e.entry_status === 'active'
+    );
+    for (const e of catEntries) {
+      const override = seedOverrides[e.id];
+      const next = override && override.trim() !== '' ? parseInt(override, 10) : null;
+      if (next !== e.manual_seed) {
+        await supabase
+          .from('league_entries')
+          .update({ manual_seed: next })
+          .eq('id', e.id);
+      }
+    }
+    setSavingSeeds(false);
+    closeSeeding();
+    fetchAll();
   };
 
   if (loading) {
@@ -434,26 +501,11 @@ export default function LeagueDetailPage() {
             </div>
           </section>
 
-          {/* Generate draws action */}
-          {league.status === 'open' && (
-            <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
-              <h2 className="font-semibold text-base mb-2 text-gray-900">Generate draws</h2>
-              <p className="text-xs text-gray-500 mb-3">
-                Ready to close registration? This slices all paid entries into compass draws (16s first,
-                8s second, waitlist below 8), creates Round 1 matches, and emails every player.
-              </p>
-              <button
-                onClick={generateDraws}
-                disabled={generating}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600 disabled:opacity-50"
-              >
-                {generating ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
-                {generating ? 'Generating…' : 'Generate draws'}
-              </button>
-              {generateResult && (
-                <p className="text-xs text-gray-600 mt-2">{generateResult}</p>
-              )}
-            </section>
+          {/* Per-category generate now lives in each category section */}
+          {generateResult && (
+            <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl p-3 text-xs">
+              {generateResult}
+            </div>
           )}
           {league.status === 'running' && (
             <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
@@ -517,17 +569,26 @@ export default function LeagueDetailPage() {
             const catEntries = entriesByCategory[cat.id] || [];
             const doubles = isDoubles(cat.category_key);
             const isAdding = addingToCategory === cat.id;
+            const hasFlights = flights.some(f => f.category_id === cat.id);
+            const paidCount = catEntries.filter(e => e.payment_status === 'paid' && e.entry_status === 'active').length;
+            const isGenerating = generatingCategoryId === cat.id;
+            const isSeeding = seedingCategoryId === cat.id;
             return (
               <section key={cat.id} className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="font-semibold text-base text-gray-900">{CATEGORY_LABELS[cat.category_key]}</h2>
-                  <div className="flex items-center gap-3 text-sm text-gray-500">
-                    <span>
-                      {formatMoney(cat.entry_fee_cents)}
-                      <span className="text-gray-400 text-xs ml-1">/ {doubles ? 'team' : 'player'}</span>
-                    </span>
-                    <span>·</span>
-                    <span>{catEntries.length} {catEntries.length === 1 ? 'entry' : 'entries'}</span>
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <div>
+                    <h2 className="font-semibold text-base text-gray-900">{CATEGORY_LABELS[cat.category_key]}</h2>
+                    <div className="text-xs text-gray-500 flex items-center gap-2">
+                      <span>
+                        {formatMoney(cat.entry_fee_cents)}
+                        <span className="text-gray-400 ml-1">/ {doubles ? 'team' : 'player'}</span>
+                      </span>
+                      <span>·</span>
+                      <span>{catEntries.length} {catEntries.length === 1 ? 'entry' : 'entries'} ({paidCount} paid)</span>
+                      {hasFlights && <span className="text-green-600">· draws generated</span>}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => (isAdding ? closeAddEntry() : openAddEntry(cat))}
                       className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-600 hover:bg-orange-50 rounded"
@@ -535,8 +596,38 @@ export default function LeagueDetailPage() {
                       {isAdding ? <X size={12} /> : <UserPlus size={12} />}
                       {isAdding ? 'Cancel' : 'Add entry'}
                     </button>
+                    {!hasFlights && paidCount >= 2 && (
+                      <>
+                        <button
+                          onClick={() => (isSeeding ? closeSeeding() : openSeeding(cat))}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded"
+                        >
+                          <GitBranch size={12} />
+                          {isSeeding ? 'Cancel seeding' : 'Edit seeding'}
+                        </button>
+                        <button
+                          onClick={() => generateDrawsForCategory(cat)}
+                          disabled={isGenerating}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-orange-500 text-white hover:bg-orange-600 rounded disabled:opacity-50"
+                        >
+                          {isGenerating ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+                          {isGenerating ? 'Generating…' : 'Generate draws'}
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
+
+                {isSeeding && (
+                  <SeedingEditor
+                    entries={catEntries.filter(e => e.payment_status === 'paid' && e.entry_status === 'active')}
+                    overrides={seedOverrides}
+                    onChange={(entryId, v) => setSeedOverrides(prev => ({ ...prev, [entryId]: v }))}
+                    onSave={saveSeeding}
+                    onCancel={closeSeeding}
+                    saving={savingSeeds}
+                  />
+                )}
 
                 {isAdding && (
                   <form onSubmit={submitAddEntry} className="bg-orange-50 border border-orange-200 rounded-lg p-3 sm:p-4 mb-3 space-y-3">
@@ -690,6 +781,86 @@ export default function LeagueDetailPage() {
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function SeedingEditor({
+  entries,
+  overrides,
+  onChange,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  entries: Entry[];
+  overrides: Record<string, string>;
+  onChange: (entryId: string, value: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  // Preview ordering: manual_seed (from overrides or existing) first, then composite desc
+  const effectiveSeed = (e: Entry): number => {
+    const override = overrides[e.id];
+    if (override && override.trim() !== '') {
+      const n = parseInt(override, 10);
+      if (!isNaN(n)) return n;
+    }
+    if (e.manual_seed != null) return e.manual_seed;
+    return 9999 - (e.composite_score ?? 0) * 100;
+  };
+
+  const sorted = [...entries].sort((a, b) => effectiveSeed(a) - effectiveSeed(b));
+
+  return (
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 mb-3">
+      <div className="text-xs text-blue-900 mb-3">
+        <strong>Auto-seed preview.</strong> Entries are ranked by composite score (UTR+NTRP+WTN blend).
+        Type a number to override any seed — leave blank to use the auto order. The highest-ranked pair
+        (1 and 2) are kept apart in round 1 by the bracket algorithm, so you don&apos;t need to manually
+        avoid that.
+      </div>
+      <div className="space-y-1.5">
+        {sorted.map((e, idx) => (
+          <div key={e.id} className="flex items-center gap-2 text-sm">
+            <span className="w-6 text-right text-blue-900 font-mono font-semibold">{idx + 1}.</span>
+            <input
+              type="number"
+              min={1}
+              placeholder="auto"
+              value={overrides[e.id] ?? ''}
+              onChange={ev => onChange(e.id, ev.target.value)}
+              className="w-16 px-2 py-0.5 border border-blue-300 rounded text-xs text-gray-900"
+              title="Manual seed override"
+            />
+            <span className="flex-1 text-gray-900 truncate">
+              {e.captain_name}
+              {e.partner_name && <> &amp; {e.partner_name}</>}
+            </span>
+            <span className="text-xs text-gray-500">
+              {e.composite_score != null ? `score ${e.composite_score}` : 'unseeded'}
+              {e.captain_ntrp != null && ` · ${e.captain_ntrp}`}
+              {e.captain_utr != null && ` · UTR ${e.captain_utr}`}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 mt-3 pt-3 border-t border-blue-200">
+        <button
+          onClick={onCancel}
+          className="flex-1 px-3 py-1.5 text-sm border border-gray-300 bg-white rounded hover:bg-gray-50"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="flex-1 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save seed overrides'}
+        </button>
       </div>
     </div>
   );

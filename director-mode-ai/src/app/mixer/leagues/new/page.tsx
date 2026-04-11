@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Trophy, Calendar, DollarSign, Link as LinkIcon, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Trophy, Calendar, DollarSign, Link as LinkIcon, AlertCircle, GitBranch, RotateCw, Compass } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { slugify, CATEGORY_ORDER, CATEGORY_LABELS, isDoubles, type CategoryKey } from '@/lib/leagueUtils';
 
@@ -13,6 +13,38 @@ type CategoryConfig = {
   entry_fee: string; // dollars, string so empty is allowed
 };
 
+function LeagueTypeOption({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+  desc,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ElementType;
+  label: string;
+  desc: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`text-left p-3 rounded-lg border transition-colors ${
+        active
+          ? 'border-orange-500 bg-orange-50 ring-1 ring-orange-500'
+          : 'border-gray-200 hover:border-gray-300 bg-white'
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-1">
+        <Icon size={16} className={active ? 'text-orange-600' : 'text-gray-400'} />
+        <div className="font-semibold text-sm text-gray-900">{label}</div>
+      </div>
+      <div className="text-xs text-gray-500 leading-snug">{desc}</div>
+    </button>
+  );
+}
+
 export default function NewLeaguePage() {
   const router = useRouter();
 
@@ -20,6 +52,7 @@ export default function NewLeaguePage() {
   const [slug, setSlug] = useState('');
   const [slugDirty, setSlugDirty] = useState(false);
   const [description, setDescription] = useState('');
+  const [leagueType, setLeagueType] = useState<'compass' | 'round_robin' | 'single_elimination'>('compass');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [regOpens, setRegOpens] = useState('');
@@ -71,6 +104,7 @@ export default function NewLeaguePage() {
         name: name.trim(),
         slug: effectiveSlug,
         description: description.trim() || null,
+        league_type: leagueType,
         start_date: startDate,
         end_date: endDate,
         registration_opens_at: regOpens || null,
@@ -167,6 +201,37 @@ export default function NewLeaguePage() {
                 placeholder="Compass draw format. Every player plays 4 matches, one every 2 weeks."
               />
             </div>
+          </div>
+        </section>
+
+        {/* League type */}
+        <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+          <h2 className="font-semibold text-lg mb-4 flex items-center gap-2 text-gray-900">
+            <GitBranch size={18} className="text-orange-500" />
+            League type
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <LeagueTypeOption
+              active={leagueType === 'compass'}
+              onClick={() => setLeagueType('compass')}
+              icon={Compass}
+              label="Compass Draw"
+              desc="Everyone plays 4 matches (3 for 8-player), no early eliminations. Flights of 16 or 8."
+            />
+            <LeagueTypeOption
+              active={leagueType === 'round_robin'}
+              onClick={() => setLeagueType('round_robin')}
+              icon={RotateCw}
+              label="Round Robin"
+              desc="Everyone plays everyone in the flight. Max matches. One flight, any size 2+."
+            />
+            <LeagueTypeOption
+              active={leagueType === 'single_elimination'}
+              onClick={() => setLeagueType('single_elimination')}
+              icon={Trophy}
+              label="Single Elimination"
+              desc="Classic knockout — one loss and you're out. Bracket sized to next power of 2."
+            />
           </div>
         </section>
 

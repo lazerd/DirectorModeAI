@@ -18,7 +18,8 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { generateNextRound, totalRounds, roundDeadline, type MatchResult } from '@/lib/compassBracket';
+import { generateNextRound, roundDeadline, type MatchResult } from '@/lib/compassBracket';
+import { generateSingleEliminationNextRound } from '@/lib/singleEliminationBracket';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM_EMAIL || 'CoachMode Leagues <noreply@mail.coachmode.ai>';
@@ -70,10 +71,12 @@ export async function POST(request: Request) {
       // Load league basics (for deadlines + emails)
       const { data: league } = await admin
         .from('leagues')
-        .select('id, name, start_date, status')
+        .select('id, name, start_date, status, league_type')
         .eq('id', lid)
         .maybeSingle();
       if (!league) continue;
+      const leagueType = ((league as any).league_type || 'compass') as
+        'compass' | 'round_robin' | 'single_elimination';
 
       // 2. Auto-confirm any 'reported' matches whose report window has elapsed
       const cutoffIso = new Date(Date.now() - AUTO_CONFIRM_MS).toISOString();
@@ -145,11 +148,21 @@ export async function POST(request: Request) {
             loserId: m.winner_entry_id === m.entry_a_id ? m.entry_b_id! : m.entry_a_id!,
           }));
 
-        const nextRoundMatches = generateNextRound(
-          flight.size as 8 | 16,
-          highestRound,
-          results
-        );
+        let nextRoundMatches: ReturnType<typeof generateNextRound> = [];
+        if (leagueType === 'compass') {
+          nextRoundMatches = generateNextRound(
+            flight.size as 8 | 16,
+            highestRound,
+            results
+          );
+        } else if (leagueType === 'single_elimination') {
+          nextRoundMatches = generateSingleEliminationNextRound(
+            highestRound,
+            flight.num_rounds,
+            results
+          );
+        }
+        // Round robin doesn't progress — all matches are created up front.
         if (nextRoundMatches.length === 0) continue;
 
         const leagueStart = new Date((league as any).start_date);

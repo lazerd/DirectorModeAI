@@ -21,8 +21,12 @@ import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { assignEntriesToFlights, CATEGORY_LABELS, isDoubles, type CategoryKey } from '@/lib/leagueUtils';
+import { assignEntriesToFlights, CATEGORY_LABELS, type CategoryKey } from '@/lib/leagueUtils';
 import { generateRound1, roundDeadline, type CompassEntry } from '@/lib/compassBracket';
+import { generateRoundRobin } from '@/lib/roundRobinBracket';
+import { generateSingleEliminationRound1 } from '@/lib/singleEliminationBracket';
+
+type LeagueType = 'compass' | 'round_robin' | 'single_elimination';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -51,9 +55,14 @@ export async function POST(
 
     const admin = getSupabaseAdmin();
 
+    // Optional category filter so directors can generate draws one category at a time.
+    const body = await request.json().catch(() => ({}));
+    const onlyCategoryKey: CategoryKey | null =
+      typeof body?.categoryKey === 'string' ? (body.categoryKey as CategoryKey) : null;
+
     const { data: league, error: leagueErr } = await admin
       .from('leagues')
-      .select('id, name, slug, director_id, start_date, status')
+      .select('id, name, slug, director_id, start_date, status, league_type')
       .eq('id', leagueId)
       .maybeSingle();
     if (leagueErr || !league) {
@@ -63,11 +72,16 @@ export async function POST(
       return NextResponse.json({ error: 'Not the league director' }, { status: 403 });
     }
 
+    const leagueType = ((league as any).league_type || 'compass') as LeagueType;
+
     // Load categories + paid active entries
-    const { data: categories } = await admin
+    const { data: categoriesRaw } = await admin
       .from('league_categories')
       .select('id, category_key, is_enabled')
       .eq('league_id', leagueId);
+    const categories = onlyCategoryKey
+      ? ((categoriesRaw as any[]) || []).filter(c => c.category_key === onlyCategoryKey)
+      : (categoriesRaw as any[]) || [];
 
     const results: GenerateResult[] = [];
     const playerEmailsToSend: Array<{
@@ -83,7 +97,7 @@ export async function POST(
       deadline: string;
     }> = [];
 
-    for (const cat of (categories as any[]) || []) {
+    for (const cat of categories) {
       if (!cat.is_enabled) continue;
       const categoryKey = cat.category_key as CategoryKey;
       const categoryLabel = CATEGORY_LABELS[categoryKey];
@@ -105,19 +119,48 @@ export async function POST(
         continue;
       }
 
-      // Fetch paid active entries sorted by composite_score desc
+      // Fetch paid active entries. Sort by manual_seed first (nulls last),
+      // then by composite_score desc. Manual overrides always win.
       const { data: paidEntries } = await admin
         .from('league_entries')
-        .select('id, composite_score, captain_name, captain_email, captain_phone, captain_token, partner_name, partner_email, partner_phone, partner_token')
+        .select('id, composite_score, manual_seed, captain_name, captain_email, captain_phone, captain_token, partner_name, partner_email, partner_phone, partner_token')
         .eq('league_id', leagueId)
         .eq('category_id', cat.id)
         .eq('payment_status', 'paid')
-        .eq('entry_status', 'active')
-        .order('composite_score', { ascending: false, nullsFirst: false });
+        .eq('entry_status', 'active');
 
-      const entryList = (paidEntries as any[]) || [];
+      const entryList = ((paidEntries as any[]) || []).sort((a, b) => {
+        // Manual seeds first (nulls last)
+        const am = a.manual_seed;
+        const bm = b.manual_seed;
+        if (am != null && bm != null) return am - bm;
+        if (am != null) return -1;
+        if (bm != null) return 1;
+        // Then composite desc
+        const ac = a.composite_score ?? -Infinity;
+        const bc = b.composite_score ?? -Infinity;
+        return bc - ac;
+      });
       const entryIds = entryList.map(e => e.id);
-      const assignment = assignEntriesToFlights(entryIds);
+
+      // Round robin: one flight holds everyone (min 2, no 16-player cap)
+      const assignment = leagueType === 'round_robin'
+        ? entryIds.length < 2
+          ? { flights: [], waitlistEntryIds: entryIds, cancelled: true }
+          : {
+              flights: [{ name: 'A', size: entryIds.length as 8 | 16, entryIds }],
+              waitlistEntryIds: [] as string[],
+              cancelled: false,
+            }
+        : leagueType === 'single_elimination'
+          ? entryIds.length < 2
+            ? { flights: [], waitlistEntryIds: entryIds, cancelled: true }
+            : {
+                flights: [{ name: 'A', size: entryIds.length as 8 | 16, entryIds }],
+                waitlistEntryIds: [] as string[],
+                cancelled: false,
+              }
+          : assignEntriesToFlights(entryIds);
 
       if (assignment.cancelled) {
         // Mark every entry as waitlisted so the director can manually refund
@@ -141,7 +184,30 @@ export async function POST(
 
       // Create flights + match rows + update entries
       for (const flight of assignment.flights) {
-        const numRounds = flight.size === 16 ? 4 : 3;
+        const seededEntries: CompassEntry[] = flight.entryIds.map((id, idx) => ({
+          id,
+          seed: idx + 1,
+        }));
+
+        // Compute numRounds + R1 matches based on the league type.
+        let numRounds: number;
+        let initialMatches: any[];
+        let allMatchesUpFront = false;
+
+        if (leagueType === 'compass') {
+          numRounds = flight.size === 16 ? 4 : 3;
+          initialMatches = generateRound1(seededEntries, flight.size);
+        } else if (leagueType === 'round_robin') {
+          const rr = generateRoundRobin(seededEntries);
+          numRounds = rr.numRounds;
+          initialMatches = rr.matches;
+          allMatchesUpFront = true;
+        } else {
+          // single_elimination
+          const se = generateSingleEliminationRound1(seededEntries);
+          numRounds = se.numRounds;
+          initialMatches = se.matches;
+        }
 
         const { data: newFlight, error: flightErr } = await admin
           .from('league_flights')
@@ -149,7 +215,7 @@ export async function POST(
             league_id: leagueId,
             category_id: cat.id,
             flight_name: flight.name,
-            size: flight.size,
+            size: flight.entryIds.length,
             num_rounds: numRounds,
             status: 'running',
           })
@@ -168,23 +234,16 @@ export async function POST(
             .eq('id', flight.entryIds[i]);
         }
 
-        // Generate R1 matches
-        const seededEntries: CompassEntry[] = flight.entryIds.map((id, idx) => ({
-          id,
-          seed: idx + 1,
-        }));
-        const r1Matches = generateRound1(seededEntries, flight.size);
         const leagueStart = new Date((league as any).start_date);
-        const deadline = roundDeadline(leagueStart, 1);
 
-        const matchRows = r1Matches.map(m => ({
+        const matchRows = initialMatches.map((m: any) => ({
           flight_id: (newFlight as any).id,
-          round: 1,
+          round: m.round,
           match_index: m.matchIndex,
           bracket_position: m.bracketPosition,
           entry_a_id: m.entryAId,
           entry_b_id: m.entryBId,
-          deadline: deadline.toISOString().split('T')[0],
+          deadline: roundDeadline(leagueStart, m.round).toISOString().split('T')[0],
           status: 'pending',
         }));
         const { error: matchErr } = await admin
@@ -196,9 +255,16 @@ export async function POST(
         }
         matchesCreated += matchRows.length;
 
+        // Only send R1 emails for compass + single elim. Round robin gets
+        // a different "here are all your matches for the league" email
+        // since it's not progression-based.
+        const r1OnlyMatches = allMatchesUpFront
+          ? initialMatches.filter((m: any) => m.round === 1)
+          : initialMatches;
+
         // Queue up emails for every player in this flight
         const entryById = new Map(entryList.map(e => [e.id, e]));
-        for (const m of r1Matches) {
+        for (const m of r1OnlyMatches as any[]) {
           const a = entryById.get(m.entryAId!);
           const b = entryById.get(m.entryBId!);
           if (!a || !b) continue;
@@ -215,7 +281,7 @@ export async function POST(
             categoryLabel,
             leagueName: (league as any).name,
             captainToken: a.captain_token,
-            deadline: deadline.toISOString().split('T')[0],
+            deadline: roundDeadline(leagueStart, (m as any).round || 1).toISOString().split('T')[0],
           });
           // Partner of A
           if (a.partner_email && a.partner_token) {
@@ -228,7 +294,7 @@ export async function POST(
               categoryLabel,
               leagueName: (league as any).name,
               captainToken: a.partner_token,
-              deadline: deadline.toISOString().split('T')[0],
+              deadline: roundDeadline(leagueStart, (m as any).round || 1).toISOString().split('T')[0],
             });
           }
           // Captain of B
@@ -241,7 +307,7 @@ export async function POST(
             categoryLabel,
             leagueName: (league as any).name,
             captainToken: b.captain_token,
-            deadline: deadline.toISOString().split('T')[0],
+            deadline: roundDeadline(leagueStart, (m as any).round || 1).toISOString().split('T')[0],
           });
           // Partner of B
           if (b.partner_email && b.partner_token) {
@@ -254,7 +320,7 @@ export async function POST(
               categoryLabel,
               leagueName: (league as any).name,
               captainToken: b.partner_token,
-              deadline: deadline.toISOString().split('T')[0],
+              deadline: roundDeadline(leagueStart, (m as any).round || 1).toISOString().split('T')[0],
             });
           }
         }
@@ -277,11 +343,13 @@ export async function POST(
       });
     }
 
-    // Flip league to running
+    // Flip league to running only if it's still open (per-category calls
+    // shouldn't force it if other categories are still filling up).
     await admin
       .from('leagues')
       .update({ status: 'running' })
-      .eq('id', leagueId);
+      .eq('id', leagueId)
+      .eq('status', 'open');
 
     // Fire-and-forget emails (don't block the response)
     const origin = new URL(request.url).origin;
