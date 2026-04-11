@@ -126,6 +126,11 @@ export default function LeagueDetailPage() {
   const [allMatches, setAllMatches] = useState<BracketMatch[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedBracketCategoryId, setExpandedBracketCategoryId] = useState<string | null>(null);
+  const [scoreEntryMatch, setScoreEntryMatch] = useState<BracketMatch | null>(null);
+  const [scoreInput, setScoreInput] = useState('');
+  const [scoreWinnerId, setScoreWinnerId] = useState<string | null>(null);
+  const [savingScore, setSavingScore] = useState(false);
+  const [regeneratingCategoryId, setRegeneratingCategoryId] = useState<string | null>(null);
   const [seedingCategoryId, setSeedingCategoryId] = useState<string | null>(null);
   const [seedOverrides, setSeedOverrides] = useState<Record<string, string>>({});
   const [savingSeeds, setSavingSeeds] = useState(false);
@@ -264,6 +269,81 @@ export default function LeagueDetailPage() {
       setAddEntryError(err.message || 'Network error');
     } finally {
       setSavingEntry(false);
+    }
+  };
+
+  // --- Admin score entry ---
+  const openScoreEntry = (match: BracketMatch) => {
+    setScoreEntryMatch(match);
+    setScoreInput(match.score || '');
+    setScoreWinnerId(match.winner_entry_id || null);
+  };
+
+  const closeScoreEntry = () => {
+    setScoreEntryMatch(null);
+    setScoreInput('');
+    setScoreWinnerId(null);
+  };
+
+  const submitScore = async () => {
+    if (!scoreEntryMatch || !scoreInput.trim() || !scoreWinnerId) return;
+    setSavingScore(true);
+    try {
+      const res = await fetch(`/api/leagues/matches/${scoreEntryMatch.id}/admin-report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ score: scoreInput.trim(), winnerEntryId: scoreWinnerId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`Failed to save score: ${data.error}`);
+        return;
+      }
+      closeScoreEntry();
+      fetchAll();
+    } finally {
+      setSavingScore(false);
+    }
+  };
+
+  // --- Regenerate draws for a category ---
+  const regenerateCategory = async (cat: Category) => {
+    if (!league) return;
+    if (!confirm(
+      `Regenerate draws for ${CATEGORY_LABELS[cat.category_key]}?\n\n` +
+      `This will DELETE all flights, matches, and emails for this category and create new ones. ` +
+      `Any confirmed scores will block the delete — clear them first if needed.`
+    )) return;
+
+    setRegeneratingCategoryId(cat.id);
+    try {
+      // Step 1: delete existing
+      const delRes = await fetch(`/api/leagues/${league.id}/delete-draws`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryKey: cat.category_key }),
+      });
+      const delData = await delRes.json();
+      if (!delRes.ok) {
+        alert(`Delete failed: ${delData.error}`);
+        setRegeneratingCategoryId(null);
+        return;
+      }
+      // Step 2: regenerate
+      const genRes = await fetch(`/api/leagues/${league.id}/generate-draws`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryKey: cat.category_key }),
+      });
+      const genData = await genRes.json();
+      if (!genRes.ok) {
+        alert(`Regenerate failed: ${genData.error}`);
+        setRegeneratingCategoryId(null);
+        return;
+      }
+      await fetchAll();
+    } finally {
+      setRegeneratingCategoryId(null);
     }
   };
 
@@ -642,17 +722,32 @@ export default function LeagueDetailPage() {
                       </>
                     )}
                     {hasFlights && (
-                      <button
-                        onClick={() =>
-                          setExpandedBracketCategoryId(
-                            expandedBracketCategoryId === cat.id ? null : cat.id
-                          )
-                        }
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded"
-                      >
-                        <Trophy size={12} />
-                        {expandedBracketCategoryId === cat.id ? 'Hide bracket' : 'View bracket'}
-                      </button>
+                      <>
+                        <button
+                          onClick={() =>
+                            setExpandedBracketCategoryId(
+                              expandedBracketCategoryId === cat.id ? null : cat.id
+                            )
+                          }
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded"
+                        >
+                          <Trophy size={12} />
+                          {expandedBracketCategoryId === cat.id ? 'Hide bracket' : 'View bracket'}
+                        </button>
+                        <button
+                          onClick={() => regenerateCategory(cat)}
+                          disabled={regeneratingCategoryId === cat.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded disabled:opacity-50"
+                          title="Delete and regenerate draws for this category"
+                        >
+                          {regeneratingCategoryId === cat.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Zap size={12} />
+                          )}
+                          Regenerate
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -840,6 +935,9 @@ export default function LeagueDetailPage() {
                             entries={flightEntries}
                             matches={flightMatches}
                             leagueType={league.league_type || 'compass'}
+                            isAdmin
+                            onMatchClick={openScoreEntry}
+                            highlightedMatchId={scoreEntryMatch?.id || null}
                           />
                         );
                       })}
@@ -850,6 +948,87 @@ export default function LeagueDetailPage() {
           })}
         </div>
       </div>
+
+      {/* Admin score entry modal */}
+      {scoreEntryMatch && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={closeScoreEntry}
+        >
+          <div
+            className="bg-white rounded-xl p-5 max-w-md w-full"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="font-semibold text-lg mb-1 text-gray-900">Enter score</h3>
+            <p className="text-xs text-gray-500 mb-4">
+              Admin-entered scores skip the 24-hour dispute window and lock in immediately.
+            </p>
+            {(() => {
+              const a = entries.find(e => e.id === scoreEntryMatch.entry_a_id);
+              const b = entries.find(e => e.id === scoreEntryMatch.entry_b_id);
+              const aLabel = a ? `${a.captain_name}${a.partner_name ? ' & ' + a.partner_name : ''}` : 'Team A';
+              const bLabel = b ? `${b.captain_name}${b.partner_name ? ' & ' + b.partner_name : ''}` : 'Team B';
+              return (
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Score</label>
+                    <input
+                      type="text"
+                      value={scoreInput}
+                      onChange={e => setScoreInput(e.target.value)}
+                      placeholder="6-3, 4-6, 7-5"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-2">Winner</label>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input
+                          type="radio"
+                          name="adminWinner"
+                          checked={scoreWinnerId === scoreEntryMatch.entry_a_id}
+                          onChange={() => setScoreWinnerId(scoreEntryMatch.entry_a_id)}
+                          disabled={!a}
+                        />
+                        <span className="text-sm text-gray-900 truncate">{aLabel}</span>
+                      </label>
+                      <label className="flex items-center gap-2 p-2 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
+                        <input
+                          type="radio"
+                          name="adminWinner"
+                          checked={scoreWinnerId === scoreEntryMatch.entry_b_id}
+                          onChange={() => setScoreWinnerId(scoreEntryMatch.entry_b_id)}
+                          disabled={!b}
+                        />
+                        <span className="text-sm text-gray-900 truncate">{bLabel}</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={closeScoreEntry}
+                      className="flex-1 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 text-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={submitScore}
+                      disabled={!scoreInput.trim() || !scoreWinnerId || savingScore}
+                      className="flex-1 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 text-sm font-medium"
+                    >
+                      {savingScore ? 'Saving…' : 'Save score'}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

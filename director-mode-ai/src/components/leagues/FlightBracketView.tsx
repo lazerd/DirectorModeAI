@@ -58,29 +58,51 @@ type Props = {
   entries: BracketEntry[];
   matches: BracketMatch[];
   leagueType: 'compass' | 'round_robin' | 'single_elimination';
+  /** When true, admin can click matches to enter/edit scores. */
+  isAdmin?: boolean;
+  /** Called when the admin clicks a match card. Receives the match id. */
+  onMatchClick?: (match: BracketMatch) => void;
+  /** ID of the match currently highlighted (e.g. the one being edited). */
+  highlightedMatchId?: string | null;
 };
 
-export default function FlightBracketView({ flight, entries, matches, leagueType }: Props) {
+export default function FlightBracketView({
+  flight,
+  entries,
+  matches,
+  leagueType,
+  isAdmin,
+  onMatchClick,
+  highlightedMatchId,
+}: Props) {
   const entryById = React.useMemo(() => {
     const m = new Map<string, BracketEntry>();
     for (const e of entries) m.set(e.id, e);
     return m;
   }, [entries]);
 
+  const shared = { isAdmin, onMatchClick, highlightedMatchId };
+
   return (
     <div className="bg-gradient-to-br from-[#001820] via-[#041e2a] to-[#002838] text-white rounded-2xl p-6 sm:p-8 border border-white/10 shadow-xl">
       {leagueType === 'round_robin' && (
-        <RoundRobinView flight={flight} entries={entries} matches={matches} entryById={entryById} />
+        <RoundRobinView flight={flight} entries={entries} matches={matches} entryById={entryById} {...shared} />
       )}
       {leagueType === 'single_elimination' && (
-        <SingleElimView flight={flight} matches={matches} entryById={entryById} />
+        <SingleElimView flight={flight} matches={matches} entryById={entryById} {...shared} />
       )}
       {leagueType === 'compass' && (
-        <CompassView flight={flight} entries={entries} matches={matches} entryById={entryById} />
+        <CompassView flight={flight} entries={entries} matches={matches} entryById={entryById} {...shared} />
       )}
     </div>
   );
 }
+
+type SharedProps = {
+  isAdmin?: boolean;
+  onMatchClick?: (match: BracketMatch) => void;
+  highlightedMatchId?: string | null;
+};
 
 // ============================================
 // Shared flight header
@@ -147,12 +169,15 @@ function CompassView({
   entries,
   matches,
   entryById,
+  isAdmin,
+  onMatchClick,
+  highlightedMatchId,
 }: {
   flight: BracketFlight;
   entries: BracketEntry[];
   matches: BracketMatch[];
   entryById: Map<string, BracketEntry>;
-}) {
+} & SharedProps) {
   const r1 = matches.filter(m => m.round === 1).sort((a, b) => a.match_index - b.match_index);
   const r2East = matches.filter(m => m.round === 2 && (m.bracket_position || '').startsWith('E')).sort((a, b) => a.match_index - b.match_index);
   const r2West = matches.filter(m => m.round === 2 && (m.bracket_position || '').startsWith('W')).sort((a, b) => a.match_index - b.match_index);
@@ -214,7 +239,15 @@ function CompassView({
             <SectionLabel color="text-blue-300" align="left">← West (Consolation)</SectionLabel>
             <div className="space-y-2">
               {r2West.map(m => (
-                <MatchCard key={m.id} match={m} entryById={entryById} accent="west" />
+                <MatchCard
+                  key={m.id}
+                  match={m}
+                  entryById={entryById}
+                  accent="west"
+                  isAdmin={isAdmin}
+                  onClick={onMatchClick}
+                  isHighlighted={m.id === highlightedMatchId}
+                />
               ))}
             </div>
           </div>
@@ -224,7 +257,15 @@ function CompassView({
             <SectionLabel color="text-white/60" align="center">Round 1</SectionLabel>
             <div className="space-y-2">
               {r1.map(m => (
-                <MatchCard key={m.id} match={m} entryById={entryById} accent="neutral" />
+                <MatchCard
+                  key={m.id}
+                  match={m}
+                  entryById={entryById}
+                  accent="neutral"
+                  isAdmin={isAdmin}
+                  onClick={onMatchClick}
+                  isHighlighted={m.id === highlightedMatchId}
+                />
               ))}
             </div>
           </div>
@@ -234,7 +275,15 @@ function CompassView({
             <SectionLabel color="text-emerald-300" align="right">East (Championship) →</SectionLabel>
             <div className="space-y-2">
               {r2East.map(m => (
-                <MatchCard key={m.id} match={m} entryById={entryById} accent="east" />
+                <MatchCard
+                  key={m.id}
+                  match={m}
+                  entryById={entryById}
+                  accent="east"
+                  isAdmin={isAdmin}
+                  onClick={onMatchClick}
+                  isHighlighted={m.id === highlightedMatchId}
+                />
               ))}
             </div>
           </div>
@@ -283,7 +332,16 @@ function CompassView({
             icon={<Crown size={14} className="text-amber-400" />}
             accent="gold"
           >
-            <SubBracketVisual r3={ne.r3} final={ne.final} third={ne.third} entryById={entryById} accent="championship" />
+            <SubBracketVisual
+            r3={ne.r3}
+            final={ne.final}
+            third={ne.third}
+            entryById={entryById}
+            accent="championship"
+            isAdmin={isAdmin}
+            onMatchClick={onMatchClick}
+            highlightedMatchId={highlightedMatchId}
+          />
           </Section>
 
           {/* Consolation grid */}
@@ -301,6 +359,9 @@ function CompassView({
                 third={se.third}
                 entryById={entryById}
                 accent="amber"
+                isAdmin={isAdmin}
+                onMatchClick={onMatchClick}
+                highlightedMatchId={highlightedMatchId}
               />
               <ConsolationSubBracket
                 label="9th — 12th"
@@ -310,6 +371,9 @@ function CompassView({
                 third={nw.third}
                 entryById={entryById}
                 accent="blue"
+                isAdmin={isAdmin}
+                onMatchClick={onMatchClick}
+                highlightedMatchId={highlightedMatchId}
               />
               <ConsolationSubBracket
                 label="13th — 16th"
@@ -319,6 +383,9 @@ function CompassView({
                 third={sw.third}
                 entryById={entryById}
                 accent="gray"
+                isAdmin={isAdmin}
+                onMatchClick={onMatchClick}
+                highlightedMatchId={highlightedMatchId}
               />
             </div>
           </Section>
@@ -338,13 +405,16 @@ function SubBracketVisual({
   third,
   entryById,
   accent,
+  isAdmin,
+  onMatchClick,
+  highlightedMatchId,
 }: {
   r3: BracketMatch[];
   final?: BracketMatch;
   third?: BracketMatch;
   entryById: Map<string, BracketEntry>;
   accent: 'championship' | 'amber' | 'blue' | 'gray';
-}) {
+} & SharedProps) {
   const accentLabel =
     accent === 'championship'
       ? 'text-amber-400'
@@ -361,7 +431,15 @@ function SubBracketVisual({
         <div className={`text-[10px] uppercase tracking-wider ${accentLabel}`}>Semifinals</div>
         <div className="space-y-6">
           {r3.map(m => (
-            <MatchCard key={m.id} match={m} entryById={entryById} accent={accent} />
+            <MatchCard
+              key={m.id}
+              match={m}
+              entryById={entryById}
+              accent={accent}
+              isAdmin={isAdmin}
+              onClick={onMatchClick}
+              isHighlighted={m.id === highlightedMatchId}
+            />
           ))}
         </div>
       </div>
@@ -380,13 +458,28 @@ function SubBracketVisual({
               {accent === 'championship' && <Crown size={10} />}
               Final — 1st Place
             </div>
-            <MatchCard match={final} entryById={entryById} accent={accent} large />
+            <MatchCard
+              match={final}
+              entryById={entryById}
+              accent={accent}
+              large
+              isAdmin={isAdmin}
+              onClick={onMatchClick}
+              isHighlighted={final.id === highlightedMatchId}
+            />
           </div>
         )}
         {third && (
           <div>
             <div className="text-[10px] uppercase tracking-wider text-white/40">3rd-Place Match</div>
-            <MatchCard match={third} entryById={entryById} accent="gray" />
+            <MatchCard
+              match={third}
+              entryById={entryById}
+              accent="gray"
+              isAdmin={isAdmin}
+              onClick={onMatchClick}
+              isHighlighted={third.id === highlightedMatchId}
+            />
           </div>
         )}
       </div>
@@ -402,6 +495,9 @@ function ConsolationSubBracket({
   third,
   entryById,
   accent,
+  isAdmin,
+  onMatchClick,
+  highlightedMatchId,
 }: {
   label: string;
   description: string;
@@ -410,7 +506,7 @@ function ConsolationSubBracket({
   third?: BracketMatch;
   entryById: Map<string, BracketEntry>;
   accent: 'amber' | 'blue' | 'gray';
-}) {
+} & SharedProps) {
   const accentBg =
     accent === 'amber'
       ? 'from-amber-500/5 border-amber-500/20'
@@ -428,14 +524,45 @@ function ConsolationSubBracket({
         <div>
           <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">Semifinals</div>
           <div className="space-y-2">
-            {r3.map(m => <MatchCard key={m.id} match={m} entryById={entryById} accent={accent} compact />)}
+            {r3.map(m => (
+              <MatchCard
+                key={m.id}
+                match={m}
+                entryById={entryById}
+                accent={accent}
+                compact
+                isAdmin={isAdmin}
+                onClick={onMatchClick}
+                isHighlighted={m.id === highlightedMatchId}
+              />
+            ))}
           </div>
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-wider text-white/40 mb-1">Finals</div>
           <div className="space-y-2">
-            {final && <MatchCard match={final} entryById={entryById} accent={accent} compact />}
-            {third && <MatchCard match={third} entryById={entryById} accent="gray" compact />}
+            {final && (
+              <MatchCard
+                match={final}
+                entryById={entryById}
+                accent={accent}
+                compact
+                isAdmin={isAdmin}
+                onClick={onMatchClick}
+                isHighlighted={final.id === highlightedMatchId}
+              />
+            )}
+            {third && (
+              <MatchCard
+                match={third}
+                entryById={entryById}
+                accent="gray"
+                compact
+                isAdmin={isAdmin}
+                onClick={onMatchClick}
+                isHighlighted={third.id === highlightedMatchId}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -452,12 +579,15 @@ function RoundRobinView({
   entries,
   matches,
   entryById,
+  isAdmin,
+  onMatchClick,
+  highlightedMatchId,
 }: {
   flight: BracketFlight;
   entries: BracketEntry[];
   matches: BracketMatch[];
   entryById: Map<string, BracketEntry>;
-}) {
+} & SharedProps) {
   const rounds = Array.from(new Set(matches.map(m => m.round))).sort((a, b) => a - b);
 
   const stats = new Map<string, { wins: number; losses: number }>();
@@ -494,7 +624,17 @@ function RoundRobinView({
                 <div key={round}>
                   <SectionLabel color="text-white/50" align="left">Round {round}</SectionLabel>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {roundMatches.map(m => <MatchCard key={m.id} match={m} entryById={entryById} accent="neutral" />)}
+                    {roundMatches.map(m => (
+                      <MatchCard
+                        key={m.id}
+                        match={m}
+                        entryById={entryById}
+                        accent="neutral"
+                        isAdmin={isAdmin}
+                        onClick={onMatchClick}
+                        isHighlighted={m.id === highlightedMatchId}
+                      />
+                    ))}
                   </div>
                 </div>
               );
@@ -533,11 +673,14 @@ function SingleElimView({
   flight,
   matches,
   entryById,
+  isAdmin,
+  onMatchClick,
+  highlightedMatchId,
 }: {
   flight: BracketFlight;
   matches: BracketMatch[];
   entryById: Map<string, BracketEntry>;
-}) {
+} & SharedProps) {
   const rounds = Array.from(new Set(matches.map(m => m.round))).sort((a, b) => a - b);
 
   return (
@@ -569,7 +712,17 @@ function SingleElimView({
                   {label}
                 </div>
                 <div className={gapClass}>
-                  {roundMatches.map(m => <MatchCard key={m.id} match={m} entryById={entryById} accent={accent} />)}
+                  {roundMatches.map(m => (
+                    <MatchCard
+                      key={m.id}
+                      match={m}
+                      entryById={entryById}
+                      accent={accent}
+                      isAdmin={isAdmin}
+                      onClick={onMatchClick}
+                      isHighlighted={m.id === highlightedMatchId}
+                    />
+                  ))}
                 </div>
               </div>
             );
@@ -592,12 +745,18 @@ function MatchCard({
   accent = 'neutral',
   compact,
   large,
+  isAdmin,
+  onClick,
+  isHighlighted,
 }: {
   match: BracketMatch;
   entryById: Map<string, BracketEntry>;
   accent?: MatchAccent;
   compact?: boolean;
   large?: boolean;
+  isAdmin?: boolean;
+  onClick?: (match: BracketMatch) => void;
+  isHighlighted?: boolean;
 }) {
   const a = match.entry_a_id ? entryById.get(match.entry_a_id) : null;
   const b = match.entry_b_id ? entryById.get(match.entry_b_id) : null;
@@ -619,14 +778,25 @@ function MatchCard({
     neutral: 'border-white/10',
   }[accent];
 
-  const accentGlow = aWon || bWon
-    ? accent === 'championship'
-      ? 'ring-1 ring-amber-400/40'
-      : 'ring-1 ring-[#D3FB52]/30'
+  const accentGlow = isHighlighted
+    ? 'ring-2 ring-[#D3FB52]'
+    : (aWon || bWon)
+      ? accent === 'championship'
+        ? 'ring-1 ring-amber-400/40'
+        : 'ring-1 ring-[#D3FB52]/30'
+      : '';
+
+  // Only allow clicks when there's a real pair of players and either admin
+  // is authoring a score or the match is pending/reported (not yet locked).
+  const clickable = isAdmin && !!onClick && a && b && (isPending || isReported || isConfirmed || isDisputed);
+  const interactiveClass = clickable
+    ? 'cursor-pointer hover:border-[#D3FB52]/60 hover:bg-white/[0.06] transition-colors'
     : '';
 
   return (
-    <div className={`bg-white/[0.03] backdrop-blur border ${borderColor} ${accentGlow} rounded-xl overflow-hidden ${compact ? 'text-xs' : 'text-sm'}`}>
+    <div
+      onClick={clickable ? () => onClick!(match) : undefined}
+      className={`bg-white/[0.03] backdrop-blur border ${borderColor} ${accentGlow} ${interactiveClass} rounded-xl overflow-hidden ${compact ? 'text-xs' : 'text-sm'}`}>
       {/* Position label strip */}
       {match.bracket_position && !compact && (
         <div className="px-3 py-1 bg-white/[0.02] text-[10px] uppercase tracking-wider text-white/40 font-mono border-b border-white/5">
