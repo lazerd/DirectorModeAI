@@ -126,16 +126,35 @@ export default function LiveBracketRefresher({
       newMatches[m.flight_id] = list;
     }
 
+    // Safety guard: if RLS unexpectedly blocks the anon client from reading
+    // these tables (it shouldn't for running leagues, but if a director
+    // changes the league back to draft mid-play the policy might kick in),
+    // the refetch would return empty arrays and wipe out the known-good
+    // SSR data. Only commit the update if we actually got flights back.
+    // The SSR initial snapshot remains displayed in that case.
+    if (newFlights.length === 0 && initialFlights.length > 0) {
+      return;
+    }
+
     setFlights(newFlights);
     setEntriesByFlightId(newEntries);
     setMatchesByFlightId(newMatches);
     setLastUpdateTs(Date.now());
     setJustUpdated(true);
     setTimeout(() => setJustUpdated(false), 1200);
-  }, [leagueId]);
+  }, [leagueId, initialFlights.length]);
 
   useEffect(() => {
     const supabase = createClient();
+
+    // Fresh fetch on mount, regardless of whether Supabase Realtime is
+    // configured yet. The server-rendered initial snapshot can be stale if
+    // Next.js / Vercel edge cached it, and without this call the client
+    // would keep showing that stale data until a realtime event finally
+    // fired (which never happens if the publication migration hasn't been
+    // applied). Refetching on mount guarantees viewers see current scores
+    // within ~100ms of landing on the page.
+    refetch();
 
     // Debounce bursts of updates so one progressMatchOnConfirm transaction
     // that creates + updates several rows only triggers one refetch.

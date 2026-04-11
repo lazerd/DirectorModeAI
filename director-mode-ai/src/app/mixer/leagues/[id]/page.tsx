@@ -189,18 +189,40 @@ export default function LeagueDetailPage() {
       .catch(() => setQrDataUrl(null));
   }, [league]);
 
-  const togglePayment = async (entry: Entry) => {
-    const next = entry.payment_status === 'paid' ? 'pending' : 'paid';
-    const supabase = createClient();
-    const { error: err } = await supabase
-      .from('league_entries')
-      .update({ payment_status: next })
-      .eq('id', entry.id);
-    if (err) {
-      alert(`Failed: ${err.message}`);
-      return;
+  /**
+   * Flip an entry's payment_status. Optimistically updates the UI, then
+   * calls the director-only API endpoint; rolls back on failure. Allowed
+   * targets: 'paid' | 'pending' | 'waived' | 'refunded'. The 'refund_pending'
+   * state is set automatically by the withdraw flow and is not a valid
+   * manual target — the endpoint rejects it.
+   */
+  const setPaymentStatus = async (
+    entry: Entry,
+    next: 'paid' | 'pending' | 'waived' | 'refunded'
+  ) => {
+    const previous = entry.payment_status;
+    setEntries(prev =>
+      prev.map(e => (e.id === entry.id ? { ...e, payment_status: next } : e))
+    );
+    try {
+      const res = await fetch(`/api/leagues/entries/${entry.id}/payment-status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: next }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(`Failed: ${data.error || `HTTP ${res.status}`}`);
+        setEntries(prev =>
+          prev.map(e => (e.id === entry.id ? { ...e, payment_status: previous } : e))
+        );
+      }
+    } catch (err: any) {
+      alert(`Network error: ${err?.message || 'unknown'}`);
+      setEntries(prev =>
+        prev.map(e => (e.id === entry.id ? { ...e, payment_status: previous } : e))
+      );
     }
-    setEntries(prev => prev.map(e => (e.id === entry.id ? { ...e, payment_status: next } : e)));
   };
 
   const withdrawEntry = async (entry: Entry) => {
@@ -754,7 +776,20 @@ export default function LeagueDetailPage() {
             const doubles = isDoubles(cat.category_key);
             const isAdding = addingToCategory === cat.id;
             const hasFlights = flights.some(f => f.category_id === cat.id);
-            const paidCount = catEntries.filter(e => e.payment_status === 'paid' && e.entry_status === 'active').length;
+
+            // Payment status breakdown per category. We only count active
+            // entries toward paid/pending/waived (withdrawn entries already
+            // have their own tracking via refund_pending / refunded).
+            const activeEntries = catEntries.filter(e => e.entry_status !== 'withdrawn');
+            const paidEntries = activeEntries.filter(e => e.payment_status === 'paid');
+            const pendingEntries = activeEntries.filter(e => e.payment_status === 'pending');
+            const waivedEntries = activeEntries.filter(e => e.payment_status === 'waived');
+            const refundPendingEntries = catEntries.filter(e => e.payment_status === 'refund_pending');
+            const paidCount = paidEntries.length;
+            const fee = cat.entry_fee_cents;
+            const collected = paidCount * fee;
+            const outstanding = pendingEntries.length * fee;
+
             const isGenerating = generatingCategoryId === cat.id;
             const isSeeding = seedingCategoryId === cat.id;
             return (
@@ -764,11 +799,11 @@ export default function LeagueDetailPage() {
                     <h2 className="font-semibold text-base text-gray-900">{CATEGORY_LABELS[cat.category_key]}</h2>
                     <div className="text-xs text-gray-500 flex items-center gap-2">
                       <span>
-                        {formatMoney(cat.entry_fee_cents)}
+                        {formatMoney(fee)}
                         <span className="text-gray-400 ml-1">/ {doubles ? 'team' : 'player'}</span>
                       </span>
                       <span>·</span>
-                      <span>{catEntries.length} {catEntries.length === 1 ? 'entry' : 'entries'} ({paidCount} paid)</span>
+                      <span>{activeEntries.length} active {activeEntries.length === 1 ? 'entry' : 'entries'}</span>
                       {hasFlights && <span className="text-green-600">· draws generated</span>}
                     </div>
                   </div>
@@ -829,6 +864,35 @@ export default function LeagueDetailPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Payment status summary pills — at-a-glance view of how
+                    much has been collected vs how much is still outstanding
+                    per category. Derived from league_categories.entry_fee_cents
+                    and league_entries.payment_status, no new tables. */}
+                {activeEntries.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-3">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-green-100 text-green-800 border border-green-200">
+                      <Check size={11} />
+                      {paidCount} paid · {formatMoney(collected)}
+                    </span>
+                    {pendingEntries.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-yellow-100 text-yellow-800 border border-yellow-200">
+                        {pendingEntries.length} pending · {formatMoney(outstanding)}
+                      </span>
+                    )}
+                    {waivedEntries.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-100 text-blue-800 border border-blue-200">
+                        {waivedEntries.length} waived
+                      </span>
+                    )}
+                    {refundPendingEntries.length > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-red-100 text-red-800 border border-red-200">
+                        <AlertCircle size={11} />
+                        {refundPendingEntries.length} refund {refundPendingEntries.length === 1 ? 'owed' : 'owed'}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {isSeeding && (
                   <SeedingEditor
@@ -984,7 +1048,7 @@ export default function LeagueDetailPage() {
                       <EntryRow
                         key={entry.id}
                         entry={entry}
-                        onTogglePay={() => togglePayment(entry)}
+                        onSetPayment={(status) => setPaymentStatus(entry, status)}
                         onWithdraw={() => withdrawEntry(entry)}
                       />
                     ))}
@@ -1235,20 +1299,34 @@ function PaymentRailRow({ label, value }: { label: string; value: string | null 
   );
 }
 
+type PaymentStatusOption = 'paid' | 'pending' | 'waived' | 'refunded';
+
 function EntryRow({
   entry,
-  onTogglePay,
+  onSetPayment,
   onWithdraw,
 }: {
   entry: Entry;
-  onTogglePay: () => void;
+  onSetPayment: (status: PaymentStatusOption) => void;
   onWithdraw: () => void;
 }) {
-  const isPaid = entry.payment_status === 'paid';
   const isPendingPartner = entry.entry_status === 'pending_confirm';
   const isWithdrawn = entry.entry_status === 'withdrawn';
   const isWaitlisted = entry.entry_status === 'waitlisted';
-  const refundPending = entry.payment_status === 'refund_pending';
+  const status = entry.payment_status;
+  const refundPending = status === 'refund_pending';
+
+  // Color ramp per payment state so the pill reads at a glance.
+  const pillClass =
+    status === 'paid'
+      ? 'bg-green-100 text-green-800 border-green-300'
+      : status === 'waived'
+        ? 'bg-blue-100 text-blue-800 border-blue-300'
+        : status === 'refunded'
+          ? 'bg-gray-100 text-gray-700 border-gray-300'
+          : status === 'refund_pending'
+            ? 'bg-red-100 text-red-800 border-red-300'
+            : 'bg-yellow-100 text-yellow-800 border-yellow-300'; // pending (default)
 
   return (
     <div className={`py-3 flex items-center gap-3 text-sm ${isWithdrawn ? 'opacity-40' : ''}`}>
@@ -1273,28 +1351,31 @@ function EntryRow({
           )}
           {isWaitlisted && <span className="text-gray-400">waitlisted</span>}
           {isWithdrawn && <span className="text-gray-400">withdrawn</span>}
-          {refundPending && <span className="text-red-600">refund pending</span>}
         </div>
       </div>
-      <button
-        onClick={onTogglePay}
-        className={`px-2 py-1 rounded-full text-xs font-medium ${
-          refundPending
-            ? 'bg-red-100 text-red-700'
-            : isPaid
-              ? 'bg-green-100 text-green-700'
-              : 'bg-yellow-100 text-yellow-700'
-        }`}
-        title="Toggle payment status"
+      {/* Native select styled as a pill — mobile gets the OS picker for free,
+          desktop gets a dropdown. Optimistic update happens in onSetPayment. */}
+      <select
+        value={status}
+        onChange={(e) => onSetPayment(e.target.value as PaymentStatusOption)}
+        className={`appearance-none cursor-pointer px-2.5 py-1 pr-6 rounded-full text-xs font-semibold border ${pillClass}`}
+        style={{
+          backgroundImage:
+            'url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2710%27 height=%2710%27 viewBox=%270 0 20 20%27 fill=%27currentColor%27%3E%3Cpath d=%27M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.4a.75.75 0 01-1.08 0l-4.25-4.4a.75.75 0 01.02-1.06z%27/%3E%3C/svg%3E")',
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'right 6px center',
+        }}
+        title="Change payment status"
       >
-        {refundPending ? (
-          <span>refund</span>
-        ) : isPaid ? (
-          <span className="inline-flex items-center gap-1"><Check size={12} /> paid</span>
-        ) : (
-          <span className="inline-flex items-center gap-1"><X size={12} /> pending</span>
-        )}
-      </button>
+        {/* If the current state is refund_pending (set by withdraw, not
+            manually), include it as the shown option so React's controlled
+            value matches. Director closes it out by picking Refunded. */}
+        {refundPending && <option value="refund_pending">⚠ Refund pending</option>}
+        <option value="paid">✓ Paid</option>
+        <option value="pending">○ Pending</option>
+        <option value="waived">◉ Waived</option>
+        <option value="refunded">↩ Refunded</option>
+      </select>
       {!isWithdrawn && (
         <button
           onClick={onWithdraw}
