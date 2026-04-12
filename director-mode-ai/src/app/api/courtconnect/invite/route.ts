@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
+import { safeResendSend } from '@/lib/emailUnsubscribe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -184,7 +185,7 @@ export async function POST(request: NextRequest) {
       `;
 
       try {
-        await resend.emails.send({
+        await safeResendSend(resend, {
           from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
           to: player.email,
           replyTo: creator?.email,

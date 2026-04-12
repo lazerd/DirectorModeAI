@@ -6,6 +6,7 @@ import {
   getAllRunningLeagueIds,
   sendMatchReminders,
 } from '@/lib/leagueProgression';
+import { safeResendSend } from '@/lib/emailUnsubscribe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -111,43 +112,41 @@ export async function GET(request: NextRequest) {
       );
 
       // Send reminder to client
-      try {
-        await resend.emails.send({
-          from: process.env.RESEND_FROM_EMAIL || 'CoachMode Lessons <noreply@coachmode.ai>',
-          to: client.email,
-          subject: `Reminder: Lesson with ${coachName} tomorrow`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-              <h2 style="color: #2563eb;">⏰ Lesson Reminder</h2>
-              <p>Hi ${clientName},</p>
-              <p>This is a friendly reminder that you have a lesson scheduled for <strong>tomorrow</strong>:</p>
-              <div style="background: #eff6ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #2563eb;">
-                <p style="margin: 0;"><strong>Coach:</strong> ${coachName}</p>
-                <p style="margin: 8px 0 0 0;"><strong>Date:</strong> ${formatDate(startTime)}</p>
-                <p style="margin: 8px 0 0 0;"><strong>Time:</strong> ${formatTime(startTime)} - ${formatTime(endTime)}</p>
-                ${slot.location ? `<p style="margin: 8px 0 0 0;"><strong>Location:</strong> ${slot.location}</p>` : ''}
-              </div>
-              <p style="margin-top: 24px;"><strong>Add to your calendar:</strong></p>
-              <div style="margin: 16px 0;">
-                <a href="${calendarLinks.googleUrl}" style="display: inline-block; background: #4285f4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-right: 10px;">📅 Google Calendar</a>
-                <a href="${calendarLinks.outlookUrl}" style="display: inline-block; background: #0078d4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none;">📅 Outlook</a>
-              </div>
-              <p style="color: #666; font-size: 14px; margin-top: 24px;">
-                Need to cancel? <a href="https://club.coachmode.ai/client/dashboard" style="color: #2563eb;">Manage your lessons</a>
-              </p>
+      const sendResult = await safeResendSend(resend, {
+        from: process.env.RESEND_FROM_EMAIL || 'CoachMode Lessons <noreply@coachmode.ai>',
+        to: client.email,
+        subject: `Reminder: Lesson with ${coachName} tomorrow`,
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #2563eb;">⏰ Lesson Reminder</h2>
+            <p>Hi ${clientName},</p>
+            <p>This is a friendly reminder that you have a lesson scheduled for <strong>tomorrow</strong>:</p>
+            <div style="background: #eff6ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #2563eb;">
+              <p style="margin: 0;"><strong>Coach:</strong> ${coachName}</p>
+              <p style="margin: 8px 0 0 0;"><strong>Date:</strong> ${formatDate(startTime)}</p>
+              <p style="margin: 8px 0 0 0;"><strong>Time:</strong> ${formatTime(startTime)} - ${formatTime(endTime)}</p>
+              ${slot.location ? `<p style="margin: 8px 0 0 0;"><strong>Location:</strong> ${slot.location}</p>` : ''}
             </div>
-          `
-        });
+            <p style="margin-top: 24px;"><strong>Add to your calendar:</strong></p>
+            <div style="margin: 16px 0;">
+              <a href="${calendarLinks.googleUrl}" style="display: inline-block; background: #4285f4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-right: 10px;">📅 Google Calendar</a>
+              <a href="${calendarLinks.outlookUrl}" style="display: inline-block; background: #0078d4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none;">📅 Outlook</a>
+            </div>
+            <p style="color: #666; font-size: 14px; margin-top: 24px;">
+              Need to cancel? <a href="https://club.coachmode.ai/client/dashboard" style="color: #2563eb;">Manage your lessons</a>
+            </p>
+          </div>
+        `,
+      });
 
-        // Mark as reminded
+      if (sendResult.sent) {
+        // Mark as reminded only if the email actually went out (skips
+        // unsubscribed clients so they don't get flagged as reminded).
         await supabase
           .from('lesson_slots')
           .update({ reminder_sent: true })
           .eq('id', slot.id);
-
         sentCount++;
-      } catch (emailError) {
-        console.error('Failed to send reminder for slot:', slot.id, emailError);
       }
     }
 

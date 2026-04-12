@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
+import { safeResendSend } from '@/lib/emailUnsubscribe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -11,7 +12,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    await resend.emails.send({
+    await safeResendSend(resend, {
       from: process.env.RESEND_FROM_EMAIL || 'CoachMode Lessons <noreply@coachmode.ai>',
       to: coachEmail,
       subject: `New Client Request: ${clientName} wants to book lessons`,

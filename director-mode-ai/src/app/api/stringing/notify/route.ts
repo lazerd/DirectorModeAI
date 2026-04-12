@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { safeResendSend } from '@/lib/emailUnsubscribe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -11,9 +12,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email address required' }, { status: 400 });
     }
 
-    const { data, error } = await resend.emails.send({
+    const result = await safeResendSend(resend, {
       from: process.env.RESEND_FROM_EMAIL || 'CoachMode Stringing <noreply@coachmode.ai>',
-      to: [to],
+      to,
       subject: '🎾 Your Racket is Ready for Pickup!',
       html: `
         <!DOCTYPE html>
@@ -69,12 +70,17 @@ export async function POST(request: NextRequest) {
       `,
     });
 
-    if (error) {
-      console.error('Resend error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!result.sent) {
+      if (result.reason === 'unsubscribed') {
+        return NextResponse.json(
+          { success: false, skipped: true, reason: 'Customer has unsubscribed from email notifications' },
+          { status: 200 }
+        );
+      }
+      return NextResponse.json({ error: result.error || 'Failed to send' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, id: data?.id });
+    return NextResponse.json({ success: true, id: result.messageId });
   } catch (err: any) {
     console.error('Email error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });

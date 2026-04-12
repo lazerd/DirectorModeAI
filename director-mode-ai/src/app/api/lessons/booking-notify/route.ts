@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
+import { safeResendSend } from '@/lib/emailUnsubscribe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
 
     // Email to coach
     const coachCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${clientName}`, slotDate, slotTime, location);
-    await resend.emails.send({
+    await safeResendSend(resend, {
       from: process.env.RESEND_FROM_EMAIL || 'CoachMode Lessons <noreply@coachmode.ai>',
       to: coachEmail,
       subject: `New Booking: ${clientName} booked a lesson`,
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
     // Email to client (if email provided)
     if (clientEmail) {
       const clientCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${coachName || 'Coach'}`, slotDate, slotTime, location);
-      await resend.emails.send({
+      await safeResendSend(resend, {
         from: process.env.RESEND_FROM_EMAIL || 'CoachMode Lessons <noreply@coachmode.ai>',
         to: clientEmail,
         subject: `Booking Confirmed: Lesson with ${coachName || 'your coach'}`,

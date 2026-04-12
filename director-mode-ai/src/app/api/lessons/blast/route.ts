@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
+import { safeResendSend } from '@/lib/emailUnsubscribe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -98,9 +99,10 @@ export async function POST(request: NextRequest) {
       </div>
     `;
 
-    // Send to all clients
+    // Send to all clients — safeResendSend skips unsubscribed addresses
+    // and appends the one-click unsubscribe footer.
     const emailPromises = clientEmails.map((email: string) =>
-      resend.emails.send({
+      safeResendSend(resend, {
         from: process.env.RESEND_FROM_EMAIL || 'CoachMode Lessons <noreply@coachmode.ai>',
         to: email,
         replyTo: coachEmail,
@@ -109,9 +111,9 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    const results = await Promise.allSettled(emailPromises);
-    const successCount = results.filter(r => r.status === 'fulfilled').length;
-    const failCount = results.filter(r => r.status === 'rejected').length;
+    const results = await Promise.all(emailPromises);
+    const successCount = results.filter(r => r.sent).length;
+    const failCount = results.filter(r => !r.sent && r.reason === 'error').length;
 
     // Mark slots as notified
     await supabase

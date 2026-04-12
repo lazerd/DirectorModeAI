@@ -22,6 +22,7 @@ import { Resend } from 'resend';
 import { getSupabaseAdmin } from './supabase/admin';
 import { roundDeadline } from './compassBracket';
 import { CATEGORY_LABELS, type CategoryKey } from './leagueUtils';
+import { safeResendSend } from './emailUnsubscribe';
 
 export type LeagueType = 'compass' | 'round_robin' | 'single_elimination';
 
@@ -672,35 +673,31 @@ export async function sendMatchReminders(
       ) => {
         if (!email || !token) return;
         const reportUrl = `${requestOrigin}/leagues/match/${token}`;
-        try {
-          await resend.emails.send({
-            from: FROM,
-            to: email,
-            subject: `Reminder: your R${m.round} match vs ${opponent} — deadline ${m.deadline}`,
-            html: `
-              <div style="font-family: -apple-system, sans-serif; max-width: 600px; padding: 20px;">
-                <h2 style="color: #ea580c;">Match reminder</h2>
-                <p>Hi ${name}, just a heads-up — your Round ${m.round} match still hasn't been reported.</p>
-                <div style="background: #fff7ed; border-left: 4px solid #ea580c; padding: 14px 18px; border-radius: 6px; margin: 16px 0;">
-                  <div style="font-weight: 600;">vs ${opponent}</div>
-                  <div style="color: #6b7280; font-size: 14px; margin-top: 8px;">Deadline: <strong>${m.deadline}</strong></div>
-                </div>
-                <p style="margin: 24px 0 12px;">
-                  <a href="${reportUrl}" style="display: inline-block; background: #ea580c; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Report score</a>
-                </p>
-                <p style="margin: 0 0 24px;">
-                  <a href="${publicBracketUrl}" style="display: inline-block; background: transparent; color: #ea580c; border: 1.5px solid #ea580c; padding: 10px 22px; border-radius: 8px; text-decoration: none; font-weight: 500;">View live bracket</a>
-                </p>
-                <p style="color: #6b7280; font-size: 12px; margin: 0;">
-                  ${leagueName} · The bracket page is public — share it with anyone.
-                </p>
+        const result = await safeResendSend(resend, {
+          from: FROM,
+          to: email,
+          subject: `Reminder: your R${m.round} match vs ${opponent} — deadline ${m.deadline}`,
+          html: `
+            <div style="font-family: -apple-system, sans-serif; max-width: 600px; padding: 20px;">
+              <h2 style="color: #ea580c;">Match reminder</h2>
+              <p>Hi ${name}, just a heads-up — your Round ${m.round} match still hasn't been reported.</p>
+              <div style="background: #fff7ed; border-left: 4px solid #ea580c; padding: 14px 18px; border-radius: 6px; margin: 16px 0;">
+                <div style="font-weight: 600;">vs ${opponent}</div>
+                <div style="color: #6b7280; font-size: 14px; margin-top: 8px;">Deadline: <strong>${m.deadline}</strong></div>
               </div>
-            `,
-          });
-          summary.remindersSent += 1;
-        } catch (e) {
-          console.error('reminder failed:', e);
-        }
+              <p style="margin: 24px 0 12px;">
+                <a href="${reportUrl}" style="display: inline-block; background: #ea580c; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 500;">Report score</a>
+              </p>
+              <p style="margin: 0 0 24px;">
+                <a href="${publicBracketUrl}" style="display: inline-block; background: transparent; color: #ea580c; border: 1.5px solid #ea580c; padding: 10px 22px; border-radius: 8px; text-decoration: none; font-weight: 500;">View live bracket</a>
+              </p>
+              <p style="color: #6b7280; font-size: 12px; margin: 0;">
+                ${leagueName} · The bracket page is public — share it with anyone.
+              </p>
+            </div>
+          `,
+        });
+        if (result.sent) summary.remindersSent += 1;
       };
 
       await sendOne(a.captain_email, a.captain_token, a.captain_name, opponentOfA);
@@ -969,17 +966,13 @@ export async function sendRoundMatchEmails(
       reportUrl,
       publicBracketUrl,
     });
-    try {
-      await resend.emails.send({
-        from: FROM,
-        to: email,
-        subject: `Round ${m.round}: ${leagueName} — deadline ${deadline}`,
-        html,
-      });
-      sent += 1;
-    } catch (e) {
-      console.error('Round email send failed:', e);
-    }
+    const result = await safeResendSend(resend, {
+      from: FROM,
+      to: email,
+      subject: `Round ${m.round}: ${leagueName} — deadline ${deadline}`,
+      html,
+    });
+    if (result.sent) sent += 1;
   };
 
   // Team A players → opponent contact is Team B's captain (singles) or the

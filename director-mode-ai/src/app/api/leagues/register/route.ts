@@ -13,6 +13,7 @@
 
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
+import { safeResendSend } from '@/lib/emailUnsubscribe';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { computeCompositeRating, computeDoublesComposite } from '@/lib/leagueRatings';
 import { generateToken, isDoubles, CATEGORY_LABELS, type CategoryKey } from '@/lib/leagueUtils';
@@ -238,7 +239,7 @@ export async function POST(request: Request) {
       const leagueName = (league as any).name;
 
       try {
-        await resend.emails.send({
+        await safeResendSend(resend, {
           from: process.env.RESEND_FROM_EMAIL || 'CoachMode Leagues <noreply@mail.coachmode.ai>',
           to: partnerEmail,
           subject: `${captainName} signed you up as their doubles partner — ${leagueName}`,

@@ -17,6 +17,7 @@
 import { NextResponse } from 'next/server';
 import { Resend } from 'resend';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { safeResendSend } from '@/lib/emailUnsubscribe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM_EMAIL || 'CoachMode Leagues <noreply@mail.coachmode.ai>';
@@ -182,21 +183,19 @@ export async function POST(request: Request) {
           .eq('id', (league as any).director_id)
           .maybeSingle();
         if (director && (director as any).email) {
-          try {
-            await resend.emails.send({
-              from: FROM,
-              to: (director as any).email,
-              subject: `[${(league as any).name}] Score dispute — ${m.bracket_position}`,
-              html: `
-                <div style="font-family: -apple-system, sans-serif; max-width: 600px;">
-                  <h2 style="color: #dc2626;">A score is being disputed</h2>
-                  <p>A player in ${m.bracket_position} (${(league as any).name}) has clicked dispute on a reported score.</p>
-                  <p>Reported score: <strong>${m.score || 'unknown'}</strong></p>
-                  <p>Log into your league dashboard to resolve.</p>
-                </div>
-              `,
-            });
-          } catch {}
+          await safeResendSend(resend, {
+            from: FROM,
+            to: (director as any).email,
+            subject: `[${(league as any).name}] Score dispute — ${m.bracket_position}`,
+            html: `
+              <div style="font-family: -apple-system, sans-serif; max-width: 600px;">
+                <h2 style="color: #dc2626;">A score is being disputed</h2>
+                <p>A player in ${m.bracket_position} (${(league as any).name}) has clicked dispute on a reported score.</p>
+                <p>Reported score: <strong>${m.score || 'unknown'}</strong></p>
+                <p>Log into your league dashboard to resolve.</p>
+              </div>
+            `,
+          });
         }
       }
 
@@ -261,12 +260,11 @@ export async function POST(request: Request) {
     const sendOne = async (email: string | null, tokenOut: string | null, name: string) => {
       if (!email || !tokenOut) return;
       const disputeUrl = `${origin}/leagues/match/${tokenOut}`;
-      try {
-        await resend.emails.send({
-          from: FROM,
-          to: email,
-          subject: `Score reported: ${scoreText} — ${(league as any)?.name || 'League'}`,
-          html: `
+      await safeResendSend(resend, {
+        from: FROM,
+        to: email,
+        subject: `Score reported: ${scoreText} — ${(league as any)?.name || 'League'}`,
+        html: `
             <div style="font-family: -apple-system, sans-serif; max-width: 600px; padding: 20px;">
               <h2 style="color: #ea580c; margin-top: 0;">A score was reported</h2>
               <p>Hi ${name},</p>
@@ -289,8 +287,7 @@ export async function POST(request: Request) {
               ` : ''}
             </div>
           `,
-        });
-      } catch (e) { console.error('email failed:', e); }
+      });
     };
 
     for (const ent of (entries as any[]) || []) {

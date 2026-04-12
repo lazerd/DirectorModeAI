@@ -26,6 +26,7 @@ import { generateRound1, roundDeadline, type CompassEntry } from '@/lib/compassB
 import { generateRoundRobin } from '@/lib/roundRobinBracket';
 import { generateSingleEliminationRound1 } from '@/lib/singleEliminationBracket';
 import { buildRoundMatchEmailHtml } from '@/lib/leagueProgression';
+import { safeResendSend } from '@/lib/emailUnsubscribe';
 
 type LeagueType = 'compass' | 'round_robin' | 'single_elimination';
 
@@ -388,28 +389,24 @@ export async function POST(
     (async () => {
       for (const msg of playerEmailsToSend) {
         const reportUrl = `${origin}/leagues/match/${msg.token}`;
-        try {
-          await resend.emails.send({
-            from: fromAddress,
-            to: msg.email,
-            subject: `Round ${msg.roundNumber}: ${msg.leagueName} — deadline ${msg.deadline}`,
-            html: buildRoundMatchEmailHtml({
-              roundNumber: msg.roundNumber,
-              playerName: msg.name,
-              opponentName: msg.opponentName,
-              opponentEmail: msg.opponentEmail,
-              opponentPhone: msg.opponentPhone,
-              leagueName: msg.leagueName,
-              categoryLabel: msg.categoryLabel,
-              bracketPosition: msg.bracketPosition,
-              deadline: msg.deadline,
-              reportUrl,
-              publicBracketUrl,
-            }),
-          });
-        } catch (e) {
-          console.error(`Email send failed for ${msg.email}:`, e);
-        }
+        await safeResendSend(resend, {
+          from: fromAddress,
+          to: msg.email,
+          subject: `Round ${msg.roundNumber}: ${msg.leagueName} — deadline ${msg.deadline}`,
+          html: buildRoundMatchEmailHtml({
+            roundNumber: msg.roundNumber,
+            playerName: msg.name,
+            opponentName: msg.opponentName,
+            opponentEmail: msg.opponentEmail,
+            opponentPhone: msg.opponentPhone,
+            leagueName: msg.leagueName,
+            categoryLabel: msg.categoryLabel,
+            bracketPosition: msg.bracketPosition,
+            deadline: msg.deadline,
+            reportUrl,
+            publicBracketUrl,
+          }),
+        });
       }
     })();
 
