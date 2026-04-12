@@ -181,7 +181,16 @@ export default function LiveBracketRefresher({
           table: 'league_matches',
           filter: `flight_id=eq.${flightId}`,
         },
-        scheduleRefetch
+        (payload: any) => {
+          // TEMP debug: logs to the browser console so we can see if events
+          // actually arrive. Remove once we've confirmed realtime works.
+          console.log('[LiveBracket] league_matches change received', {
+            event: payload?.eventType,
+            matchId: payload?.new?.id || payload?.old?.id,
+            status: payload?.new?.status,
+          });
+          scheduleRefetch();
+        }
       );
     }
     channel = channel.on(
@@ -192,9 +201,29 @@ export default function LiveBracketRefresher({
         table: 'league_flights',
         filter: `league_id=eq.${leagueId}`,
       },
-      scheduleRefetch
+      (payload: any) => {
+        console.log('[LiveBracket] league_flights change received', {
+          event: payload?.eventType,
+          flightId: payload?.new?.id || payload?.old?.id,
+        });
+        scheduleRefetch();
+      }
     );
-    channel.subscribe();
+    // Pass a status callback so we know whether the channel actually came
+    // online. Common outcomes:
+    //   SUBSCRIBED    — ready to receive events. If events still never come
+    //                   when rows change, it's RLS on league_matches.
+    //   CHANNEL_ERROR — connection or config problem (bad filter, table
+    //                   not in publication, auth misconfig)
+    //   TIMED_OUT     — couldn't reach Realtime at all
+    //   CLOSED        — subscription was closed (normal on unmount)
+    channel.subscribe((status, err) => {
+      console.log('[LiveBracket] channel status:', status, {
+        leagueId,
+        flightCount: initialFlightIds.length,
+        err: err?.message,
+      });
+    });
 
     return () => {
       if (timer) clearTimeout(timer);
