@@ -207,7 +207,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-white">
+      <DialogContent className="max-w-md bg-white text-gray-900">
         <DialogHeader>
           <DialogTitle className="text-2xl">Court {match.court_number}</DialogTitle>
           <DialogDescription className="text-base">
