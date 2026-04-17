@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Plus, Check, RotateCcw, ChevronLeft, ChevronRight, Shuffle, Edit } from "lucide-react";
+import { Play, Plus, Check, RotateCcw, ChevronLeft, ChevronRight, Shuffle, Edit, Users } from "lucide-react";
 import RoundTimer from "@/components/mixer/event/RoundTimer";
 import MatchScoreDialog from "@/components/mixer/event/MatchScoreDialog";
 import TournamentMatchScoreDialog from "@/components/mixer/event/TournamentMatchScoreDialog";
 import RoundGenerationDialog from "@/components/mixer/event/RoundGenerationDialog";
 import ManualMatchEditor from "@/components/mixer/event/ManualMatchEditor";
-import { RoundGenerator } from "@/lib/advancedMatchGeneration";
+import ManagePlayersDialog from "@/components/mixer/event/ManagePlayersDialog";
+import { RoundGenerator, type GenerationMode } from "@/lib/advancedMatchGeneration";
 
 interface Event {
   id: string;
@@ -66,6 +67,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
   const [showMultiRoundDialog, setShowMultiRoundDialog] = useState(false);
   const [showScoreDialog, setShowScoreDialog] = useState(false);
   const [showManualEditor, setShowManualEditor] = useState(false);
+  const [showManagePlayers, setShowManagePlayers] = useState(false);
 
   const isTeamBattle = event.match_format === 'team-battle';
 
@@ -206,6 +208,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
         players(name, gender)
       `)
       .eq("event_id", event.id)
+      .eq("active", true)
       .order("strength_order");
 
     const minPlayers = matchFormat === 'singles' || matchFormat === 'team-battle' ? 2 : 4;
@@ -228,6 +231,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       games_won: ep.games_won,
       games_lost: ep.games_lost,
       team_id: ep.team_id,
+      strength_order: ep.strength_order,
     }));
 
     // For team battle, get team IDs
@@ -278,12 +282,23 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
         .from("matches")
         .select("player1_id, player2_id, player3_id, player4_id")
         .in("round_id", existingRoundIds);
-      
+
       historicalMatches = data || [];
     }
 
+    // Pick generation mode:
+    //   - Multiple rounds at once  → multi-random (completely random, hard-avoid repeat partners/opponents)
+    //   - First ever round (1 at a time) → single-r1-balanced (snake by strength_order)
+    //   - Single new round after existing rounds → single-rN-tiered (courts stack by live standings)
+    const mode: GenerationMode = numRounds > 1
+      ? 'multi-random'
+      : existingRoundIds.length === 0
+        ? 'single-r1-balanced'
+        : 'single-rN-tiered';
+
     const generator = new RoundGenerator(playerData, event.num_courts, matchFormat);
     generator.setRandomize(randomize);
+    generator.setMode(mode);
 
     // Set team battle config if applicable
     if (teamBattleConfig) {
@@ -398,9 +413,11 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
         losses,
         games_won,
         games_lost,
+        strength_order,
         players(name, gender)
       `)
       .eq("event_id", event.id)
+      .eq("active", true)
       .order("strength_order");
 
     const minPlayers = matchFormat === 'singles' || matchFormat === 'team-battle' ? 2 : 4;
@@ -423,6 +440,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
       games_won: ep.games_won,
       games_lost: ep.games_lost,
       team_id: ep.team_id,
+      strength_order: ep.strength_order,
     }));
 
     // For team battle, get team IDs
@@ -466,28 +484,33 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
     const currentRoundNumber = currentRoundData?.round_number || 1;
 
-    const { data: allRounds } = await supabase
+    // Seed history from ALL other rounds (not this one — we're regenerating it)
+    const { data: otherRounds } = await supabase
       .from("rounds")
       .select("id")
       .eq("event_id", event.id)
-      .lte("round_number", currentRoundNumber);
+      .neq("id", roundId);
 
-    const allRoundIds = allRounds?.map(r => r.id) || [];
+    const otherRoundIds = otherRounds?.map(r => r.id) || [];
 
     let historicalMatches: any[] = [];
-    if (allRoundIds.length > 0) {
+    if (otherRoundIds.length > 0) {
       const { data } = await supabase
         .from("matches")
         .select("player1_id, player2_id, player3_id, player4_id")
-        .in("round_id", allRoundIds);
-      
+        .in("round_id", otherRoundIds);
+
       historicalMatches = data || [];
     }
 
     await supabase.from("matches").delete().eq("round_id", roundId);
 
+    // Round 1 regen → balanced by strength_order. Round 2+ → tiered by standings.
+    const mode: GenerationMode = currentRoundNumber === 1 ? 'single-r1-balanced' : 'single-rN-tiered';
+
     const generator = new RoundGenerator(playerData, event.num_courts, matchFormat);
     generator.setRandomize(true);
+    generator.setMode(mode);
 
     if (teamBattleConfig) {
       generator.setTeamBattleConfig(teamBattleConfig);
@@ -651,8 +674,16 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Rounds</CardTitle>
-          <CardDescription>Generate and manage rounds</CardDescription>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle>Rounds</CardTitle>
+              <CardDescription>Generate and manage rounds</CardDescription>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setShowManagePlayers(true)}>
+              <Users className="h-4 w-4 mr-1" />
+              Manage Players
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {rounds.length === 0 ? (
@@ -752,7 +783,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                         </Button>
                         <Button onClick={startRound} size="lg">
                           <Play className="h-5 w-5 mr-2" />
-                          Start Round
+                          {event.scoring_format === "timed" ? "Start Round & Timer" : "Start Round"}
                         </Button>
                       </>
                     )}
@@ -917,6 +948,15 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
           if (currentRound) {
             fetchMatches(currentRound.id);
           }
+        }}
+      />
+
+      <ManagePlayersDialog
+        eventId={event.id}
+        open={showManagePlayers}
+        onOpenChange={setShowManagePlayers}
+        onPlayersChanged={() => {
+          if (currentRound) fetchMatches(currentRound.id);
         }}
       />
     </div>

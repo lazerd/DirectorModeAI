@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, Calendar, Clock, Trophy, TrendingUp, TrendingDown, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
+import PublicRoundTimer from "@/components/mixer/event/PublicRoundTimer";
 
 interface Event {
   id: string;
@@ -18,6 +19,7 @@ interface Event {
   start_time: string | null;
   scoring_format: string;
   num_courts: number;
+  round_length_minutes: number | null;
 }
 
 interface Standing {
@@ -35,10 +37,10 @@ interface Match {
   team1_score: number | null;
   team2_score: number | null;
   winner_team: number | null;
-  player1_name: string;
-  player2_name: string;
-  player3_name: string;
-  player4_name: string;
+  player1_name: string | null;
+  player2_name: string | null;
+  player3_name: string | null;
+  player4_name: string | null;
 }
 
 interface Round {
@@ -67,6 +69,9 @@ export default function PublicEvent() {
         fetchStandings();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, () => {
+        fetchRounds();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rounds' }, () => {
         fetchRounds();
       })
       .subscribe();
@@ -186,10 +191,10 @@ export default function PublicEvent() {
           team1_score: match.team1_score,
           team2_score: match.team2_score,
           winner_team: match.winner_team,
-          player1_name: match.player1?.name || "TBD",
-          player2_name: match.player2?.name || "TBD",
-          player3_name: match.player3?.name || "TBD",
-          player4_name: match.player4?.name || "TBD",
+          player1_name: match.player1?.name || null,
+          player2_name: match.player2?.name || null,
+          player3_name: match.player3?.name || null,
+          player4_name: match.player4?.name || null,
         })),
       }));
 
@@ -261,7 +266,7 @@ export default function PublicEvent() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="standings" className="w-full">
+        <Tabs defaultValue="rounds" className="w-full">
           <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 h-12">
             <TabsTrigger value="standings" className="text-sm sm:text-base">Standings</TabsTrigger>
             <TabsTrigger value="rounds" className="text-sm sm:text-base">Courts & Matches</TabsTrigger>
@@ -329,6 +334,26 @@ export default function PublicEvent() {
           </TabsContent>
 
           <TabsContent value="rounds" className="mt-6 space-y-6">
+            {(() => {
+              const activeTimedRound = rounds.find(
+                (r) => r.status === "in_progress" && r.start_time
+              );
+              if (
+                activeTimedRound &&
+                activeTimedRound.start_time &&
+                event?.scoring_format === "timed" &&
+                event?.round_length_minutes
+              ) {
+                return (
+                  <PublicRoundTimer
+                    startTime={activeTimedRound.start_time}
+                    durationMinutes={event.round_length_minutes}
+                    roundNumber={activeTimedRound.round_number}
+                  />
+                );
+              }
+              return null;
+            })()}
             {rounds.length === 0 ? (
               <Card>
                 <CardContent className="py-8">
@@ -350,30 +375,58 @@ export default function PublicEvent() {
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-4">
-                      {round.matches.map((match) => (
-                        <div key={match.id} className="border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <Badge variant="outline">Court {match.court_number}</Badge>
-                            {match.team1_score !== null && match.team2_score !== null && (
-                              <div className="text-lg font-bold">
-                                {match.team1_score} - {match.team2_score}
+                      {round.matches.map((match) => {
+                        const isBye = !match.player2_name;
+                        const isSingles = !isBye && !match.player3_name && !match.player4_name;
+
+                        if (isBye) {
+                          return (
+                            <div key={match.id} className="border rounded-lg p-4 flex items-center justify-between">
+                              <Badge variant="outline">BYE</Badge>
+                              <p className="text-sm font-medium">{match.player1_name}</p>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div key={match.id} className="border rounded-lg p-4">
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline">Court {match.court_number}</Badge>
+                                {isSingles && <Badge variant="secondary">Singles</Badge>}
+                              </div>
+                              {match.team1_score !== null && match.team2_score !== null && (
+                                <div className="text-lg font-bold">
+                                  {match.team1_score} - {match.team2_score}
+                                </div>
+                              )}
+                            </div>
+                            {isSingles ? (
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p>{match.player1_name}</p>
+                                </div>
+                                <div>
+                                  <p>{match.player2_name}</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p className="font-medium mb-1">Team 1</p>
+                                  <p>{match.player1_name}</p>
+                                  <p>{match.player3_name}</p>
+                                </div>
+                                <div>
+                                  <p className="font-medium mb-1">Team 2</p>
+                                  <p>{match.player2_name}</p>
+                                  <p>{match.player4_name}</p>
+                                </div>
                               </div>
                             )}
                           </div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <p className="font-medium mb-1">Team 1</p>
-                              <p>{match.player1_name}</p>
-                              <p>{match.player2_name}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium mb-1">Team 2</p>
-                              <p>{match.player3_name}</p>
-                              <p>{match.player4_name}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
