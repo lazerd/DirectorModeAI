@@ -48,6 +48,7 @@ interface Round {
   round_number: number;
   status: string;
   start_time: string | null;
+  timer_paused_at: string | null;
   matches: Match[];
 }
 
@@ -164,6 +165,7 @@ export default function PublicEvent() {
         round_number,
         status,
         start_time,
+        timer_paused_at,
         matches (
           id,
           court_number,
@@ -185,6 +187,7 @@ export default function PublicEvent() {
         round_number: round.round_number,
         status: round.status,
         start_time: round.start_time,
+        timer_paused_at: round.timer_paused_at ?? null,
         matches: round.matches.map((match: any) => ({
           id: match.id,
           court_number: match.court_number,
@@ -347,6 +350,7 @@ export default function PublicEvent() {
                 return (
                   <PublicRoundTimer
                     startTime={activeTimedRound.start_time}
+                    pausedAt={activeTimedRound.timer_paused_at}
                     durationMinutes={event.round_length_minutes}
                     roundNumber={activeTimedRound.round_number}
                   />

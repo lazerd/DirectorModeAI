@@ -31,6 +31,7 @@ interface Round {
   status: string;
   start_time: string | null;
   end_time: string | null;
+  timer_paused_at: string | null;
 }
 
 interface Match {
@@ -819,8 +820,11 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                 event.scoring_format === "timed" &&
                 event.round_length_minutes && (
                   <RoundTimer
+                    roundId={currentRound.id}
                     startTime={currentRound.start_time || new Date().toISOString()}
+                    pausedAt={currentRound.timer_paused_at}
                     durationMinutes={event.round_length_minutes}
+                    onTimerChange={() => fetchRounds(currentRound.id)}
                   />
                 )}
 
