@@ -342,46 +342,46 @@ export default function PublicEvent() {
           <TabsContent value="standings" className="mt-6">
             <Card style={{ background: '#ffffff', color: '#111827' }}>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2" style={{ color: '#111827' }}>
+                <CardTitle className="flex items-center gap-2" style={{ color: '#000000' }}>
                   <Trophy className="h-5 w-5" />
                   Current Standings
                 </CardTitle>
               </CardHeader>
-              <CardContent style={{ color: '#111827' }}>
+              <CardContent style={{ color: '#000000' }}>
                 {standings.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
                     No matches have been played yet.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto" style={{ color: '#111827' }}>
-                    <table className="w-full border-collapse" style={{ color: '#111827' }}>
+                  <div className="overflow-x-auto" style={{ color: '#000000' }}>
+                    <table className="w-full border-collapse" style={{ color: '#000000' }}>
                       <thead>
                         <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
-                          <th className="text-left p-3 font-bold" style={{ color: '#374151' }}>Rank</th>
-                          <th className="text-left p-3 font-bold" style={{ color: '#374151' }}>Player</th>
-                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>W</th>
-                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>L</th>
-                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>Win %</th>
-                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>Games</th>
-                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>+/-</th>
+                          <th className="text-left p-3 font-bold" style={{ color: '#000000' }}>Rank</th>
+                          <th className="text-left p-3 font-bold" style={{ color: '#000000' }}>Player</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>W</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>L</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>Win %</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>Games</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>+/-</th>
                         </tr>
                       </thead>
                       <tbody>
                         {standings.map((standing, index) => (
                           <tr key={standing.player_id} style={{ borderBottom: '1px solid #f3f4f6', color: '#111827' }}>
-                            <td className="p-3 font-bold" style={{ color: '#111827' }}>
+                            <td className="p-3 font-bold" style={{ color: '#000000' }}>
                               {index === 0 && standing.display_rank === "1" ? (
                                 <span className="flex items-center gap-1">🏆 1</span>
                               ) : (
                                 standing.display_rank
                               )}
                             </td>
-                            <td className="p-3 font-semibold" style={{ color: '#111827' }}>{standing.player_name}</td>
-                            <td className="text-center p-3" style={{ color: '#111827' }}>{standing.wins}</td>
-                            <td className="text-center p-3" style={{ color: '#111827' }}>{standing.losses}</td>
-                            <td className="text-center p-3" style={{ color: '#111827' }}>{standing.win_percentage.toFixed(0)}%</td>
-                            <td className="text-center p-3" style={{ color: '#111827' }}>{standing.games_won}-{standing.games_lost}</td>
-                            <td className="text-center p-3" style={{ color: '#111827' }}>{getGamesDiff(standing.games_won, standing.games_lost)}</td>
+                            <td className="p-3 font-semibold" style={{ color: '#000000' }}>{standing.player_name}</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{standing.wins}</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{standing.losses}</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{standing.win_percentage.toFixed(0)}%</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{standing.games_won}-{standing.games_lost}</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{getGamesDiff(standing.games_won, standing.games_lost)}</td>
                           </tr>
                         ))}
                       </tbody>
