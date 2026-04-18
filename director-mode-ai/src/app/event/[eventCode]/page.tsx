@@ -273,18 +273,18 @@ export default function PublicEvent() {
     const diff = gamesWon - gamesLost;
     if (diff > 0) {
       return (
-        <span className="flex items-center gap-1 text-green-600">
+        <span className="inline-flex items-center justify-center gap-1" style={{ color: '#16a34a' }}>
           <TrendingUp className="h-4 w-4" />+{diff}
         </span>
       );
     } else if (diff < 0) {
       return (
-        <span className="flex items-center gap-1 text-red-600">
+        <span className="inline-flex items-center justify-center gap-1" style={{ color: '#dc2626' }}>
           <TrendingDown className="h-4 w-4" />{diff}
         </span>
       );
     }
-    return <span className="text-muted-foreground">0</span>;
+    return <span style={{ color: '#6b7280' }}>0</span>;
   };
 
   if (loading) {
@@ -340,60 +340,52 @@ export default function PublicEvent() {
           </TabsList>
 
           <TabsContent value="standings" className="mt-6">
-            <Card className="!bg-white !text-gray-900">
+            <Card style={{ background: '#ffffff', color: '#111827' }}>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 !text-gray-900">
+                <CardTitle className="flex items-center gap-2" style={{ color: '#111827' }}>
                   <Trophy className="h-5 w-5" />
                   Current Standings
                 </CardTitle>
               </CardHeader>
-              <CardContent className="!text-gray-900">
+              <CardContent style={{ color: '#111827' }}>
                 {standings.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
                     No matches have been played yet.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto [&_th]:!text-gray-700 [&_td]:!text-gray-900">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="border-gray-200">
-                          <TableHead className="w-12 !text-gray-700 font-semibold">Rank</TableHead>
-                          <TableHead className="!text-gray-700 font-semibold">Player</TableHead>
-                          <TableHead className="text-center !text-gray-700 font-semibold">W</TableHead>
-                          <TableHead className="text-center !text-gray-700 font-semibold">L</TableHead>
-                          <TableHead className="text-center !text-gray-700 font-semibold">Win %</TableHead>
-                          <TableHead className="text-center !text-gray-700 font-semibold">Games</TableHead>
-                          <TableHead className="text-center !text-gray-700 font-semibold">+/-</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                  <div className="overflow-x-auto" style={{ color: '#111827' }}>
+                    <table className="w-full border-collapse" style={{ color: '#111827' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                          <th className="text-left p-3 font-bold" style={{ color: '#374151' }}>Rank</th>
+                          <th className="text-left p-3 font-bold" style={{ color: '#374151' }}>Player</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>W</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>L</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>Win %</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>Games</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#374151' }}>+/-</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {standings.map((standing, index) => (
-                          <TableRow key={standing.player_id} className="border-gray-200 hover:bg-gray-50">
-                            <TableCell className="font-bold !text-gray-900">
+                          <tr key={standing.player_id} style={{ borderBottom: '1px solid #f3f4f6', color: '#111827' }}>
+                            <td className="p-3 font-bold" style={{ color: '#111827' }}>
                               {index === 0 && standing.display_rank === "1" ? (
-                                <span className="flex items-center gap-1">
-                                  🏆 1
-                                </span>
+                                <span className="flex items-center gap-1">🏆 1</span>
                               ) : (
                                 standing.display_rank
                               )}
-                            </TableCell>
-                            <TableCell className="font-semibold !text-gray-900">{standing.player_name}</TableCell>
-                            <TableCell className="text-center !text-gray-900">{standing.wins}</TableCell>
-                            <TableCell className="text-center !text-gray-900">{standing.losses}</TableCell>
-                            <TableCell className="text-center !text-gray-900">
-                              {standing.win_percentage.toFixed(0)}%
-                            </TableCell>
-                            <TableCell className="text-center !text-gray-900">
-                              {standing.games_won}-{standing.games_lost}
-                            </TableCell>
-                            <TableCell className="text-center !text-gray-900">
-                              {getGamesDiff(standing.games_won, standing.games_lost)}
-                            </TableCell>
-                          </TableRow>
+                            </td>
+                            <td className="p-3 font-semibold" style={{ color: '#111827' }}>{standing.player_name}</td>
+                            <td className="text-center p-3" style={{ color: '#111827' }}>{standing.wins}</td>
+                            <td className="text-center p-3" style={{ color: '#111827' }}>{standing.losses}</td>
+                            <td className="text-center p-3" style={{ color: '#111827' }}>{standing.win_percentage.toFixed(0)}%</td>
+                            <td className="text-center p-3" style={{ color: '#111827' }}>{standing.games_won}-{standing.games_lost}</td>
+                            <td className="text-center p-3" style={{ color: '#111827' }}>{getGamesDiff(standing.games_won, standing.games_lost)}</td>
+                          </tr>
                         ))}
-                      </TableBody>
-                    </Table>
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </CardContent>
