@@ -219,17 +219,17 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
   }
 
   return (
-    <Card>
+    <Card style={{ background: '#ffffff', color: '#000000' }}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2" style={{ color: '#000000' }}>
           <Trophy className="h-5 w-5 text-primary" />
           Final Standings
         </CardTitle>
-        <CardDescription>Complete rankings for all players</CardDescription>
+        <CardDescription style={{ color: '#374151' }}>Complete rankings for all players</CardDescription>
       </CardHeader>
       <CardContent>
         {standings.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">
+          <div className="text-center py-12" style={{ color: '#6b7280' }}>
             <p>No matches played yet</p>
           </div>
         ) : (
@@ -244,43 +244,43 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
                   key={standing.player_id}
                   className={`flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border-2 transition-all ${
                     isFirst
-                      ? "border-blue-400 bg-blue-50"
+                      ? "border-blue-400"
                       : isSecond
-                      ? "border-lime-400 bg-lime-50"
+                      ? "border-lime-400"
                       : isThird
-                      ? "border-orange-300 bg-orange-50"
-                      : "border-gray-200 bg-white"
+                      ? "border-orange-300"
+                      : "border-gray-200"
                   }`}
+                  style={{
+                    background: isFirst ? '#eff6ff' : isSecond ? '#f7fee7' : isThird ? '#fff7ed' : '#ffffff',
+                    color: '#000000',
+                  }}
                 >
                   {/* Rank */}
                   <div
-                    className={`flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-base sm:text-lg ${
-                      isFirst
-                        ? "bg-blue-500 text-white"
-                        : isSecond
-                        ? "bg-lime-500 text-white"
-                        : isThird
-                        ? "bg-orange-400 text-white"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
+                    className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-bold text-base sm:text-lg"
+                    style={{
+                      background: isFirst ? '#3b82f6' : isSecond ? '#84cc16' : isThird ? '#fb923c' : '#f3f4f6',
+                      color: (isFirst || isSecond || isThird) ? '#ffffff' : '#374151',
+                    }}
                   >
                     {standing.display_rank}
                   </div>
 
                   {/* Player info */}
                   <div className="flex-1 min-w-0">
-                    <p className="font-bold text-base sm:text-lg truncate">{standing.player_name}</p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="font-bold text-base sm:text-lg truncate" style={{ color: '#000000' }}>{standing.player_name}</p>
+                    <p className="text-sm" style={{ color: '#4b5563' }}>
                       {standing.wins}W - {standing.losses}L
                     </p>
                   </div>
 
                   {/* Stats */}
                   <div className="flex-shrink-0 text-right">
-                    <p className="font-bold text-lg sm:text-xl text-blue-600">
+                    <p className="font-bold text-lg sm:text-xl" style={{ color: '#2563eb' }}>
                       {standing.win_percentage.toFixed(0)}%
                     </p>
-                    <p className="text-xs sm:text-sm text-muted-foreground">
+                    <p className="text-xs sm:text-sm" style={{ color: '#4b5563' }}>
                       {standing.games_won}-{standing.games_lost} games
                     </p>
                   </div>
