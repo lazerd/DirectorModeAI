@@ -353,23 +353,23 @@ export default function PublicEvent() {
                     No matches have been played yet.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto [&_th]:!text-gray-700 [&_td]:!text-gray-900">
                     <Table>
                       <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">Rank</TableHead>
-                          <TableHead>Player</TableHead>
-                          <TableHead className="text-center">W</TableHead>
-                          <TableHead className="text-center">L</TableHead>
-                          <TableHead className="text-center">Win %</TableHead>
-                          <TableHead className="text-center">Games</TableHead>
-                          <TableHead className="text-center">+/-</TableHead>
+                        <TableRow className="border-gray-200">
+                          <TableHead className="w-12 !text-gray-700 font-semibold">Rank</TableHead>
+                          <TableHead className="!text-gray-700 font-semibold">Player</TableHead>
+                          <TableHead className="text-center !text-gray-700 font-semibold">W</TableHead>
+                          <TableHead className="text-center !text-gray-700 font-semibold">L</TableHead>
+                          <TableHead className="text-center !text-gray-700 font-semibold">Win %</TableHead>
+                          <TableHead className="text-center !text-gray-700 font-semibold">Games</TableHead>
+                          <TableHead className="text-center !text-gray-700 font-semibold">+/-</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {standings.map((standing, index) => (
-                          <TableRow key={standing.player_id}>
-                            <TableCell className="font-medium">
+                          <TableRow key={standing.player_id} className="border-gray-200 hover:bg-gray-50">
+                            <TableCell className="font-bold !text-gray-900">
                               {index === 0 && standing.display_rank === "1" ? (
                                 <span className="flex items-center gap-1">
                                   🏆 1
@@ -378,16 +378,16 @@ export default function PublicEvent() {
                                 standing.display_rank
                               )}
                             </TableCell>
-                            <TableCell className="font-medium">{standing.player_name}</TableCell>
-                            <TableCell className="text-center">{standing.wins}</TableCell>
-                            <TableCell className="text-center">{standing.losses}</TableCell>
-                            <TableCell className="text-center">
+                            <TableCell className="font-semibold !text-gray-900">{standing.player_name}</TableCell>
+                            <TableCell className="text-center !text-gray-900">{standing.wins}</TableCell>
+                            <TableCell className="text-center !text-gray-900">{standing.losses}</TableCell>
+                            <TableCell className="text-center !text-gray-900">
                               {standing.win_percentage.toFixed(0)}%
                             </TableCell>
-                            <TableCell className="text-center">
+                            <TableCell className="text-center !text-gray-900">
                               {standing.games_won}-{standing.games_lost}
                             </TableCell>
-                            <TableCell className="text-center">
+                            <TableCell className="text-center !text-gray-900">
                               {getGamesDiff(standing.games_won, standing.games_lost)}
                             </TableCell>
                           </TableRow>
