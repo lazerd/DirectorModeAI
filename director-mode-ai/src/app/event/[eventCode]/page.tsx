@@ -340,14 +340,14 @@ export default function PublicEvent() {
           </TabsList>
 
           <TabsContent value="standings" className="mt-6">
-            <Card className="bg-white text-gray-900">
+            <Card className="!bg-white !text-gray-900">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-gray-900">
+                <CardTitle className="flex items-center gap-2 !text-gray-900">
                   <Trophy className="h-5 w-5" />
                   Current Standings
                 </CardTitle>
               </CardHeader>
-              <CardContent className="text-gray-900">
+              <CardContent className="!text-gray-900">
                 {standings.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
                     No matches have been played yet.
