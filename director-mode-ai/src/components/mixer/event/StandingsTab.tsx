@@ -57,8 +57,8 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
     let player2Wins = 0;
 
     matches.forEach((match) => {
-      const team1Players = [match.player1_id, match.player2_id].filter(Boolean);
-      const team2Players = [match.player3_id, match.player4_id].filter(Boolean);
+      const team1Players = [match.player1_id, match.player3_id].filter(Boolean);
+      const team2Players = [match.player2_id, match.player4_id].filter(Boolean);
 
       const player1Team = team1Players.includes(playerId1)
         ? 1

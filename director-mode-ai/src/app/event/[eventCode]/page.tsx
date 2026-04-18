@@ -24,12 +24,15 @@ interface Event {
 }
 
 interface Standing {
+  player_id: string;
   player_name: string;
   wins: number;
   losses: number;
   games_won: number;
   games_lost: number;
+  games_differential: number;
   win_percentage: number;
+  display_rank: string;
 }
 
 interface Match {
@@ -132,19 +135,78 @@ export default function PublicEvent() {
       `)
       .eq("event_id", eventData.id);
 
-    if (!error && data) {
-      const formattedStandings: Standing[] = data.map((item: any) => ({
-        player_name: item.players.name,
-        wins: item.wins || 0,
-        losses: item.losses || 0,
-        games_won: item.games_won || 0,
-        games_lost: item.games_lost || 0,
-        win_percentage: item.wins + item.losses > 0 
-          ? (item.wins / (item.wins + item.losses)) * 100 
-          : 0,
-      }));
+    const { data: matchData } = await supabase
+      .from("matches")
+      .select(`player1_id, player2_id, player3_id, player4_id, winner_team, rounds!inner(event_id)`)
+      .eq("rounds.event_id", eventData.id)
+      .not("winner_team", "is", null);
 
-      formattedStandings.sort((a, b) => b.win_percentage - a.win_percentage);
+    // Head-to-head between two players: in our schema, Team 1 = (p1, p3) and Team 2 = (p2, p4).
+    const headToHead = (a: string, b: string) => {
+      let aWins = 0, bWins = 0;
+      for (const m of matchData || []) {
+        const team1 = [m.player1_id, m.player3_id].filter(Boolean);
+        const team2 = [m.player2_id, m.player4_id].filter(Boolean);
+        const aTeam = team1.includes(a) ? 1 : team2.includes(a) ? 2 : null;
+        const bTeam = team1.includes(b) ? 1 : team2.includes(b) ? 2 : null;
+        if (aTeam && bTeam && aTeam !== bTeam) {
+          if (m.winner_team === aTeam) aWins++;
+          if (m.winner_team === bTeam) bWins++;
+        }
+      }
+      return { aWins, bWins };
+    };
+
+    if (!error && data) {
+      const formattedStandings: Standing[] = data.map((item: any) => {
+        const totalMatches = (item.wins ?? 0) + (item.losses ?? 0);
+        const gw = item.games_won ?? 0;
+        const gl = item.games_lost ?? 0;
+        return {
+          player_id: item.player_id,
+          player_name: item.players.name,
+          wins: item.wins ?? 0,
+          losses: item.losses ?? 0,
+          games_won: gw,
+          games_lost: gl,
+          games_differential: gw - gl,
+          win_percentage: totalMatches > 0 ? (item.wins / totalMatches) * 100 : 0,
+          display_rank: "",
+        };
+      });
+
+      formattedStandings.sort((a, b) => {
+        if (b.win_percentage !== a.win_percentage) return b.win_percentage - a.win_percentage;
+        if (b.games_differential !== a.games_differential) return b.games_differential - a.games_differential;
+        if (a.games_lost !== b.games_lost) return a.games_lost - b.games_lost;
+        const h2h = headToHead(a.player_id, b.player_id);
+        if (h2h.aWins !== h2h.bWins) return h2h.bWins - h2h.aWins;
+        return a.player_name.localeCompare(b.player_name);
+      });
+
+      // Display ranks with T- prefix on ties
+      for (let i = 0; i < formattedStandings.length; i++) {
+        if (i === 0) {
+          formattedStandings[i].display_rank = "1";
+          continue;
+        }
+        const cur = formattedStandings[i];
+        const prev = formattedStandings[i - 1];
+        const tiedOnAllVisible = cur.win_percentage === prev.win_percentage
+          && cur.games_differential === prev.games_differential
+          && cur.games_lost === prev.games_lost;
+        const h2h = tiedOnAllVisible ? headToHead(cur.player_id, prev.player_id) : { aWins: 0, bWins: 0 };
+        if (tiedOnAllVisible && h2h.aWins === h2h.bWins) {
+          if (!prev.display_rank.startsWith("T-")) {
+            const r = parseInt(prev.display_rank);
+            prev.display_rank = `T-${r}`;
+          }
+          cur.display_rank = prev.display_rank;
+        } else {
+          cur.display_rank = String(i + 1);
+        }
+      }
+
       setStandings(formattedStandings);
     }
   };
@@ -306,14 +368,14 @@ export default function PublicEvent() {
                       </TableHeader>
                       <TableBody>
                         {standings.map((standing, index) => (
-                          <TableRow key={standing.player_name}>
+                          <TableRow key={standing.player_id}>
                             <TableCell className="font-medium">
-                              {index === 0 ? (
+                              {index === 0 && standing.display_rank === "1" ? (
                                 <span className="flex items-center gap-1">
-                                  🏆 {index + 1}
+                                  🏆 1
                                 </span>
                               ) : (
-                                index + 1
+                                standing.display_rank
                               )}
                             </TableCell>
                             <TableCell className="font-medium">{standing.player_name}</TableCell>
