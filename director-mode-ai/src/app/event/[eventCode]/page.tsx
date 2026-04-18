@@ -11,6 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, Calendar, Clock, Trophy, TrendingUp, TrendingDown, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import PublicRoundTimer from "@/components/mixer/event/PublicRoundTimer";
+import PublicScoreDialog from "@/components/mixer/event/PublicScoreDialog";
 
 interface Event {
   id: string;
@@ -60,6 +61,7 @@ export default function PublicEvent() {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scoreEntryMatch, setScoreEntryMatch] = useState<{ id: string; court_number: number; team1_score: number | null; team2_score: number | null; player1_name: string | null; player2_name: string | null; player3_name: string | null; player4_name: string | null } | null>(null);
 
   useEffect(() => {
     fetchEventData();
@@ -367,7 +369,9 @@ export default function PublicEvent() {
                 </CardContent>
               </Card>
             ) : (
-              rounds.map((round) => (
+              rounds.map((round) => {
+                const canEnterScore = round.status === "in_progress";
+                return (
                 <Card key={round.id}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
@@ -376,6 +380,11 @@ export default function PublicEvent() {
                         {round.status.replace("_", " ")}
                       </Badge>
                     </div>
+                    {canEnterScore && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Tap your match to enter the score. The director will verify before completing the round.
+                      </p>
+                    )}
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-4">
@@ -392,14 +401,38 @@ export default function PublicEvent() {
                           );
                         }
 
+                        const cardCommon = "border rounded-lg p-4";
+                        const interactive = canEnterScore
+                          ? "cursor-pointer hover:border-primary hover:shadow-md transition-all active:scale-[0.99]"
+                          : "";
+
+                        const onClick = canEnterScore
+                          ? () => setScoreEntryMatch({
+                              id: match.id,
+                              court_number: match.court_number,
+                              team1_score: match.team1_score,
+                              team2_score: match.team2_score,
+                              player1_name: match.player1_name,
+                              player2_name: match.player2_name,
+                              player3_name: match.player3_name,
+                              player4_name: match.player4_name,
+                            })
+                          : undefined;
+
                         return (
-                          <div key={match.id} className="border rounded-lg p-4">
+                          <div
+                            key={match.id}
+                            className={`${cardCommon} ${interactive}`}
+                            onClick={onClick}
+                            role={canEnterScore ? "button" : undefined}
+                            tabIndex={canEnterScore ? 0 : undefined}
+                          >
                             <div className="flex items-center justify-between mb-3">
                               <div className="flex items-center gap-2">
                                 <Badge variant="outline">Court {match.court_number}</Badge>
                                 {isSingles && <Badge variant="secondary">Singles</Badge>}
                               </div>
-                              {match.team1_score !== null && match.team2_score !== null && (
+                              {match.team1_score !== null && match.team2_score !== null && (match.team1_score > 0 || match.team2_score > 0) && (
                                 <div className="text-lg font-bold">
                                   {match.team1_score} - {match.team2_score}
                                 </div>
@@ -434,11 +467,18 @@ export default function PublicEvent() {
                     </div>
                   </CardContent>
                 </Card>
-              ))
+                );
+              })
             )}
           </TabsContent>
         </Tabs>
       </main>
+      <PublicScoreDialog
+        match={scoreEntryMatch}
+        open={!!scoreEntryMatch}
+        onOpenChange={(open) => { if (!open) setScoreEntryMatch(null); }}
+        onSaved={fetchRounds}
+      />
     </div>
   );
 }
