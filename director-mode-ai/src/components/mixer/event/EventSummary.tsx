@@ -512,10 +512,10 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         )}
       </div>
 
-      <Card>
+      <Card style={{ background: '#ffffff', color: '#000000' }}>
         <CardHeader>
-          <CardTitle>Final Standings</CardTitle>
-          <CardDescription>Complete rankings for all players</CardDescription>
+          <CardTitle style={{ color: '#000000' }}>Final Standings</CardTitle>
+          <CardDescription style={{ color: '#374151' }}>Complete rankings for all players</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -524,36 +524,33 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
                 key={standing.player_id}
                 className={`p-4 rounded-xl border-2 flex items-center justify-between ${
                   index === 0
-                    ? "bg-blue-50 border-blue-400"
+                    ? "border-blue-400"
                     : index === 1
-                    ? "bg-lime-50 border-lime-400"
+                    ? "border-lime-400"
                     : index === 2
-                    ? "bg-orange-50 border-orange-300"
-                    : "border-gray-200 bg-white"
+                    ? "border-orange-300"
+                    : "border-gray-200"
                 }`}
+                style={{ background: index === 0 ? '#eff6ff' : index === 1 ? '#f7fee7' : index === 2 ? '#fff7ed' : '#ffffff', color: '#000000' }}
               >
                 <div className="flex items-center gap-4">
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
-                      index === 0
-                        ? "bg-blue-500 text-white"
-                        : index === 1
-                        ? "bg-lime-500 text-white"
-                        : index === 2
-                        ? "bg-orange-400 text-white"
-                        : "bg-gray-100 text-gray-600"
-                    }`}
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold"
+                    style={{
+                      background: index === 0 ? '#3b82f6' : index === 1 ? '#84cc16' : index === 2 ? '#fb923c' : '#f3f4f6',
+                      color: index < 3 ? '#ffffff' : '#374151',
+                    }}
                   >
                     {index + 1}
                   </div>
                   <div>
-                    <p className="font-semibold text-lg">{standing.player_name}</p>
-                    <p className="text-sm text-muted-foreground">{standing.wins}W - {standing.losses}L</p>
+                    <p className="font-semibold text-lg" style={{ color: '#000000' }}>{standing.player_name}</p>
+                    <p className="text-sm" style={{ color: '#4b5563' }}>{standing.wins}W - {standing.losses}L</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-2xl font-bold text-blue-600">{standing.win_percentage.toFixed(0)}%</p>
-                  <p className="text-sm text-muted-foreground">{standing.games_won}-{standing.games_lost} games</p>
+                  <p className="text-2xl font-bold" style={{ color: '#2563eb' }}>{standing.win_percentage.toFixed(0)}%</p>
+                  <p className="text-sm" style={{ color: '#4b5563' }}>{standing.games_won}-{standing.games_lost} games</p>
                 </div>
               </div>
             ))}
