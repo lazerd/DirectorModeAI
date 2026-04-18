@@ -790,6 +790,19 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                     )}
                     {currentRound?.status === "in_progress" && (
                       <>
+                        <Button
+                          onClick={async () => {
+                            if (currentRound) {
+                              await fetchMatches(currentRound.id);
+                            }
+                            setShowManualEditor(true);
+                          }}
+                          variant="outline"
+                          size="lg"
+                        >
+                          <Edit className="h-5 w-5 mr-2" />
+                          Manual Edit
+                        </Button>
                         <Button onClick={restartRound} variant="outline" size="lg">
                           <RotateCcw className="h-5 w-5 mr-2" />
                           Restart
