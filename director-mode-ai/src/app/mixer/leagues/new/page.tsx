@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Trophy, Calendar, DollarSign, Link as LinkIcon, AlertCircle, GitBranch, RotateCw, Compass } from 'lucide-react';
+import { ArrowLeft, Trophy, Calendar, DollarSign, Link as LinkIcon, AlertCircle, GitBranch, RotateCw, Compass, Users2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { slugify, CATEGORY_ORDER, CATEGORY_LABELS, isDoubles, type CategoryKey } from '@/lib/leagueUtils';
 
@@ -52,6 +52,7 @@ export default function NewLeaguePage() {
   const [slug, setSlug] = useState('');
   const [slugDirty, setSlugDirty] = useState(false);
   const [description, setDescription] = useState('');
+  const [format, setFormat] = useState<'individual' | 'team'>('individual');
   const [leagueType, setLeagueType] = useState<'compass' | 'round_robin' | 'single_elimination'>('compass');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -85,7 +86,9 @@ export default function NewLeaguePage() {
     if (!effectiveSlug) return setError('Slug is required.');
     if (!startDate || !endDate) return setError('Start and end dates are required.');
     if (new Date(endDate) < new Date(startDate)) return setError('End date must be after start date.');
-    if (!categories.some(c => c.enabled)) return setError('At least one category must be enabled.');
+    if (format === 'individual' && !categories.some(c => c.enabled)) {
+      return setError('At least one category must be enabled.');
+    }
 
     setSaving(true);
     const supabase = createClient();
@@ -104,6 +107,7 @@ export default function NewLeaguePage() {
         name: name.trim(),
         slug: effectiveSlug,
         description: description.trim() || null,
+        format,
         league_type: leagueType,
         start_date: startDate,
         end_date: endDate,
@@ -112,7 +116,7 @@ export default function NewLeaguePage() {
         venmo_handle: venmo.trim() || null,
         zelle_handle: zelle.trim() || null,
         stripe_payment_link: stripeLink.trim() || null,
-        status: 'open',
+        status: format === 'team' ? 'draft' : 'open',
       })
       .select()
       .single();
@@ -123,22 +127,24 @@ export default function NewLeaguePage() {
       return;
     }
 
-    // 2. Insert enabled categories
-    const categoryRows = categories
-      .filter(c => c.enabled)
-      .map(c => ({
-        league_id: (league as any).id,
-        category_key: c.key,
-        entry_fee_cents: Math.round(parseFloat(c.entry_fee || '0') * 100),
-        is_enabled: true,
-      }));
+    // 2. Insert enabled categories (only for individual-format leagues)
+    if (format === 'individual') {
+      const categoryRows = categories
+        .filter(c => c.enabled)
+        .map(c => ({
+          league_id: (league as any).id,
+          category_key: c.key,
+          entry_fee_cents: Math.round(parseFloat(c.entry_fee || '0') * 100),
+          is_enabled: true,
+        }));
 
-    if (categoryRows.length > 0) {
-      const { error: catErr } = await supabase.from('league_categories').insert(categoryRows);
-      if (catErr) {
-        setError(`League created but categories failed: ${catErr.message}`);
-        setSaving(false);
-        return;
+      if (categoryRows.length > 0) {
+        const { error: catErr } = await supabase.from('league_categories').insert(categoryRows);
+        if (catErr) {
+          setError(`League created but categories failed: ${catErr.message}`);
+          setSaving(false);
+          return;
+        }
       }
     }
 
@@ -204,36 +210,67 @@ export default function NewLeaguePage() {
           </div>
         </section>
 
-        {/* League type */}
+        {/* Format */}
         <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="font-semibold text-lg mb-4 flex items-center gap-2 text-gray-900">
-            <GitBranch size={18} className="text-orange-500" />
-            League type
+            <Users2 size={18} className="text-orange-500" />
+            Format
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <LeagueTypeOption
-              active={leagueType === 'compass'}
-              onClick={() => setLeagueType('compass')}
-              icon={Compass}
-              label="Compass Draw"
-              desc="Everyone plays 4 matches (3 for 8-player), no early eliminations. Flights of 16 or 8."
-            />
-            <LeagueTypeOption
-              active={leagueType === 'round_robin'}
-              onClick={() => setLeagueType('round_robin')}
-              icon={RotateCw}
-              label="Round Robin"
-              desc="Everyone plays everyone in the flight. Max matches. One flight, any size 2+."
-            />
-            <LeagueTypeOption
-              active={leagueType === 'single_elimination'}
-              onClick={() => setLeagueType('single_elimination')}
+              active={format === 'individual'}
+              onClick={() => setFormat('individual')}
               icon={Trophy}
-              label="Single Elimination"
-              desc="Classic knockout — one loss and you're out. Bracket sized to next power of 2."
+              label="Individual"
+              desc="Players enter solo or as doubles pairs. Compass / round robin / single elimination draws."
+            />
+            <LeagueTypeOption
+              active={format === 'team'}
+              onClick={() => setFormat('team')}
+              icon={Users2}
+              label="Team (JTT)"
+              desc="Clubs compete in divisions. Each week, Club A vs Club B with singles + doubles lines. Standings by club."
             />
           </div>
+          {format === 'team' && (
+            <p className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-md px-3 py-2 mt-4">
+              After creating, you&apos;ll set up clubs, divisions (e.g. 10&amp;U / 12&amp;U / Open), and the weekly matchup schedule on the league&apos;s admin page.
+            </p>
+          )}
         </section>
+
+        {/* League type (individual only) */}
+        {format === 'individual' && (
+          <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+            <h2 className="font-semibold text-lg mb-4 flex items-center gap-2 text-gray-900">
+              <GitBranch size={18} className="text-orange-500" />
+              League type
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <LeagueTypeOption
+                active={leagueType === 'compass'}
+                onClick={() => setLeagueType('compass')}
+                icon={Compass}
+                label="Compass Draw"
+                desc="Everyone plays 4 matches (3 for 8-player), no early eliminations. Flights of 16 or 8."
+              />
+              <LeagueTypeOption
+                active={leagueType === 'round_robin'}
+                onClick={() => setLeagueType('round_robin')}
+                icon={RotateCw}
+                label="Round Robin"
+                desc="Everyone plays everyone in the flight. Max matches. One flight, any size 2+."
+              />
+              <LeagueTypeOption
+                active={leagueType === 'single_elimination'}
+                onClick={() => setLeagueType('single_elimination')}
+                icon={Trophy}
+                label="Single Elimination"
+                desc="Classic knockout — one loss and you're out. Bracket sized to next power of 2."
+              />
+            </div>
+          </section>
+        )}
 
         {/* Dates */}
         <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
@@ -285,7 +322,8 @@ export default function NewLeaguePage() {
           </div>
         </section>
 
-        {/* Categories + fees */}
+        {/* Categories + fees (individual only) */}
+        {format === 'individual' && (
         <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
           <h2 className="font-semibold text-lg mb-4 flex items-center gap-2 text-gray-900">
             <DollarSign size={18} className="text-orange-500" />
@@ -332,6 +370,7 @@ export default function NewLeaguePage() {
             })}
           </div>
         </section>
+        )}
 
         {/* Payment rails */}
         <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">

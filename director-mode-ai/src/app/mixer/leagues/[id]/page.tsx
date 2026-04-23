@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -41,6 +41,7 @@ type League = {
   start_date: string;
   end_date: string;
   status: string;
+  format: 'individual' | 'team';
   league_type: 'compass' | 'round_robin' | 'single_elimination';
   venmo_handle: string | null;
   zelle_handle: string | null;
@@ -117,6 +118,7 @@ type Flight = {
 
 export default function LeagueDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = Array.isArray(params.id) ? params.id[0] : params.id;
 
   const [league, setLeague] = useState<League | null>(null);
@@ -158,7 +160,12 @@ export default function LeagueDetailPage() {
       supabase.from('league_flights').select('id, category_id, flight_name, size, num_rounds, status').eq('league_id', id),
     ]);
     if (l.error) setError(l.error.message);
-    setLeague((l.data as League) || null);
+    const leagueRow = (l.data as League) || null;
+    if (leagueRow?.format === 'team') {
+      router.replace(`/mixer/leagues/${id}/jtt`);
+      return;
+    }
+    setLeague(leagueRow);
     setCategories((c.data as Category[]) || []);
     setEntries((e.data as Entry[]) || []);
     const flightList = ((f.data as Flight[]) || []);
