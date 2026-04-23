@@ -1,15 +1,25 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { UserPlus, Trash2, X, Save, ArrowUp, ArrowDown } from 'lucide-react';
+import {
+  UserPlus,
+  Trash2,
+  X,
+  Save,
+  ArrowUp,
+  ArrowDown,
+  Shuffle,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type {
   JTTClub,
   JTTDivision,
   JTTDivisionClub,
   JTTRoster,
+  JTTLine,
+  JTTMatchup,
 } from '@/app/mixer/leagues/[id]/jtt/page';
-import { DAY_OF_WEEK_LABELS } from '@/lib/jtt';
+import { DAY_OF_WEEK_LABELS, recomputeLadder } from '@/lib/jtt';
 
 type Props = {
   leagueId: string;
@@ -17,6 +27,8 @@ type Props = {
   divisions: JTTDivision[];
   divisionClubs: JTTDivisionClub[];
   rosters: JTTRoster[];
+  matchups?: JTTMatchup[];
+  lines?: JTTLine[];
   onRefresh: () => void;
 };
 
@@ -27,6 +39,8 @@ export default function RostersTab({
   divisions,
   divisionClubs,
   rosters,
+  matchups = [],
+  lines = [],
   onRefresh,
 }: Props) {
   const [adding, setAdding] = useState<AddingContext>(null);
@@ -63,6 +77,55 @@ export default function RostersTab({
           (a.ladder_position ?? 999) - (b.ladder_position ?? 999) ||
           a.player_name.localeCompare(b.player_name)
       );
+
+  // Per-roster season W-L aggregated from completed lines (across singles + doubles)
+  const recordsByRoster = useMemo(() => {
+    const acc = new Map<string, { wins: number; losses: number }>();
+    for (const line of lines) {
+      if (line.status !== 'completed' || !line.winner) continue;
+      const home = [line.home_player1_id, line.home_player2_id].filter(Boolean) as string[];
+      const away = [line.away_player1_id, line.away_player2_id].filter(Boolean) as string[];
+      const winners = line.winner === 'home' ? home : away;
+      const losers = line.winner === 'home' ? away : home;
+      for (const id of winners) {
+        const r = acc.get(id) || { wins: 0, losses: 0 };
+        r.wins += 1;
+        acc.set(id, r);
+      }
+      for (const id of losers) {
+        const r = acc.get(id) || { wins: 0, losses: 0 };
+        r.losses += 1;
+        acc.set(id, r);
+      }
+    }
+    return acc;
+  }, [lines]);
+
+  const [reladdering, setReladdering] = useState<string | null>(null);
+
+  const reladder = async (divisionId: string, clubId: string) => {
+    const teamRosters = rostersFor(divisionId, clubId);
+    if (teamRosters.length === 0) return;
+    const divisionLines = lines.filter(l =>
+      matchups.some(m => m.id === l.matchup_id && m.division_id === divisionId)
+    );
+    const updates = recomputeLadder(teamRosters, divisionLines);
+    if (updates.length === 0) return;
+
+    setReladdering(`${divisionId}:${clubId}`);
+    const supabase = createClient();
+    // Apply in parallel — positions are independent
+    await Promise.all(
+      updates.map(u =>
+        supabase
+          .from('league_team_rosters')
+          .update({ ladder_position: u.newPosition })
+          .eq('id', u.rosterId)
+      )
+    );
+    setReladdering(null);
+    onRefresh();
+  };
 
   const openAdd = (divisionId: string, clubId: string) => {
     setAdding({ divisionId, clubId });
@@ -185,13 +248,28 @@ export default function RostersTab({
                           ({teamRosters.length} {teamRosters.length === 1 ? 'player' : 'players'})
                         </span>
                       </h4>
-                      <button
-                        onClick={() => openAdd(division.id, club.id)}
-                        className="inline-flex items-center gap-1 text-sm text-orange-600 hover:text-orange-700"
-                      >
-                        <UserPlus size={14} />
-                        Add player
-                      </button>
+                      <div className="flex items-center gap-3">
+                        {teamRosters.length > 1 && (
+                          <button
+                            onClick={() => reladder(division.id, club.id)}
+                            disabled={reladdering === `${division.id}:${club.id}`}
+                            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-50"
+                            title="Reorder by current W-L"
+                          >
+                            <Shuffle size={13} />
+                            {reladdering === `${division.id}:${club.id}`
+                              ? 'Reordering...'
+                              : 'Re-ladder by W-L'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => openAdd(division.id, club.id)}
+                          className="inline-flex items-center gap-1 text-sm text-orange-600 hover:text-orange-700"
+                        >
+                          <UserPlus size={14} />
+                          Add player
+                        </button>
+                      </div>
                     </div>
 
                     {teamRosters.length === 0 && !isAdding && (
@@ -200,10 +278,17 @@ export default function RostersTab({
 
                     {teamRosters.length > 0 && (
                       <ol className="divide-y divide-gray-100 border border-gray-100 rounded-md">
-                        {teamRosters.map((r, i) => (
+                        {teamRosters.map((r, i) => {
+                          const rec = recordsByRoster.get(r.id);
+                          return (
                           <li key={r.id} className="flex items-center gap-2 px-3 py-2 text-sm">
                             <span className="w-6 text-right text-gray-400">{i + 1}.</span>
                             <span className="flex-1 text-gray-900">{r.player_name}</span>
+                            {rec && (rec.wins + rec.losses > 0) && (
+                              <span className="text-xs font-medium text-gray-700">
+                                {rec.wins}–{rec.losses}
+                              </span>
+                            )}
                             {r.utr && (
                               <span className="text-xs text-gray-500">UTR {r.utr}</span>
                             )}
@@ -234,7 +319,8 @@ export default function RostersTab({
                               <Trash2 size={14} />
                             </button>
                           </li>
-                        ))}
+                          );
+                        })}
                       </ol>
                     )}
 

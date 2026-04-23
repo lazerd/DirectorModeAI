@@ -366,3 +366,185 @@ export function computePlayerRecords(
     return b.total_wins - a.total_wins;
   });
 }
+
+/**
+ * Recompute strength-ladder positions for one club's roster in one division,
+ * based on completed line results across the season.
+ *
+ * Sort rule:
+ *   1. (wins - losses) desc       — net results first
+ *   2. total wins desc            — volume tiebreaker
+ *   3. current ladder_position asc — keep coach's original order for players
+ *                                    with identical records (stable enough so
+ *                                    clicking "Re-ladder" with no new results
+ *                                    doesn't shuffle things)
+ *
+ * Players with zero completed lines keep their manual slot relative to each
+ * other (so pre-season coach ordering is preserved until results exist).
+ *
+ * Returns a list of { rosterId, newPosition } ready to be UPDATEd.
+ */
+export function recomputeLadder(
+  rosters: Array<{
+    id: string;
+    ladder_position: number | null;
+    status: string;
+  }>,
+  lines: Array<{
+    home_player1_id: string | null;
+    home_player2_id: string | null;
+    away_player1_id: string | null;
+    away_player2_id: string | null;
+    winner: 'home' | 'away' | null;
+    status: string;
+  }>
+): Array<{ rosterId: string; newPosition: number }> {
+  const record = new Map<string, { wins: number; losses: number }>();
+  for (const r of rosters) record.set(r.id, { wins: 0, losses: 0 });
+
+  for (const line of lines) {
+    if (line.status !== 'completed' || !line.winner) continue;
+    const homeIds = [line.home_player1_id, line.home_player2_id].filter(
+      Boolean
+    ) as string[];
+    const awayIds = [line.away_player1_id, line.away_player2_id].filter(
+      Boolean
+    ) as string[];
+    const winners = line.winner === 'home' ? homeIds : awayIds;
+    const losers = line.winner === 'home' ? awayIds : homeIds;
+    for (const id of winners) {
+      const r = record.get(id);
+      if (r) r.wins += 1;
+    }
+    for (const id of losers) {
+      const r = record.get(id);
+      if (r) r.losses += 1;
+    }
+  }
+
+  const sorted = [...rosters].sort((a, b) => {
+    const ra = record.get(a.id) || { wins: 0, losses: 0 };
+    const rb = record.get(b.id) || { wins: 0, losses: 0 };
+    const diffA = ra.wins - ra.losses;
+    const diffB = rb.wins - rb.losses;
+    if (diffB !== diffA) return diffB - diffA;
+    if (rb.wins !== ra.wins) return rb.wins - ra.wins;
+    return (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999);
+  });
+
+  return sorted.map((r, i) => ({ rosterId: r.id, newPosition: i + 1 }));
+}
+
+/**
+ * Auto-assign players to the lines of a matchup based on each club's
+ * current strength ladder. Returns a map of line.id → patch.
+ *
+ * Strategy (for the Lamorinda singles+doubles format):
+ *   - Skip lines that already have both sides set (respect coach overrides)
+ *   - Walk lines in order; for each, pull top-N unassigned players from each side
+ *   - "Unassigned" = not already slotted elsewhere in this matchup
+ *   - A player assigned to a singles line is NOT reused in a doubles line the
+ *     same day (prevents top kid playing everything)
+ */
+export function autoAssignByStrength(
+  lines: Array<{
+    id: string;
+    line_type: 'singles' | 'doubles';
+    line_number: number;
+    home_player1_id: string | null;
+    home_player2_id: string | null;
+    away_player1_id: string | null;
+    away_player2_id: string | null;
+  }>,
+  homeRosters: Array<{ id: string; ladder_position: number | null; status: string }>,
+  awayRosters: Array<{ id: string; ladder_position: number | null; status: string }>
+): Array<{
+  id: string;
+  home_player1_id: string | null;
+  home_player2_id: string | null;
+  away_player1_id: string | null;
+  away_player2_id: string | null;
+}> {
+  const sortedHome = homeRosters
+    .filter(r => r.status === 'active')
+    .sort((a, b) => (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999));
+  const sortedAway = awayRosters
+    .filter(r => r.status === 'active')
+    .sort((a, b) => (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999));
+
+  const usedHome = new Set<string>();
+  const usedAway = new Set<string>();
+
+  // Pre-register anyone already manually assigned in any line
+  for (const line of lines) {
+    if (line.home_player1_id) usedHome.add(line.home_player1_id);
+    if (line.home_player2_id) usedHome.add(line.home_player2_id);
+    if (line.away_player1_id) usedAway.add(line.away_player1_id);
+    if (line.away_player2_id) usedAway.add(line.away_player2_id);
+  }
+
+  const sortedLines = [...lines].sort((a, b) => a.line_number - b.line_number);
+  const patches: Array<{
+    id: string;
+    home_player1_id: string | null;
+    home_player2_id: string | null;
+    away_player1_id: string | null;
+    away_player2_id: string | null;
+  }> = [];
+
+  const takeNext = (
+    sorted: Array<{ id: string }>,
+    used: Set<string>
+  ): string | null => {
+    for (const r of sorted) {
+      if (!used.has(r.id)) {
+        used.add(r.id);
+        return r.id;
+      }
+    }
+    return null;
+  };
+
+  for (const line of sortedLines) {
+    const need = line.line_type === 'doubles' ? 2 : 1;
+    const patch = {
+      id: line.id,
+      home_player1_id: line.home_player1_id,
+      home_player2_id: line.home_player2_id,
+      away_player1_id: line.away_player1_id,
+      away_player2_id: line.away_player2_id,
+    };
+    let changed = false;
+    if (!patch.home_player1_id) {
+      const pid = takeNext(sortedHome, usedHome);
+      if (pid) {
+        patch.home_player1_id = pid;
+        changed = true;
+      }
+    }
+    if (need === 2 && !patch.home_player2_id) {
+      const pid = takeNext(sortedHome, usedHome);
+      if (pid) {
+        patch.home_player2_id = pid;
+        changed = true;
+      }
+    }
+    if (!patch.away_player1_id) {
+      const pid = takeNext(sortedAway, usedAway);
+      if (pid) {
+        patch.away_player1_id = pid;
+        changed = true;
+      }
+    }
+    if (need === 2 && !patch.away_player2_id) {
+      const pid = takeNext(sortedAway, usedAway);
+      if (pid) {
+        patch.away_player2_id = pid;
+        changed = true;
+      }
+    }
+    if (changed) patches.push(patch);
+  }
+
+  return patches;
+}

@@ -97,6 +97,7 @@ export type JTTLine = {
   score: string | null;
   winner: 'home' | 'away' | null;
   status: string;
+  score_token: string | null;
 };
 
 type Tab = 'matchups' | 'rosters' | 'standings' | 'settings';
@@ -277,6 +278,8 @@ export default function JTTLeaguePage() {
           divisions={divisions}
           divisionClubs={divisionClubs}
           rosters={rosters}
+          matchups={matchups}
+          lines={lines}
           onRefresh={fetchAll}
         />
       )}

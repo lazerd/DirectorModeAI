@@ -3,8 +3,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, AlertCircle, Save, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  Loader2,
+  AlertCircle,
+  Save,
+  Trash2,
+  Zap,
+  Copy,
+  Check,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { autoAssignByStrength } from '@/lib/jtt';
 
 type Club = { id: string; name: string; short_code: string };
 type Division = {
@@ -34,6 +44,7 @@ type Roster = {
   club_id: string;
   player_name: string;
   ladder_position: number | null;
+  status: string;
 };
 type Line = {
   id: string;
@@ -47,6 +58,7 @@ type Line = {
   score: string | null;
   winner: 'home' | 'away' | null;
   status: string;
+  score_token: string | null;
 };
 
 export default function MatchupFacilitatorPage() {
@@ -115,6 +127,48 @@ export default function MatchupFacilitatorPage() {
     setLoading(false);
   }, [matchupId]);
 
+  const runAutoAssign = async () => {
+    const patches = autoAssignByStrength(lines, homeRosters, awayRosters);
+    if (patches.length === 0) {
+      alert('All lines are already assigned — clear players first to re-auto-assign.');
+      return;
+    }
+    const supabase = createClient();
+    await Promise.all(
+      patches.map(p =>
+        supabase
+          .from('league_matchup_lines')
+          .update({
+            home_player1_id: p.home_player1_id,
+            home_player2_id: p.home_player2_id,
+            away_player1_id: p.away_player1_id,
+            away_player2_id: p.away_player2_id,
+          })
+          .eq('id', p.id)
+      )
+    );
+    fetchAll();
+  };
+
+  const clearAllAssignments = async () => {
+    if (!confirm('Clear all player assignments for this matchup?')) return;
+    const supabase = createClient();
+    await Promise.all(
+      lines.map(l =>
+        supabase
+          .from('league_matchup_lines')
+          .update({
+            home_player1_id: null,
+            home_player2_id: null,
+            away_player1_id: null,
+            away_player2_id: null,
+          })
+          .eq('id', l.id)
+      )
+    );
+    fetchAll();
+  };
+
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
@@ -182,6 +236,28 @@ export default function MatchupFacilitatorPage() {
         <TeamScore clubName={awayClub.name} side="Away" score={matchup.away_lines_won} isWinner={matchup.winner === 'away'} />
         <span className="text-gray-300 text-2xl">—</span>
         <TeamScore clubName={homeClub.name} side="Home" score={matchup.home_lines_won} isWinner={matchup.winner === 'home'} />
+      </div>
+
+      {/* Assignment controls */}
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <button
+          onClick={runAutoAssign}
+          className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-500 text-white rounded-md text-sm font-medium hover:bg-orange-600"
+        >
+          <Zap size={14} />
+          Auto-assign by strength
+        </button>
+        <button
+          onClick={clearAllAssignments}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
+        >
+          Clear all
+        </button>
+        <p className="text-xs text-gray-500">
+          Auto-assign pulls the top unassigned players from each club&apos;s strength
+          ladder. Singles line gets #1; doubles line gets the next two. You can
+          always override any slot manually.
+        </p>
       </div>
 
       {/* Lines */}
@@ -269,17 +345,20 @@ function LineEditor({
             Line {line.line_number} · {isDoubles ? 'Doubles' : 'Singles'}
           </h3>
         </div>
-        <span
-          className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-            line.status === 'completed'
-              ? 'bg-green-100 text-green-700'
-              : line.status === 'in_progress'
-              ? 'bg-blue-100 text-blue-700'
-              : 'bg-gray-100 text-gray-600'
-          }`}
-        >
-          {line.status.replace('_', ' ')}
-        </span>
+        <div className="flex items-center gap-2">
+          <CopyScoringLink token={line.score_token} />
+          <span
+            className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+              line.status === 'completed'
+                ? 'bg-green-100 text-green-700'
+                : line.status === 'in_progress'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-600'
+            }`}
+          >
+            {line.status.replace('_', ' ')}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
@@ -371,6 +450,33 @@ function LineEditor({
         )}
       </div>
     </div>
+  );
+}
+
+function CopyScoringLink({ token }: { token: string | null }) {
+  const [copied, setCopied] = useState(false);
+  if (!token) return null;
+  const url =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/leagues/line/${token}`
+      : `/leagues/line/${token}`;
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(url);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        } catch {
+          prompt('Copy this scoring link:', url);
+        }
+      }}
+      title="Copy magic-link for this line"
+      className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800"
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+      {copied ? 'Copied!' : 'Score link'}
+    </button>
   );
 }
 
