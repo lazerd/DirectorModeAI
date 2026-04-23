@@ -49,7 +49,9 @@ export type DraftMatchup = {
 
 /**
  * Generate the line skeleton for a matchup based on the division's line_format.
- * line_number is 1-indexed and contiguous.
+ * line_number is 1-indexed and contiguous. Used by the seed endpoint to create
+ * a default shape; real matchups should be regenerated from attendance via
+ * optimizeLines() once check-in is done.
  */
 export function linesForFormat(format: JTTLineFormat): Array<{
   line_type: JTTLineType;
@@ -68,6 +70,113 @@ export function linesForFormat(format: JTTLineFormat): Array<{
     case 'custom':
       return [];
   }
+}
+
+/**
+ * Given the number of courts at the host club and the attending player count
+ * on each side, compute the optimal mix of singles + doubles lines.
+ *
+ * Goal: get as many players as possible on court, preferring singles when
+ * attendance allows (so every kid gets their own court). Singles becomes
+ * doubles only when needed to fit everyone.
+ *
+ * Algorithm (per side, using the smaller side as the binding count):
+ *   usable = min(home_attending, away_attending)
+ *   - usable ≤ courts           → all singles (S=usable, D=0)
+ *   - courts < usable ≤ 2*courts → mix: D = usable - courts, S = 2*courts - usable
+ *   - usable > 2*courts         → all doubles (D=courts, S=0); surplus sits
+ *
+ * When sides have unequal attendance (home=6, away=3 with 4 courts), the
+ * smaller side caps participation. The larger side uses only N = usable
+ * players; the rest bench.
+ *
+ * Returns counts + who's benched on each side.
+ */
+export function optimizeLines(
+  courts: number,
+  homeAttending: number,
+  awayAttending: number
+): {
+  singles: number;
+  doubles: number;
+  usable: number;
+  benchedHome: number;
+  benchedAway: number;
+  warning: string | null;
+} {
+  const c = Math.max(0, Math.floor(courts));
+  const ph = Math.max(0, Math.floor(homeAttending));
+  const pa = Math.max(0, Math.floor(awayAttending));
+  const usable = Math.min(ph, pa);
+
+  if (c === 0 || usable === 0) {
+    return {
+      singles: 0,
+      doubles: 0,
+      usable,
+      benchedHome: ph,
+      benchedAway: pa,
+      warning:
+        c === 0
+          ? 'No courts available for this matchup.'
+          : usable === 0 && (ph === 0 || pa === 0)
+          ? `${ph === 0 ? 'Home' : 'Away'} has no players checked in.`
+          : null,
+    };
+  }
+
+  let singles: number, doubles: number;
+  if (usable <= c) {
+    singles = usable;
+    doubles = 0;
+  } else if (usable <= 2 * c) {
+    doubles = usable - c;
+    singles = 2 * c - usable;
+  } else {
+    singles = 0;
+    doubles = c;
+  }
+
+  const playing = singles + 2 * doubles;
+  const benchedHome = ph - playing;
+  const benchedAway = pa - playing;
+
+  const warnings: string[] = [];
+  if (ph !== pa) {
+    const surplus = Math.abs(ph - pa);
+    warnings.push(
+      `Uneven attendance — ${ph > pa ? 'home' : 'away'} has ${surplus} extra player${surplus === 1 ? '' : 's'} who won't play.`
+    );
+  }
+  if (benchedHome > 0 && ph === pa) {
+    warnings.push(
+      `${benchedHome} player${benchedHome === 1 ? '' : 's'} per side sitting out (courts are the bottleneck).`
+    );
+  }
+
+  return {
+    singles,
+    doubles,
+    usable,
+    benchedHome: Math.max(0, benchedHome),
+    benchedAway: Math.max(0, benchedAway),
+    warning: warnings.length > 0 ? warnings.join(' ') : null,
+  };
+}
+
+/**
+ * Build the line skeleton (line_type + line_number) for N singles + M doubles,
+ * with singles first, then doubles. 1-indexed, contiguous.
+ */
+export function buildLineSkeleton(
+  singles: number,
+  doubles: number
+): Array<{ line_type: JTTLineType; line_number: number }> {
+  const lines: Array<{ line_type: JTTLineType; line_number: number }> = [];
+  let n = 1;
+  for (let i = 0; i < singles; i++) lines.push({ line_type: 'singles', line_number: n++ });
+  for (let i = 0; i < doubles; i++) lines.push({ line_type: 'doubles', line_number: n++ });
+  return lines;
 }
 
 /**

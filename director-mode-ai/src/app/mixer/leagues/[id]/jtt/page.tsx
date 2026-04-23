@@ -16,6 +16,7 @@ import { createClient } from '@/lib/supabase/client';
 import RostersTab from '@/components/leagues/jtt/RostersTab';
 import MatchupsTab from '@/components/leagues/jtt/MatchupsTab';
 import StandingsTab from '@/components/leagues/jtt/StandingsTab';
+import SettingsTab from '@/components/leagues/jtt/SettingsTab';
 
 type League = {
   id: string;
@@ -35,6 +36,7 @@ export type JTTClub = {
   short_code: string;
   color: string | null;
   sort_order: number;
+  courts_available: number;
 };
 
 export type JTTDivision = {
@@ -83,6 +85,7 @@ export type JTTMatchup = {
   winner: 'home' | 'away' | 'tie' | null;
   status: string;
   notes: string | null;
+  courts_override: number | null;
 };
 
 export type JTTLine = {
@@ -297,30 +300,11 @@ export default function JTTLeaguePage() {
       )}
 
       {tab === 'settings' && (
-        <div className="bg-white rounded-xl border border-gray-200 p-6">
-          <h2 className="font-semibold text-lg mb-3">Settings</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-            <div>
-              <div className="text-gray-500">Public URL</div>
-              <div className="font-mono text-gray-900">/leagues/{league.slug}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Dates</div>
-              <div className="text-gray-900">
-                {league.start_date} → {league.end_date}
-              </div>
-            </div>
-            <div>
-              <div className="text-gray-500">Status</div>
-              <div className="text-gray-900">{league.status}</div>
-            </div>
-          </div>
-          {league.description && (
-            <p className="mt-4 text-sm text-gray-600 whitespace-pre-wrap">
-              {league.description}
-            </p>
-          )}
-        </div>
+        <SettingsTab
+          league={league}
+          clubs={clubs}
+          onRefresh={fetchAll}
+        />
       )}
     </div>
   );

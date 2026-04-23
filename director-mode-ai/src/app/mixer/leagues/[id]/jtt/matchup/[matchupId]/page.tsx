@@ -12,11 +12,21 @@ import {
   Zap,
   Copy,
   Check,
+  UserCheck,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { autoAssignByStrength } from '@/lib/jtt';
+import {
+  autoAssignByStrength,
+  optimizeLines,
+  buildLineSkeleton,
+} from '@/lib/jtt';
 
-type Club = { id: string; name: string; short_code: string };
+type Club = {
+  id: string;
+  name: string;
+  short_code: string;
+  courts_available: number;
+};
 type Division = {
   id: string;
   name: string;
@@ -37,6 +47,7 @@ type Matchup = {
   winner: 'home' | 'away' | 'tie' | null;
   status: string;
   notes: string | null;
+  courts_override: number | null;
 };
 type Roster = {
   id: string;
@@ -75,6 +86,7 @@ export default function MatchupFacilitatorPage() {
   const [homeRosters, setHomeRosters] = useState<Roster[]>([]);
   const [awayRosters, setAwayRosters] = useState<Roster[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
+  const [checkedInIds, setCheckedInIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -95,7 +107,7 @@ export default function MatchupFacilitatorPage() {
     const matchupRow = m as Matchup;
     setMatchup(matchupRow);
 
-    const [dRes, cRes, rRes, lRes] = await Promise.all([
+    const [dRes, cRes, rRes, lRes, ciRes] = await Promise.all([
       supabase.from('league_divisions').select('*').eq('id', matchupRow.division_id).single(),
       supabase
         .from('league_clubs')
@@ -103,7 +115,7 @@ export default function MatchupFacilitatorPage() {
         .in('id', [matchupRow.home_club_id, matchupRow.away_club_id]),
       supabase
         .from('league_team_rosters')
-        .select('id, division_id, club_id, player_name, ladder_position')
+        .select('id, division_id, club_id, player_name, ladder_position, status')
         .eq('division_id', matchupRow.division_id)
         .in('club_id', [matchupRow.home_club_id, matchupRow.away_club_id])
         .order('ladder_position', { nullsFirst: false }),
@@ -112,6 +124,10 @@ export default function MatchupFacilitatorPage() {
         .select('*')
         .eq('matchup_id', matchupId)
         .order('line_number'),
+      supabase
+        .from('league_matchup_checkins')
+        .select('roster_id')
+        .eq('matchup_id', matchupId),
     ]);
 
     setDivision((dRes.data as Division) || null);
@@ -124,11 +140,42 @@ export default function MatchupFacilitatorPage() {
     setAwayRosters(rostersList.filter(r => r.club_id === matchupRow.away_club_id));
     setLines((lRes.data as Line[]) || []);
 
+    const ciList = ((ciRes.data as { roster_id: string }[]) || []).map(x => x.roster_id);
+    setCheckedInIds(new Set(ciList));
+
     setLoading(false);
   }, [matchupId]);
 
+  // Which rosters count as "available" for today:
+  // - If any check-ins exist for this matchup, use only checked-in active players
+  // - If none, fall back to all active roster players
+  const activeHome = useMemo(
+    () => homeRosters.filter(r => r.status === 'active'),
+    [homeRosters]
+  );
+  const activeAway = useMemo(
+    () => awayRosters.filter(r => r.status === 'active'),
+    [awayRosters]
+  );
+  const hasCheckins = checkedInIds.size > 0;
+  const availableHome = hasCheckins
+    ? activeHome.filter(r => checkedInIds.has(r.id))
+    : activeHome;
+  const availableAway = hasCheckins
+    ? activeAway.filter(r => checkedInIds.has(r.id))
+    : activeAway;
+
+  const courtsForThisMatchup =
+    matchup?.courts_override ?? homeClub?.courts_available ?? 0;
+
+  const optimizer = useMemo(
+    () =>
+      optimizeLines(courtsForThisMatchup, availableHome.length, availableAway.length),
+    [courtsForThisMatchup, availableHome.length, availableAway.length]
+  );
+
   const runAutoAssign = async () => {
-    const patches = autoAssignByStrength(lines, homeRosters, awayRosters);
+    const patches = autoAssignByStrength(lines, availableHome, availableAway);
     if (patches.length === 0) {
       alert('All lines are already assigned — clear players first to re-auto-assign.');
       return;
@@ -146,6 +193,99 @@ export default function MatchupFacilitatorPage() {
           })
           .eq('id', p.id)
       )
+    );
+    fetchAll();
+  };
+
+  const toggleCheckin = async (rosterId: string) => {
+    const supabase = createClient();
+    if (checkedInIds.has(rosterId)) {
+      await supabase
+        .from('league_matchup_checkins')
+        .delete()
+        .eq('matchup_id', matchupId)
+        .eq('roster_id', rosterId);
+      setCheckedInIds(prev => {
+        const next = new Set(prev);
+        next.delete(rosterId);
+        return next;
+      });
+    } else {
+      await supabase
+        .from('league_matchup_checkins')
+        .insert({ matchup_id: matchupId, roster_id: rosterId });
+      setCheckedInIds(prev => new Set(prev).add(rosterId));
+    }
+  };
+
+  const checkInAllActive = async (clubId: string) => {
+    const roster = clubId === matchup?.home_club_id ? activeHome : activeAway;
+    const missing = roster.filter(r => !checkedInIds.has(r.id));
+    if (missing.length === 0) return;
+    const supabase = createClient();
+    await supabase.from('league_matchup_checkins').insert(
+      missing.map(r => ({ matchup_id: matchupId, roster_id: r.id }))
+    );
+    setCheckedInIds(prev => {
+      const next = new Set(prev);
+      for (const r of missing) next.add(r.id);
+      return next;
+    });
+  };
+
+  const clearCheckins = async (clubId: string) => {
+    const roster = clubId === matchup?.home_club_id ? activeHome : activeAway;
+    const toClear = roster.filter(r => checkedInIds.has(r.id));
+    if (toClear.length === 0) return;
+    const supabase = createClient();
+    await supabase
+      .from('league_matchup_checkins')
+      .delete()
+      .eq('matchup_id', matchupId)
+      .in(
+        'roster_id',
+        toClear.map(r => r.id)
+      );
+    setCheckedInIds(prev => {
+      const next = new Set(prev);
+      for (const r of toClear) next.delete(r.id);
+      return next;
+    });
+  };
+
+  const regenerateLines = async () => {
+    const completed = lines.filter(l => l.status === 'completed');
+    if (completed.length > 0) {
+      if (
+        !confirm(
+          `${completed.length} line${completed.length === 1 ? '' : 's'} already scored. Regenerating will delete those results. Continue?`
+        )
+      )
+        return;
+    } else if (lines.some(l => l.home_player1_id || l.away_player1_id)) {
+      if (!confirm('This will replace the current line layout. Continue?')) return;
+    }
+    const { singles, doubles } = optimizer;
+    if (singles === 0 && doubles === 0) {
+      alert(
+        `Can't generate lines: ${
+          optimizer.warning || 'No courts or no players checked in.'
+        }`
+      );
+      return;
+    }
+    const skel = buildLineSkeleton(singles, doubles);
+    const supabase = createClient();
+    // Wipe existing lines, then insert the new skeleton. ON DELETE CASCADE
+    // on the lines table takes the checkins' references with it — nope,
+    // checkins reference rosters, not lines. Safe to just delete lines.
+    await supabase.from('league_matchup_lines').delete().eq('matchup_id', matchupId);
+    await supabase.from('league_matchup_lines').insert(
+      skel.map(l => ({
+        matchup_id: matchupId,
+        line_type: l.line_type,
+        line_number: l.line_number,
+      }))
     );
     fetchAll();
   };
@@ -238,6 +378,96 @@ export default function MatchupFacilitatorPage() {
         <TeamScore clubName={homeClub.name} side="Home" score={matchup.home_lines_won} isWinner={matchup.winner === 'home'} />
       </div>
 
+      {/* Attendance / check-in */}
+      <section className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+            <UserCheck size={16} className="text-orange-500" />
+            Today&apos;s attendance
+          </h2>
+          <span className="text-xs text-gray-500">
+            {hasCheckins
+              ? `${checkedInIds.size} checked in`
+              : 'No check-ins yet (using full active roster)'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <AttendanceColumn
+            label={`Away · ${awayClub.name}`}
+            rosters={activeAway}
+            checkedInIds={checkedInIds}
+            onToggle={toggleCheckin}
+            onCheckAll={() => checkInAllActive(awayClub.id)}
+            onClearAll={() => clearCheckins(awayClub.id)}
+          />
+          <AttendanceColumn
+            label={`Home · ${homeClub.name}`}
+            rosters={activeHome}
+            checkedInIds={checkedInIds}
+            onToggle={toggleCheckin}
+            onCheckAll={() => checkInAllActive(homeClub.id)}
+            onClearAll={() => clearCheckins(homeClub.id)}
+          />
+        </div>
+      </section>
+
+      {/* Courts + line optimizer summary */}
+      <section className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-sm text-gray-600 mb-1">
+              <span className="font-medium text-gray-900">{courtsForThisMatchup}</span>{' '}
+              courts at {homeClub.name}
+              {matchup.courts_override !== null && (
+                <span className="text-xs text-orange-600 ml-2">(override for today)</span>
+              )}
+            </div>
+            <div className="text-sm text-gray-600">
+              Playing today:{' '}
+              <span className="font-medium text-gray-900">{availableAway.length}</span> away
+              vs{' '}
+              <span className="font-medium text-gray-900">{availableHome.length}</span> home
+            </div>
+            <div className="mt-2 text-sm">
+              Recommended:{' '}
+              <span className="font-semibold text-gray-900">
+                {optimizer.singles} singles + {optimizer.doubles} doubles
+              </span>
+              {optimizer.benchedHome + optimizer.benchedAway > 0 && (
+                <span className="text-xs text-gray-500 ml-2">
+                  ({optimizer.benchedHome + optimizer.benchedAway} sitting)
+                </span>
+              )}
+            </div>
+            {optimizer.warning && (
+              <p className="mt-1 text-xs text-orange-700">{optimizer.warning}</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={regenerateLines}
+              disabled={optimizer.singles === 0 && optimizer.doubles === 0}
+              className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white rounded-md text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
+            >
+              Regenerate lines from attendance
+            </button>
+            <CourtsOverrideInput
+              value={matchup.courts_override}
+              onSet={async v => {
+                const supabase = createClient();
+                await supabase
+                  .from('league_team_matchups')
+                  .update({ courts_override: v })
+                  .eq('id', matchupId);
+                fetchAll();
+              }}
+              defaultCourts={homeClub.courts_available}
+            />
+          </div>
+        </div>
+      </section>
+
       {/* Assignment controls */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <button
@@ -254,9 +484,9 @@ export default function MatchupFacilitatorPage() {
           Clear all
         </button>
         <p className="text-xs text-gray-500">
-          Auto-assign pulls the top unassigned players from each club&apos;s strength
-          ladder. Singles line gets #1; doubles line gets the next two. You can
-          always override any slot manually.
+          Pulls top-ranked players from the checked-in pool (or full active roster
+          if nobody is checked in yet). Singles lines get #1, doubles get the next
+          pair. Manual overrides stick.
         </p>
       </div>
 
@@ -449,6 +679,141 @@ function LineEditor({
           </button>
         )}
       </div>
+    </div>
+  );
+}
+
+function AttendanceColumn({
+  label,
+  rosters,
+  checkedInIds,
+  onToggle,
+  onCheckAll,
+  onClearAll,
+}: {
+  label: string;
+  rosters: Roster[];
+  checkedInIds: Set<string>;
+  onToggle: (rosterId: string) => void;
+  onCheckAll: () => void;
+  onClearAll: () => void;
+}) {
+  const here = rosters.filter(r => checkedInIds.has(r.id)).length;
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <div className="text-xs font-medium text-gray-500 uppercase">{label}</div>
+        <div className="text-xs text-gray-400">
+          {here}/{rosters.length} here
+        </div>
+      </div>
+      {rosters.length === 0 ? (
+        <p className="text-xs text-gray-400 italic">No active roster.</p>
+      ) : (
+        <>
+          <div className="border border-gray-200 rounded-md divide-y divide-gray-100 mb-2">
+            {rosters
+              .sort((a, b) => (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999))
+              .map(r => {
+                const checked = checkedInIds.has(r.id);
+                return (
+                  <label
+                    key={r.id}
+                    className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer ${
+                      checked ? 'bg-green-50' : ''
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggle(r.id)}
+                      className="w-4 h-4"
+                    />
+                    <span className="w-5 text-right text-gray-400 text-xs">
+                      {r.ladder_position ? `#${r.ladder_position}` : '—'}
+                    </span>
+                    <span className="flex-1 text-gray-900">{r.player_name}</span>
+                  </label>
+                );
+              })}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onCheckAll}
+              className="text-xs text-orange-600 hover:text-orange-700"
+            >
+              Check all
+            </button>
+            <span className="text-gray-300">·</span>
+            <button
+              onClick={onClearAll}
+              className="text-xs text-gray-500 hover:text-gray-800"
+            >
+              Clear
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CourtsOverrideInput({
+  value,
+  onSet,
+  defaultCourts,
+}: {
+  value: number | null;
+  onSet: (v: number | null) => void;
+  defaultCourts: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>(value?.toString() ?? '');
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => {
+          setDraft(value?.toString() ?? '');
+          setEditing(true);
+        }}
+        className="text-xs text-gray-500 hover:text-gray-800 underline"
+      >
+        {value === null ? `Override courts (default ${defaultCourts})` : 'Edit court override'}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="number"
+        min={0}
+        max={20}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        placeholder={`${defaultCourts}`}
+        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-gray-900"
+      />
+      <button
+        onClick={() => {
+          const parsed = draft === '' ? null : parseInt(draft, 10);
+          onSet(Number.isNaN(parsed) ? null : parsed);
+          setEditing(false);
+        }}
+        className="text-xs px-2 py-1 bg-gray-900 text-white rounded"
+      >
+        Set
+      </button>
+      <button
+        onClick={() => {
+          onSet(null);
+          setEditing(false);
+        }}
+        className="text-xs text-gray-500"
+      >
+        Reset
+      </button>
     </div>
   );
 }
