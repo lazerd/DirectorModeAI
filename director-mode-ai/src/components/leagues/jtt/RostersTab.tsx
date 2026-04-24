@@ -9,6 +9,7 @@ import {
   ArrowUp,
   ArrowDown,
   Shuffle,
+  Sparkles,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type {
@@ -35,6 +36,7 @@ type Props = {
 type AddingContext = { divisionId: string; clubId: string } | null;
 
 export default function RostersTab({
+  leagueId,
   clubs,
   divisions,
   divisionClubs,
@@ -43,6 +45,39 @@ export default function RostersTab({
   lines = [],
   onRefresh,
 }: Props) {
+  const [seedingFake, setSeedingFake] = useState(false);
+  const [seedMsg, setSeedMsg] = useState<string | null>(null);
+
+  const seedFakeRosters = async (overwrite: boolean) => {
+    if (
+      overwrite &&
+      !confirm(
+        'Wipe and replace ALL existing rosters with fake test data? This deletes everything currently in the rosters.'
+      )
+    )
+      return;
+    setSeedingFake(true);
+    setSeedMsg(null);
+    try {
+      const res = await fetch(`/api/leagues/${leagueId}/seed-fake-rosters`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ playersPerTeam: 8, overwrite }),
+      });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      setSeedMsg(
+        body.inserted > 0
+          ? `Added ${body.inserted} fake players across ${body.teamsSeeded} teams.`
+          : body.note || 'Nothing inserted.'
+      );
+      onRefresh();
+    } catch (e: any) {
+      setSeedMsg(`Failed: ${e.message}`);
+    } finally {
+      setSeedingFake(false);
+    }
+  };
   const [adding, setAdding] = useState<AddingContext>(null);
   const [form, setForm] = useState({
     player_name: '',
@@ -214,8 +249,49 @@ export default function RostersTab({
     );
   }
 
+  const totalRosterCount = rosters.length;
+
   return (
     <div className="space-y-6">
+      {/* Test-data helper — visible as long as rosters are sparse */}
+      {totalRosterCount < 10 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <Sparkles size={18} className="text-amber-600 mt-0.5" />
+            <div className="flex-1">
+              <h4 className="font-semibold text-amber-900 text-sm">
+                Need test data?
+              </h4>
+              <p className="text-xs text-amber-800 mb-2">
+                Fill every team with 8 fake players so you can try check-in,
+                auto-assign, and the line optimizer end-to-end before your real
+                rosters land.
+              </p>
+              <div className="flex flex-wrap gap-2 mb-2">
+                <button
+                  onClick={() => seedFakeRosters(false)}
+                  disabled={seedingFake}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded text-xs font-medium hover:bg-amber-700 disabled:opacity-50"
+                >
+                  <Sparkles size={12} />
+                  {seedingFake ? 'Seeding...' : 'Seed fake rosters'}
+                </button>
+                <button
+                  onClick={() => seedFakeRosters(true)}
+                  disabled={seedingFake}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-amber-600 text-amber-700 rounded text-xs font-medium hover:bg-amber-100 disabled:opacity-50"
+                >
+                  Wipe &amp; reseed
+                </button>
+              </div>
+              {seedMsg && (
+                <p className="text-xs text-amber-900 mt-1">{seedMsg}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {divisions.map(division => {
         const divisionClubList = clubsForDivision(division.id);
         return (
