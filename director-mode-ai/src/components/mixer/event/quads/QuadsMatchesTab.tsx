@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Copy, Check, Edit3, Loader2, Trophy } from 'lucide-react';
+import { Edit3, Loader2, Trophy, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   computeFlightStandings,
@@ -26,7 +26,8 @@ export default function QuadsMatchesTab({
   const [editing, setEditing] = useState<string | null>(null);
   const [scoreInput, setScoreInput] = useState({ score: '', winner_side: '' as '' | 'a' | 'b' });
   const [busy, setBusy] = useState<string | null>(null);
-  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [emailing, setEmailing] = useState(false);
+  const [emailResult, setEmailResult] = useState<{ sent: number; total: number } | null>(null);
   const supabase = createClient();
 
   const entryById = new Map(entries.map((e) => [e.id, e]));
@@ -87,15 +88,22 @@ export default function QuadsMatchesTab({
     });
   };
 
-  const copyMagicLink = async (token: string) => {
+  const emailScoringLinks = async () => {
+    if (!confirm(
+      `Email a personal scoring link to every confirmed player? Each player will get a link they can use to enter scores for all their matches.`
+    )) return;
+    setEmailing(true);
+    setEmailResult(null);
     try {
-      const url = `${window.location.origin}/quads/match/${token}`;
-      await navigator.clipboard.writeText(url);
-      setCopiedToken(token);
-      setTimeout(() => setCopiedToken(null), 1500);
+      const res = await fetch(`/api/quads/events/${event.id}/email-scoring-links`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      setEmailResult(data);
     } catch {
       /* swallow */
     }
+    setEmailing(false);
   };
 
   if (flights.length === 0) {
@@ -110,6 +118,29 @@ export default function QuadsMatchesTab({
 
   return (
     <div className="space-y-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <h3 className="font-semibold mb-1">Player scoring links</h3>
+          <p className="text-sm text-gray-600">
+            Send each confirmed player one email with a personal link — they tap "Enter Score" on
+            their phone after each match. (You can still enter scores yourself below.)
+          </p>
+          {emailResult && (
+            <p className="text-sm text-emerald-700 mt-2 font-medium">
+              ✓ Sent {emailResult.sent} of {emailResult.total} emails.
+            </p>
+          )}
+        </div>
+        <button
+          onClick={emailScoringLinks}
+          disabled={emailing}
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm disabled:opacity-50 flex-shrink-0"
+        >
+          {emailing ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+          {emailing ? 'Sending…' : 'Email scoring links'}
+        </button>
+      </div>
+
       <div className="text-sm text-gray-600">
         Scoring: {quadScoringLabel(event.event_scoring_format)}
       </div>
@@ -151,8 +182,6 @@ export default function QuadsMatchesTab({
                         onCancel={() => setEditing(null)}
                         onSave={() => saveScore(m)}
                         busy={busy === m.id}
-                        onCopyLink={() => copyMagicLink(m.score_token)}
-                        copied={copiedToken === m.score_token}
                       />
                     ))}
                   </div>
@@ -179,8 +208,6 @@ export default function QuadsMatchesTab({
                   onCancel={() => setEditing(null)}
                   onSave={() => saveScore(doubles)}
                   busy={busy === doubles.id}
-                  onCopyLink={() => copyMagicLink(doubles.score_token)}
-                  copied={copiedToken === doubles.score_token}
                 />
               ) : null}
             </div>
@@ -201,8 +228,6 @@ function MatchRow({
   onCancel,
   onSave,
   busy,
-  onCopyLink,
-  copied,
 }: {
   match: QuadMatch;
   playerName: (id: string | null) => string;
@@ -213,8 +238,6 @@ function MatchRow({
   onCancel: () => void;
   onSave: () => void;
   busy: boolean;
-  onCopyLink: () => void;
-  copied: boolean;
 }) {
   const a = playerName(match.player1_id);
   const b = playerName(match.player3_id);
@@ -278,16 +301,6 @@ function MatchRow({
       <div className="text-gray-900 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
         {match.score || ''}
       </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onCopyLink();
-        }}
-        title="Copy magic-link scoring URL (send to coach/parent)"
-        className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded"
-      >
-        {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-      </button>
       {isPending ? (
         <button
           onClick={(e) => {
@@ -323,8 +336,6 @@ function DoublesRow({
   onCancel,
   onSave,
   busy,
-  onCopyLink,
-  copied,
 }: {
   match: QuadMatch;
   playerName: (id: string | null) => string;
@@ -335,8 +346,6 @@ function DoublesRow({
   onCancel: () => void;
   onSave: () => void;
   busy: boolean;
-  onCopyLink: () => void;
-  copied: boolean;
 }) {
   const a1 = playerName(match.player1_id);
   const a2 = playerName(match.player2_id);
@@ -409,16 +418,6 @@ function DoublesRow({
       <div className="text-gray-900 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
         {match.score || ''}
       </div>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onCopyLink();
-        }}
-        title="Copy magic-link scoring URL"
-        className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded"
-      >
-        {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-      </button>
       {isPending ? (
         <button
           onClick={(e) => {

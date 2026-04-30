@@ -81,6 +81,32 @@ export async function sendQuadsPromotedEmail(args: {
   });
 }
 
+export async function sendQuadsScoringLinkEmail(args: {
+  to: string;
+  playerName: string;
+  tournamentName: string;
+  flightName: string | null;
+  scoringUrl: string;
+}) {
+  return safeResendSend(resend, {
+    from: FROM,
+    to: args.to,
+    subject: `Score your matches: ${args.tournamentName}`,
+    html: htmlShell(
+      `${args.playerName} — your match scoring link`,
+      `<p>You're playing in <strong>${args.tournamentName}</strong>${args.flightName ? ` (${args.flightName})` : ''}.</p>
+      <p>Use this link to enter scores for your matches as you finish them. The page lists every match you're in — just tap "Enter Score" after each one.</p>
+      <p style="margin: 24px 0;">
+        <a href="${args.scoringUrl}" style="display: inline-block; padding: 12px 24px; background: #ea580c; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">
+          Open my scoring page
+        </a>
+      </p>
+      <p style="color: #888; font-size: 13px;">Or paste this URL into your browser:<br><code>${args.scoringUrl}</code></p>
+      <p style="color: #888; font-size: 13px;">This link is personal to you — don't share it with other players.</p>`
+    ),
+  });
+}
+
 export async function sendQuadsDoublesPairingEmail(args: {
   to: string;
   playerName: string;

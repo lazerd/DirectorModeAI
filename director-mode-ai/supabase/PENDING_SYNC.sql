@@ -255,6 +255,28 @@ CREATE POLICY "Public can view quad matches" ON quad_matches
   );
 
 -- ============================================================================
+-- 4. quads_player_tokens.sql — per-player scoring URL token. Each
+--    quad_entries row gets a unique token so the player can open ONE link
+--    and see all their matches. Replaces the old per-match-token UX.
+-- ============================================================================
+
+ALTER TABLE quad_entries
+  ADD COLUMN IF NOT EXISTS player_token TEXT;
+
+UPDATE quad_entries
+SET player_token = replace(uuid_generate_v4()::text, '-', '')
+WHERE player_token IS NULL;
+
+ALTER TABLE quad_entries
+  ALTER COLUMN player_token SET NOT NULL;
+
+ALTER TABLE quad_entries
+  ALTER COLUMN player_token SET DEFAULT replace(uuid_generate_v4()::text, '-', '');
+
+DROP INDEX IF EXISTS idx_quad_entries_player_token;
+CREATE UNIQUE INDEX idx_quad_entries_player_token ON quad_entries(player_token);
+
+-- ============================================================================
 -- End of pending sync. If you see "Success. No rows returned." the database
 -- is now aligned with every committed migration in director-mode-ai/supabase/
 -- migrations/. Safe to re-run this file any time.
