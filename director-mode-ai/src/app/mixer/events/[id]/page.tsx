@@ -17,6 +17,7 @@ import EditEventFormatDialog from "@/components/mixer/event/EditEventFormatDialo
 import EventCodeQR from "@/components/mixer/event/EventCodeQR";
 import TournamentBracket from "@/components/mixer/event/TournamentBracket";
 import TeamBattleTab from "@/components/mixer/event/TeamBattleTab";
+import QuadsAdminDashboard from "@/components/mixer/event/QuadsAdminDashboard";
 import { format } from "date-fns";
 
 interface Event {
@@ -136,6 +137,12 @@ export default function EventDashboard() {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
+  }
+
+  // Quads tournaments use their own dashboard — public-signup, paid entry,
+  // flights of 4, magic-link scoring. None of the mixer-event UI applies.
+  if (event && event.match_format === 'quads') {
+    return <QuadsAdminDashboard eventId={event.id} />;
   }
 
   if (!event) return null;

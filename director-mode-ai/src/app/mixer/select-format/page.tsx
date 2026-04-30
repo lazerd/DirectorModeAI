@@ -112,6 +112,13 @@ export default function SelectFormatPage() {
       icon: '⚔️',
       category: 'team',
     },
+    {
+      id: 'quads',
+      name: 'Quads',
+      description: 'Public-signup tournament. Players grouped into flights of 4. Each flight: 3 singles round-robin, then doubles (1+4 vs 2+3). Stripe payment + waitlist + age/gender filters.',
+      icon: '🎯',
+      category: 'tournament',
+    },
   ];
 
   const mixerFormats = formats.filter(f => f.category === 'mixer');
@@ -120,6 +127,10 @@ export default function SelectFormatPage() {
 
   const handleFormatClick = (formatId: string) => {
     setSelectedFormat(formatId);
+    if (formatId === 'quads') {
+      router.push('/mixer/quads/new');
+      return;
+    }
     router.push(`/mixer/events/new?format=${formatId}`);
   };
 

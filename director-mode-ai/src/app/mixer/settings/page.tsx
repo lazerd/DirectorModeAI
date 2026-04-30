@@ -1,7 +1,18 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Settings as SettingsIcon, Save, User, Mail, Building2 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
+import {
+  Settings as SettingsIcon,
+  Save,
+  User,
+  Mail,
+  Building2,
+  CreditCard,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+} from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 type Profile = {
@@ -11,8 +22,18 @@ type Profile = {
   timezone: string | null;
 };
 
+type StripeStatus = {
+  stripe_account_id: string | null;
+  charges_enabled: boolean;
+  payouts_enabled: boolean;
+  details_submitted: boolean;
+};
+
 export default function MixerSettingsPage() {
+  const searchParams = useSearchParams();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [stripe, setStripe] = useState<StripeStatus | null>(null);
+  const [stripeLoading, setStripeLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -35,6 +56,40 @@ export default function MixerSettingsPage() {
       setLoading(false);
     })();
   }, []);
+
+  // Fetch Stripe Connect status (and refresh when returning from Stripe).
+  useEffect(() => {
+    const refresh = async () => {
+      try {
+        const res = await fetch('/api/stripe/connect/status');
+        if (res.ok) setStripe(await res.json());
+      } catch {
+        /* swallow */
+      }
+    };
+    refresh();
+    if (searchParams.get('stripe_return') === '1') {
+      // Slight delay so Stripe's account propagation completes
+      setTimeout(refresh, 1500);
+    }
+  }, [searchParams]);
+
+  const startStripeConnect = async () => {
+    setStripeLoading(true);
+    try {
+      const res = await fetch('/api/stripe/connect/start', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        setError(data.error || 'Could not start Stripe onboarding.');
+        setStripeLoading(false);
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Stripe error');
+      setStripeLoading(false);
+    }
+  };
 
   const save = async () => {
     if (!profile) return;
@@ -158,6 +213,65 @@ export default function MixerSettingsPage() {
             <span className="text-sm text-green-600">Saved.</span>
           )}
         </div>
+      </div>
+
+      {/* Stripe Connect — Payouts */}
+      <div className="bg-white rounded-xl border p-6 mt-6 space-y-4">
+        <div className="flex items-center gap-2">
+          <CreditCard size={18} className="text-emerald-600" />
+          <h2 className="font-semibold text-lg text-gray-900">Payouts (Stripe)</h2>
+        </div>
+        <p className="text-sm text-gray-600">
+          Connect your Stripe account to accept entry fees for paid Quads tournaments. Money
+          goes directly to your account; CoachMode never holds funds.
+        </p>
+
+        {!stripe?.stripe_account_id && (
+          <button
+            onClick={startStripeConnect}
+            disabled={stripeLoading}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50"
+          >
+            <ExternalLink size={16} />
+            {stripeLoading ? 'Opening Stripe…' : 'Connect Stripe'}
+          </button>
+        )}
+
+        {stripe?.stripe_account_id && stripe.charges_enabled && stripe.payouts_enabled && (
+          <div className="flex items-start gap-2 text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3">
+            <CheckCircle2 size={18} className="mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium">Stripe connected and ready.</p>
+              <p className="text-xs text-emerald-700 mt-0.5">
+                Account ID: {stripe.stripe_account_id}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {stripe?.stripe_account_id && (!stripe.charges_enabled || !stripe.payouts_enabled) && (
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 text-sm bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3">
+              <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium">Stripe onboarding incomplete.</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  Charges enabled: {stripe.charges_enabled ? 'yes' : 'no'} · Payouts enabled:{' '}
+                  {stripe.payouts_enabled ? 'yes' : 'no'} · Details submitted:{' '}
+                  {stripe.details_submitted ? 'yes' : 'no'}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={startStripeConnect}
+              disabled={stripeLoading}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50"
+            >
+              <ExternalLink size={16} />
+              {stripeLoading ? 'Opening Stripe…' : 'Continue Stripe onboarding'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
