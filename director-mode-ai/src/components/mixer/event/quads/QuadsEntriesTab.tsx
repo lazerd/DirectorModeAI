@@ -10,6 +10,8 @@ import {
   UserPlus,
   Trash2,
   AlertCircle,
+  ArrowRight,
+  Wand2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type { QuadEvent, QuadEntry, QuadFlight } from '../QuadsAdminDashboard';
@@ -34,11 +36,13 @@ export default function QuadsEntriesTab({
   entries,
   flights,
   onRefresh,
+  onAdvanceToFlights,
 }: {
   event: QuadEvent;
   entries: QuadEntry[];
   flights: QuadFlight[];
   onRefresh: () => void | Promise<void>;
+  onAdvanceToFlights?: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -328,6 +332,36 @@ export default function QuadsEntriesTab({
           Cap = {event.max_players} confirmed. Extras land on the waitlist automatically.
         </div>
       )}
+
+      {/* Ready-to-draw CTA — appears once you have 4+ confirmed and no flights yet. */}
+      {flights.length === 0 &&
+        entries.filter((e) => e.position === 'in_flight').length >= 4 &&
+        onAdvanceToFlights && (
+          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 sm:p-5 flex items-center justify-between gap-3 mt-4">
+            <div className="flex-1">
+              <div className="font-semibold text-emerald-900 flex items-center gap-2">
+                <Wand2 size={16} />
+                Ready to draw
+              </div>
+              <p className="text-sm text-emerald-800 mt-0.5">
+                {entries.filter((e) => e.position === 'in_flight').length} player
+                {entries.filter((e) => e.position === 'in_flight').length === 1 ? '' : 's'}{' '}
+                confirmed
+                {entries.filter((e) => e.position === 'waitlist').length > 0
+                  ? ` · ${entries.filter((e) => e.position === 'waitlist').length} on waitlist`
+                  : ''}
+                . Generate flights to start scheduling matches.
+              </p>
+            </div>
+            <button
+              onClick={onAdvanceToFlights}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm flex-shrink-0"
+            >
+              Set up flights
+              <ArrowRight size={16} />
+            </button>
+          </div>
+        )}
     </div>
   );
 }

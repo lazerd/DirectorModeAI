@@ -265,7 +265,13 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
       </div>
 
       {tab === 'entries' && (
-        <QuadsEntriesTab event={event} entries={entries} flights={flights} onRefresh={fetchAll} />
+        <QuadsEntriesTab
+          event={event}
+          entries={entries}
+          flights={flights}
+          onRefresh={fetchAll}
+          onAdvanceToFlights={() => setTab('flights')}
+        />
       )}
       {tab === 'flights' && (
         <QuadsFlightsTab event={event} entries={entries} flights={flights} matches={matches} onRefresh={fetchAll} />
