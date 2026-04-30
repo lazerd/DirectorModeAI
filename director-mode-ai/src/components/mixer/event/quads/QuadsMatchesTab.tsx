@@ -265,28 +265,50 @@ function MatchRow({
     );
   }
 
+  const isPending = match.status !== 'completed';
   return (
-    <div className="border border-gray-200 rounded-lg p-2 flex items-center gap-2 text-sm">
+    <div
+      onClick={isPending ? onEdit : undefined}
+      className={`border border-gray-200 rounded-lg p-2 flex items-center gap-2 text-sm ${isPending ? 'cursor-pointer hover:border-orange-400 hover:bg-orange-50' : ''}`}
+    >
       <div className="flex-1 grid grid-cols-2 gap-1">
         <div className={`truncate ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!aWon ? { color: '#000000' } : undefined}>{a}</div>
         <div className={`truncate ${bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!bWon ? { color: '#000000' } : undefined}>{b}</div>
       </div>
-      <div className="text-gray-700 text-xs font-mono w-24 text-right truncate">
-        {match.score || (match.status === 'completed' ? '—' : 'pending')}
+      <div className="text-gray-900 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
+        {match.score || ''}
       </div>
       <button
-        onClick={onCopyLink}
-        title="Copy magic-link scoring URL"
+        onClick={(e) => {
+          e.stopPropagation();
+          onCopyLink();
+        }}
+        title="Copy magic-link scoring URL (send to coach/parent)"
         className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded"
       >
         {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
       </button>
-      <button
-        onClick={onEdit}
-        className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded"
-      >
-        <Edit3 size={14} />
-      </button>
+      {isPending ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-xs whitespace-nowrap"
+        >
+          Enter Score
+        </button>
+      ) : (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded text-xs flex items-center gap-1"
+        >
+          <Edit3 size={12} /> Edit
+        </button>
+      )}
     </div>
   );
 }
@@ -364,8 +386,12 @@ function DoublesRow({
     );
   }
 
+  const isPending = match.status !== 'completed';
   return (
-    <div className="border border-gray-200 rounded-lg p-2 flex items-center gap-2 text-sm">
+    <div
+      onClick={isPending ? onEdit : undefined}
+      className={`border border-gray-200 rounded-lg p-2 flex items-center gap-2 text-sm ${isPending ? 'cursor-pointer hover:border-orange-400 hover:bg-orange-50' : ''}`}
+    >
       <div className="flex-1 grid grid-cols-2 gap-1">
         <div
           className={`truncate text-xs ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`}
@@ -380,19 +406,40 @@ function DoublesRow({
           {b1} + {b2}
         </div>
       </div>
-      <div className="text-gray-700 text-xs font-mono w-24 text-right truncate">
-        {match.score || (match.status === 'completed' ? '—' : 'pending')}
+      <div className="text-gray-900 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
+        {match.score || ''}
       </div>
       <button
-        onClick={onCopyLink}
+        onClick={(e) => {
+          e.stopPropagation();
+          onCopyLink();
+        }}
         title="Copy magic-link scoring URL"
         className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded"
       >
         {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
       </button>
-      <button onClick={onEdit} className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded">
-        <Edit3 size={14} />
-      </button>
+      {isPending ? (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-xs whitespace-nowrap"
+        >
+          Enter Score
+        </button>
+      ) : (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded text-xs flex items-center gap-1"
+        >
+          <Edit3 size={12} /> Edit
+        </button>
+      )}
     </div>
   );
 }
