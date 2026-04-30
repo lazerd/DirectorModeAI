@@ -51,6 +51,7 @@ export default function NewQuadsTournamentPage() {
     age_max: '' as string | number, // empty = open
     gender_restriction: 'coed' as GenderRestriction,
     scoring_format: 'pro8' as QuadScoringFormatId,
+    custom_scoring: '',
     entry_fee_dollars: 25,
     max_players: 16,
     registration_opens_now: true,
@@ -142,7 +143,10 @@ export default function NewQuadsTournamentPage() {
           max_players: form.max_players || null,
           age_max: ageNum,
           gender_restriction: form.gender_restriction,
-          event_scoring_format: form.scoring_format,
+          event_scoring_format:
+            form.scoring_format === 'custom'
+              ? form.custom_scoring.trim() || 'Custom format'
+              : form.scoring_format,
           stripe_account_id: profile?.stripe_account_id || null,
           public_status: 'open',
         })
@@ -336,6 +340,16 @@ export default function NewQuadsTournamentPage() {
               </option>
             ))}
           </select>
+          {form.scoring_format === 'custom' && (
+            <input
+              type="text"
+              value={form.custom_scoring}
+              onChange={(e) => setForm({ ...form, custom_scoring: e.target.value })}
+              placeholder='e.g. "First to 4 games, no-ad scoring, no tiebreak"'
+              maxLength={120}
+              className="w-full mt-2 px-3 py-2 border border-orange-300 rounded-lg bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none text-gray-900"
+            />
+          )}
           <p className="text-xs text-gray-500 mt-2">
             Used for all 6 singles matches and the round-4 doubles in every flight.
           </p>

@@ -1,12 +1,10 @@
 import { notFound } from 'next/navigation';
 import { Trophy } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { QUAD_SCORING_FORMATS } from '@/lib/quads';
+import { quadScoringLabel } from '@/lib/quads';
 import ScoreEntryForm from './ScoreEntryForm';
 
 export const dynamic = 'force-dynamic';
-
-const SCORING_LABELS = Object.fromEntries(QUAD_SCORING_FORMATS.map((s) => [s.id, s.label]));
 
 export default async function PublicMatchScoringPage({
   params,
@@ -67,7 +65,7 @@ export default async function PublicMatchScoringPage({
 
         <div className="bg-white/5 rounded-xl p-4 mb-4 text-sm">
           <div className="text-white/60 mb-1">
-            Scoring: {SCORING_LABELS[f.event.event_scoring_format] ?? f.event.event_scoring_format}
+            Scoring: {quadScoringLabel(f.event.event_scoring_format)}
           </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div className="bg-white/5 rounded-lg p-3 text-center">

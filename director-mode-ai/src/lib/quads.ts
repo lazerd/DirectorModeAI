@@ -10,15 +10,38 @@
  */
 
 export const QUAD_SCORING_FORMATS = [
+  // Pro sets — single-set, race to N games
+  { id: 'pro4', label: '4-game pro set (TB at 4-4)' },
+  { id: 'pro6', label: '6-game pro set (TB at 6-6)' },
   { id: 'pro8', label: '8-game pro set (TB at 8-8)' },
+  { id: 'pro10', label: '10-game pro set (TB at 10-10)' },
+  // Standard set formats
+  { id: 'set4', label: '1 set to 4 (TB at 3-3)' },
   { id: 'set6', label: '1 set to 6 (TB at 6-6)' },
   { id: 'best3', label: 'Best of 3 sets' },
+  { id: 'best3_mtb', label: 'Best of 3 sets + 10-pt match TB in 3rd' },
+  // Timed
+  { id: 'timed20', label: 'Timed — 20 min, most games wins' },
   { id: 'timed30', label: 'Timed — 30 min, most games wins' },
   { id: 'timed45', label: 'Timed — 45 min, most games wins' },
   { id: 'timed60', label: 'Timed — 60 min, most games wins' },
+  { id: 'timed90', label: 'Timed — 90 min, most games wins' },
+  // Custom — director types their own format string
+  { id: 'custom', label: 'Custom (write your own)' },
 ] as const;
 
 export type QuadScoringFormatId = (typeof QUAD_SCORING_FORMATS)[number]['id'];
+
+/**
+ * Map a stored scoring_format value to its human label. Falls through to
+ * returning the value verbatim, so custom strings (anything not in the
+ * preset list) display as-is.
+ */
+export function quadScoringLabel(value: string | null | undefined): string {
+  if (!value) return '';
+  const preset = QUAD_SCORING_FORMATS.find((f) => f.id === value);
+  return preset?.label ?? value;
+}
 
 export const GENDER_RESTRICTIONS = [
   { id: 'coed', label: 'Coed (any gender)' },

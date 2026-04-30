@@ -22,11 +22,16 @@ export default function QuadsSettingsTab({
   event: QuadEvent;
   onRefresh: () => void | Promise<void>;
 }) {
+  // If the stored value isn't one of the preset ids, treat it as a custom string.
+  const isPreset = QUAD_SCORING_FORMATS.some(
+    (f) => f.id === event.event_scoring_format && f.id !== 'custom'
+  );
   const [form, setForm] = useState({
     name: event.name,
     age_max: event.age_max ?? '',
     gender_restriction: event.gender_restriction ?? 'coed',
-    event_scoring_format: event.event_scoring_format,
+    event_scoring_format: isPreset ? event.event_scoring_format : 'custom',
+    custom_scoring: isPreset ? '' : event.event_scoring_format ?? '',
     entry_fee_dollars: (event.entry_fee_cents ?? 0) / 100,
     max_players: event.max_players ?? '',
     public_status: event.public_status,
@@ -49,7 +54,10 @@ export default function QuadsSettingsTab({
         name: form.name.trim(),
         age_max: form.age_max === '' ? null : parseInt(String(form.age_max), 10),
         gender_restriction: form.gender_restriction,
-        event_scoring_format: form.event_scoring_format,
+        event_scoring_format:
+          form.event_scoring_format === 'custom'
+            ? form.custom_scoring.trim() || 'Custom format'
+            : form.event_scoring_format,
         entry_fee_cents: Math.round((form.entry_fee_dollars || 0) * 100),
         max_players:
           form.max_players === '' ? null : parseInt(String(form.max_players), 10),
@@ -176,6 +184,16 @@ export default function QuadsSettingsTab({
             </option>
           ))}
         </select>
+        {form.event_scoring_format === 'custom' && (
+          <input
+            type="text"
+            value={form.custom_scoring}
+            onChange={(e) => setForm({ ...form, custom_scoring: e.target.value })}
+            placeholder='e.g. "First to 4 games, no-ad scoring"'
+            maxLength={120}
+            className="w-full mt-2 px-3 py-2 border border-orange-300 rounded-lg text-gray-900 text-sm"
+          />
+        )}
       </div>
 
       <div>

@@ -3,14 +3,10 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { Trophy, Calendar, Users, AlertCircle } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { QUAD_SCORING_FORMATS } from '@/lib/quads';
+import { quadScoringLabel } from '@/lib/quads';
 import RegisterForm from './RegisterForm';
 
 export const dynamic = 'force-dynamic';
-
-const SCORING_LABELS = Object.fromEntries(
-  QUAD_SCORING_FORMATS.map((s) => [s.id, s.label])
-);
 
 const GENDER_LABELS: Record<string, string> = {
   boys: 'Boys only',
@@ -138,7 +134,7 @@ export default async function PublicQuadsLandingPage({
           <p className="text-white/60">
             Match scoring:{' '}
             <span className="text-white">
-              {SCORING_LABELS[e.event_scoring_format] ?? 'Director will announce'}
+              {quadScoringLabel(e.event_scoring_format) || 'Director will announce'}
             </span>
           </p>
           {(waitlistCount ?? 0) > 0 && (

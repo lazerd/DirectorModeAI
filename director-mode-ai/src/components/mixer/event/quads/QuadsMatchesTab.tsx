@@ -6,13 +6,9 @@ import { createClient } from '@/lib/supabase/client';
 import {
   computeFlightStandings,
   buildQuadDoublesRound,
-  QUAD_SCORING_FORMATS,
+  quadScoringLabel,
 } from '@/lib/quads';
 import type { QuadEvent, QuadEntry, QuadFlight, QuadMatch } from '../QuadsAdminDashboard';
-
-const SCORING_LABELS = Object.fromEntries(
-  QUAD_SCORING_FORMATS.map((s) => [s.id, s.label])
-);
 
 export default function QuadsMatchesTab({
   event,
@@ -115,7 +111,7 @@ export default function QuadsMatchesTab({
   return (
     <div className="space-y-4">
       <div className="text-sm text-gray-600">
-        Scoring: {SCORING_LABELS[event.event_scoring_format] ?? event.event_scoring_format}
+        Scoring: {quadScoringLabel(event.event_scoring_format)}
       </div>
 
       {flights.map((flight) => {
