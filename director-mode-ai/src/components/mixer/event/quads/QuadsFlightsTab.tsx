@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Trophy, Wand2, Trash2, AlertCircle, Loader2 } from 'lucide-react';
+import { Trophy, Wand2, Trash2, AlertCircle, Loader2, ArrowRight, ListChecks } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { assignToFlights, generateQuadSingles } from '@/lib/quads';
 import type { QuadEvent, QuadEntry, QuadFlight, QuadMatch } from '../QuadsAdminDashboard';
@@ -12,12 +12,14 @@ export default function QuadsFlightsTab({
   flights,
   matches,
   onRefresh,
+  onAdvanceToMatches,
 }: {
   event: QuadEvent;
   entries: QuadEntry[];
   flights: QuadFlight[];
   matches: QuadMatch[];
   onRefresh: () => void | Promise<void>;
+  onAdvanceToMatches?: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -210,6 +212,29 @@ export default function QuadsFlightsTab({
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Advance-to-matches CTA — appears once flights are generated. */}
+      {flights.length > 0 && onAdvanceToMatches && (
+        <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 sm:p-5 flex items-center justify-between gap-3 mt-4">
+          <div className="flex-1">
+            <div className="font-semibold text-emerald-900 flex items-center gap-2">
+              <ListChecks size={16} />
+              Flights are set
+            </div>
+            <p className="text-sm text-emerald-800 mt-0.5">
+              {flights.length} flight{flights.length === 1 ? '' : 's'} of 4 ready. Open Matches to
+              start scoring (or copy magic-link URLs to send to coaches/parents).
+            </p>
+          </div>
+          <button
+            onClick={onAdvanceToMatches}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm flex-shrink-0"
+          >
+            View matches
+            <ArrowRight size={16} />
+          </button>
         </div>
       )}
     </div>

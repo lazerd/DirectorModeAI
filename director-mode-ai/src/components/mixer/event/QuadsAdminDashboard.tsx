@@ -274,7 +274,14 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
         />
       )}
       {tab === 'flights' && (
-        <QuadsFlightsTab event={event} entries={entries} flights={flights} matches={matches} onRefresh={fetchAll} />
+        <QuadsFlightsTab
+          event={event}
+          entries={entries}
+          flights={flights}
+          matches={matches}
+          onRefresh={fetchAll}
+          onAdvanceToMatches={() => setTab('matches')}
+        />
       )}
       {tab === 'matches' && (
         <QuadsMatchesTab event={event} entries={entries} flights={flights} matches={matches} onRefresh={fetchAll} />
