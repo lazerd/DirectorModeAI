@@ -39,25 +39,27 @@ export default function QuadsMatchesTab({
 
   const entryById = new Map(entries.map((e) => [e.id, e]));
 
-  // For the inline Court dropdown: compute which courts are busy at each
-  // scheduled time slot so we can grey them out (they're already booked
-  // by another match).
+  // For the inline Court dropdown: a court is "busy" the moment any
+  // not-yet-scored match is assigned to it. As soon as a score is entered
+  // (status='completed') the court frees up.
   const courtList = resolveCourtList({
     courtNames: event.court_names,
     numCourts: event.num_courts,
   });
-  const busyByTime = new Map<string, Map<string, string>>(); // time → court → matchId
+  const courtOccupants = new Map<string, Set<string>>(); // court → set of matchIds holding it
   for (const m of matches) {
-    if (!m.scheduled_at || !m.court) continue;
-    const key = m.scheduled_at.slice(0, 5);
-    if (!busyByTime.has(key)) busyByTime.set(key, new Map());
-    busyByTime.get(key)!.set(m.court, m.id);
+    if (!m.court) continue;
+    if (m.status === 'completed' || m.status === 'cancelled' || m.status === 'defaulted') continue;
+    if (!courtOccupants.has(m.court)) courtOccupants.set(m.court, new Set());
+    courtOccupants.get(m.court)!.add(m.id);
   }
-  const courtBusyForOtherMatch = (matchId: string, time: string | null, court: string) => {
-    if (!time) return false;
-    const slot = time.slice(0, 5);
-    const occupant = busyByTime.get(slot)?.get(court);
-    return !!occupant && occupant !== matchId;
+  const courtBusyForOtherMatch = (matchId: string, court: string) => {
+    const set = courtOccupants.get(court);
+    if (!set) return false;
+    for (const id of set) {
+      if (id !== matchId) return true;
+    }
+    return false;
   };
 
   const openEdit = (m: QuadMatch) => {
@@ -368,7 +370,7 @@ function MatchRow({
   busy: boolean;
   onUpdateSchedule: (field: 'scheduled_at' | 'court', value: string) => void | Promise<void>;
   courtList: string[];
-  courtBusyForOtherMatch: (matchId: string, time: string | null, court: string) => boolean;
+  courtBusyForOtherMatch: (matchId: string, court: string) => boolean;
 }) {
   const a = playerName(match.player1_id);
   const b = playerName(match.player3_id);
@@ -477,7 +479,7 @@ function MatchRow({
         >
           <option value="">—</option>
           {courtList.map((c) => {
-            const busyForOther = courtBusyForOtherMatch(match.id, match.scheduled_at, c);
+            const busyForOther = courtBusyForOtherMatch(match.id, c);
             return (
               <option key={c} value={c} disabled={busyForOther}>
                 {c}
@@ -536,7 +538,7 @@ function DoublesRow({
   busy: boolean;
   onUpdateSchedule: (field: 'scheduled_at' | 'court', value: string) => void | Promise<void>;
   courtList: string[];
-  courtBusyForOtherMatch: (matchId: string, time: string | null, court: string) => boolean;
+  courtBusyForOtherMatch: (matchId: string, court: string) => boolean;
 }) {
   const a1 = playerName(match.player1_id);
   const a2 = playerName(match.player2_id);
@@ -652,7 +654,7 @@ function DoublesRow({
         >
           <option value="">—</option>
           {courtList.map((c) => {
-            const busyForOther = courtBusyForOtherMatch(match.id, match.scheduled_at, c);
+            const busyForOther = courtBusyForOtherMatch(match.id, c);
             return (
               <option key={c} value={c} disabled={busyForOther}>
                 {c}
