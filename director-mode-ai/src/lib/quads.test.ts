@@ -6,6 +6,9 @@ import {
   generateQuadSingles,
   buildQuadDoublesRound,
   assignToFlights,
+  addMinutesToTime,
+  formatTimeDisplay,
+  autoScheduleQuads,
 } from './quads';
 
 describe('computeQuadComposite', () => {
@@ -320,5 +323,110 @@ describe('assignToFlights', () => {
     ];
     const { flights } = assignToFlights(entries);
     expect(flights[0].entryIds[0]).toBe('rated');
+  });
+});
+
+describe('addMinutesToTime', () => {
+  it('adds minutes within same hour', () => {
+    expect(addMinutesToTime('09:00', 30)).toBe('09:30');
+  });
+  it('rolls into next hour', () => {
+    expect(addMinutesToTime('09:45', 30)).toBe('10:15');
+  });
+  it('rolls past midnight cleanly', () => {
+    expect(addMinutesToTime('23:30', 60)).toBe('00:30');
+  });
+});
+
+describe('formatTimeDisplay', () => {
+  it('formats AM', () => {
+    expect(formatTimeDisplay('09:00')).toBe('9:00 AM');
+  });
+  it('formats PM', () => {
+    expect(formatTimeDisplay('13:30')).toBe('1:30 PM');
+  });
+  it('formats midnight', () => {
+    expect(formatTimeDisplay('00:15')).toBe('12:15 AM');
+  });
+  it('formats noon', () => {
+    expect(formatTimeDisplay('12:00')).toBe('12:00 PM');
+  });
+  it('strips seconds', () => {
+    expect(formatTimeDisplay('14:30:00')).toBe('2:30 PM');
+  });
+});
+
+describe('autoScheduleQuads', () => {
+  it('schedules a single flight on courts 1+2 with 4 rounds', () => {
+    const flight = {
+      id: 'f1',
+      sort_order: 0,
+      matches: [
+        { id: 'm1a', round: 1 },
+        { id: 'm1b', round: 1 },
+        { id: 'm2a', round: 2 },
+        { id: 'm2b', round: 2 },
+        { id: 'm3a', round: 3 },
+        { id: 'm3b', round: 3 },
+        { id: 'm4', round: 4 },
+      ],
+    };
+    const result = autoScheduleQuads({
+      startTime: '09:00',
+      roundDurationMinutes: 45,
+      numCourts: 2,
+      flights: [flight],
+    });
+    expect(result.size).toBe(7);
+    expect(result.get('m1a')).toEqual({ scheduled_at: '09:00', court: '1' });
+    expect(result.get('m1b')).toEqual({ scheduled_at: '09:00', court: '2' });
+    expect(result.get('m2a')).toEqual({ scheduled_at: '09:45', court: '1' });
+    expect(result.get('m2b')).toEqual({ scheduled_at: '09:45', court: '2' });
+    expect(result.get('m3a')).toEqual({ scheduled_at: '10:30', court: '1' });
+    expect(result.get('m3b')).toEqual({ scheduled_at: '10:30', court: '2' });
+    expect(result.get('m4')).toEqual({ scheduled_at: '11:15', court: '1' });
+  });
+
+  it('places flight B on courts 3+4 when 4 courts available', () => {
+    const flightA = {
+      id: 'fA',
+      sort_order: 0,
+      matches: [{ id: 'mA1', round: 1 }],
+    };
+    const flightB = {
+      id: 'fB',
+      sort_order: 1,
+      matches: [{ id: 'mB1', round: 1 }],
+    };
+    const result = autoScheduleQuads({
+      startTime: '09:00',
+      roundDurationMinutes: 45,
+      numCourts: 4,
+      flights: [flightA, flightB],
+    });
+    expect(result.get('mA1')).toEqual({ scheduled_at: '09:00', court: '1' });
+    expect(result.get('mB1')).toEqual({ scheduled_at: '09:00', court: '3' });
+  });
+
+  it('staggers flight B in time when only 2 courts available', () => {
+    const flightA = {
+      id: 'fA',
+      sort_order: 0,
+      matches: [{ id: 'mA1', round: 1 }],
+    };
+    const flightB = {
+      id: 'fB',
+      sort_order: 1,
+      matches: [{ id: 'mB1', round: 1 }],
+    };
+    const result = autoScheduleQuads({
+      startTime: '09:00',
+      roundDurationMinutes: 45,
+      numCourts: 2,
+      flights: [flightA, flightB],
+    });
+    expect(result.get('mA1')).toEqual({ scheduled_at: '09:00', court: '1' });
+    // Flight B reuses courts 1+2 but starts one slot later
+    expect(result.get('mB1')).toEqual({ scheduled_at: '09:45', court: '1' });
   });
 });

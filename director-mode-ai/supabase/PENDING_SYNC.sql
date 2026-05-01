@@ -277,6 +277,18 @@ DROP INDEX IF EXISTS idx_quad_entries_player_token;
 CREATE UNIQUE INDEX idx_quad_entries_player_token ON quad_entries(player_token);
 
 -- ============================================================================
+-- 5. quads_scheduling.sql — per-match start time + per-event round duration.
+--    Used by the Auto-schedule button + the per-player schedule emails.
+-- ============================================================================
+
+ALTER TABLE quad_matches
+  ADD COLUMN IF NOT EXISTS scheduled_at TIME;
+
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS round_duration_minutes INTEGER NOT NULL DEFAULT 45
+    CHECK (round_duration_minutes BETWEEN 5 AND 240);
+
+-- ============================================================================
 -- End of pending sync. If you see "Success. No rows returned." the database
 -- is now aligned with every committed migration in director-mode-ai/supabase/
 -- migrations/. Safe to re-run this file any time.

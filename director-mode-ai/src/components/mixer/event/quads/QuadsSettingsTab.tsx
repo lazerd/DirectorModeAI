@@ -38,6 +38,7 @@ export default function QuadsSettingsTab({
     registration_closes_at: event.registration_closes_at
       ? new Date(event.registration_closes_at).toISOString().slice(0, 16)
       : '',
+    round_duration_minutes: event.round_duration_minutes ?? 45,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +66,7 @@ export default function QuadsSettingsTab({
         registration_closes_at: form.registration_closes_at
           ? new Date(form.registration_closes_at).toISOString()
           : null,
+        round_duration_minutes: form.round_duration_minutes,
       })
       .eq('id', event.id);
     if (err) {
@@ -194,6 +196,29 @@ export default function QuadsSettingsTab({
             className="w-full mt-2 px-3 py-2 border border-orange-300 rounded-lg text-gray-900 text-sm"
           />
         )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium mb-1 text-gray-700">
+          Round duration (minutes)
+        </label>
+        <input
+          type="number"
+          min={5}
+          max={240}
+          step={5}
+          value={form.round_duration_minutes}
+          onChange={(e) =>
+            setForm({
+              ...form,
+              round_duration_minutes: parseInt(e.target.value || '45', 10),
+            })
+          }
+          className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm"
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Used by Auto-schedule to space out R1, R2, R3, R4 (e.g. 45 min × 4 rounds = 3-hour event).
+        </p>
       </div>
 
       <div>

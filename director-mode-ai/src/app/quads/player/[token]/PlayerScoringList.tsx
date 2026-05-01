@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Check, Edit3 } from 'lucide-react';
+import { Loader2, Check, Edit3, Clock } from 'lucide-react';
+import { formatTimeDisplay } from '@/lib/quads';
 
 type Match = {
   id: string;
@@ -15,6 +16,8 @@ type Match = {
   winner_side: 'a' | 'b' | null;
   status: string;
   score_token: string;
+  scheduled_at: string | null;
+  court: string | null;
 };
 
 type FlightEntry = { id: string; player_name: string; flight_seed: number | null };
@@ -73,6 +76,13 @@ export default function PlayerScoringList({
                 <div className="text-xs text-amber-700 font-semibold">Pending</div>
               )}
             </div>
+            {(m.scheduled_at || m.court) && (
+              <div className="flex items-center gap-2 text-xs text-gray-700 mb-2 bg-gray-100 rounded px-2 py-1">
+                <Clock size={12} />
+                {m.scheduled_at && <span className="font-semibold">{formatTimeDisplay(m.scheduled_at)}</span>}
+                {m.court && <span>· Court {m.court}</span>}
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-2 text-sm mb-3">
               <div

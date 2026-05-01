@@ -36,6 +36,7 @@ export type QuadEvent = {
   registration_closes_at: string | null;
   public_status: 'draft' | 'open' | 'closed' | 'running' | 'completed' | 'cancelled';
   stripe_account_id: string | null;
+  round_duration_minutes: number;
 };
 
 export type QuadEntry = {
@@ -78,6 +79,7 @@ export type QuadMatch = {
   player3_id: string | null;
   player4_id: string | null;
   court: string | null;
+  scheduled_at: string | null;
   score: string | null;
   winner_side: 'a' | 'b' | null;
   status: 'pending' | 'in_progress' | 'completed' | 'defaulted' | 'cancelled';
@@ -102,7 +104,7 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
     const { data: ev, error: evErr } = await supabase
       .from('events')
       .select(
-        'id, name, slug, event_date, start_time, num_courts, age_max, gender_restriction, event_scoring_format, entry_fee_cents, max_players, registration_opens_at, registration_closes_at, public_status, stripe_account_id'
+        'id, name, slug, event_date, start_time, num_courts, age_max, gender_restriction, event_scoring_format, entry_fee_cents, max_players, registration_opens_at, registration_closes_at, public_status, stripe_account_id, round_duration_minutes'
       )
       .eq('id', eventId)
       .maybeSingle();

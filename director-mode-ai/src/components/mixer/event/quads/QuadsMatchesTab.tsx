@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Edit3, Loader2, Trophy, Mail } from 'lucide-react';
+import { Edit3, Loader2, Trophy, Mail, Wand2, Calendar } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   computeFlightStandings,
   buildQuadDoublesRound,
   quadScoringLabel,
+  autoScheduleQuads,
+  formatTimeDisplay,
 } from '@/lib/quads';
 import type { QuadEvent, QuadEntry, QuadFlight, QuadMatch } from '../QuadsAdminDashboard';
 
@@ -26,8 +28,11 @@ export default function QuadsMatchesTab({
   const [editing, setEditing] = useState<string | null>(null);
   const [scoreInput, setScoreInput] = useState({ score: '', winner_side: '' as '' | 'a' | 'b' });
   const [busy, setBusy] = useState<string | null>(null);
-  const [emailing, setEmailing] = useState(false);
-  const [emailResult, setEmailResult] = useState<{ sent: number; total: number } | null>(null);
+  const [emailing, setEmailing] = useState<'scoring' | 'schedule' | null>(null);
+  const [emailResult, setEmailResult] = useState<
+    { kind: 'scoring' | 'schedule'; sent: number; total: number } | null
+  >(null);
+  const [scheduling, setScheduling] = useState(false);
   const supabase = createClient();
 
   const entryById = new Map(entries.map((e) => [e.id, e]));
@@ -92,18 +97,82 @@ export default function QuadsMatchesTab({
     if (!confirm(
       `Email a personal scoring link to every confirmed player? Each player will get a link they can use to enter scores for all their matches.`
     )) return;
-    setEmailing(true);
+    setEmailing('scoring');
     setEmailResult(null);
     try {
       const res = await fetch(`/api/quads/events/${event.id}/email-scoring-links`, {
         method: 'POST',
       });
       const data = await res.json();
-      setEmailResult(data);
+      setEmailResult({ kind: 'scoring', sent: data.sent, total: data.total });
     } catch {
       /* swallow */
     }
-    setEmailing(false);
+    setEmailing(null);
+  };
+
+  const emailSchedules = async () => {
+    if (!confirm(
+      `Email each confirmed player their personal match schedule (court + start time per match)?`
+    )) return;
+    setEmailing('schedule');
+    setEmailResult(null);
+    try {
+      const res = await fetch(`/api/quads/events/${event.id}/email-schedules`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      setEmailResult({ kind: 'schedule', sent: data.sent, total: data.total });
+    } catch {
+      /* swallow */
+    }
+    setEmailing(null);
+  };
+
+  const autoSchedule = async () => {
+    if (
+      flights.length > 0 &&
+      matches.some((m) => m.scheduled_at) &&
+      !confirm('Auto-schedule will overwrite any existing court + time assignments. Continue?')
+    ) {
+      return;
+    }
+    setScheduling(true);
+    const startTime = (event.start_time || '09:00').slice(0, 5);
+    const result = autoScheduleQuads({
+      startTime,
+      roundDurationMinutes: event.round_duration_minutes ?? 45,
+      numCourts: event.num_courts ?? 2,
+      flights: flights.map((f) => ({
+        id: f.id,
+        sort_order: f.sort_order,
+        matches: matches
+          .filter((m) => m.flight_id === f.id)
+          .map((m) => ({ id: m.id, round: m.round })),
+      })),
+    });
+    for (const [matchId, { scheduled_at, court }] of result) {
+      await supabase
+        .from('quad_matches')
+        .update({ scheduled_at, court })
+        .eq('id', matchId);
+    }
+    await onRefresh();
+    setScheduling(false);
+  };
+
+  const updateMatchSchedule = async (
+    matchId: string,
+    field: 'scheduled_at' | 'court',
+    value: string
+  ) => {
+    setBusy(matchId);
+    await supabase
+      .from('quad_matches')
+      .update({ [field]: value || null })
+      .eq('id', matchId);
+    await onRefresh();
+    setBusy(null);
   };
 
   if (flights.length === 0) {
@@ -118,27 +187,47 @@ export default function QuadsMatchesTab({
 
   return (
     <div className="space-y-4">
-      <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between gap-3">
-        <div className="flex-1">
-          <h3 className="font-semibold mb-1">Player scoring links</h3>
-          <p className="text-sm text-gray-600">
-            Send each confirmed player one email with a personal link — they tap "Enter Score" on
-            their phone after each match. (You can still enter scores yourself below.)
-          </p>
-          {emailResult && (
-            <p className="text-sm text-emerald-700 mt-2 font-medium">
-              ✓ Sent {emailResult.sent} of {emailResult.total} emails.
-            </p>
-          )}
+      {/* Schedule + email actions */}
+      <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+        <h3 className="font-semibold">Schedule + notify players</h3>
+        <p className="text-sm text-gray-600">
+          Auto-schedule assigns each match a court + start time based on your event start time
+          ({(event.start_time || '09:00').slice(0, 5)}) and round duration
+          ({event.round_duration_minutes ?? 45} min). You can edit any match individually
+          afterwards. Then email each player their personal schedule and/or scoring link.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={autoSchedule}
+            disabled={scheduling || flights.length === 0}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold text-sm disabled:opacity-50"
+          >
+            {scheduling ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+            {scheduling ? 'Scheduling…' : 'Auto-schedule matches'}
+          </button>
+          <button
+            onClick={emailSchedules}
+            disabled={emailing !== null || matches.every((m) => !m.scheduled_at)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm disabled:opacity-50"
+          >
+            {emailing === 'schedule' ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />}
+            {emailing === 'schedule' ? 'Sending…' : 'Email schedules'}
+          </button>
+          <button
+            onClick={emailScoringLinks}
+            disabled={emailing !== null}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm disabled:opacity-50"
+          >
+            {emailing === 'scoring' ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+            {emailing === 'scoring' ? 'Sending…' : 'Email scoring links'}
+          </button>
         </div>
-        <button
-          onClick={emailScoringLinks}
-          disabled={emailing}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm disabled:opacity-50 flex-shrink-0"
-        >
-          {emailing ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-          {emailing ? 'Sending…' : 'Email scoring links'}
-        </button>
+        {emailResult && (
+          <p className="text-sm text-emerald-700 font-medium">
+            ✓ Sent {emailResult.sent} of {emailResult.total}{' '}
+            {emailResult.kind === 'schedule' ? 'schedule' : 'scoring-link'} emails.
+          </p>
+        )}
       </div>
 
       <div className="text-sm text-gray-600">
@@ -182,6 +271,7 @@ export default function QuadsMatchesTab({
                         onCancel={() => setEditing(null)}
                         onSave={() => saveScore(m)}
                         busy={busy === m.id}
+                        onUpdateSchedule={(field, value) => updateMatchSchedule(m.id, field, value)}
                       />
                     ))}
                   </div>
@@ -208,6 +298,9 @@ export default function QuadsMatchesTab({
                   onCancel={() => setEditing(null)}
                   onSave={() => saveScore(doubles)}
                   busy={busy === doubles.id}
+                  onUpdateSchedule={(field, value) =>
+                    updateMatchSchedule(doubles.id, field, value)
+                  }
                 />
               ) : null}
             </div>
@@ -228,6 +321,7 @@ function MatchRow({
   onCancel,
   onSave,
   busy,
+  onUpdateSchedule,
 }: {
   match: QuadMatch;
   playerName: (id: string | null) => string;
@@ -238,6 +332,7 @@ function MatchRow({
   onCancel: () => void;
   onSave: () => void;
   busy: boolean;
+  onUpdateSchedule: (field: 'scheduled_at' | 'court', value: string) => void | Promise<void>;
 }) {
   const a = playerName(match.player1_id);
   const b = playerName(match.player3_id);
@@ -290,38 +385,73 @@ function MatchRow({
 
   const isPending = match.status !== 'completed';
   return (
-    <div
-      onClick={isPending ? onEdit : undefined}
-      className={`border border-gray-200 rounded-lg p-2 flex items-center gap-2 text-sm ${isPending ? 'cursor-pointer hover:border-orange-400 hover:bg-orange-50' : ''}`}
-    >
-      <div className="flex-1 grid grid-cols-2 gap-1">
-        <div className={`truncate ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!aWon ? { color: '#000000' } : undefined}>{a}</div>
-        <div className={`truncate ${bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!bWon ? { color: '#000000' } : undefined}>{b}</div>
+    <div className="border border-gray-200 rounded-lg p-2 text-sm space-y-2">
+      {/* Top row: player names + score + button */}
+      <div
+        onClick={isPending ? onEdit : undefined}
+        className={`flex items-center gap-2 ${isPending ? 'cursor-pointer' : ''}`}
+      >
+        <div className="flex-1 grid grid-cols-2 gap-1">
+          <div className={`truncate ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!aWon ? { color: '#000000' } : undefined}>{a}</div>
+          <div className={`truncate ${bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!bWon ? { color: '#000000' } : undefined}>{b}</div>
+        </div>
+        <div className="text-gray-900 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
+          {match.score || ''}
+        </div>
+        {isPending ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-xs whitespace-nowrap"
+          >
+            Enter Score
+          </button>
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded text-xs flex items-center gap-1"
+          >
+            <Edit3 size={12} /> Edit
+          </button>
+        )}
       </div>
-      <div className="text-gray-900 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
-        {match.score || ''}
+      {/* Bottom row: court + start time inline editors */}
+      <div className="flex items-center gap-2 text-xs text-gray-600 pl-1">
+        <span>Court</span>
+        <input
+          type="text"
+          defaultValue={match.court ?? ''}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if ((match.court ?? '') !== v) onUpdateSchedule('court', v);
+          }}
+          placeholder="—"
+          className="w-12 px-1.5 py-0.5 border rounded text-gray-900"
+          style={{ color: '#000000' }}
+          disabled={busy}
+        />
+        <span className="ml-2">Start</span>
+        <input
+          type="time"
+          defaultValue={match.scheduled_at?.slice(0, 5) ?? ''}
+          onBlur={(e) => {
+            const v = e.target.value;
+            const current = match.scheduled_at?.slice(0, 5) ?? '';
+            if (current !== v) onUpdateSchedule('scheduled_at', v);
+          }}
+          className="px-1.5 py-0.5 border rounded text-gray-900"
+          style={{ color: '#000000' }}
+          disabled={busy}
+        />
+        {match.scheduled_at && (
+          <span className="text-gray-400">{formatTimeDisplay(match.scheduled_at)}</span>
+        )}
       </div>
-      {isPending ? (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-xs whitespace-nowrap"
-        >
-          Enter Score
-        </button>
-      ) : (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded text-xs flex items-center gap-1"
-        >
-          <Edit3 size={12} /> Edit
-        </button>
-      )}
     </div>
   );
 }
@@ -336,6 +466,7 @@ function DoublesRow({
   onCancel,
   onSave,
   busy,
+  onUpdateSchedule,
 }: {
   match: QuadMatch;
   playerName: (id: string | null) => string;
@@ -346,6 +477,7 @@ function DoublesRow({
   onCancel: () => void;
   onSave: () => void;
   busy: boolean;
+  onUpdateSchedule: (field: 'scheduled_at' | 'court', value: string) => void | Promise<void>;
 }) {
   const a1 = playerName(match.player1_id);
   const a2 = playerName(match.player2_id);
@@ -397,48 +529,81 @@ function DoublesRow({
 
   const isPending = match.status !== 'completed';
   return (
-    <div
-      onClick={isPending ? onEdit : undefined}
-      className={`border border-gray-200 rounded-lg p-2 flex items-center gap-2 text-sm ${isPending ? 'cursor-pointer hover:border-orange-400 hover:bg-orange-50' : ''}`}
-    >
-      <div className="flex-1 grid grid-cols-2 gap-1">
-        <div
-          className={`truncate text-xs ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`}
-          style={!aWon ? { color: '#000000' } : undefined}
-        >
-          {a1} + {a2}
+    <div className="border border-gray-200 rounded-lg p-2 text-sm space-y-2">
+      <div
+        onClick={isPending ? onEdit : undefined}
+        className={`flex items-center gap-2 ${isPending ? 'cursor-pointer' : ''}`}
+      >
+        <div className="flex-1 grid grid-cols-2 gap-1">
+          <div
+            className={`truncate text-xs ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`}
+            style={!aWon ? { color: '#000000' } : undefined}
+          >
+            {a1} + {a2}
+          </div>
+          <div
+            className={`truncate text-xs ${bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`}
+            style={!bWon ? { color: '#000000' } : undefined}
+          >
+            {b1} + {b2}
+          </div>
         </div>
-        <div
-          className={`truncate text-xs ${bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`}
-          style={!bWon ? { color: '#000000' } : undefined}
-        >
-          {b1} + {b2}
+        <div className="text-gray-900 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
+          {match.score || ''}
         </div>
+        {isPending ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-xs whitespace-nowrap"
+          >
+            Enter Score
+          </button>
+        ) : (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit();
+            }}
+            className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded text-xs flex items-center gap-1"
+          >
+            <Edit3 size={12} /> Edit
+          </button>
+        )}
       </div>
-      <div className="text-gray-900 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
-        {match.score || ''}
+      <div className="flex items-center gap-2 text-xs text-gray-600 pl-1">
+        <span>Court</span>
+        <input
+          type="text"
+          defaultValue={match.court ?? ''}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if ((match.court ?? '') !== v) onUpdateSchedule('court', v);
+          }}
+          placeholder="—"
+          className="w-12 px-1.5 py-0.5 border rounded text-gray-900"
+          style={{ color: '#000000' }}
+          disabled={busy}
+        />
+        <span className="ml-2">Start</span>
+        <input
+          type="time"
+          defaultValue={match.scheduled_at?.slice(0, 5) ?? ''}
+          onBlur={(e) => {
+            const v = e.target.value;
+            const current = match.scheduled_at?.slice(0, 5) ?? '';
+            if (current !== v) onUpdateSchedule('scheduled_at', v);
+          }}
+          className="px-1.5 py-0.5 border rounded text-gray-900"
+          style={{ color: '#000000' }}
+          disabled={busy}
+        />
+        {match.scheduled_at && (
+          <span className="text-gray-400">{formatTimeDisplay(match.scheduled_at)}</span>
+        )}
       </div>
-      {isPending ? (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-xs whitespace-nowrap"
-        >
-          Enter Score
-        </button>
-      ) : (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded text-xs flex items-center gap-1"
-        >
-          <Edit3 size={12} /> Edit
-        </button>
-      )}
     </div>
   );
 }

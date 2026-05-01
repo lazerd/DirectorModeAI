@@ -81,6 +81,51 @@ export async function sendQuadsPromotedEmail(args: {
   });
 }
 
+export async function sendQuadsScheduleEmail(args: {
+  to: string;
+  playerName: string;
+  tournamentName: string;
+  tournamentDate: string | null;
+  flightName: string | null;
+  matches: Array<{
+    label: string; // e.g. "R1 Singles vs John Smith"
+    timeDisplay: string; // e.g. "9:00 AM"
+    court: string; // e.g. "1"
+  }>;
+  scoringUrl: string;
+}) {
+  const rows = args.matches
+    .map(
+      (m) => `
+        <tr>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px;">${m.label}</td>
+          <td style="padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 13px; text-align: right; white-space: nowrap;">
+            <strong>${m.timeDisplay}</strong>${m.court ? ` · Court ${m.court}` : ''}
+          </td>
+        </tr>`
+    )
+    .join('');
+
+  return safeResendSend(resend, {
+    from: FROM,
+    to: args.to,
+    subject: `Your match schedule: ${args.tournamentName}`,
+    html: htmlShell(
+      `${args.playerName} — your match schedule`,
+      `<p>Here's your schedule for <strong>${args.tournamentName}</strong>${args.tournamentDate ? ` on ${args.tournamentDate}` : ''}${args.flightName ? ` (${args.flightName})` : ''}.</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+        ${rows || '<tr><td style="padding: 8px; color: #888;">No matches scheduled yet.</td></tr>'}
+      </table>
+      <p style="margin: 24px 0;">
+        <a href="${args.scoringUrl}" style="display: inline-block; padding: 10px 18px; background: #ea580c; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 14px;">
+          Open my page (score matches)
+        </a>
+      </p>
+      <p style="color: #888; font-size: 12px;">Schedules can change. Watch your inbox for updates.</p>`
+    ),
+  });
+}
+
 export async function sendQuadsScoringLinkEmail(args: {
   to: string;
   playerName: string;

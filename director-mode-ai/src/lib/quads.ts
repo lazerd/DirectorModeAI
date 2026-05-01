@@ -264,6 +264,99 @@ export function buildQuadDoublesRound(standings: QuadStanding[]): {
 }
 
 /**
+ * Add `minutes` to an "HH:MM" string, returning another "HH:MM" string.
+ * Wraps past 24:00 cleanly (e.g. 23:30 + 60 → 00:30).
+ */
+export function addMinutesToTime(hhmm: string, minutes: number): string {
+  const [h, m] = hhmm.split(':').map((s) => parseInt(s, 10));
+  if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+  const total = h * 60 + m + minutes;
+  const wrapped = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const hh = Math.floor(wrapped / 60).toString().padStart(2, '0');
+  const mm = (wrapped % 60).toString().padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+/**
+ * Format an "HH:MM" 24-hour time string as a 12-hour display string with AM/PM.
+ *   "09:00" → "9:00 AM"
+ *   "13:30" → "1:30 PM"
+ */
+export function formatTimeDisplay(hhmm: string | null | undefined): string {
+  if (!hhmm) return '';
+  // Accept "HH:MM" or "HH:MM:SS"
+  const match = hhmm.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return hhmm;
+  const h = parseInt(match[1], 10);
+  const m = match[2];
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${m} ${period}`;
+}
+
+/**
+ * Auto-schedule every match in a tournament. Returns { matchId → {scheduled_at, court} }.
+ *
+ * Strategy:
+ *   - Each flight is assigned a fixed pair of courts (Flight A → courts 1+2,
+ *     Flight B → 3+4, etc.) so families always know "we're on court N today".
+ *   - All flights play simultaneously: R1 starts at startTime, R2 at
+ *     startTime + roundDuration, etc.
+ *   - R1-R3 use both flight courts (2 matches per round); R4 uses the first
+ *     of the two courts (1 doubles match).
+ *
+ * If numCourts < 2 × numFlights, courts wrap around: Flight C reuses 1+2 and
+ * its first round starts at startTime + roundDuration (one slot later). The
+ * director can hand-edit if it gets ugly; this is a sane default.
+ */
+export function autoScheduleQuads(input: {
+  startTime: string; // "HH:MM"
+  roundDurationMinutes: number;
+  numCourts: number;
+  flights: Array<{
+    id: string;
+    sort_order: number;
+    matches: Array<{ id: string; round: number }>;
+  }>;
+}): Map<string, { scheduled_at: string; court: string }> {
+  const out = new Map<string, { scheduled_at: string; court: string }>();
+  const courtsPerFlight = 2;
+  const flightsPerWave = Math.max(1, Math.floor(input.numCourts / courtsPerFlight));
+
+  const flights = [...input.flights].sort((a, b) => a.sort_order - b.sort_order);
+
+  flights.forEach((flight, flightIdx) => {
+    const wave = Math.floor(flightIdx / flightsPerWave);
+    const courtBase = (flightIdx % flightsPerWave) * courtsPerFlight + 1;
+
+    // Sort this flight's matches by round, then by id (deterministic) so the
+    // two matches per round get courts courtBase and courtBase+1 consistently.
+    const sortedMatches = [...flight.matches].sort(
+      (a, b) => a.round - b.round || a.id.localeCompare(b.id)
+    );
+
+    // Walk matches; track an index within each round so we know whether this
+    // is the 1st or 2nd match in the round (for court assignment).
+    const seenInRound = new Map<number, number>();
+    for (const m of sortedMatches) {
+      const idxInRound = seenInRound.get(m.round) ?? 0;
+      seenInRound.set(m.round, idxInRound + 1);
+
+      // Round 1 starts at slot `wave`; round N starts at slot `wave + N - 1`.
+      const slot = wave + (m.round - 1);
+      const scheduled = addMinutesToTime(input.startTime, slot * input.roundDurationMinutes);
+      // R4 is doubles — only 1 match per flight, always uses courtBase.
+      const court =
+        m.round === 4 ? String(courtBase) : String(courtBase + idxInRound);
+
+      out.set(m.id, { scheduled_at: scheduled, court });
+    }
+  });
+
+  return out;
+}
+
+/**
  * Tier-based flight assignment. Sort entries by composite_rating desc and
  * slice into chunks of 4. Leftovers (< 4) become the waitlist.
  *   Top 4 by rating  → Flight A ("Top tier")
