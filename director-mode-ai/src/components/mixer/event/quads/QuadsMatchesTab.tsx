@@ -9,6 +9,8 @@ import {
   quadScoringLabel,
   autoScheduleQuads,
   formatTimeDisplay,
+  resolveCourtList,
+  isValidQuadScore,
 } from '@/lib/quads';
 import type { QuadEvent, QuadEntry, QuadFlight, QuadMatch } from '../QuadsAdminDashboard';
 
@@ -37,6 +39,27 @@ export default function QuadsMatchesTab({
 
   const entryById = new Map(entries.map((e) => [e.id, e]));
 
+  // For the inline Court dropdown: compute which courts are busy at each
+  // scheduled time slot so we can grey them out (they're already booked
+  // by another match).
+  const courtList = resolveCourtList({
+    courtNames: event.court_names,
+    numCourts: event.num_courts,
+  });
+  const busyByTime = new Map<string, Map<string, string>>(); // time → court → matchId
+  for (const m of matches) {
+    if (!m.scheduled_at || !m.court) continue;
+    const key = m.scheduled_at.slice(0, 5);
+    if (!busyByTime.has(key)) busyByTime.set(key, new Map());
+    busyByTime.get(key)!.set(m.court, m.id);
+  }
+  const courtBusyForOtherMatch = (matchId: string, time: string | null, court: string) => {
+    if (!time) return false;
+    const slot = time.slice(0, 5);
+    const occupant = busyByTime.get(slot)?.get(court);
+    return !!occupant && occupant !== matchId;
+  };
+
   const openEdit = (m: QuadMatch) => {
     setEditing(m.id);
     setScoreInput({ score: m.score ?? '', winner_side: m.winner_side ?? '' });
@@ -44,6 +67,7 @@ export default function QuadsMatchesTab({
 
   const saveScore = async (m: QuadMatch) => {
     if (!scoreInput.winner_side) return;
+    if (!isValidQuadScore(scoreInput.score)) return; // UI already shows error
     setBusy(m.id);
     await supabase
       .from('quad_matches')
@@ -139,10 +163,14 @@ export default function QuadsMatchesTab({
     }
     setScheduling(true);
     const startTime = (event.start_time || '09:00').slice(0, 5);
+    const courtList = resolveCourtList({
+      courtNames: event.court_names,
+      numCourts: event.num_courts,
+    });
     const result = autoScheduleQuads({
       startTime,
       roundDurationMinutes: event.round_duration_minutes ?? 45,
-      numCourts: event.num_courts ?? 2,
+      courts: courtList,
       flights: flights.map((f) => ({
         id: f.id,
         sort_order: f.sort_order,
@@ -272,6 +300,8 @@ export default function QuadsMatchesTab({
                         onSave={() => saveScore(m)}
                         busy={busy === m.id}
                         onUpdateSchedule={(field, value) => updateMatchSchedule(m.id, field, value)}
+                        courtList={courtList}
+                        courtBusyForOtherMatch={courtBusyForOtherMatch}
                       />
                     ))}
                   </div>
@@ -301,6 +331,8 @@ export default function QuadsMatchesTab({
                   onUpdateSchedule={(field, value) =>
                     updateMatchSchedule(doubles.id, field, value)
                   }
+                  courtList={courtList}
+                  courtBusyForOtherMatch={courtBusyForOtherMatch}
                 />
               ) : null}
             </div>
@@ -322,6 +354,8 @@ function MatchRow({
   onSave,
   busy,
   onUpdateSchedule,
+  courtList,
+  courtBusyForOtherMatch,
 }: {
   match: QuadMatch;
   playerName: (id: string | null) => string;
@@ -333,6 +367,8 @@ function MatchRow({
   onSave: () => void;
   busy: boolean;
   onUpdateSchedule: (field: 'scheduled_at' | 'court', value: string) => void | Promise<void>;
+  courtList: string[];
+  courtBusyForOtherMatch: (matchId: string, time: string | null, court: string) => boolean;
 }) {
   const a = playerName(match.player1_id);
   const b = playerName(match.player3_id);
@@ -364,6 +400,15 @@ function MatchRow({
           onChange={(e) => setScoreInput({ ...scoreInput, score: e.target.value })}
           className="w-full px-2 py-1.5 border rounded-lg text-sm text-gray-900"
         />
+        {scoreInput.score && !isValidQuadScore(scoreInput.score) ? (
+          <div className="text-xs text-red-600">
+            Format must be like <code>6-3</code> or <code>6-3, 6-4</code> or <code>8-5</code>.
+          </div>
+        ) : (
+          <div className="text-xs text-gray-400">
+            Format: <code>6-3</code>, <code>6-3, 6-4</code>, or <code>8-5</code>.
+          </div>
+        )}
         <div className="flex gap-2">
           <button
             onClick={onCancel}
@@ -373,7 +418,7 @@ function MatchRow({
           </button>
           <button
             onClick={onSave}
-            disabled={busy || !scoreInput.winner_side}
+            disabled={busy || !scoreInput.winner_side || !isValidQuadScore(scoreInput.score)}
             className="flex-1 px-2 py-1 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
           >
             {busy ? 'Saving…' : 'Save'}
@@ -421,20 +466,30 @@ function MatchRow({
         )}
       </div>
       {/* Bottom row: court + start time inline editors */}
-      <div className="flex items-center gap-2 text-xs text-gray-600 pl-1">
+      <div className="flex items-center gap-2 text-xs text-gray-600 pl-1 flex-wrap">
         <span>Court</span>
-        <input
-          type="text"
-          defaultValue={match.court ?? ''}
-          onBlur={(e) => {
-            const v = e.target.value.trim();
-            if ((match.court ?? '') !== v) onUpdateSchedule('court', v);
-          }}
-          placeholder="—"
-          className="w-12 px-1.5 py-0.5 border rounded text-gray-900"
+        <select
+          value={match.court ?? ''}
+          onChange={(e) => onUpdateSchedule('court', e.target.value)}
+          className="px-1.5 py-0.5 border rounded text-gray-900"
           style={{ color: '#000000' }}
           disabled={busy}
-        />
+        >
+          <option value="">—</option>
+          {courtList.map((c) => {
+            const busyForOther = courtBusyForOtherMatch(match.id, match.scheduled_at, c);
+            return (
+              <option key={c} value={c} disabled={busyForOther}>
+                {c}
+                {busyForOther ? ' (busy)' : ''}
+              </option>
+            );
+          })}
+          {/* If the saved court isn't in the list (legacy), still show it */}
+          {match.court && !courtList.includes(match.court) && (
+            <option value={match.court}>{match.court} (custom)</option>
+          )}
+        </select>
         <span className="ml-2">Start</span>
         <input
           type="time"
@@ -467,6 +522,8 @@ function DoublesRow({
   onSave,
   busy,
   onUpdateSchedule,
+  courtList,
+  courtBusyForOtherMatch,
 }: {
   match: QuadMatch;
   playerName: (id: string | null) => string;
@@ -478,6 +535,8 @@ function DoublesRow({
   onSave: () => void;
   busy: boolean;
   onUpdateSchedule: (field: 'scheduled_at' | 'court', value: string) => void | Promise<void>;
+  courtList: string[];
+  courtBusyForOtherMatch: (matchId: string, time: string | null, court: string) => boolean;
 }) {
   const a1 = playerName(match.player1_id);
   const a2 = playerName(match.player2_id);
@@ -506,18 +565,27 @@ function DoublesRow({
         </div>
         <input
           type="text"
-          placeholder="Score"
+          placeholder='Score (e.g. "6-3, 6-4")'
           value={scoreInput.score}
           onChange={(e) => setScoreInput({ ...scoreInput, score: e.target.value })}
           className="w-full px-2 py-1.5 border rounded-lg text-sm text-gray-900"
         />
+        {scoreInput.score && !isValidQuadScore(scoreInput.score) ? (
+          <div className="text-xs text-red-600">
+            Format must be like <code>6-3</code> or <code>6-3, 6-4</code> or <code>8-5</code>.
+          </div>
+        ) : (
+          <div className="text-xs text-gray-400">
+            Format: <code>6-3</code>, <code>6-3, 6-4</code>, or <code>8-5</code>.
+          </div>
+        )}
         <div className="flex gap-2">
           <button onClick={onCancel} className="flex-1 px-2 py-1 text-sm border rounded hover:bg-gray-50">
             Cancel
           </button>
           <button
             onClick={onSave}
-            disabled={busy || !scoreInput.winner_side}
+            disabled={busy || !scoreInput.winner_side || !isValidQuadScore(scoreInput.score)}
             className="flex-1 px-2 py-1 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
           >
             {busy ? 'Saving…' : 'Save'}
@@ -573,20 +641,30 @@ function DoublesRow({
           </button>
         )}
       </div>
-      <div className="flex items-center gap-2 text-xs text-gray-600 pl-1">
+      <div className="flex items-center gap-2 text-xs text-gray-600 pl-1 flex-wrap">
         <span>Court</span>
-        <input
-          type="text"
-          defaultValue={match.court ?? ''}
-          onBlur={(e) => {
-            const v = e.target.value.trim();
-            if ((match.court ?? '') !== v) onUpdateSchedule('court', v);
-          }}
-          placeholder="—"
-          className="w-12 px-1.5 py-0.5 border rounded text-gray-900"
+        <select
+          value={match.court ?? ''}
+          onChange={(e) => onUpdateSchedule('court', e.target.value)}
+          className="px-1.5 py-0.5 border rounded text-gray-900"
           style={{ color: '#000000' }}
           disabled={busy}
-        />
+        >
+          <option value="">—</option>
+          {courtList.map((c) => {
+            const busyForOther = courtBusyForOtherMatch(match.id, match.scheduled_at, c);
+            return (
+              <option key={c} value={c} disabled={busyForOther}>
+                {c}
+                {busyForOther ? ' (busy)' : ''}
+              </option>
+            );
+          })}
+          {/* If the saved court isn't in the list (legacy), still show it */}
+          {match.court && !courtList.includes(match.court) && (
+            <option value={match.court}>{match.court} (custom)</option>
+          )}
+        </select>
         <span className="ml-2">Start</span>
         <input
           type="time"

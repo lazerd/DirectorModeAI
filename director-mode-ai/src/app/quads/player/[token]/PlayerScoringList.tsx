@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Loader2, Check, Edit3, Clock } from 'lucide-react';
-import { formatTimeDisplay } from '@/lib/quads';
+import { formatTimeDisplay, isValidQuadScore } from '@/lib/quads';
 
 type Match = {
   id: string;
@@ -218,6 +218,15 @@ function ScoreEntry({
         placeholder='Score (e.g. "6-3, 6-4" or "8-5")'
         className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm"
       />
+      {score && !isValidQuadScore(score) ? (
+        <div className="text-xs text-red-600 -mt-2">
+          Format must be like <code>6-3</code> or <code>6-3, 6-4</code>.
+        </div>
+      ) : (
+        <div className="text-xs text-gray-500 -mt-2">
+          Format: <code>6-3</code>, <code>6-3, 6-4</code>, or <code>8-5</code>.
+        </div>
+      )}
       <input
         type="text"
         value={name}
@@ -241,7 +250,7 @@ function ScoreEntry({
         </button>
         <button
           onClick={submit}
-          disabled={submitting || !winner || !score.trim()}
+          disabled={submitting || !winner || !isValidQuadScore(score)}
           className="flex-1 py-2 text-sm bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
         >
           {submitting && <Loader2 size={14} className="animate-spin" />}

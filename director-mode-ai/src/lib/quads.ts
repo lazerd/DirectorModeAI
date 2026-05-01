@@ -90,6 +90,41 @@ export function parseScoreSets(score: string | null | undefined): Array<[number,
 }
 
 /**
+ * Validate a tennis-style score string. Accepts any sequence of "X-Y" pairs
+ * (1-3 digits each), optionally separated by commas, with optional tiebreak
+ * parens.
+ *
+ *   "6-3"               → true
+ *   "6-3, 6-4"          → true
+ *   "8-5"               → true
+ *   "27-22"             → true (timed match)
+ *   "7-6 (7-3), 4-6, 10-7" → true
+ *   "43"                → false (no dash)
+ *   "6"                 → false
+ *   "abc"               → false
+ *   ""                  → false
+ *   "6-3, 6"            → false (second set malformed)
+ *
+ * Director can still enter semantically odd scores like "0-0" — we only check
+ * format, not whether the score plausibly matches the chosen winner.
+ */
+export function isValidQuadScore(score: string): boolean {
+  const trimmed = score.trim();
+  if (!trimmed) return false;
+  const sets = trimmed
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (sets.length === 0 || sets.length > 5) return false;
+  for (const set of sets) {
+    if (!/^\d{1,3}\s*-\s*\d{1,3}(\s*\(\d{1,3}(-\d{1,3})?\))?$/.test(set)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Match shape used by the standings calculator. Side A = player1 (+ player2
  * for doubles); Side B = player3 (+ player4 for doubles).
  */
@@ -295,24 +330,42 @@ export function formatTimeDisplay(hhmm: string | null | undefined): string {
 }
 
 /**
+ * Resolve a court list for an event: prefer the explicit court_names array;
+ * fall back to ['1','2',...,String(numCourts)] for legacy events.
+ */
+export function resolveCourtList(input: {
+  courtNames?: string[] | null;
+  numCourts?: number | null;
+}): string[] {
+  if (input.courtNames && input.courtNames.length > 0) {
+    return input.courtNames.map((c) => String(c).trim()).filter(Boolean);
+  }
+  const n = Math.max(0, input.numCourts ?? 0);
+  return Array.from({ length: n }, (_, i) => String(i + 1));
+}
+
+/**
  * Auto-schedule every match in a tournament. Returns { matchId → {scheduled_at, court} }.
  *
  * Strategy:
- *   - Each flight is assigned a fixed pair of courts (Flight A → courts 1+2,
- *     Flight B → 3+4, etc.) so families always know "we're on court N today".
+ *   - Each flight gets a fixed pair of courts from the available court list
+ *     (Flight A → courts[0..1], Flight B → courts[2..3], etc.) so families
+ *     always know "we're on court N today".
  *   - All flights play simultaneously: R1 starts at startTime, R2 at
  *     startTime + roundDuration, etc.
  *   - R1-R3 use both flight courts (2 matches per round); R4 uses the first
  *     of the two courts (1 doubles match).
  *
- * If numCourts < 2 × numFlights, courts wrap around: Flight C reuses 1+2 and
- * its first round starts at startTime + roundDuration (one slot later). The
- * director can hand-edit if it gets ugly; this is a sane default.
+ * If courts.length < 2 × numFlights, flights wrap around: extra flights
+ * reuse the first pair of courts but start one wave later (staggered in
+ * time). Director can hand-edit if it gets ugly; this is a sane default.
  */
 export function autoScheduleQuads(input: {
   startTime: string; // "HH:MM"
   roundDurationMinutes: number;
-  numCourts: number;
+  // Either provide an explicit court list, OR a numeric numCourts (legacy).
+  courts?: string[];
+  numCourts?: number;
   flights: Array<{
     id: string;
     sort_order: number;
@@ -320,34 +373,36 @@ export function autoScheduleQuads(input: {
   }>;
 }): Map<string, { scheduled_at: string; court: string }> {
   const out = new Map<string, { scheduled_at: string; court: string }>();
+  const courts = resolveCourtList({
+    courtNames: input.courts ?? null,
+    numCourts: input.numCourts ?? 0,
+  });
+  if (courts.length === 0) return out;
+
   const courtsPerFlight = 2;
-  const flightsPerWave = Math.max(1, Math.floor(input.numCourts / courtsPerFlight));
+  const flightsPerWave = Math.max(1, Math.floor(courts.length / courtsPerFlight));
 
   const flights = [...input.flights].sort((a, b) => a.sort_order - b.sort_order);
 
   flights.forEach((flight, flightIdx) => {
     const wave = Math.floor(flightIdx / flightsPerWave);
-    const courtBase = (flightIdx % flightsPerWave) * courtsPerFlight + 1;
+    const courtBaseIdx = (flightIdx % flightsPerWave) * courtsPerFlight;
+    const courtA = courts[courtBaseIdx] ?? courts[0];
+    const courtB = courts[courtBaseIdx + 1] ?? courtA;
 
-    // Sort this flight's matches by round, then by id (deterministic) so the
-    // two matches per round get courts courtBase and courtBase+1 consistently.
     const sortedMatches = [...flight.matches].sort(
       (a, b) => a.round - b.round || a.id.localeCompare(b.id)
     );
 
-    // Walk matches; track an index within each round so we know whether this
-    // is the 1st or 2nd match in the round (for court assignment).
     const seenInRound = new Map<number, number>();
     for (const m of sortedMatches) {
       const idxInRound = seenInRound.get(m.round) ?? 0;
       seenInRound.set(m.round, idxInRound + 1);
 
-      // Round 1 starts at slot `wave`; round N starts at slot `wave + N - 1`.
       const slot = wave + (m.round - 1);
       const scheduled = addMinutesToTime(input.startTime, slot * input.roundDurationMinutes);
-      // R4 is doubles — only 1 match per flight, always uses courtBase.
-      const court =
-        m.round === 4 ? String(courtBase) : String(courtBase + idxInRound);
+      // R4 doubles always lands on courtA (1 match per flight).
+      const court = m.round === 4 ? courtA : idxInRound === 0 ? courtA : courtB;
 
       out.set(m.id, { scheduled_at: scheduled, court });
     }

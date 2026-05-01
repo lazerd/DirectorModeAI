@@ -39,6 +39,7 @@ export default function QuadsSettingsTab({
       ? new Date(event.registration_closes_at).toISOString().slice(0, 16)
       : '',
     round_duration_minutes: event.round_duration_minutes ?? 45,
+    court_names: (event.court_names ?? []).join(', '),
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +68,10 @@ export default function QuadsSettingsTab({
           ? new Date(form.registration_closes_at).toISOString()
           : null,
         round_duration_minutes: form.round_duration_minutes,
+        court_names: form.court_names
+          .split(',')
+          .map((c) => c.trim())
+          .filter(Boolean),
       })
       .eq('id', event.id);
     if (err) {
@@ -196,6 +201,24 @@ export default function QuadsSettingsTab({
             className="w-full mt-2 px-3 py-2 border border-orange-300 rounded-lg text-gray-900 text-sm"
           />
         )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium mb-1 text-gray-700">
+          Available courts
+        </label>
+        <input
+          type="text"
+          value={form.court_names}
+          onChange={(e) => setForm({ ...form, court_names: e.target.value })}
+          placeholder="1, 2, 3, 5"
+          className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm"
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Comma-separated. Use any labels — numbers ("1, 2, 3") or names ("Stadium, Bubble").
+          Skip courts that aren't available (e.g., "1, 2, 3, 5" if court 4 is reserved). Leave
+          blank to use courts 1–{event.num_courts ?? 4}.
+        </p>
       </div>
 
       <div>

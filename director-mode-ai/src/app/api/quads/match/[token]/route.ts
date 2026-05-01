@@ -11,6 +11,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   computeFlightStandings,
   buildQuadDoublesRound,
+  isValidQuadScore,
   type QuadMatchView,
 } from '@/lib/quads';
 
@@ -68,6 +69,15 @@ export async function POST(req: Request, { params }: { params: { token: string }
   if (!body.score || typeof body.score !== 'string' || body.score.length > 100) {
     return NextResponse.json(
       { error: 'score is required (max 100 chars).' },
+      { status: 400 }
+    );
+  }
+  if (!isValidQuadScore(body.score)) {
+    return NextResponse.json(
+      {
+        error:
+          'Score must be in tennis format like "6-3" or "6-3, 6-4". Got: ' + body.score,
+      },
       { status: 400 }
     );
   }

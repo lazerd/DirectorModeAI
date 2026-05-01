@@ -289,6 +289,16 @@ ALTER TABLE events
     CHECK (round_duration_minutes BETWEEN 5 AND 240);
 
 -- ============================================================================
+-- 6. quads_court_names.sql — per-event named court list. Replaces the
+--    implicit "courts numbered 1..num_courts" model with an explicit
+--    director-controlled list (e.g. ['1','2','3','5'] when court 4 is
+--    reserved for lessons, or ['Stadium','Bubble','A','B']).
+-- ============================================================================
+
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS court_names TEXT[];
+
+-- ============================================================================
 -- End of pending sync. If you see "Success. No rows returned." the database
 -- is now aligned with every committed migration in director-mode-ai/supabase/
 -- migrations/. Safe to re-run this file any time.

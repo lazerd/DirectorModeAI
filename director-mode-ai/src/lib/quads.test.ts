@@ -9,6 +9,7 @@ import {
   addMinutesToTime,
   formatTimeDisplay,
   autoScheduleQuads,
+  isValidQuadScore,
 } from './quads';
 
 describe('computeQuadComposite', () => {
@@ -326,6 +327,35 @@ describe('assignToFlights', () => {
   });
 });
 
+describe('isValidQuadScore', () => {
+  it.each([
+    '6-3',
+    '6-3, 6-4',
+    '8-5',
+    '27-22',
+    '7-6 (7-3), 4-6, 10-7',
+    '6-0, 6-0',
+    '0-0',
+  ])('accepts valid: %s', (s) => {
+    expect(isValidQuadScore(s)).toBe(true);
+  });
+
+  it.each([
+    '',
+    '   ',
+    '43',
+    '6',
+    'abc',
+    '6-3, 6',
+    '6-',
+    '-6',
+    '6-3-2',
+    '6/3',
+  ])('rejects invalid: %s', (s) => {
+    expect(isValidQuadScore(s)).toBe(false);
+  });
+});
+
 describe('addMinutesToTime', () => {
   it('adds minutes within same hour', () => {
     expect(addMinutesToTime('09:00', 30)).toBe('09:30');
@@ -374,7 +404,7 @@ describe('autoScheduleQuads', () => {
     const result = autoScheduleQuads({
       startTime: '09:00',
       roundDurationMinutes: 45,
-      numCourts: 2,
+      courts: ['1', '2'],
       flights: [flight],
     });
     expect(result.size).toBe(7);
@@ -401,11 +431,30 @@ describe('autoScheduleQuads', () => {
     const result = autoScheduleQuads({
       startTime: '09:00',
       roundDurationMinutes: 45,
-      numCourts: 4,
+      courts: ['1', '2', '3', '4'],
       flights: [flightA, flightB],
     });
     expect(result.get('mA1')).toEqual({ scheduled_at: '09:00', court: '1' });
     expect(result.get('mB1')).toEqual({ scheduled_at: '09:00', court: '3' });
+  });
+
+  it('respects custom court labels (skipping numeric ones)', () => {
+    const flight = {
+      id: 'f1',
+      sort_order: 0,
+      matches: [
+        { id: 'm1a', round: 1 },
+        { id: 'm1b', round: 1 },
+      ],
+    };
+    const result = autoScheduleQuads({
+      startTime: '09:00',
+      roundDurationMinutes: 45,
+      courts: ['Stadium', 'Bubble'],
+      flights: [flight],
+    });
+    expect(result.get('m1a')?.court).toBe('Stadium');
+    expect(result.get('m1b')?.court).toBe('Bubble');
   });
 
   it('staggers flight B in time when only 2 courts available', () => {
@@ -422,7 +471,7 @@ describe('autoScheduleQuads', () => {
     const result = autoScheduleQuads({
       startTime: '09:00',
       roundDurationMinutes: 45,
-      numCourts: 2,
+      courts: ['1', '2'],
       flights: [flightA, flightB],
     });
     expect(result.get('mA1')).toEqual({ scheduled_at: '09:00', court: '1' });
