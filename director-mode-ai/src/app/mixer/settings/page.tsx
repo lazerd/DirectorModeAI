@@ -91,6 +91,34 @@ export default function MixerSettingsPage() {
     }
   };
 
+  const disconnectStripe = async () => {
+    if (
+      !confirm(
+        'Disconnect Stripe? This severs the link to your current Stripe account. You can reconnect with a fresh account afterwards.'
+      )
+    )
+      return;
+    setStripeLoading(true);
+    try {
+      const res = await fetch('/api/stripe/connect/disconnect', { method: 'POST' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || 'Could not disconnect Stripe.');
+        setStripeLoading(false);
+        return;
+      }
+      setStripe({
+        stripe_account_id: null,
+        charges_enabled: false,
+        payouts_enabled: false,
+        details_submitted: false,
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Stripe error');
+    }
+    setStripeLoading(false);
+  };
+
   const save = async () => {
     if (!profile) return;
     setSaving(true);
@@ -238,14 +266,23 @@ export default function MixerSettingsPage() {
         )}
 
         {stripe?.stripe_account_id && stripe.charges_enabled && stripe.payouts_enabled && (
-          <div className="flex items-start gap-2 text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3">
-            <CheckCircle2 size={18} className="mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <p className="font-medium">Stripe connected and ready.</p>
-              <p className="text-xs text-emerald-700 mt-0.5">
-                Account ID: {stripe.stripe_account_id}
-              </p>
+          <div className="space-y-3">
+            <div className="flex items-start gap-2 text-sm bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-3">
+              <CheckCircle2 size={18} className="mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium">Stripe connected and ready.</p>
+                <p className="text-xs text-emerald-700 mt-0.5">
+                  Account ID: {stripe.stripe_account_id}
+                </p>
+              </div>
             </div>
+            <button
+              onClick={disconnectStripe}
+              disabled={stripeLoading}
+              className="text-xs text-red-600 hover:text-red-800 hover:underline disabled:opacity-50"
+            >
+              Disconnect Stripe
+            </button>
           </div>
         )}
 
@@ -262,14 +299,23 @@ export default function MixerSettingsPage() {
                 </p>
               </div>
             </div>
-            <button
-              onClick={startStripeConnect}
-              disabled={stripeLoading}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50"
-            >
-              <ExternalLink size={16} />
-              {stripeLoading ? 'Opening Stripe…' : 'Continue Stripe onboarding'}
-            </button>
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                onClick={startStripeConnect}
+                disabled={stripeLoading}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50"
+              >
+                <ExternalLink size={16} />
+                {stripeLoading ? 'Opening Stripe…' : 'Continue Stripe onboarding'}
+              </button>
+              <button
+                onClick={disconnectStripe}
+                disabled={stripeLoading}
+                className="text-xs text-red-600 hover:text-red-800 hover:underline disabled:opacity-50"
+              >
+                Disconnect & start over
+              </button>
+            </div>
           </div>
         )}
       </div>
