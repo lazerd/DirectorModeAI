@@ -239,6 +239,13 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
             {publicUrl}
           </a>
         </div>
+        <button
+          onClick={copyLink}
+          className="inline-flex items-center gap-1 px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-semibold flex-shrink-0"
+        >
+          {copied ? <Check size={12} /> : <Copy size={12} />}
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
       </div>
 
       <div className="border-b border-gray-200 mb-6 flex gap-1 overflow-x-auto">
