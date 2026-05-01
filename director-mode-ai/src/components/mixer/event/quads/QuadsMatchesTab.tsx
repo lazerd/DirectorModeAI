@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Edit3, Loader2, Trophy, Mail, Wand2, Calendar } from 'lucide-react';
+import { Edit3, Loader2, Trophy, Mail, Wand2, Calendar, PartyPopper } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
   computeFlightStandings,
@@ -191,6 +191,24 @@ export default function QuadsMatchesTab({
     setScheduling(false);
   };
 
+  const completeTournament = async () => {
+    if (
+      !confirm(
+        'Complete this tournament? Marks it as finished and opens the public results page.'
+      )
+    )
+      return;
+    try {
+      const res = await fetch(`/api/quads/events/${event.id}/complete`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.slug) {
+        window.location.href = `/quads/${data.slug}/results`;
+      }
+    } catch {
+      /* swallow */
+    }
+  };
+
   const updateMatchSchedule = async (
     matchId: string,
     field: 'scheduled_at' | 'court',
@@ -263,6 +281,60 @@ export default function QuadsMatchesTab({
       <div className="text-sm text-gray-600">
         Scoring: {quadScoringLabel(event.event_scoring_format)}
       </div>
+
+      {/* Complete tournament CTA — appears when every match (incl. R4 doubles
+          for every flight) has been scored. */}
+      {(() => {
+        if (flights.length === 0) return null;
+        const allFlightsHaveDoubles = flights.every((f) =>
+          matches.some((m) => m.flight_id === f.id && m.match_type === 'doubles')
+        );
+        const allCompleted =
+          matches.length > 0 && matches.every((m) => m.status === 'completed');
+        if (!allFlightsHaveDoubles || !allCompleted) return null;
+
+        if (event.public_status === 'completed') {
+          return (
+            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 sm:p-5 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-emerald-900 flex items-center gap-2">
+                  <PartyPopper size={16} /> Tournament complete
+                </div>
+                <p className="text-sm text-emerald-800 mt-0.5">
+                  Final standings are live on the public results page.
+                </p>
+              </div>
+              <a
+                href={`/quads/${event.slug}/results`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm flex-shrink-0"
+              >
+                View results →
+              </a>
+            </div>
+          );
+        }
+
+        return (
+          <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 sm:p-5 flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold text-emerald-900 flex items-center gap-2">
+                <PartyPopper size={16} /> All matches scored
+              </div>
+              <p className="text-sm text-emerald-800 mt-0.5">
+                Wrap it up — view final standings and share with players.
+              </p>
+            </div>
+            <button
+              onClick={completeTournament}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm flex-shrink-0"
+            >
+              Complete tournament →
+            </button>
+          </div>
+        );
+      })()}
 
       {flights.map((flight) => {
         const fm = matches
