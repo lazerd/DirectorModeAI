@@ -76,6 +76,7 @@ type Match = {
   score_token: string;
   court: string | null;
   scheduled_at: string | null;
+  scheduled_date: string | null;
 };
 
 const POSITION_LABELS: Record<Entry['position'], { label: string; color: string }> = {
@@ -138,7 +139,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         .order('registered_at', { ascending: true }),
       supabase
         .from('tournament_matches')
-        .select('id, bracket, round, slot, match_type, player1_id, player2_id, player3_id, player4_id, score, winner_side, status, score_token, court, scheduled_at')
+        .select('id, bracket, round, slot, match_type, player1_id, player2_id, player3_id, player4_id, score, winner_side, status, score_token, court, scheduled_at, scheduled_date')
         .eq('event_id', eventId)
         .order('round'),
     ]);
@@ -236,7 +237,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
 
   const updateMatchSchedule = async (
     matchId: string,
-    field: 'court' | 'scheduled_at',
+    field: 'court' | 'scheduled_at' | 'scheduled_date',
     value: string
   ) => {
     const supabase = createClient();
@@ -817,7 +818,18 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                                     )}
                                   </div>
                                   <div className="flex items-center gap-2 text-xs text-gray-600 pl-1 flex-wrap">
-                                    <span>Court</span>
+                                    <span>Date</span>
+                                    <input
+                                      type="date"
+                                      defaultValue={m.scheduled_date ?? ''}
+                                      onBlur={(e) => {
+                                        const v = e.target.value;
+                                        if ((m.scheduled_date ?? '') !== v) updateMatchSchedule(m.id, 'scheduled_date', v);
+                                      }}
+                                      className="px-1.5 py-0.5 border rounded text-gray-900"
+                                      style={{ color: '#000000' }}
+                                    />
+                                    <span className="ml-2">Court</span>
                                     <input
                                       type="text"
                                       defaultValue={m.court ?? ''}

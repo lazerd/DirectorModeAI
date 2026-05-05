@@ -1,24 +1,25 @@
 /**
  * POST /api/tournaments/events/[id]/auto-schedule
  *
- * Director-only. Assigns a court + start time to every match in the
- * tournament based on event.start_time + round_duration_minutes.
+ * Director-only. Calls the multi-day tournament scheduler to assign
+ * (date, time, court) to every match in this event, respecting:
+ *   - Bracket dependencies (predecessors finish before successors start)
+ *   - Player rest between consecutive matches
+ *   - Player conflicts across multiple matches
+ *   - Daily start/end window across the tournament's date range
+ *   - Court fairness (distributes load evenly)
  *
- * Strategy:
- *   - All matches in round 1 start at start_time, distributed across
- *     available courts. If more matches than courts, overflow matches
- *     start one round-duration later (same court).
- *   - Round 2 starts at start_time + 1 × round_duration_minutes.
- *   - Round N starts at start_time + (N-1) × round_duration_minutes.
- *   - Consolation matches run on the same time grid; same overflow rules.
- *
- * Returns: { matches_scheduled }
+ * Returns: { matches_scheduled, unscheduled }
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { addMinutesToTime, resolveCourtList } from '@/lib/quads';
+import { resolveCourtList } from '@/lib/quads';
+import {
+  optimizeTournamentSchedule,
+  type SchedulerMatch,
+} from '@/lib/tournamentScheduler';
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
@@ -33,7 +34,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
 
   const { data: ev } = await admin
     .from('events')
-    .select('id, user_id, start_time, num_courts, court_names, round_duration_minutes')
+    .select(
+      'id, user_id, event_date, end_date, start_time, daily_start_time, daily_end_time, num_courts, court_names, default_match_length_minutes, player_rest_minutes, match_buffer_minutes, round_duration_minutes'
+    )
     .eq('id', eventId)
     .maybeSingle();
   if (!ev) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
@@ -42,56 +45,92 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   }
 
   const e: any = ev;
-  const startTime = (e.start_time || '09:00').slice(0, 5);
-  const roundDur = e.round_duration_minutes ?? 45;
+  const startDate = e.event_date;
+  const endDate = e.end_date || e.event_date;
+  const dailyStartTime = (e.daily_start_time || e.start_time || '09:00').slice(0, 5);
+  const dailyEndTime = (e.daily_end_time || '18:00').slice(0, 5);
+  // Prefer the new default_match_length_minutes; fall back to round_duration for legacy events
+  const matchLengthMinutes =
+    e.default_match_length_minutes ?? e.round_duration_minutes ?? 90;
+  const playerRestMinutes = e.player_rest_minutes ?? 60;
+  const matchBufferMinutes = e.match_buffer_minutes ?? 30;
   const courts = resolveCourtList({ courtNames: e.court_names, numCourts: e.num_courts });
   if (courts.length === 0) {
     return NextResponse.json({ error: 'No courts configured' }, { status: 400 });
   }
+  if (!startDate) {
+    return NextResponse.json({ error: 'Tournament start date not set' }, { status: 400 });
+  }
 
   const { data: matchesData } = await admin
     .from('tournament_matches')
-    .select('id, bracket, round, slot')
+    .select('id, bracket, round, slot, player1_id, player2_id, player3_id, player4_id, winner_feeds_to, loser_feeds_to')
     .eq('event_id', eventId)
     .order('round')
     .order('slot');
 
-  const matches = (matchesData as any[]) || [];
+  const dbMatches = (matchesData as any[]) || [];
 
-  // Group by round, then assign court + time. Main + consolation use the
-  // same grid, so they'll never conflict if the same court is reused
-  // across brackets at different times. Within a single round, distribute
-  // matches across courts; overflow → next slot.
-  const updates: Array<{ id: string; court: string; scheduled_at: string }> = [];
-
-  const matchesByRound = new Map<number, any[]>();
-  for (const m of matches) {
-    if (!matchesByRound.has(m.round)) matchesByRound.set(m.round, []);
-    matchesByRound.get(m.round)!.push(m);
+  // Build predecessor map: for match X, find every match whose
+  // winner_feeds_to or loser_feeds_to points at X.
+  // Format: "bracket:round:slot:side" → matchId of (bracket, round, slot)
+  const idByPosition = new Map<string, string>();
+  for (const m of dbMatches) {
+    idByPosition.set(`${m.bracket}:${m.round}:${m.slot}`, m.id);
   }
 
-  for (const [round, roundMatches] of matchesByRound.entries()) {
-    let courtIdx = 0;
-    let extraSlot = 0;
-    for (const m of roundMatches) {
-      if (courtIdx >= courts.length) {
-        courtIdx = 0;
-        extraSlot += 1;
+  const predecessorsByMatch = new Map<string, string[]>();
+  for (const m of dbMatches) {
+    predecessorsByMatch.set(m.id, []);
+  }
+  for (const m of dbMatches) {
+    const refs = [m.winner_feeds_to, m.loser_feeds_to].filter(Boolean);
+    for (const ref of refs) {
+      // ref looks like "main:2:1:a" — destination is (bracket, round, slot)
+      const [bracket, roundStr, slotStr] = String(ref).split(':');
+      const destId = idByPosition.get(`${bracket}:${roundStr}:${slotStr}`);
+      if (destId) {
+        const list = predecessorsByMatch.get(destId) || [];
+        list.push(m.id);
+        predecessorsByMatch.set(destId, list);
       }
-      const slotOffset = (round - 1 + extraSlot) * roundDur;
-      const scheduled_at = addMinutesToTime(startTime, slotOffset);
-      const court = courts[courtIdx];
-      updates.push({ id: m.id, court, scheduled_at });
-      courtIdx += 1;
     }
   }
 
-  for (const u of updates) {
+  const schedulerMatches: SchedulerMatch[] = dbMatches.map((m) => ({
+    id: m.id,
+    player_ids: [m.player1_id, m.player2_id, m.player3_id, m.player4_id].filter(
+      (x): x is string => !!x
+    ),
+    predecessor_match_ids: predecessorsByMatch.get(m.id) || [],
+  }));
+
+  const out = optimizeTournamentSchedule({
+    matches: schedulerMatches,
+    courts,
+    startDate,
+    endDate,
+    dailyStartTime,
+    dailyEndTime,
+    matchLengthMinutes,
+    playerRestMinutes,
+    matchBufferMinutes,
+  });
+
+  // Persist
+  for (const [matchId, slot] of out.assignments) {
     await admin
       .from('tournament_matches')
-      .update({ court: u.court, scheduled_at: u.scheduled_at })
-      .eq('id', u.id);
+      .update({
+        scheduled_date: slot.scheduled_date,
+        scheduled_at: slot.scheduled_at,
+        court: slot.court,
+      })
+      .eq('id', matchId);
   }
 
-  return NextResponse.json({ matches_scheduled: updates.length });
+  return NextResponse.json({
+    matches_scheduled: out.assignments.size,
+    unscheduled: out.unscheduled,
+  });
 }

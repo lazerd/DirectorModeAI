@@ -418,6 +418,34 @@ CREATE INDEX IF NOT EXISTS idx_tournament_entries_imported
   ON tournament_entries(event_id) WHERE imported_at IS NULL;
 
 -- ============================================================================
+-- 9. multi_day_scheduling.sql — multi-day tournament support + smarter
+--    auto-scheduler inputs (match length, player rest, dependency buffer).
+-- ============================================================================
+
+ALTER TABLE events
+  ADD COLUMN IF NOT EXISTS end_date DATE,
+  ADD COLUMN IF NOT EXISTS daily_start_time TIME,
+  ADD COLUMN IF NOT EXISTS daily_end_time TIME,
+  ADD COLUMN IF NOT EXISTS default_match_length_minutes INTEGER NOT NULL DEFAULT 90
+    CHECK (default_match_length_minutes BETWEEN 5 AND 480),
+  ADD COLUMN IF NOT EXISTS player_rest_minutes INTEGER NOT NULL DEFAULT 60
+    CHECK (player_rest_minutes BETWEEN 0 AND 480),
+  ADD COLUMN IF NOT EXISTS match_buffer_minutes INTEGER NOT NULL DEFAULT 30
+    CHECK (match_buffer_minutes BETWEEN 0 AND 240);
+
+UPDATE events SET end_date = event_date WHERE end_date IS NULL AND event_date IS NOT NULL;
+
+ALTER TABLE quad_matches
+  ADD COLUMN IF NOT EXISTS scheduled_date DATE;
+ALTER TABLE tournament_matches
+  ADD COLUMN IF NOT EXISTS scheduled_date DATE;
+
+CREATE INDEX IF NOT EXISTS idx_quad_matches_scheduled
+  ON quad_matches(scheduled_date, scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_tournament_matches_scheduled
+  ON tournament_matches(scheduled_date, scheduled_at);
+
+-- ============================================================================
 -- End of pending sync. If you see "Success. No rows returned." the database
 -- is now aligned with every committed migration in director-mode-ai/supabase/
 -- migrations/. Safe to re-run this file any time.

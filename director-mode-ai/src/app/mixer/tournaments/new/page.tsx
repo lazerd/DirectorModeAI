@@ -63,7 +63,9 @@ function CreateTournamentForm() {
   const [form, setForm] = useState({
     name: '',
     event_date: '',
-    start_time: '09:00',
+    end_date: '',
+    daily_start_time: '09:00',
+    daily_end_time: '18:00',
     num_courts: 4,
     age_max: '' as string | number,
     gender_restriction: 'coed' as GenderRestriction,
@@ -74,11 +76,14 @@ function CreateTournamentForm() {
     public_registration: true,
     registration_opens_now: true,
     registration_closes_at: '',
+    default_match_length_minutes: 90,
+    player_rest_minutes: 60,
+    match_buffer_minutes: 30,
   });
 
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
-    setForm((p) => ({ ...p, event_date: today }));
+    setForm((p) => ({ ...p, event_date: today, end_date: today }));
     (async () => {
       const {
         data: { user },
@@ -153,7 +158,10 @@ function CreateTournamentForm() {
           event_code: generateEventCode(),
           name: form.name.trim(),
           event_date: form.event_date,
-          start_time: form.start_time || null,
+          end_date: form.end_date || form.event_date,
+          start_time: form.daily_start_time || null,
+          daily_start_time: form.daily_start_time || null,
+          daily_end_time: form.daily_end_time || null,
           num_courts: form.num_courts,
           match_format: validFormat,
           scoring_format: 'fixed_games', // legacy column unused for tournaments
@@ -175,6 +183,9 @@ function CreateTournamentForm() {
               : form.scoring_format,
           stripe_account_id: profile?.stripe_account_id || null,
           public_status: form.public_registration ? 'open' : 'draft',
+          default_match_length_minutes: form.default_match_length_minutes,
+          player_rest_minutes: form.player_rest_minutes,
+          match_buffer_minutes: form.match_buffer_minutes,
         })
         .select('id, slug')
         .single();
@@ -240,21 +251,52 @@ function CreateTournamentForm() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Date *</label>
+                <label className="block text-sm font-medium mb-1">Start Date *</label>
                 <input
                   type="date"
                   value={form.event_date}
-                  onChange={(e) => setForm({ ...form, event_date: e.target.value })}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setForm({
+                      ...form,
+                      event_date: v,
+                      // Snap end_date forward if it's now before start_date
+                      end_date: form.end_date && form.end_date < v ? v : form.end_date || v,
+                    });
+                  }}
                   required
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none text-gray-900"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Start Time</label>
+                <label className="block text-sm font-medium mb-1">End Date *</label>
+                <input
+                  type="date"
+                  value={form.end_date}
+                  min={form.event_date}
+                  onChange={(e) => setForm({ ...form, end_date: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none text-gray-900"
+                />
+                <p className="text-xs text-gray-500 mt-1">Same as start = single-day.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Daily Start Time</label>
                 <input
                   type="time"
-                  value={form.start_time}
-                  onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+                  value={form.daily_start_time}
+                  onChange={(e) => setForm({ ...form, daily_start_time: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Daily End Time</label>
+                <input
+                  type="time"
+                  value={form.daily_end_time}
+                  onChange={(e) => setForm({ ...form, daily_end_time: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none text-gray-900"
                 />
               </div>
@@ -336,6 +378,74 @@ function CreateTournamentForm() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none text-gray-900"
               />
               <p className="text-xs text-gray-500 mt-1">Extras land on the waitlist.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Scheduling defaults */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 space-y-4">
+          <h2 className="font-semibold text-lg flex items-center gap-2">
+            <Calendar size={20} className="text-orange-500" />
+            Scheduling
+          </h2>
+          <p className="text-sm text-gray-600">
+            Used by Auto-schedule to fit matches into your daily windows. Override later
+            per-match if needed.
+          </p>
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Match length (min)</label>
+              <input
+                type="number"
+                min={5}
+                max={480}
+                step={5}
+                value={form.default_match_length_minutes}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    default_match_length_minutes: parseInt(e.target.value || '90', 10),
+                  })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+              />
+              <p className="text-xs text-gray-500 mt-1">Default 90 (best-of-3 singles).</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Player rest (min)</label>
+              <input
+                type="number"
+                min={0}
+                max={480}
+                step={15}
+                value={form.player_rest_minutes}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    player_rest_minutes: parseInt(e.target.value || '60', 10),
+                  })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+              />
+              <p className="text-xs text-gray-500 mt-1">Min gap between same player's matches.</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Buffer (min)</label>
+              <input
+                type="number"
+                min={0}
+                max={240}
+                step={5}
+                value={form.match_buffer_minutes}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    match_buffer_minutes: parseInt(e.target.value || '30', 10),
+                  })
+                }
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+              />
+              <p className="text-xs text-gray-500 mt-1">Gap between dependent matches.</p>
             </div>
           </div>
         </div>
