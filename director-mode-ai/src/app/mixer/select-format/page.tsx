@@ -21,7 +21,8 @@ interface FormatOption {
   name: string;
   description: string;
   icon: string;
-  paid?: boolean; // shows a $ badge if true
+  paid?: boolean; // shows a "Paid option" badge if Stripe-Connect-backed
+  privateOnly?: boolean; // shows "Private only" badge — director adds players manually, no public signup yet
   status?: FormatStatus;
 }
 
@@ -60,7 +61,8 @@ export default function SelectFormatPage() {
   };
 
   // ============ Bucket 1: Mixers / Socials ============
-  // Private events the director sets up day-of. No public signup, no payment.
+  // Private events the director sets up day-of. Rotation/social formats —
+  // no winner declared, no public signup, no payment.
   const mixerFormats: FormatOption[] = [
     {
       id: 'doubles',
@@ -98,18 +100,12 @@ export default function SelectFormatPage() {
       description: 'Fills all courts optimally with mixed singles/doubles.',
       icon: '⚙️',
     },
-    {
-      id: 'team-battle',
-      name: 'Team Battle',
-      description: 'Two named teams battle across multiple rounds.',
-      icon: '⚔️',
-    },
   ];
 
   // ============ Bucket 2: Tournament Formats ============
-  // Public-signup tournaments. Free OR paid (Stripe Connect). Each format
-  // has the same machinery: signup page, optional payment, magic-link
-  // scoring, results page, email blasts.
+  // Competitive — winner declared. "Private only" = director adds players
+  // manually (no public signup). "Paid option" = Quads-style spine: public
+  // signup + Stripe Connect + magic-link scoring + results page.
   const tournamentFormats: FormatOption[] = [
     {
       id: 'quads',
@@ -121,12 +117,29 @@ export default function SelectFormatPage() {
       status: 'live',
     },
     {
-      id: 'single-elim',
-      name: 'Single Elimination',
-      description: 'Traditional bracket. Lose once, you\'re out.',
+      id: 'single-elimination-singles',
+      name: 'Single Elimination — Singles',
+      description: 'Traditional bracket. 1v1 matches, win or go home.',
       icon: '🏆',
-      paid: true,
-      status: 'coming-soon',
+      privateOnly: true,
+      status: 'live',
+    },
+    {
+      id: 'single-elimination-doubles',
+      name: 'Single Elimination — Doubles',
+      description: 'Traditional bracket. 2v2 team matches, win or go home.',
+      icon: '🥇',
+      privateOnly: true,
+      status: 'live',
+    },
+    {
+      id: 'team-battle',
+      name: 'Team Battle',
+      description:
+        'Two named teams compete across multiple rounds. Flexible singles/doubles mix. Most match wins takes it.',
+      icon: '⚔️',
+      privateOnly: true,
+      status: 'live',
     },
     {
       id: 'feed-in-qf',
@@ -139,9 +152,9 @@ export default function SelectFormatPage() {
     },
     {
       id: 'round-robin-tournament',
-      name: 'Round Robin',
-      description: 'Everyone plays everyone. Standings by W-L.',
-      icon: '🔄',
+      name: 'Round Robin Tournament',
+      description: 'Everyone plays everyone. Standings by W-L. Public signup version.',
+      icon: '🔁',
       paid: true,
       status: 'coming-soon',
     },
@@ -196,7 +209,10 @@ export default function SelectFormatPage() {
       router.push('/mixer/quads/new');
       return;
     }
-    // Future: router.push(`/mixer/tournaments/new?format=${formatId}`);
+    // Existing single-elim + team-battle live as private events for now;
+    // upgrade to public-signup + payment later by routing into the
+    // /mixer/tournaments/new flow (when built).
+    router.push(`/mixer/events/new?format=${formatId}`);
   };
 
   const handleLeagueClick = (formatId: string) => {
@@ -437,9 +453,17 @@ function FormatCard({
             {format.paid && !isComingSoon && (
               <span
                 className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-semibold"
-                title="Director can charge entry fees via Stripe"
+                title="Director can charge entry fees via Stripe Connect"
               >
                 <DollarSign size={10} /> Paid option
+              </span>
+            )}
+            {format.privateOnly && !isComingSoon && (
+              <span
+                className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full text-[10px] font-semibold"
+                title="Director adds players manually. Public signup + payment coming later."
+              >
+                Private only
               </span>
             )}
             {isComingSoon && (
