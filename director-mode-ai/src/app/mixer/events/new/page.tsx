@@ -2,7 +2,8 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Calendar, Users, Swords } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, Calendar, Users, Swords, DollarSign, AlertCircle } from 'lucide-react';
 import { trackEvent } from '@/lib/analytics';
 import { supabase } from '@/lib/supabase';
 
@@ -27,6 +28,33 @@ function CreateEventForm() {
   // Team Battle specific state
   const [team1Name, setTeam1Name] = useState('Team A');
   const [team2Name, setTeam2Name] = useState('Team B');
+
+  // Public signup + payment (orthogonal to format — works on any mixer)
+  const [publicCfg, setPublicCfg] = useState({
+    public_registration: false,
+    entry_fee_dollars: 0,
+    max_players: 20,
+    age_max: '' as string | number,
+    gender_restriction: 'coed' as 'boys' | 'girls' | 'coed',
+    registration_closes_at: '',
+  });
+  const [stripeReady, setStripeReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('stripe_account_id, stripe_charges_enabled')
+        .eq('id', user.id)
+        .maybeSingle();
+      setStripeReady(!!(profile?.stripe_account_id && profile?.stripe_charges_enabled));
+    })();
+  }, []);
+
+  const slugify = (input: string) =>
+    input.toLowerCase().trim().replace(/['"]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
 
   useEffect(() => {
     const now = new Date();
@@ -94,10 +122,49 @@ function CreateEventForm() {
 
       const eventCode = generateEventCode();
 
+      // Public-signup events need a slug + Stripe Connect snapshot if paid
+      let publicFields: Record<string, any> = {};
+      if (publicCfg.public_registration) {
+        const wantsPayment = publicCfg.entry_fee_dollars > 0;
+        if (wantsPayment && !stripeReady) {
+          setError('Connect Stripe before charging entry fees. Open Settings → Payouts.');
+          setLoading(false);
+          return;
+        }
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('stripe_account_id')
+          .eq('id', user.id)
+          .maybeSingle();
+        const slugBase = slugify(formData.name);
+        const slug = `${slugBase}-${Math.random().toString(36).slice(2, 6)}`;
+        const ageNum =
+          typeof publicCfg.age_max === 'number'
+            ? publicCfg.age_max
+            : publicCfg.age_max === ''
+              ? null
+              : parseInt(String(publicCfg.age_max), 10) || null;
+        publicFields = {
+          slug,
+          public_registration: true,
+          entry_fee_cents: Math.round(publicCfg.entry_fee_dollars * 100),
+          max_players: publicCfg.max_players || null,
+          age_max: ageNum,
+          gender_restriction: publicCfg.gender_restriction,
+          registration_opens_at: new Date().toISOString(),
+          registration_closes_at: publicCfg.registration_closes_at
+            ? new Date(publicCfg.registration_closes_at).toISOString()
+            : null,
+          stripe_account_id: profile?.stripe_account_id || null,
+          public_status: 'open',
+        };
+      }
+
       const { data, error: insertError } = await supabase
         .from('events')
         .insert({
           ...formData,
+          ...publicFields,
           user_id: user.id,
           event_code: eventCode,
         })
@@ -345,6 +412,142 @@ function CreateEventForm() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* Public signup + payment (orthogonal to format) */}
+        <div className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 space-y-4">
+          <h2 className="font-semibold text-lg flex items-center gap-2">
+            <DollarSign size={20} className="text-emerald-500" />
+            Public Signup & Payment
+          </h2>
+
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={publicCfg.public_registration}
+              onChange={(e) =>
+                setPublicCfg({ ...publicCfg, public_registration: e.target.checked })
+              }
+              className="mt-0.5 rounded border-gray-300"
+            />
+            <div>
+              <div className="font-medium">Open to public signup</div>
+              <div className="text-xs text-gray-600">
+                Players self-register at <code>/events/[slug]</code>. Uncheck for a director-only
+                event you set up day-of.
+              </div>
+            </div>
+          </label>
+
+          {publicCfg.public_registration && (
+            <>
+              {publicCfg.entry_fee_dollars > 0 && stripeReady === false && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 flex items-start gap-2 text-sm">
+                  <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                  <div>
+                    Stripe not connected.{' '}
+                    <Link href="/mixer/settings" className="underline font-medium">
+                      Connect Stripe →
+                    </Link>{' '}
+                    required for paid events.
+                  </div>
+                </div>
+              )}
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Entry Fee (USD)</label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500">$</span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={500}
+                      step={1}
+                      value={publicCfg.entry_fee_dollars}
+                      onChange={(e) =>
+                        setPublicCfg({
+                          ...publicCfg,
+                          entry_fee_dollars: parseFloat(e.target.value || '0'),
+                        })
+                      }
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    0 = free. Paid via Stripe Connect (3% platform fee).
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Max Players (cap)</label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={64}
+                    value={publicCfg.max_players}
+                    onChange={(e) =>
+                      setPublicCfg({
+                        ...publicCfg,
+                        max_players: parseInt(e.target.value || '2', 10),
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Extras → waitlist.</p>
+                </div>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Age Cap</label>
+                  <input
+                    type="number"
+                    min={5}
+                    max={99}
+                    value={publicCfg.age_max}
+                    onChange={(e) =>
+                      setPublicCfg({
+                        ...publicCfg,
+                        age_max: e.target.value === '' ? '' : parseInt(e.target.value, 10),
+                      })
+                    }
+                    placeholder="18"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Gender</label>
+                  <select
+                    value={publicCfg.gender_restriction}
+                    onChange={(e) =>
+                      setPublicCfg({
+                        ...publicCfg,
+                        gender_restriction: e.target.value as typeof publicCfg.gender_restriction,
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                  >
+                    <option value="coed">Coed</option>
+                    <option value="boys">Boys only</option>
+                    <option value="girls">Girls only</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">Registration Closes</label>
+                <input
+                  type="datetime-local"
+                  value={publicCfg.registration_closes_at}
+                  onChange={(e) =>
+                    setPublicCfg({ ...publicCfg, registration_closes_at: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                />
+                <p className="text-xs text-gray-500 mt-1">Blank = stays open until you close it.</p>
+              </div>
+            </>
+          )}
         </div>
 
         {error && (

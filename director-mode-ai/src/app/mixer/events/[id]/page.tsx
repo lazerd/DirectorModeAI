@@ -19,6 +19,7 @@ import TournamentBracket from "@/components/mixer/event/TournamentBracket";
 import TeamBattleTab from "@/components/mixer/event/TeamBattleTab";
 import QuadsAdminDashboard from "@/components/mixer/event/QuadsAdminDashboard";
 import TournamentAdminDashboard from "@/components/mixer/event/TournamentAdminDashboard";
+import EventPublicSignupsPanel from "@/components/mixer/event/EventPublicSignupsPanel";
 
 const TOURNAMENT_FORMATS = new Set([
   'rr-singles', 'rr-doubles',
@@ -279,6 +280,9 @@ export default function EventDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6 max-w-7xl">
+        {/* Public signups panel — only visible if event has public_registration=true */}
+        <EventPublicSignupsPanel eventId={event.id} />
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full max-w-3xl mx-auto grid-cols-5 h-auto sm:h-14 p-1 gap-1">
             <TabsTrigger value="share" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
