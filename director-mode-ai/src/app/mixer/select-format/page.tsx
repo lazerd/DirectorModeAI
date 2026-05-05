@@ -233,7 +233,6 @@ export default function SelectFormatPage() {
       name: 'Round Robin League',
       description: 'Multi-week round-robin. Each week you play a different opponent. Standings update weekly.',
       icon: '📅',
-      paid: true,
       status: 'live',
     },
     {
@@ -242,7 +241,6 @@ export default function SelectFormatPage() {
       description:
         'Clubs vs clubs. Multiple divisions, weekly matchups, singles + doubles lines per matchup.',
       icon: '🏟️',
-      paid: false,
       status: 'live',
     },
   ];
