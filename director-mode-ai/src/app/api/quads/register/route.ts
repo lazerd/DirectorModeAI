@@ -22,7 +22,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { stripe } from '@/lib/stripe';
+import { stripe, platformFeeForCents } from '@/lib/stripe';
 import { computeQuadComposite } from '@/lib/quads';
 import { sendQuadsConfirmEmail, sendQuadsWaitlistEmail } from '@/lib/quadEmails';
 
@@ -258,6 +258,7 @@ export async function POST(request: Request) {
     }
 
     const origin = new URL(request.url).origin;
+    const applicationFee = platformFeeForCents(fee);
     const session = await stripe.checkout.sessions.create(
       {
         mode: 'payment',
@@ -275,6 +276,11 @@ export async function POST(request: Request) {
             },
           },
         ],
+        // Platform fee — Stripe routes this from the connected account
+        // to our platform account automatically. Director sees net.
+        ...(applicationFee > 0 && {
+          payment_intent_data: { application_fee_amount: applicationFee },
+        }),
         customer_email: player_email || parent_email || undefined,
         success_url: `${origin}/quads/${slug}/registered?entry=${(entry as any).id}`,
         cancel_url: `${origin}/quads/${slug}?cancelled=1`,

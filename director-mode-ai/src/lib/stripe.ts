@@ -22,12 +22,18 @@ export const stripe = new Proxy({} as Stripe, {
 });
 
 /**
- * The platform fee charged on each Connect payment. Cents per ticket.
- * Set to 0 to take no platform fee for now.
+ * Platform fee CoachMode skims off each paid Connect Checkout charge.
+ * Charged to the connected account, routed to the platform account
+ * automatically by Stripe via `payment_intent_data.application_fee_amount`.
+ *
+ * 300 bps = 3%. Adjust here to change platform-wide. Per-tournament
+ * overrides could go on the events row later if needed.
  */
-export const QUADS_PLATFORM_FEE_BPS = 0; // basis points (0 = no fee)
+export const QUADS_PLATFORM_FEE_BPS = 300; // 3%
 
+/** Compute platform fee in cents (rounded), capped at 100% of the charge. */
 export function platformFeeForCents(amountCents: number): number {
-  if (QUADS_PLATFORM_FEE_BPS <= 0) return 0;
-  return Math.round((amountCents * QUADS_PLATFORM_FEE_BPS) / 10_000);
+  if (QUADS_PLATFORM_FEE_BPS <= 0 || amountCents <= 0) return 0;
+  const fee = Math.round((amountCents * QUADS_PLATFORM_FEE_BPS) / 10_000);
+  return Math.min(fee, amountCents);
 }
