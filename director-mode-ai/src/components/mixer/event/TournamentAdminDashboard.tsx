@@ -16,9 +16,13 @@ import {
   Edit3,
   PartyPopper,
   ListChecks,
+  Calendar,
+  UserPlus,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { isValidQuadScore } from '@/lib/quads';
+import { isValidQuadScore, formatTimeDisplay } from '@/lib/quads';
 
 const FORMAT_LABELS: Record<string, string> = {
   'rr-singles': 'Round Robin — Singles',
@@ -70,6 +74,8 @@ type Match = {
   winner_side: 'a' | 'b' | null;
   status: string;
   score_token: string;
+  court: string | null;
+  scheduled_at: string | null;
 };
 
 const POSITION_LABELS: Record<Entry['position'], { label: string; color: string }> = {
@@ -94,6 +100,18 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
   const [emailResult, setEmailResult] = useState<{ sent: number; total: number } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
   const [scoreInput, setScoreInput] = useState({ score: '', winner_side: '' as '' | 'a' | 'b' });
+  const [showAdd, setShowAdd] = useState(false);
+  const [newPlayer, setNewPlayer] = useState({
+    player_name: '',
+    player_email: '',
+    parent_email: '',
+    gender: '' as '' | 'male' | 'female' | 'nonbinary',
+    ntrp: '',
+    utr: '',
+    partner_name: '',
+  });
+  const [scheduling, setScheduling] = useState(false);
+  const [emailMode, setEmailMode] = useState<'scoring' | 'schedule' | null>(null);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -120,7 +138,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         .order('registered_at', { ascending: true }),
       supabase
         .from('tournament_matches')
-        .select('*')
+        .select('id, bracket, round, slot, match_type, player1_id, player2_id, player3_id, player4_id, score, winner_side, status, score_token, court, scheduled_at')
         .eq('event_id', eventId)
         .order('round'),
     ]);
@@ -156,6 +174,95 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
     await fetchAll();
   };
 
+  const setPosition = async (entryId: string, position: 'in_draw' | 'waitlist' | 'withdrawn') => {
+    setBusy(entryId);
+    await fetch(`/api/tournaments/entries/${entryId}/position`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ position }),
+    });
+    await fetchAll();
+    setBusy(null);
+  };
+
+  const addManualEntry = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy('add');
+    setError(null);
+    const res = await fetch(`/api/tournaments/events/${eventId}/add-entry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        player_name: newPlayer.player_name,
+        player_email: newPlayer.player_email,
+        parent_email: newPlayer.parent_email,
+        gender: newPlayer.gender,
+        ntrp: newPlayer.ntrp ? parseFloat(newPlayer.ntrp) : null,
+        utr: newPlayer.utr ? parseFloat(newPlayer.utr) : null,
+        partner_name: newPlayer.partner_name,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data.error || 'Could not add entry');
+      setBusy(null);
+      return;
+    }
+    setNewPlayer({
+      player_name: '',
+      player_email: '',
+      parent_email: '',
+      gender: '',
+      ntrp: '',
+      utr: '',
+      partner_name: '',
+    });
+    setShowAdd(false);
+    await fetchAll();
+    setBusy(null);
+  };
+
+  const autoSchedule = async () => {
+    if (
+      matches.some((m) => m.scheduled_at) &&
+      !confirm('Auto-schedule will overwrite existing court + time assignments. Continue?')
+    )
+      return;
+    setScheduling(true);
+    await fetch(`/api/tournaments/events/${eventId}/auto-schedule`, { method: 'POST' });
+    await fetchAll();
+    setScheduling(false);
+  };
+
+  const updateMatchSchedule = async (
+    matchId: string,
+    field: 'court' | 'scheduled_at',
+    value: string
+  ) => {
+    const supabase = createClient();
+    await supabase
+      .from('tournament_matches')
+      .update({ [field]: value || null })
+      .eq('id', matchId);
+    await fetchAll();
+  };
+
+  const emailSchedules = async () => {
+    if (!confirm('Email each confirmed player their personal match schedule?')) return;
+    setEmailMode('schedule');
+    setEmailResult(null);
+    try {
+      const res = await fetch(`/api/tournaments/events/${eventId}/email-schedules`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      setEmailResult(data);
+    } catch {
+      /* swallow */
+    }
+    setEmailMode(null);
+  };
+
   const generateBracket = async () => {
     if (
       matches.length > 0 &&
@@ -189,6 +296,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
     )
       return;
     setEmailing(true);
+    setEmailMode('scoring');
     setEmailResult(null);
     try {
       const res = await fetch(`/api/tournaments/events/${eventId}/email-scoring-links`, {
@@ -200,6 +308,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
       /* swallow */
     }
     setEmailing(false);
+    setEmailMode(null);
   };
 
   const completeTournament = async () => {
@@ -348,9 +457,110 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
 
       {tab === 'entries' && (
         <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">
+              {entries.length} total · sorted by rating
+            </div>
+            <button
+              onClick={() => setShowAdd((s) => !s)}
+              className="inline-flex items-center gap-2 px-3 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600"
+            >
+              <UserPlus size={14} />
+              {showAdd ? 'Cancel' : 'Add player manually'}
+            </button>
+          </div>
+
+          {showAdd && (
+            <form
+              onSubmit={addManualEntry}
+              className="bg-white border border-gray-200 rounded-xl p-4 space-y-3"
+            >
+              <h3 className="font-semibold">Add player (director override)</h3>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  required
+                  placeholder="Player name"
+                  value={newPlayer.player_name}
+                  onChange={(e) => setNewPlayer({ ...newPlayer, player_name: e.target.value })}
+                  className="px-3 py-2 border rounded-lg text-gray-900 text-sm"
+                />
+                <input
+                  type="email"
+                  placeholder="Player email"
+                  value={newPlayer.player_email}
+                  onChange={(e) => setNewPlayer({ ...newPlayer, player_email: e.target.value })}
+                  className="px-3 py-2 border rounded-lg text-gray-900 text-sm"
+                />
+                <input
+                  type="email"
+                  placeholder="Parent email"
+                  value={newPlayer.parent_email}
+                  onChange={(e) => setNewPlayer({ ...newPlayer, parent_email: e.target.value })}
+                  className="px-3 py-2 border rounded-lg text-gray-900 text-sm"
+                />
+                <select
+                  value={newPlayer.gender}
+                  onChange={(e) =>
+                    setNewPlayer({
+                      ...newPlayer,
+                      gender: e.target.value as typeof newPlayer.gender,
+                    })
+                  }
+                  className="px-3 py-2 border rounded-lg text-gray-900 text-sm"
+                >
+                  <option value="">Gender (optional)</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="nonbinary">Non-binary</option>
+                </select>
+                <input
+                  type="number"
+                  step="0.5"
+                  min={1}
+                  max={7}
+                  placeholder="NTRP"
+                  value={newPlayer.ntrp}
+                  onChange={(e) => setNewPlayer({ ...newPlayer, ntrp: e.target.value })}
+                  className="px-3 py-2 border rounded-lg text-gray-900 text-sm"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min={1}
+                  max={16}
+                  placeholder="UTR"
+                  value={newPlayer.utr}
+                  onChange={(e) => setNewPlayer({ ...newPlayer, utr: e.target.value })}
+                  className="px-3 py-2 border rounded-lg text-gray-900 text-sm"
+                />
+                {event.match_format.endsWith('-doubles') && (
+                  <input
+                    type="text"
+                    placeholder="Doubles partner name"
+                    value={newPlayer.partner_name}
+                    onChange={(e) => setNewPlayer({ ...newPlayer, partner_name: e.target.value })}
+                    className="px-3 py-2 border rounded-lg text-gray-900 text-sm sm:col-span-2"
+                  />
+                )}
+              </div>
+              <button
+                type="submit"
+                disabled={busy === 'add' || !newPlayer.player_name.trim()}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600 disabled:opacity-50"
+              >
+                {busy === 'add' ? 'Adding…' : 'Add player'}
+              </button>
+              <p className="text-xs text-gray-500">
+                Manual adds skip Stripe (payment marked waived). Lands as Confirmed if cap allows,
+                else Waitlist.
+              </p>
+            </form>
+          )}
+
           {entries.length === 0 ? (
             <div className="bg-white border border-gray-200 rounded-xl p-8 text-center text-gray-500 text-sm">
-              No entries yet. Share the public link to start collecting registrations.
+              No entries yet. Share the public link or click "Add player manually" above.
             </div>
           ) : (
             <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -390,12 +600,34 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                           </td>
                           <td className="px-3 py-2 text-gray-700 text-xs">{entry.payment_status}</td>
                           <td className="px-3 py-2 text-right">
-                            <button
-                              onClick={() => removeEntry(entry.id)}
-                              className="p-1.5 hover:bg-red-50 text-red-500 rounded"
-                            >
-                              <Trash2 size={14} />
-                            </button>
+                            <div className="inline-flex items-center gap-1">
+                              {entry.position === 'waitlist' && (
+                                <button
+                                  onClick={() => setPosition(entry.id, 'in_draw')}
+                                  disabled={busy === entry.id}
+                                  title="Promote to confirmed"
+                                  className="p-1.5 hover:bg-emerald-50 text-emerald-600 rounded"
+                                >
+                                  <ArrowUp size={14} />
+                                </button>
+                              )}
+                              {entry.position === 'in_draw' && (
+                                <button
+                                  onClick={() => setPosition(entry.id, 'waitlist')}
+                                  disabled={busy === entry.id}
+                                  title="Move to waitlist"
+                                  className="p-1.5 hover:bg-amber-50 text-amber-600 rounded"
+                                >
+                                  <ArrowDown size={14} />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => removeEntry(entry.id)}
+                                className="p-1.5 hover:bg-red-50 text-red-500 rounded"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -431,19 +663,45 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
 
       {tab === 'matches' && (
         <div className="space-y-4">
-          <div className="bg-white border border-gray-200 rounded-xl p-4 flex items-start justify-between gap-3 flex-wrap">
-            <div className="flex-1">
-              <h3 className="font-semibold mb-1">Matches</h3>
+          <div className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
+            <div>
+              <h3 className="font-semibold">Schedule + notify players</h3>
               <p className="text-sm text-gray-600">
-                Score matches inline. Winners auto-advance to the next round.
+                Auto-schedule places matches across courts + time slots.
+                Score matches inline; winners auto-advance.
               </p>
               {emailResult && (
                 <p className="text-sm text-emerald-700 mt-2 font-medium">
-                  ✓ Sent {emailResult.sent} of {emailResult.total} scoring-link emails.
+                  ✓ Sent {emailResult.sent} of {emailResult.total}{' '}
+                  {emailMode === 'schedule' ? 'schedule' : 'scoring-link'} emails.
                 </p>
               )}
             </div>
             <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={autoSchedule}
+                disabled={scheduling || matches.length === 0}
+                className="inline-flex items-center gap-2 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                {scheduling ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                {scheduling ? 'Scheduling…' : 'Auto-schedule'}
+              </button>
+              <button
+                onClick={emailSchedules}
+                disabled={emailMode !== null || matches.every((m) => !m.scheduled_at)}
+                className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                {emailMode === 'schedule' ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />}
+                Email schedules
+              </button>
+              <button
+                onClick={emailScoringLinks}
+                disabled={emailMode !== null || matches.length === 0}
+                className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                {emailMode === 'scoring' ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                Email scoring links
+              </button>
               {matches.length > 0 && (
                 <button
                   onClick={generateBracket}
@@ -454,14 +712,6 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                   Regenerate
                 </button>
               )}
-              <button
-                onClick={emailScoringLinks}
-                disabled={emailing || matches.length === 0}
-                className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50"
-              >
-                {emailing ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-                Email scoring links
-              </button>
             </div>
           </div>
 
@@ -538,32 +788,63 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                                 );
                               }
                               return (
-                                <div key={m.id} className="border border-gray-200 rounded-lg p-2 flex items-center gap-2 text-sm">
-                                  <div className="flex-1 grid grid-cols-2 gap-1">
-                                    <div className={aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'} style={!aWon ? { color: '#000000' } : undefined}>
-                                      {a}
+                                <div key={m.id} className="border border-gray-200 rounded-lg p-2 text-sm space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className="flex-1 grid grid-cols-2 gap-1">
+                                      <div className={aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'} style={!aWon ? { color: '#000000' } : undefined}>
+                                        {a}
+                                      </div>
+                                      <div className={bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'} style={!bWon ? { color: '#000000' } : undefined}>
+                                        {b}
+                                      </div>
                                     </div>
-                                    <div className={bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'} style={!bWon ? { color: '#000000' } : undefined}>
-                                      {b}
+                                    <div className="text-gray-700 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
+                                      {m.score || ''}
                                     </div>
+                                    {canScore && isPending ? (
+                                      <button
+                                        onClick={() => openEdit(m)}
+                                        className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-xs whitespace-nowrap"
+                                      >
+                                        Enter Score
+                                      </button>
+                                    ) : !isPending ? (
+                                      <button onClick={() => openEdit(m)} className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded text-xs flex items-center gap-1">
+                                        <Edit3 size={12} /> Edit
+                                      </button>
+                                    ) : (
+                                      <span className="text-xs text-gray-400 italic">awaiting</span>
+                                    )}
                                   </div>
-                                  <div className="text-gray-700 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
-                                    {m.score || ''}
+                                  <div className="flex items-center gap-2 text-xs text-gray-600 pl-1 flex-wrap">
+                                    <span>Court</span>
+                                    <input
+                                      type="text"
+                                      defaultValue={m.court ?? ''}
+                                      onBlur={(e) => {
+                                        const v = e.target.value.trim();
+                                        if ((m.court ?? '') !== v) updateMatchSchedule(m.id, 'court', v);
+                                      }}
+                                      placeholder="—"
+                                      className="w-14 px-1.5 py-0.5 border rounded text-gray-900"
+                                      style={{ color: '#000000' }}
+                                    />
+                                    <span className="ml-2">Start</span>
+                                    <input
+                                      type="time"
+                                      defaultValue={m.scheduled_at?.slice(0, 5) ?? ''}
+                                      onBlur={(e) => {
+                                        const v = e.target.value;
+                                        const current = m.scheduled_at?.slice(0, 5) ?? '';
+                                        if (current !== v) updateMatchSchedule(m.id, 'scheduled_at', v);
+                                      }}
+                                      className="px-1.5 py-0.5 border rounded text-gray-900"
+                                      style={{ color: '#000000' }}
+                                    />
+                                    {m.scheduled_at && (
+                                      <span className="text-gray-400">{formatTimeDisplay(m.scheduled_at)}</span>
+                                    )}
                                   </div>
-                                  {canScore && isPending ? (
-                                    <button
-                                      onClick={() => openEdit(m)}
-                                      className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-xs whitespace-nowrap"
-                                    >
-                                      Enter Score
-                                    </button>
-                                  ) : !isPending ? (
-                                    <button onClick={() => openEdit(m)} className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded text-xs flex items-center gap-1">
-                                      <Edit3 size={12} /> Edit
-                                    </button>
-                                  ) : (
-                                    <span className="text-xs text-gray-400 italic">awaiting</span>
-                                  )}
                                 </div>
                               );
                             })}
