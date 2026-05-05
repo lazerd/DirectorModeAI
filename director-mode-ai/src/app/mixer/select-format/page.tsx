@@ -140,6 +140,15 @@ export default function SelectFormatPage() {
       status: 'live',
     },
     {
+      id: 'compass',
+      name: 'Compass Draw',
+      description:
+        'Every player plays the same # of matches over one weekend. Winners advance East, losers West. Field splits into Compass / Plate / Bowl / Shield sub-brackets.',
+      icon: '🧭',
+      paid: true,
+      status: 'live',
+    },
+    {
       id: 'feed-in-qf',
       name: 'Feed-In Quarters',
       description:
@@ -159,30 +168,15 @@ export default function SelectFormatPage() {
   ];
 
   // ============ Bucket 3: Leagues ============
-  // Multi-week recurring formats. Different data model.
+  // Multi-week recurring formats only. (Compass Draw lives in Tournament
+  // Formats above — it's a one-event tournament that happens to use the
+  // legacy `leagues` data model under the hood.)
   const leagueFormats: FormatOption[] = [
-    {
-      id: 'compass',
-      name: 'Compass Draw',
-      description:
-        'Every player plays same # of matches. Winners East, losers West. Splits into Compass/Plate/Bowl/Shield brackets.',
-      icon: '🧭',
-      paid: true,
-      status: 'live',
-    },
     {
       id: 'rr-league',
       name: 'Round Robin League',
-      description: 'Multi-week round-robin. Standings update each week.',
+      description: 'Multi-week round-robin. Each week you play a different opponent. Standings update weekly.',
       icon: '📅',
-      paid: true,
-      status: 'live',
-    },
-    {
-      id: 'single-elim-league',
-      name: 'Single-Elim League',
-      description: 'Multi-week single-elimination bracket.',
-      icon: '🥇',
       paid: true,
       status: 'live',
     },
@@ -207,8 +201,14 @@ export default function SelectFormatPage() {
       router.push('/mixer/quads/new');
       return;
     }
-    // Existing single-elim + team-battle live as private events for now;
-    // upgrade to public-signup + payment later by routing into the
+    // Compass uses the legacy leagues data model (flights, seeded entries,
+    // category draws) — route into that flow even though it's a tournament.
+    if (formatId === 'compass') {
+      router.push('/mixer/leagues/new?type=compass');
+      return;
+    }
+    // Existing single-elim live as private events for now; upgrade to
+    // public-signup + payment later by routing into the
     // /mixer/tournaments/new flow (when built).
     router.push(`/mixer/events/new?format=${formatId}`);
   };
