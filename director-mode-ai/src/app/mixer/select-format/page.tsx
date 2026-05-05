@@ -8,10 +8,7 @@ import {
   Users,
   Trophy,
   Sparkles,
-  Swords,
-  Compass,
   CalendarDays,
-  DollarSign,
 } from 'lucide-react';
 
 type FormatStatus = 'live' | 'coming-soon';
@@ -21,8 +18,6 @@ interface FormatOption {
   name: string;
   description: string;
   icon: string;
-  paid?: boolean; // shows a "Paid option" badge if Stripe-Connect-backed
-  privateOnly?: boolean; // shows "Private only" badge — director adds players manually, no public signup yet
   status?: FormatStatus;
 }
 
@@ -31,8 +26,6 @@ interface SubChoice {
   id: string;
   name: string;
   description: string;
-  paid?: boolean;
-  privateOnly?: boolean;
   status: FormatStatus;
   route?: string; // where to send the user when they click (only required if status='live')
 }
@@ -43,8 +36,6 @@ interface TournamentCard {
   name: string;
   description: string;
   icon: string;
-  paid?: boolean;
-  privateOnly?: boolean;
   status?: FormatStatus;
   subChoices?: SubChoice[];
   directRoute?: string;
@@ -149,7 +140,6 @@ export default function SelectFormatPage() {
           id: 'single-elimination-singles',
           name: 'Single Elimination',
           description: 'Lose once and you\'re out.',
-          privateOnly: true,
           status: 'live',
           route: '/mixer/events/new?format=single-elimination-singles',
         },
@@ -157,14 +147,12 @@ export default function SelectFormatPage() {
           id: 'fmlc-singles',
           name: 'First-Match Loser Consolation',
           description: 'Only first-round losers get a consolation bracket.',
-          paid: true,
           status: 'coming-soon',
         },
         {
           id: 'ffic-singles',
           name: 'Full Feed-In Consolation',
           description: 'Every loser feeds into a consolation bracket — everyone plays multiple matches.',
-          paid: true,
           status: 'coming-soon',
         },
       ],
@@ -179,7 +167,6 @@ export default function SelectFormatPage() {
           id: 'single-elimination-doubles',
           name: 'Single Elimination',
           description: 'Lose once and you\'re out.',
-          privateOnly: true,
           status: 'live',
           route: '/mixer/events/new?format=single-elimination-doubles',
         },
@@ -187,14 +174,12 @@ export default function SelectFormatPage() {
           id: 'fmlc-doubles',
           name: 'First-Match Loser Consolation',
           description: 'Only first-round losers get a consolation bracket.',
-          paid: true,
           status: 'coming-soon',
         },
         {
           id: 'ffic-doubles',
           name: 'Full Feed-In Consolation',
           description: 'Every loser feeds into a consolation bracket — everyone plays multiple matches.',
-          paid: true,
           status: 'coming-soon',
         },
       ],
@@ -209,14 +194,12 @@ export default function SelectFormatPage() {
           id: 'rr-tournament-singles',
           name: 'Singles RR',
           description: 'Each player plays every other player once.',
-          paid: true,
           status: 'coming-soon',
         },
         {
           id: 'rr-tournament-doubles',
           name: 'Doubles RR',
           description: 'Each pair plays every other pair once.',
-          paid: true,
           status: 'coming-soon',
         },
       ],
@@ -226,7 +209,6 @@ export default function SelectFormatPage() {
       name: 'Quads',
       description: 'Flights of 4. Each flight: 3 singles round-robin, then doubles 1+4 vs 2+3.',
       icon: '🎯',
-      paid: true,
       status: 'live',
       directRoute: '/mixer/quads/new',
     },
@@ -236,7 +218,6 @@ export default function SelectFormatPage() {
       description:
         'Every player plays the same # of matches over one weekend. Winners East, losers West. Splits into Compass / Plate / Bowl / Shield sub-brackets.',
       icon: '🧭',
-      paid: true,
       status: 'live',
       directRoute: '/mixer/leagues/new?type=compass',
     },
@@ -418,7 +399,7 @@ export default function SelectFormatPage() {
         <FormatSection
           icon={<Trophy className="text-yellow-500" size={24} />}
           title="Tournament Formats"
-          subtitle="One-day tournaments — individual signup to a draw, declared winner. Click a draw type for variants."
+          subtitle="One-day tournaments — individual signup to a draw, declared winner. Every format supports public-signup + paid-or-free at creation."
           accentColor="yellow"
         >
           <div className="grid gap-4 md:grid-cols-2">
@@ -521,11 +502,6 @@ function TournamentDrawCard({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-bold text-lg text-gray-900">{card.name}</h3>
-              {card.paid && card.status !== 'coming-soon' && (
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-semibold">
-                  <DollarSign size={10} /> Paid option
-                </span>
-              )}
               {hasSubs && (
                 <span className="text-xs text-gray-500">
                   {expanded ? '▾' : '▸'} {card.subChoices!.length} variants
@@ -555,16 +531,6 @@ function TournamentDrawCard({
               >
                 <div className="flex items-center gap-2 flex-wrap mb-0.5">
                   <span className="font-semibold text-gray-900">{sub.name}</span>
-                  {sub.paid && !isComingSoon && (
-                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-semibold">
-                      <DollarSign size={10} /> Paid
-                    </span>
-                  )}
-                  {sub.privateOnly && !isComingSoon && (
-                    <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full text-[10px] font-semibold">
-                      Private only
-                    </span>
-                  )}
                   {isComingSoon && (
                     <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full text-[10px] font-semibold">
                       Coming soon
@@ -614,22 +580,6 @@ function FormatCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-bold text-lg text-gray-900">{format.name}</h3>
-            {format.paid && !isComingSoon && (
-              <span
-                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-semibold"
-                title="Director can charge entry fees via Stripe Connect"
-              >
-                <DollarSign size={10} /> Paid option
-              </span>
-            )}
-            {format.privateOnly && !isComingSoon && (
-              <span
-                className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full text-[10px] font-semibold"
-                title="Director adds players manually. Public signup + payment coming later."
-              >
-                Private only
-              </span>
-            )}
             {isComingSoon && (
               <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full text-[10px] font-semibold">
                 Coming soon
