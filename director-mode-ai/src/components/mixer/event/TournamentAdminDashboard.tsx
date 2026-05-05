@@ -20,6 +20,7 @@ import {
   UserPlus,
   ArrowUp,
   ArrowDown,
+  Tv,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay } from '@/lib/quads';
@@ -423,7 +424,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         </div>
       </div>
 
-      <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-6 flex items-center gap-3">
+      <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-6 flex items-center gap-3 flex-wrap">
         <Share2 size={16} className="text-orange-600 flex-shrink-0" />
         <div className="text-sm text-orange-900 flex-1 truncate">
           Public signup:{' '}
@@ -438,6 +439,14 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? 'Copied!' : 'Copy'}
         </button>
+        <Link
+          href={`/mixer/events/${eventId}/console`}
+          target="_blank"
+          className="inline-flex items-center gap-1 px-2 py-1 bg-[#001820] hover:bg-black text-white rounded text-xs font-semibold flex-shrink-0"
+        >
+          <Tv size={12} />
+          Live Console
+        </Link>
       </div>
 
       <div className="border-b border-gray-200 mb-6 flex gap-1 overflow-x-auto">

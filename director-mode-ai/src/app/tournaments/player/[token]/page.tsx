@@ -3,6 +3,7 @@ import { Trophy } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { quadScoringLabel } from '@/lib/quads';
 import PlayerScoringList from './PlayerScoringList';
+import NextMatchCard from './NextMatchCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,12 +73,19 @@ export default async function PlayerScoringPage({
             No matches scheduled yet — director hasn't generated the bracket.
           </div>
         ) : (
-          <PlayerScoringList
-            entryId={e.id}
-            entryName={e.player_name}
-            matches={matchesList}
-            entries={(allEntries as any[]) || []}
-          />
+          <>
+            <NextMatchCard
+              entryId={e.id}
+              matches={matchesList}
+              entries={(allEntries as any[]) || []}
+            />
+            <PlayerScoringList
+              entryId={e.id}
+              entryName={e.player_name}
+              matches={matchesList}
+              entries={(allEntries as any[]) || []}
+            />
+          </>
         )}
 
         <div className="mt-6 text-center">

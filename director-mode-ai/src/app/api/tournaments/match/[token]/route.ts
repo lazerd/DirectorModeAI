@@ -11,7 +11,11 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { isValidQuadScore } from '@/lib/quads';
+import { isValidQuadScore, resolveCourtList } from '@/lib/quads';
+import {
+  optimizeTournamentSchedule,
+  type SchedulerMatch,
+} from '@/lib/tournamentScheduler';
 
 export async function GET(_req: Request, { params }: { params: { token: string } }) {
   const token = params.token;
@@ -152,5 +156,95 @@ export async function POST(req: Request, { params }: { params: { token: string }
     await placePlayersInSlot(admin, loserDest.matchId, loserDest.side, loserP1, loserP2);
   }
 
+  // Auto-reflow: re-run the scheduler over PENDING matches only. Completed
+  // matches keep their (date, time, court). If this match finished early,
+  // downstream pending matches get earlier slots; if late, they push back.
+  // Best-effort — failures don't reject the score submission.
+  try {
+    await reflowDownstream(admin, m.event_id);
+  } catch (err) {
+    console.error('reflow failed:', err);
+  }
+
   return NextResponse.json({ success: true });
+}
+
+async function reflowDownstream(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  eventId: string
+) {
+  const { data: ev } = await admin
+    .from('events')
+    .select(
+      'event_date, end_date, start_time, daily_start_time, daily_end_time, num_courts, court_names, default_match_length_minutes, player_rest_minutes, match_buffer_minutes'
+    )
+    .eq('id', eventId)
+    .maybeSingle();
+  if (!ev) return;
+  const e: any = ev;
+  if (!e.event_date) return;
+
+  const courts = resolveCourtList({ courtNames: e.court_names, numCourts: e.num_courts });
+  if (courts.length === 0) return;
+
+  const { data: matchesData } = await admin
+    .from('tournament_matches')
+    .select(
+      'id, status, scheduled_date, scheduled_at, court, player1_id, player2_id, player3_id, player4_id, winner_feeds_to, loser_feeds_to, bracket, round, slot'
+    )
+    .eq('event_id', eventId);
+  const dbMatches = (matchesData as any[]) || [];
+
+  // Pending matches that need (re)scheduling = anything not completed.
+  // Completed matches are fixed and act as anchors for their players' rest.
+  const pending = dbMatches.filter((m) => m.status !== 'completed' && m.status !== 'cancelled');
+  if (pending.length === 0) return;
+
+  // Build predecessor map (same logic as auto-schedule endpoint)
+  const idByPosition = new Map<string, string>();
+  for (const m of dbMatches) {
+    idByPosition.set(`${m.bracket}:${m.round}:${m.slot}`, m.id);
+  }
+  const predecessorsByMatch = new Map<string, string[]>();
+  for (const m of dbMatches) predecessorsByMatch.set(m.id, []);
+  for (const m of dbMatches) {
+    for (const ref of [m.winner_feeds_to, m.loser_feeds_to].filter(Boolean)) {
+      const [bracket, roundStr, slotStr] = String(ref).split(':');
+      const destId = idByPosition.get(`${bracket}:${roundStr}:${slotStr}`);
+      if (destId) {
+        predecessorsByMatch.get(destId)!.push(m.id);
+      }
+    }
+  }
+
+  const schedulerMatches: SchedulerMatch[] = pending.map((m) => ({
+    id: m.id,
+    player_ids: [m.player1_id, m.player2_id, m.player3_id, m.player4_id].filter(
+      (x): x is string => !!x
+    ),
+    predecessor_match_ids: (predecessorsByMatch.get(m.id) || []),
+  }));
+
+  const result = optimizeTournamentSchedule({
+    matches: schedulerMatches,
+    courts,
+    startDate: e.event_date,
+    endDate: e.end_date || e.event_date,
+    dailyStartTime: (e.daily_start_time || e.start_time || '09:00').slice(0, 5),
+    dailyEndTime: (e.daily_end_time || '18:00').slice(0, 5),
+    matchLengthMinutes: e.default_match_length_minutes ?? 90,
+    playerRestMinutes: e.player_rest_minutes ?? 60,
+    matchBufferMinutes: e.match_buffer_minutes ?? 30,
+  });
+
+  for (const [matchId, slot] of result.assignments) {
+    await admin
+      .from('tournament_matches')
+      .update({
+        scheduled_date: slot.scheduled_date,
+        scheduled_at: slot.scheduled_at,
+        court: slot.court,
+      })
+      .eq('id', matchId);
+  }
 }
