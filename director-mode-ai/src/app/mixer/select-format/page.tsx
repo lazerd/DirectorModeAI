@@ -3,19 +3,30 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Users, Trophy, Sparkles, Swords, Compass } from 'lucide-react';
+import {
+  ArrowLeft,
+  Users,
+  Trophy,
+  Sparkles,
+  Swords,
+  Compass,
+  CalendarDays,
+  DollarSign,
+} from 'lucide-react';
+
+type FormatStatus = 'live' | 'coming-soon';
 
 interface FormatOption {
   id: string;
   name: string;
   description: string;
   icon: string;
-  category: 'mixer' | 'tournament' | 'team';
+  paid?: boolean; // shows a $ badge if true
+  status?: FormatStatus;
 }
 
 export default function SelectFormatPage() {
   const router = useRouter();
-  const [selectedFormat, setSelectedFormat] = useState<string | null>(null);
   const [aiOpen, setAiOpen] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -48,97 +59,162 @@ export default function SelectFormatPage() {
     }
   };
 
-  const formats: FormatOption[] = [
+  // ============ Bucket 1: Mixers / Socials ============
+  // Private events the director sets up day-of. No public signup, no payment.
+  const mixerFormats: FormatOption[] = [
     {
       id: 'doubles',
       name: 'Doubles',
       description: '4 players per court. Teams rotate each round for balanced play.',
       icon: '👥',
-      category: 'mixer',
     },
     {
       id: 'singles',
       name: 'Singles',
       description: '2 players per court. Head-to-head matchups.',
       icon: '🎾',
-      category: 'mixer',
     },
     {
       id: 'mixed-doubles',
       name: 'Mixed Doubles',
       description: '4 players per court. One male, one female per team.',
       icon: '👫',
-      category: 'mixer',
     },
     {
       id: 'king-of-court',
       name: 'King of the Court',
       description: 'Winners stay, losers rotate. Continuous play format.',
       icon: '👑',
-      category: 'mixer',
     },
     {
       id: 'round-robin',
       name: 'Team Round Robin',
       description: 'Fixed teams compete against all other teams.',
       icon: '🔄',
-      category: 'mixer',
     },
     {
       id: 'maximize-courts',
       name: 'Maximize Courts',
       description: 'Fills all courts optimally with mixed singles/doubles.',
-      icon: '🎯',
-      category: 'mixer',
-    },
-    {
-      id: 'single-elimination-singles',
-      name: 'Singles Tournament',
-      description: 'Traditional bracket. 1v1 matches, win or go home.',
-      icon: '🏆',
-      category: 'tournament',
-    },
-    {
-      id: 'single-elimination-doubles',
-      name: 'Doubles Tournament',
-      description: 'Traditional bracket. 2v2 team matches, win or go home.',
-      icon: '🏅',
-      category: 'tournament',
+      icon: '⚙️',
     },
     {
       id: 'team-battle',
       name: 'Team Battle',
-      description: 'Two named teams compete! Flexible singles/doubles mix. Team with most match wins takes the victory.',
+      description: 'Two named teams battle across multiple rounds.',
       icon: '⚔️',
-      category: 'team',
-    },
-    {
-      id: 'quads',
-      name: 'Quads',
-      description: 'Public-signup tournament. Players grouped into flights of 4. Each flight: 3 singles round-robin, then doubles (1+4 vs 2+3). Stripe payment + waitlist + age/gender filters.',
-      icon: '🎯',
-      category: 'tournament',
     },
   ];
 
-  const mixerFormats = formats.filter(f => f.category === 'mixer');
-  const tournamentFormats = formats.filter(f => f.category === 'tournament');
-  const teamFormats = formats.filter(f => f.category === 'team');
+  // ============ Bucket 2: Tournament Formats ============
+  // Public-signup tournaments. Free OR paid (Stripe Connect). Each format
+  // has the same machinery: signup page, optional payment, magic-link
+  // scoring, results page, email blasts.
+  const tournamentFormats: FormatOption[] = [
+    {
+      id: 'quads',
+      name: 'Quads',
+      description:
+        'Flights of 4. Each flight: 3 singles round-robin, then doubles 1+4 vs 2+3.',
+      icon: '🎯',
+      paid: true,
+      status: 'live',
+    },
+    {
+      id: 'single-elim',
+      name: 'Single Elimination',
+      description: 'Traditional bracket. Lose once, you\'re out.',
+      icon: '🏆',
+      paid: true,
+      status: 'coming-soon',
+    },
+    {
+      id: 'feed-in-qf',
+      name: 'Feed-In Quarters',
+      description:
+        'Single-elim with a back-draw — quarter-finalists feed into a consolation bracket. Includes 3rd/4th place playoff.',
+      icon: '🏅',
+      paid: true,
+      status: 'coming-soon',
+    },
+    {
+      id: 'round-robin-tournament',
+      name: 'Round Robin',
+      description: 'Everyone plays everyone. Standings by W-L.',
+      icon: '🔄',
+      paid: true,
+      status: 'coming-soon',
+    },
+  ];
 
-  const handleFormatClick = (formatId: string) => {
-    setSelectedFormat(formatId);
+  // ============ Bucket 3: Leagues ============
+  // Multi-week recurring formats. Different data model.
+  const leagueFormats: FormatOption[] = [
+    {
+      id: 'compass',
+      name: 'Compass Draw',
+      description:
+        'Every player plays same # of matches. Winners East, losers West. Splits into Compass/Plate/Bowl/Shield brackets.',
+      icon: '🧭',
+      paid: true,
+      status: 'live',
+    },
+    {
+      id: 'rr-league',
+      name: 'Round Robin League',
+      description: 'Multi-week round-robin. Standings update each week.',
+      icon: '📅',
+      paid: true,
+      status: 'live',
+    },
+    {
+      id: 'single-elim-league',
+      name: 'Single-Elim League',
+      description: 'Multi-week single-elimination bracket.',
+      icon: '🥇',
+      paid: true,
+      status: 'live',
+    },
+    {
+      id: 'jtt',
+      name: 'Junior Team Tennis (JTT)',
+      description:
+        'Clubs vs clubs. Multiple divisions, weekly matchups, singles + doubles lines per matchup.',
+      icon: '🏟️',
+      paid: false,
+      status: 'live',
+    },
+  ];
+
+  const handleMixerClick = (formatId: string) => {
+    router.push(`/mixer/events/new?format=${formatId}`);
+  };
+
+  const handleTournamentClick = (formatId: string, status?: FormatStatus) => {
+    if (status === 'coming-soon') return;
     if (formatId === 'quads') {
       router.push('/mixer/quads/new');
       return;
     }
-    router.push(`/mixer/events/new?format=${formatId}`);
+    // Future: router.push(`/mixer/tournaments/new?format=${formatId}`);
+  };
+
+  const handleLeagueClick = (formatId: string) => {
+    if (formatId === 'jtt') {
+      router.push('/mixer/leagues/new?type=jtt');
+      return;
+    }
+    router.push(`/mixer/leagues/new?type=${formatId}`);
   };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50">
       <header className="border-b bg-white/80 backdrop-blur sticky top-0 z-10">
         <div className="max-w-5xl mx-auto px-4 py-4">
-          <Link href="/mixer/home" className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900">
+          <Link
+            href="/mixer/home"
+            className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900"
+          >
             <ArrowLeft size={18} />
             Back to Events
           </Link>
@@ -146,21 +222,22 @@ export default function SelectFormatPage() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+        {/* AI helper */}
         <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-2xl border-2 border-blue-200 p-6">
           <div className="flex items-center gap-3 mb-2">
             <Sparkles className="text-blue-600" size={24} />
-            <h2 className="text-xl font-bold">Get AI Tournament Recommendation</h2>
+            <h2 className="text-xl font-bold text-gray-900">Need help choosing?</h2>
           </div>
-          <p className="text-gray-600 mb-4">
-            Not sure which format to choose? Let AI analyze your event details and recommend the perfect format.
+          <p className="text-gray-700 mb-4">
+            Tell the AI your player count + courts + vibe and it picks a format.
           </p>
           <button
             type="button"
-            onClick={() => setAiOpen(o => !o)}
+            onClick={() => setAiOpen((o) => !o)}
             className="w-full py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 flex items-center justify-center gap-2"
           >
             <Sparkles size={20} />
-            {aiOpen ? 'Hide AI Helper' : 'Get AI Recommendation'}
+            {aiOpen ? 'Hide AI helper' : 'Get an AI recommendation'}
           </button>
 
           {aiOpen && (
@@ -211,16 +288,14 @@ export default function SelectFormatPage() {
                 {aiLoading ? 'Thinking...' : 'Recommend a format'}
               </button>
 
-              {aiError && (
-                <div className="text-sm text-red-600">{aiError}</div>
-              )}
+              {aiError && <div className="text-sm text-red-600">{aiError}</div>}
 
               {aiResult && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <div className="text-sm text-gray-700 mb-2">{aiResult.reason}</div>
                   <button
                     type="button"
-                    onClick={() => handleFormatClick(aiResult.format)}
+                    onClick={() => handleMixerClick(aiResult.format)}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"
                   >
                     Use this format →
@@ -231,115 +306,151 @@ export default function SelectFormatPage() {
           )}
         </div>
 
-        {/* Team Battle - Featured */}
-        <div className="bg-white rounded-2xl border-2 border-red-200 p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <Swords className="text-red-500" size={24} />
-            <h2 className="text-xl font-bold">Team Competition</h2>
-            <span className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full">NEW</span>
-          </div>
-          <p className="text-gray-600 mb-6">Two teams battle it out across multiple rounds!</p>
-          
-          <div className="grid gap-4 md:grid-cols-1">
-            {teamFormats.map((format) => (
-              <button
-                key={format.id}
-                onClick={() => handleFormatClick(format.id)}
-                className={`p-5 rounded-xl border-2 text-left transition-all hover:shadow-lg hover:border-red-400 ${
-                  selectedFormat === format.id ? 'border-red-500 bg-red-50' : 'border-gray-200'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-4xl">{format.icon}</span>
-                  <div>
-                    <h3 className="font-bold text-xl">{format.name}</h3>
-                    <p className="text-sm text-gray-600">{format.description}</p>
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl border-2 border-orange-200 p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <Users className="text-orange-500" size={24} />
-            <h2 className="text-xl font-bold">Mixers/Socials</h2>
-          </div>
-          <p className="text-gray-600 mb-6">Casual play formats focused on rotation and social interaction</p>
-          
+        {/* ============ Bucket 1: Mixers / Socials ============ */}
+        <FormatSection
+          icon={<Users className="text-orange-500" size={24} />}
+          title="Mixers / Socials"
+          subtitle="Casual play, you set up day-of. No public signup, no payment."
+          accentColor="orange"
+        >
           <div className="grid gap-4 md:grid-cols-2">
-            {mixerFormats.map((format) => (
-              <button
-                key={format.id}
-                onClick={() => handleFormatClick(format.id)}
-                className={`p-4 rounded-xl border-2 text-left transition-all hover:shadow-lg hover:border-orange-400 ${
-                  selectedFormat === format.id ? 'border-orange-500 bg-orange-50' : 'border-gray-200'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-3xl">{format.icon}</span>
-                  <h3 className="font-bold text-lg">{format.name}</h3>
-                </div>
-                <p className="text-sm text-gray-600">{format.description}</p>
-              </button>
+            {mixerFormats.map((f) => (
+              <FormatCard
+                key={f.id}
+                format={f}
+                onClick={() => handleMixerClick(f.id)}
+                accentColor="orange"
+              />
             ))}
           </div>
-        </div>
+        </FormatSection>
 
-        <div className="bg-white rounded-2xl border-2 border-yellow-200 p-6">
-          <div className="flex items-center gap-3 mb-2">
-            <Trophy className="text-yellow-500" size={24} />
-            <h2 className="text-xl font-bold">Tournament Formats</h2>
-          </div>
-          <p className="text-gray-600 mb-6">Competitive formats with brackets and elimination rounds</p>
-
+        {/* ============ Bucket 2: Tournament Formats ============ */}
+        <FormatSection
+          icon={<Trophy className="text-yellow-500" size={24} />}
+          title="Tournament Formats"
+          subtitle="One-day tournaments with public signup. Free or paid (Stripe Connect). Players self-register, scores via magic-link, live results."
+          accentColor="yellow"
+        >
           <div className="grid gap-4 md:grid-cols-2">
-            {tournamentFormats.map((format) => (
-              <button
-                key={format.id}
-                onClick={() => handleFormatClick(format.id)}
-                className={`p-4 rounded-xl border-2 text-left transition-all hover:shadow-lg hover:border-yellow-400 ${
-                  selectedFormat === format.id ? 'border-yellow-500 bg-yellow-50' : 'border-gray-200'
-                }`}
-              >
-                <div className="flex items-center gap-3 mb-2">
-                  <span className="text-3xl">{format.icon}</span>
-                  <div>
-                    <h3 className="font-bold text-lg">{format.name}</h3>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-600">{format.description}</p>
-              </button>
+            {tournamentFormats.map((f) => (
+              <FormatCard
+                key={f.id}
+                format={f}
+                onClick={() => handleTournamentClick(f.id, f.status)}
+                accentColor="yellow"
+              />
             ))}
-
-            {/* Compass Draw — routed to the Leagues flow because compass draws
-                need the league data model (flights, seeded entries, category
-                draws, email score-reporting). This card is a shortcut into
-                that flow so directors can start a compass from the Mixer
-                event-creation surface as well as from the Leagues menu. */}
-            <Link
-              href="/mixer/leagues/new?type=compass"
-              className="p-4 rounded-xl border-2 border-gray-200 text-left transition-all hover:shadow-lg hover:border-yellow-400 group"
-            >
-              <div className="flex items-center gap-3 mb-2">
-                <Compass className="text-yellow-500 group-hover:text-yellow-600" size={32} />
-                <div>
-                  <h3 className="font-bold text-lg">Compass Draw</h3>
-                  <span className="inline-block text-[10px] font-semibold text-yellow-700 bg-yellow-100 px-1.5 py-0.5 rounded mt-0.5">
-                    League-based · 8 or 16 players
-                  </span>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600">
-                Every player plays the same number of matches. Winners advance East, losers West, and
-                the field splits into Compass / Plate / Bowl / Shield sub-brackets. Opens the Leagues
-                flow to set entry categories, seeds, and dates.
-              </p>
-            </Link>
           </div>
-        </div>
+        </FormatSection>
+
+        {/* ============ Bucket 3: Leagues ============ */}
+        <FormatSection
+          icon={<CalendarDays className="text-emerald-600" size={24} />}
+          title="Leagues"
+          subtitle="Multi-week recurring competitions. Public signup, weekly matches, ongoing standings."
+          accentColor="emerald"
+        >
+          <div className="grid gap-4 md:grid-cols-2">
+            {leagueFormats.map((f) => (
+              <FormatCard
+                key={f.id}
+                format={f}
+                onClick={() => handleLeagueClick(f.id)}
+                accentColor="emerald"
+              />
+            ))}
+          </div>
+        </FormatSection>
       </main>
     </div>
+  );
+}
+
+// ====================== sub-components ======================
+
+function FormatSection({
+  icon,
+  title,
+  subtitle,
+  accentColor,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+  accentColor: 'orange' | 'yellow' | 'emerald';
+  children: React.ReactNode;
+}) {
+  const borderColor =
+    accentColor === 'orange'
+      ? 'border-orange-200'
+      : accentColor === 'yellow'
+        ? 'border-yellow-200'
+        : 'border-emerald-200';
+
+  return (
+    <div className={`bg-white rounded-2xl border-2 ${borderColor} p-6`}>
+      <div className="flex items-center gap-3 mb-2">
+        {icon}
+        <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+      </div>
+      <p className="text-gray-600 mb-6">{subtitle}</p>
+      {children}
+    </div>
+  );
+}
+
+function FormatCard({
+  format,
+  onClick,
+  accentColor,
+}: {
+  format: FormatOption;
+  onClick: () => void;
+  accentColor: 'orange' | 'yellow' | 'emerald';
+}) {
+  const isComingSoon = format.status === 'coming-soon';
+  const hoverBorder =
+    accentColor === 'orange'
+      ? 'hover:border-orange-400'
+      : accentColor === 'yellow'
+        ? 'hover:border-yellow-400'
+        : 'hover:border-emerald-400';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isComingSoon}
+      className={`p-4 rounded-xl border-2 border-gray-200 text-left transition-all relative ${
+        isComingSoon
+          ? 'opacity-60 cursor-not-allowed bg-gray-50'
+          : `hover:shadow-lg ${hoverBorder} cursor-pointer`
+      }`}
+    >
+      <div className="flex items-start gap-3 mb-2">
+        <span className="text-3xl flex-shrink-0">{format.icon}</span>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-bold text-lg text-gray-900">{format.name}</h3>
+            {format.paid && !isComingSoon && (
+              <span
+                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-semibold"
+                title="Director can charge entry fees via Stripe"
+              >
+                <DollarSign size={10} /> Paid option
+              </span>
+            )}
+            {isComingSoon && (
+              <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full text-[10px] font-semibold">
+                Coming soon
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      <p className="text-sm text-gray-600">{format.description}</p>
+    </button>
   );
 }
