@@ -26,6 +26,30 @@ interface FormatOption {
   status?: FormatStatus;
 }
 
+/** Sub-choice within an expandable Tournament card (e.g. consolation type). */
+interface SubChoice {
+  id: string;
+  name: string;
+  description: string;
+  paid?: boolean;
+  privateOnly?: boolean;
+  status: FormatStatus;
+  route?: string; // where to send the user when they click (only required if status='live')
+}
+
+/** Top-level tournament draw type. Either has subChoices to expand, OR a directRoute. */
+interface TournamentCard {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  paid?: boolean;
+  privateOnly?: boolean;
+  status?: FormatStatus;
+  subChoices?: SubChoice[];
+  directRoute?: string;
+}
+
 export default function SelectFormatPage() {
   const router = useRouter();
   const [aiOpen, setAiOpen] = useState(false);
@@ -33,6 +57,7 @@ export default function SelectFormatPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiResult, setAiResult] = useState<{ format: string; reason: string } | null>(null);
   const [aiInput, setAiInput] = useState({ player_count: '', court_count: '', vibe: 'social' });
+  const [expandedTournament, setExpandedTournament] = useState<string | null>(null);
 
   const requestAiRecommendation = async () => {
     setAiLoading(true);
@@ -110,60 +135,110 @@ export default function SelectFormatPage() {
   ];
 
   // ============ Bucket 2: Tournament Formats ============
-  // Competitive — winner declared. "Private only" = director adds players
-  // manually (no public signup). "Paid option" = Quads-style spine: public
-  // signup + Stripe Connect + magic-link scoring + results page.
-  const tournamentFormats: FormatOption[] = [
+  // 5 top-level draw types. Singles, Doubles, and Round Robin expand
+  // inline to show sub-options. Quads is self-contained. Compass routes
+  // to the existing leagues flow which handles singles/doubles internally.
+  const tournamentFormats: TournamentCard[] = [
+    {
+      id: 'singles',
+      name: 'Singles',
+      description: '1 vs 1 bracket play. Pick your consolation style after.',
+      icon: '🎾',
+      subChoices: [
+        {
+          id: 'single-elimination-singles',
+          name: 'Single Elimination',
+          description: 'Lose once and you\'re out.',
+          privateOnly: true,
+          status: 'live',
+          route: '/mixer/events/new?format=single-elimination-singles',
+        },
+        {
+          id: 'fmlc-singles',
+          name: 'First-Match Loser Consolation',
+          description: 'Only first-round losers get a consolation bracket.',
+          paid: true,
+          status: 'coming-soon',
+        },
+        {
+          id: 'ffic-singles',
+          name: 'Full Feed-In Consolation',
+          description: 'Every loser feeds into a consolation bracket — everyone plays multiple matches.',
+          paid: true,
+          status: 'coming-soon',
+        },
+      ],
+    },
+    {
+      id: 'doubles',
+      name: 'Doubles',
+      description: '2 vs 2 bracket play. Pick your consolation style after.',
+      icon: '👥',
+      subChoices: [
+        {
+          id: 'single-elimination-doubles',
+          name: 'Single Elimination',
+          description: 'Lose once and you\'re out.',
+          privateOnly: true,
+          status: 'live',
+          route: '/mixer/events/new?format=single-elimination-doubles',
+        },
+        {
+          id: 'fmlc-doubles',
+          name: 'First-Match Loser Consolation',
+          description: 'Only first-round losers get a consolation bracket.',
+          paid: true,
+          status: 'coming-soon',
+        },
+        {
+          id: 'ffic-doubles',
+          name: 'Full Feed-In Consolation',
+          description: 'Every loser feeds into a consolation bracket — everyone plays multiple matches.',
+          paid: true,
+          status: 'coming-soon',
+        },
+      ],
+    },
+    {
+      id: 'round-robin-tournament',
+      name: 'Round Robin',
+      description: 'Everyone plays everyone. Standings by W-L. One day.',
+      icon: '🔁',
+      subChoices: [
+        {
+          id: 'rr-tournament-singles',
+          name: 'Singles RR',
+          description: 'Each player plays every other player once.',
+          paid: true,
+          status: 'coming-soon',
+        },
+        {
+          id: 'rr-tournament-doubles',
+          name: 'Doubles RR',
+          description: 'Each pair plays every other pair once.',
+          paid: true,
+          status: 'coming-soon',
+        },
+      ],
+    },
     {
       id: 'quads',
       name: 'Quads',
-      description:
-        'Flights of 4. Each flight: 3 singles round-robin, then doubles 1+4 vs 2+3.',
+      description: 'Flights of 4. Each flight: 3 singles round-robin, then doubles 1+4 vs 2+3.',
       icon: '🎯',
       paid: true,
       status: 'live',
-    },
-    {
-      id: 'single-elimination-singles',
-      name: 'Single Elimination — Singles',
-      description: 'Traditional bracket. 1v1 matches, win or go home.',
-      icon: '🏆',
-      privateOnly: true,
-      status: 'live',
-    },
-    {
-      id: 'single-elimination-doubles',
-      name: 'Single Elimination — Doubles',
-      description: 'Traditional bracket. 2v2 team matches, win or go home.',
-      icon: '🥇',
-      privateOnly: true,
-      status: 'live',
+      directRoute: '/mixer/quads/new',
     },
     {
       id: 'compass',
       name: 'Compass Draw',
       description:
-        'Every player plays the same # of matches over one weekend. Winners advance East, losers West. Field splits into Compass / Plate / Bowl / Shield sub-brackets.',
+        'Every player plays the same # of matches over one weekend. Winners East, losers West. Splits into Compass / Plate / Bowl / Shield sub-brackets.',
       icon: '🧭',
       paid: true,
       status: 'live',
-    },
-    {
-      id: 'feed-in-qf',
-      name: 'Feed-In Quarters',
-      description:
-        'Single-elim with a back-draw — quarter-finalists feed into a consolation bracket. Includes 3rd/4th place playoff.',
-      icon: '🏅',
-      paid: true,
-      status: 'coming-soon',
-    },
-    {
-      id: 'round-robin-tournament',
-      name: 'Round Robin Tournament',
-      description: 'Everyone plays everyone. Standings by W-L. Public signup version.',
-      icon: '🔁',
-      paid: true,
-      status: 'coming-soon',
+      directRoute: '/mixer/leagues/new?type=compass',
     },
   ];
 
@@ -195,22 +270,22 @@ export default function SelectFormatPage() {
     router.push(`/mixer/events/new?format=${formatId}`);
   };
 
-  const handleTournamentClick = (formatId: string, status?: FormatStatus) => {
-    if (status === 'coming-soon') return;
-    if (formatId === 'quads') {
-      router.push('/mixer/quads/new');
+  const handleTournamentClick = (card: TournamentCard) => {
+    // Card with a direct route (Quads, Compass) — go immediately.
+    if (card.directRoute) {
+      router.push(card.directRoute);
       return;
     }
-    // Compass uses the legacy leagues data model (flights, seeded entries,
-    // category draws) — route into that flow even though it's a tournament.
-    if (formatId === 'compass') {
-      router.push('/mixer/leagues/new?type=compass');
+    // Card with sub-choices — toggle inline expansion.
+    if (card.subChoices) {
+      setExpandedTournament((cur) => (cur === card.id ? null : card.id));
       return;
     }
-    // Existing single-elim live as private events for now; upgrade to
-    // public-signup + payment later by routing into the
-    // /mixer/tournaments/new flow (when built).
-    router.push(`/mixer/events/new?format=${formatId}`);
+  };
+
+  const handleSubChoiceClick = (sub: SubChoice) => {
+    if (sub.status === 'coming-soon' || !sub.route) return;
+    router.push(sub.route);
   };
 
   const handleLeagueClick = (formatId: string) => {
@@ -343,16 +418,17 @@ export default function SelectFormatPage() {
         <FormatSection
           icon={<Trophy className="text-yellow-500" size={24} />}
           title="Tournament Formats"
-          subtitle="One-day tournaments with public signup. Free or paid (Stripe Connect). Players self-register, scores via magic-link, live results."
+          subtitle="One-day tournaments — individual signup to a draw, declared winner. Click a draw type for variants."
           accentColor="yellow"
         >
           <div className="grid gap-4 md:grid-cols-2">
-            {tournamentFormats.map((f) => (
-              <FormatCard
-                key={f.id}
-                format={f}
-                onClick={() => handleTournamentClick(f.id, f.status)}
-                accentColor="yellow"
+            {tournamentFormats.map((card) => (
+              <TournamentDrawCard
+                key={card.id}
+                card={card}
+                expanded={expandedTournament === card.id}
+                onClick={() => handleTournamentClick(card)}
+                onSubChoiceClick={handleSubChoiceClick}
               />
             ))}
           </div>
@@ -411,6 +487,96 @@ function FormatSection({
       </div>
       <p className="text-gray-600 mb-6">{subtitle}</p>
       {children}
+    </div>
+  );
+}
+
+function TournamentDrawCard({
+  card,
+  expanded,
+  onClick,
+  onSubChoiceClick,
+}: {
+  card: TournamentCard;
+  expanded: boolean;
+  onClick: () => void;
+  onSubChoiceClick: (sub: SubChoice) => void;
+}) {
+  const hasSubs = card.subChoices && card.subChoices.length > 0;
+  return (
+    <div
+      className={`rounded-xl border-2 transition-all ${
+        expanded
+          ? 'border-yellow-400 shadow-lg bg-yellow-50/40'
+          : 'border-gray-200 hover:border-yellow-400 hover:shadow-lg'
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        className="w-full p-4 text-left"
+      >
+        <div className="flex items-start gap-3 mb-2">
+          <span className="text-3xl flex-shrink-0">{card.icon}</span>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-bold text-lg text-gray-900">{card.name}</h3>
+              {card.paid && card.status !== 'coming-soon' && (
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-semibold">
+                  <DollarSign size={10} /> Paid option
+                </span>
+              )}
+              {hasSubs && (
+                <span className="text-xs text-gray-500">
+                  {expanded ? '▾' : '▸'} {card.subChoices!.length} variants
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <p className="text-sm text-gray-600">{card.description}</p>
+      </button>
+
+      {expanded && hasSubs && (
+        <div className="border-t border-yellow-200 bg-white/60 p-3 space-y-2">
+          {card.subChoices!.map((sub) => {
+            const isComingSoon = sub.status === 'coming-soon';
+            return (
+              <button
+                key={sub.id}
+                type="button"
+                onClick={() => onSubChoiceClick(sub)}
+                disabled={isComingSoon}
+                className={`w-full text-left p-3 rounded-lg border transition-all ${
+                  isComingSoon
+                    ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                    : 'border-gray-200 bg-white hover:border-yellow-400 hover:shadow cursor-pointer'
+                }`}
+              >
+                <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                  <span className="font-semibold text-gray-900">{sub.name}</span>
+                  {sub.paid && !isComingSoon && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-semibold">
+                      <DollarSign size={10} /> Paid
+                    </span>
+                  )}
+                  {sub.privateOnly && !isComingSoon && (
+                    <span className="px-1.5 py-0.5 bg-gray-100 text-gray-700 rounded-full text-[10px] font-semibold">
+                      Private only
+                    </span>
+                  )}
+                  {isComingSoon && (
+                    <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full text-[10px] font-semibold">
+                      Coming soon
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-gray-600">{sub.description}</div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
