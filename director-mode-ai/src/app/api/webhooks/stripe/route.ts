@@ -37,9 +37,79 @@ export async function POST(req: NextRequest) {
 
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as Stripe.Checkout.Session;
-    const entryId = session.metadata?.quad_entry_id;
+    const quadEntryId = session.metadata?.quad_entry_id;
+    const tournamentEntryId = session.metadata?.tournament_entry_id;
+
+    if (tournamentEntryId) {
+      // Generic tournament_entries flow (RR / single-elim / FMLC / FFIC)
+      const { data: entry } = await admin
+        .from('tournament_entries')
+        .select('id, event_id')
+        .eq('id', tournamentEntryId)
+        .maybeSingle();
+      if (!entry) return NextResponse.json({ received: true, note: 'Tournament entry not found' });
+
+      const { data: ev } = await admin
+        .from('events')
+        .select('max_players, name, slug, event_date')
+        .eq('id', (entry as any).event_id)
+        .maybeSingle();
+      const maxPlayers = (ev as any)?.max_players ?? null;
+
+      let position: 'in_draw' | 'waitlist' = 'in_draw';
+      if (maxPlayers && maxPlayers > 0) {
+        const { count } = await admin
+          .from('tournament_entries')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', (entry as any).event_id)
+          .in('position', ['in_draw'])
+          .neq('id', tournamentEntryId);
+        if ((count ?? 0) >= maxPlayers) position = 'waitlist';
+      }
+
+      await admin
+        .from('tournament_entries')
+        .update({
+          payment_status: 'paid',
+          amount_paid_cents: session.amount_total ?? null,
+          stripe_payment_intent_id:
+            typeof session.payment_intent === 'string' ? session.payment_intent : null,
+          position,
+        })
+        .eq('id', tournamentEntryId);
+
+      try {
+        const { data: full } = await admin
+          .from('tournament_entries')
+          .select('player_name, player_email, parent_email')
+          .eq('id', tournamentEntryId)
+          .maybeSingle();
+        const e: any = full;
+        const recipient = e?.player_email || e?.parent_email;
+        if (recipient && (ev as any)?.slug) {
+          const origin = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+          const args = {
+            to: recipient,
+            playerName: e.player_name,
+            tournamentName: (ev as any).name,
+            publicUrl: `${origin}/tournaments/${(ev as any).slug}`,
+          };
+          if (position === 'in_draw') {
+            await sendQuadsConfirmEmail({ ...args, tournamentDate: (ev as any).event_date ?? null });
+          } else {
+            await sendQuadsWaitlistEmail(args);
+          }
+        }
+      } catch (err) {
+        console.error('tournament confirm email failed:', err);
+      }
+
+      return NextResponse.json({ received: true, entry_id: tournamentEntryId, position });
+    }
+
+    const entryId = quadEntryId;
     if (!entryId) {
-      return NextResponse.json({ received: true, note: 'Not a quad entry session' });
+      return NextResponse.json({ received: true, note: 'Not a quad/tournament session' });
     }
 
     // Decide whether the entry goes to a flight or the waitlist:

@@ -18,6 +18,14 @@ import EventCodeQR from "@/components/mixer/event/EventCodeQR";
 import TournamentBracket from "@/components/mixer/event/TournamentBracket";
 import TeamBattleTab from "@/components/mixer/event/TeamBattleTab";
 import QuadsAdminDashboard from "@/components/mixer/event/QuadsAdminDashboard";
+import TournamentAdminDashboard from "@/components/mixer/event/TournamentAdminDashboard";
+
+const TOURNAMENT_FORMATS = new Set([
+  'rr-singles', 'rr-doubles',
+  'single-elim-singles', 'single-elim-doubles',
+  'fmlc-singles', 'fmlc-doubles',
+  'ffic-singles', 'ffic-doubles',
+]);
 import { format } from "date-fns";
 
 interface Event {
@@ -143,6 +151,12 @@ export default function EventDashboard() {
   // flights of 4, magic-link scoring. None of the mixer-event UI applies.
   if (event && event.match_format === 'quads') {
     return <QuadsAdminDashboard eventId={event.id} />;
+  }
+
+  // Other tournament formats (RR, single-elim, FMLC, FFIC) use the generic
+  // tournament dashboard backed by tournament_entries / tournament_matches.
+  if (event && event.match_format && TOURNAMENT_FORMATS.has(event.match_format)) {
+    return <TournamentAdminDashboard eventId={event.id} />;
   }
 
   if (!event) return null;
