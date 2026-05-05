@@ -24,6 +24,7 @@ import {
   ArrowUp,
   ArrowDown,
   Mail,
+  Download,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
@@ -48,6 +49,7 @@ type Entry = {
   position: 'pending_payment' | 'in_draw' | 'waitlist' | 'withdrawn';
   payment_status: string;
   notes: string | null;
+  imported_at: string | null;
 };
 
 const POSITION_LABELS: Record<Entry['position'], { label: string; color: string }> = {
@@ -65,6 +67,8 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
   const [busy, setBusy] = useState<string | null>(null);
   const [emailing, setEmailing] = useState(false);
   const [emailResult, setEmailResult] = useState<{ sent: number; total: number } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ players_created: number; signups_imported: number } | null>(null);
 
   const fetchAll = useCallback(async () => {
     const supabase = createClient();
@@ -78,7 +82,7 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
     const { data: e } = await supabase
       .from('tournament_entries')
       .select(
-        'id, player_name, player_email, parent_email, partner_name, ntrp, utr, position, payment_status, notes'
+        'id, player_name, player_email, parent_email, partner_name, ntrp, utr, position, payment_status, notes, imported_at'
       )
       .eq('event_id', eventId)
       .order('registered_at', { ascending: true });
@@ -140,6 +144,32 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
     setEmailing(false);
   };
 
+  const importToEvent = async () => {
+    if (
+      !confirm(
+        'Import all confirmed signups into the event-players list? This creates player records the existing event admin can use for matches.'
+      )
+    )
+      return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const res = await fetch(`/api/events/${eventId}/import-signups`, { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setImportResult(data);
+        await fetchAll();
+        // Notify the page to refetch its players list. Simplest: full reload.
+        if (data.players_created > 0) {
+          setTimeout(() => window.location.reload(), 1200);
+        }
+      }
+    } catch {
+      /* swallow */
+    }
+    setImporting(false);
+  };
+
   if (loading) {
     return (
       <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex items-center gap-2">
@@ -166,15 +196,32 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
             · {inDraw} confirmed · {waitlist} waitlist · {pending} pending pmt
           </span>
         </div>
-        <button
-          onClick={emailScoringLinks}
-          disabled={emailing || inDraw === 0}
-          className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold disabled:opacity-50"
-        >
-          {emailing ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />}
-          Email scoring links
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={importToEvent}
+            disabled={importing || entries.filter((e) => e.position === 'in_draw' && !e.imported_at).length === 0}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded text-xs font-semibold disabled:opacity-50"
+          >
+            {importing ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+            Import to event
+          </button>
+          <button
+            onClick={emailScoringLinks}
+            disabled={emailing || inDraw === 0}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-xs font-semibold disabled:opacity-50"
+          >
+            {emailing ? <Loader2 size={12} className="animate-spin" /> : <Mail size={12} />}
+            Email scoring links
+          </button>
+        </div>
       </div>
+
+      {importResult && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg p-2 text-sm">
+          ✓ Imported {importResult.signups_imported} signups, created{' '}
+          {importResult.players_created} player records. Reloading…
+        </div>
+      )}
 
       {publicUrl && (
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-2 flex items-center gap-2 text-sm">
@@ -234,6 +281,11 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
                       >
                         {pos.label}
                       </span>
+                      {entry.imported_at && (
+                        <span className="ml-1 inline-block px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-blue-100 text-blue-700">
+                          Imported
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-1.5 text-gray-700 text-xs">{entry.payment_status}</td>
                     <td className="px-3 py-1.5 text-right">

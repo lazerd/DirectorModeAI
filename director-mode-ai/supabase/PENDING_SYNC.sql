@@ -407,6 +407,17 @@ CREATE POLICY "Public can view tournament matches" ON tournament_matches
   FOR SELECT USING (EXISTS (SELECT 1 FROM events e WHERE e.id = event_id AND e.public_status IN ('running','completed')));
 
 -- ============================================================================
+-- 8. tournament_entries.imported_at — track which mixer-event signups have
+--    already been pushed into the legacy event_players model so the
+--    'Import to event' button doesn't double-import.
+-- ============================================================================
+
+ALTER TABLE tournament_entries
+  ADD COLUMN IF NOT EXISTS imported_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_tournament_entries_imported
+  ON tournament_entries(event_id) WHERE imported_at IS NULL;
+
+-- ============================================================================
 -- End of pending sync. If you see "Success. No rows returned." the database
 -- is now aligned with every committed migration in director-mode-ai/supabase/
 -- migrations/. Safe to re-run this file any time.
