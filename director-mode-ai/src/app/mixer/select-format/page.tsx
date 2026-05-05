@@ -100,6 +100,13 @@ export default function SelectFormatPage() {
       description: 'Fills all courts optimally with mixed singles/doubles.',
       icon: '⚙️',
     },
+    {
+      id: 'team-battle',
+      name: 'Team Battle',
+      description:
+        'Two named teams compete across rounds. Flexible singles/doubles mix. Most match wins takes it.',
+      icon: '⚔️',
+    },
   ];
 
   // ============ Bucket 2: Tournament Formats ============
@@ -129,15 +136,6 @@ export default function SelectFormatPage() {
       name: 'Single Elimination — Doubles',
       description: 'Traditional bracket. 2v2 team matches, win or go home.',
       icon: '🥇',
-      privateOnly: true,
-      status: 'live',
-    },
-    {
-      id: 'team-battle',
-      name: 'Team Battle',
-      description:
-        'Two named teams compete across multiple rounds. Flexible singles/doubles mix. Most match wins takes it.',
-      icon: '⚔️',
       privateOnly: true,
       status: 'live',
     },
