@@ -50,6 +50,7 @@ export type SwimJob = {
   points: number;
   job_date: string | null;
   slots: number | null;
+  auto_award_on_signup: boolean;
   notes: string | null;
 };
 
@@ -72,6 +73,7 @@ export type SwimAssignment = {
   points_awarded: number;
   status: 'signed_up' | 'completed' | 'no_show' | 'cancelled';
   completed_at: string | null;
+  auto_awarded: boolean;
   notes: string | null;
 };
 

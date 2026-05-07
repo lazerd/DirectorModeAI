@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Trash2, Edit3, Loader2, Briefcase, Calendar } from 'lucide-react';
+import { Plus, Trash2, Edit3, Loader2, Briefcase, Calendar, Zap, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { SwimJob, SwimMeet } from '@/app/swim/[id]/page';
 
@@ -28,6 +28,7 @@ export default function SwimJobsTab({
     job_date: '',
     slots: '' as string | number,
     meet_id: '' as string | '',
+    auto_award_on_signup: false,
   });
 
   const reset = () => {
@@ -38,6 +39,7 @@ export default function SwimJobsTab({
       job_date: '',
       slots: '',
       meet_id: '',
+      auto_award_on_signup: false,
     });
     setShowAdd(false);
     setEditing(null);
@@ -53,6 +55,7 @@ export default function SwimJobsTab({
       job_date: meet?.meet_date ?? '',
       slots: '',
       meet_id: meetId,
+      auto_award_on_signup: false,
     });
     setShowAdd(true);
     setEditing(null);
@@ -71,6 +74,7 @@ export default function SwimJobsTab({
       job_date: form.job_date || null,
       slots: form.slots === '' ? null : parseInt(String(form.slots), 10),
       meet_id: form.meet_id || null,
+      auto_award_on_signup: form.auto_award_on_signup,
     };
     const { error: err } = editing
       ? await supabase.from('swim_jobs').update(payload).eq('id', editing)
@@ -94,6 +98,7 @@ export default function SwimJobsTab({
       job_date: job.job_date ?? '',
       slots: job.slots ?? '',
       meet_id: job.meet_id ?? '',
+      auto_award_on_signup: job.auto_award_on_signup ?? false,
     });
     setShowAdd(true);
     setPresetMeet('');
@@ -130,9 +135,18 @@ export default function SwimJobsTab({
   const renderJobRow = (job: SwimJob) => (
     <tr key={job.id} className="border-t border-gray-100">
       <td className="px-3 py-2">
-        <div className="font-medium text-gray-900 flex items-center gap-2">
+        <div className="font-medium text-gray-900 flex items-center gap-2 flex-wrap">
           <Briefcase size={14} className="text-cyan-500" />
           {job.name}
+          {job.auto_award_on_signup ? (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+              <Zap size={10} /> auto-award
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+              <Clock size={10} /> needs approval
+            </span>
+          )}
         </div>
         {job.description && (
           <div className="text-xs text-gray-500 mt-0.5">{job.description}</div>
@@ -283,6 +297,61 @@ export default function SwimJobsTab({
                 placeholder="What's involved? Any prep needed?"
                 className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm"
               />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-gray-700 mb-2">
+                When do points count?
+              </label>
+              <div className="grid sm:grid-cols-2 gap-2">
+                <label
+                  className={`flex items-start gap-2 p-3 border-2 rounded-lg cursor-pointer ${
+                    !form.auto_award_on_signup
+                      ? 'border-cyan-500 bg-cyan-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    checked={!form.auto_award_on_signup}
+                    onChange={() => setForm({ ...form, auto_award_on_signup: false })}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                      <Clock size={13} className="text-amber-500" />
+                      Approve after the event
+                    </div>
+                    <div className="text-xs text-gray-600 mt-0.5">
+                      Family signup shows as <em>pending</em> (gray). You confirm in the
+                      Tracker tab to award points.
+                    </div>
+                  </div>
+                </label>
+                <label
+                  className={`flex items-start gap-2 p-3 border-2 rounded-lg cursor-pointer ${
+                    form.auto_award_on_signup
+                      ? 'border-cyan-500 bg-cyan-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    checked={form.auto_award_on_signup}
+                    onChange={() => setForm({ ...form, auto_award_on_signup: true })}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                      <Zap size={13} className="text-emerald-500" />
+                      Auto-award on signup
+                    </div>
+                    <div className="text-xs text-gray-600 mt-0.5">
+                      Points count immediately when family signs up. Good for donations,
+                      attendance, etc.
+                    </div>
+                  </div>
+                </label>
+              </div>
             </div>
           </div>
           {error && (

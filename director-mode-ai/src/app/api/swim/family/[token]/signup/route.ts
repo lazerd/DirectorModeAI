@@ -91,14 +91,16 @@ export async function POST(req: Request, { params }: { params: { token: string }
     }
   }
 
+  const auto = (job as any).auto_award_on_signup === true;
   const { data: created, error: insErr } = await admin
     .from('swim_assignments')
     .insert({
       family_id: family.id,
       job_id: jobId,
       points_awarded: (job as any).points,
-      status: 'signed_up',
-      completed_at: null,
+      status: auto ? 'completed' : 'signed_up',
+      completed_at: auto ? new Date().toISOString() : null,
+      auto_awarded: auto,
     })
     .select('*')
     .maybeSingle();
@@ -137,7 +139,12 @@ export async function DELETE(req: Request, { params }: { params: { token: string
   if ((a as any).family_id !== family.id) {
     return NextResponse.json({ error: 'Not your signup.' }, { status: 403 });
   }
-  if ((a as any).status !== 'signed_up') {
+  // Family can cancel their own pending signups, OR auto-awarded ones the lead
+  // hasn't manually touched. Lead-confirmed completions are protected.
+  const isCancellable =
+    (a as any).status === 'signed_up' ||
+    ((a as any).status === 'completed' && (a as any).auto_awarded === true);
+  if (!isCancellable) {
     return NextResponse.json(
       { error: 'Already confirmed by the lead — please contact them to change.' },
       { status: 409 }

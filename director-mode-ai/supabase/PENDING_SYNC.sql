@@ -607,6 +607,24 @@ CREATE POLICY "Director manages own meets" ON swim_meets
 NOTIFY pgrst, 'reload schema';
 
 -- ============================================================================
+-- 12. SwimMode — per-job auto-award-on-signup toggle
+-- ============================================================================
+-- swim_jobs.auto_award_on_signup
+--   FALSE (default) — family signup → status='signed_up' (gray); lead must
+--     confirm in Tracker for points to count.
+--   TRUE  — family signup → status='completed' immediately (color); good for
+--     donations, attendance, etc.
+-- swim_assignments.auto_awarded — marks assignments awarded by the public flow
+--   so families can self-cancel them; lead-confirmed completions stay locked.
+
+ALTER TABLE swim_jobs
+  ADD COLUMN IF NOT EXISTS auto_award_on_signup BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE swim_assignments
+  ADD COLUMN IF NOT EXISTS auto_awarded BOOLEAN NOT NULL DEFAULT FALSE;
+
+NOTIFY pgrst, 'reload schema';
+
+-- ============================================================================
 -- End of pending sync. If you see "Success. No rows returned." the database
 -- is now aligned with every committed migration in director-mode-ai/supabase/
 -- migrations/. Safe to re-run this file any time.

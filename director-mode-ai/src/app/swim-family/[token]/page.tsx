@@ -12,6 +12,8 @@ import {
   AlertCircle,
   Briefcase,
   Users as UsersIcon,
+  Zap,
+  Clock,
 } from 'lucide-react';
 import Thermometer from '@/components/swim/Thermometer';
 
@@ -42,6 +44,7 @@ type Job = {
   points: number;
   job_date: string | null;
   slots: number | null;
+  auto_award_on_signup: boolean;
 };
 type Assignment = {
   id: string;
@@ -50,6 +53,7 @@ type Assignment = {
   points_awarded: number;
   status: 'signed_up' | 'completed' | 'no_show' | 'cancelled';
   completed_at: string | null;
+  auto_awarded: boolean;
 };
 
 export default function FamilyPublicPage() {
@@ -187,6 +191,10 @@ export default function FamilyPublicPage() {
     const full = slots != null && taken >= slots;
     const mine = myAssignmentByJob.get(job.id);
     const myStatus = mine?.status;
+    const auto = job.auto_award_on_signup === true;
+    // Family can cancel: pending, OR auto-awarded the lead hasn't manually touched.
+    const canCancel =
+      mine && (mine.status === 'signed_up' || (mine.status === 'completed' && mine.auto_awarded));
 
     return (
       <div
@@ -197,9 +205,18 @@ export default function FamilyPublicPage() {
       >
         <div className="flex items-start justify-between gap-2 mb-2">
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-gray-900 flex items-center gap-2">
+            <div className="font-semibold text-gray-900 flex items-center gap-2 flex-wrap">
               <Briefcase size={14} className="text-cyan-500" />
               {job.name}
+              {auto ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                  <Zap size={10} /> instant
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full">
+                  <Clock size={10} /> after event
+                </span>
+              )}
             </div>
             {job.description && (
               <p className="text-xs text-gray-600 mt-1">{job.description}</p>
@@ -226,9 +243,25 @@ export default function FamilyPublicPage() {
           </div>
         </div>
 
-        {myStatus === 'completed' && (
+        {myStatus === 'completed' && mine?.auto_awarded && (
+          <div className="flex items-center justify-between gap-2 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 text-xs">
+            <span className="text-emerald-800 font-medium flex items-center gap-1">
+              <Check size={14} /> You earned +{mine.points_awarded} pts (instant)
+            </span>
+            {canCancel && (
+              <button
+                onClick={() => mine && cancel(mine.id)}
+                disabled={busy === mine?.id}
+                className="inline-flex items-center gap-1 text-red-600 hover:bg-red-100 px-2 py-1 rounded font-medium"
+              >
+                <X size={12} /> Cancel
+              </button>
+            )}
+          </div>
+        )}
+        {myStatus === 'completed' && !mine?.auto_awarded && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg px-3 py-2 text-xs font-medium flex items-center gap-2">
-            <Check size={14} /> You earned +{mine?.points_awarded} pts here
+            <Check size={14} /> You earned +{mine?.points_awarded} pts (lead-confirmed)
           </div>
         )}
         {myStatus === 'signed_up' && (
@@ -249,10 +282,18 @@ export default function FamilyPublicPage() {
           <button
             onClick={() => signup(job.id)}
             disabled={full || busy === job.id}
-            className="w-full px-3 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+            className={`w-full px-3 py-2 text-white rounded-lg text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2 ${
+              auto
+                ? 'bg-emerald-600 hover:bg-emerald-700'
+                : 'bg-cyan-600 hover:bg-cyan-700'
+            }`}
           >
             {busy === job.id && <Loader2 size={14} className="animate-spin" />}
-            {full ? 'Job is full' : `Sign up · earn ${job.points} pts`}
+            {full
+              ? 'Job is full'
+              : auto
+                ? `Sign up · get +${job.points} pts now`
+                : `Sign up · earn ${job.points} pts after`}
           </button>
         )}
       </div>
