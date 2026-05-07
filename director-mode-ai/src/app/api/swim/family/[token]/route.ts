@@ -28,13 +28,25 @@ export async function GET(_req: Request, { params }: { params: { token: string }
   }
   const f: any = family;
 
-  const [{ data: season }, { data: meets }, { data: jobs }, { data: myAssignments }] =
-    await Promise.all([
-      admin.from('swim_seasons').select('*').eq('id', f.season_id).maybeSingle(),
-      admin.from('swim_meets').select('*').eq('season_id', f.season_id),
-      admin.from('swim_jobs').select('*').eq('season_id', f.season_id),
-      admin.from('swim_assignments').select('*').eq('family_id', f.id),
-    ]);
+  const [seasonRes, meetsRes, jobsRes, assignRes] = await Promise.all([
+    admin.from('swim_seasons').select('*').eq('id', f.season_id).maybeSingle(),
+    admin.from('swim_meets').select('*').eq('season_id', f.season_id),
+    admin.from('swim_jobs').select('*').eq('season_id', f.season_id),
+    admin.from('swim_assignments').select('*').eq('family_id', f.id),
+  ]);
+
+  // Surface query errors so we can debug why jobs/meets aren't loading
+  // (e.g. PostgREST schema cache stale after migrations).
+  const errs: Record<string, string> = {};
+  if (seasonRes.error) errs.season = seasonRes.error.message;
+  if (meetsRes.error) errs.meets = meetsRes.error.message;
+  if (jobsRes.error) errs.jobs = jobsRes.error.message;
+  if (assignRes.error) errs.assignments = assignRes.error.message;
+
+  const season = seasonRes.data;
+  const meets = meetsRes.data;
+  const jobs = jobsRes.data;
+  const myAssignments = assignRes.data;
 
   // For every job in this season, count how many active (signed_up + completed)
   // assignments exist so the client can show capacity / disable when full.
@@ -59,5 +71,9 @@ export async function GET(_req: Request, { params }: { params: { token: string }
     jobs: jobs || [],
     myAssignments: myAssignments || [],
     jobSignupCounts: counts,
+    _diag:
+      Object.keys(errs).length > 0
+        ? { errors: errs, family_season_id: f.season_id }
+        : { family_season_id: f.season_id, jobs_count: (jobs || []).length },
   });
 }
