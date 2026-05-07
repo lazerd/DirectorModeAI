@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   Shuffle, Clock, Wrench, ArrowRight, LogOut, User, Calendar,
   UserCircle, Trophy, Users, GraduationCap, Database, ExternalLink,
-  Sparkles, Check, ChevronRight, Zap, Shield, BarChart3
+  Sparkles, Check, ChevronRight, Zap, Shield, BarChart3, Waves
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import ProductShowcase from "@/components/shared/ProductShowcase";
@@ -140,6 +140,17 @@ export default function HomePage() {
       tagColor: "bg-violet-400/10 text-violet-400",
       href: "https://coachmode.ai",
       external: true,
+    },
+    {
+      name: "SwimMode",
+      tag: "SWIM TEAM",
+      description: "Volunteer points tracker for swim team leads. Define jobs, track family points across the season, CSV import + export.",
+      icon: Waves,
+      color: "text-cyan-400",
+      bg: "bg-cyan-400/10",
+      border: "border-cyan-400/20",
+      tagColor: "bg-cyan-400/10 text-cyan-400",
+      onClick: () => goToTool("/swim"),
     },
   ];
 
@@ -393,6 +404,7 @@ export default function HomePage() {
                 { href: "/courtconnect/home", icon: Users, name: "CourtConnect", color: "bg-emerald-500 hover:bg-emerald-600" },
                 { href: "/courtconnect/vault", icon: Database, name: "PlayerVault", color: "bg-teal-500 hover:bg-teal-600" },
                 { href: "https://coachmode.ai", icon: GraduationCap, name: "CoachMode.ai", color: "bg-violet-500 hover:bg-violet-600", external: true },
+                { href: "/swim", icon: Waves, name: "SwimMode", color: "bg-cyan-500 hover:bg-cyan-600" },
               ].map((item) => {
                 const Icon = item.icon;
                 const isButton = 'onClick' in item && item.onClick;
@@ -492,6 +504,7 @@ export default function HomePage() {
               <ul className="space-y-2 text-sm text-white/40">
                 <li><Link href="/courtconnect/home" className="hover:text-white transition-colors">CourtConnect</Link></li>
                 <li><Link href="/courtconnect/vault" className="hover:text-white transition-colors">PlayerVault</Link></li>
+                <li><Link href="/swim" className="hover:text-white transition-colors">SwimMode</Link></li>
                 <li><a href="https://coachmode.ai" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">CoachMode.ai</a></li>
               </ul>
             </div>
