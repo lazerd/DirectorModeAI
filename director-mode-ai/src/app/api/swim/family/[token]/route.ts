@@ -11,6 +11,12 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
+// Skip Next.js's fetch cache so newly-added jobs/meets show up immediately.
+// Supabase-js uses fetch under the hood and App Router caches fetch GETs by
+// default — that was returning stale empty arrays for swim_jobs/swim_meets.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export async function GET(_req: Request, { params }: { params: { token: string } }) {
   const token = params.token;
   if (!token || token.length < 8) {
