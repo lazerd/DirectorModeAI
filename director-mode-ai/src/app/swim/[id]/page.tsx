@@ -190,23 +190,32 @@ export default function SwimSeasonDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-white to-cyan-50">
-      <header className="border-b bg-white/80 backdrop-blur sticky top-0 z-10">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-cyan-50 to-blue-50 relative overflow-hidden">
+      <div className="absolute -top-32 -right-32 w-96 h-96 bg-cyan-300/25 rounded-full blur-3xl pointer-events-none" />
+      <header className="border-b bg-white/70 backdrop-blur-md sticky top-0 z-10 relative">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center gap-3">
-          <Link href="/swim" className="p-2 hover:bg-gray-100 rounded-lg">
+          <Link href="/swim" className="p-2 hover:bg-gray-100 rounded-lg transition">
             <ArrowLeft size={20} />
           </Link>
-          <div className="w-9 h-9 rounded-xl bg-cyan-500 text-white flex items-center justify-center">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center shadow-md">
             <Waves size={18} />
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="font-semibold text-xl text-gray-900 truncate">{season.name}</h1>
-            <p className="text-xs text-gray-500">
-              {families.length} {families.length === 1 ? 'family' : 'families'} ·{' '}
-              {meets.length} {meets.length === 1 ? 'meet' : 'meets'} ·{' '}
-              {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} ·{' '}
-              Default target: {season.default_points_required} pts
-            </p>
+            <h1 className="font-display font-bold text-xl text-gray-900 truncate">{season.name}</h1>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider text-cyan-800 bg-cyan-100 px-1.5 py-0.5 rounded-full">
+                {families.length} {families.length === 1 ? 'family' : 'families'}
+              </span>
+              <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider text-blue-800 bg-blue-100 px-1.5 py-0.5 rounded-full">
+                {meets.length} {meets.length === 1 ? 'meet' : 'meets'}
+              </span>
+              <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider text-indigo-800 bg-indigo-100 px-1.5 py-0.5 rounded-full">
+                {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'}
+              </span>
+              <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded-full">
+                {season.default_points_required} pt target
+              </span>
+            </div>
           </div>
         </div>
       </header>

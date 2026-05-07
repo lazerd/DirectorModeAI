@@ -125,36 +125,37 @@ export default function SwimHomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-white to-cyan-50">
-      <header className="border-b bg-white/80 backdrop-blur sticky top-0 z-10">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 via-cyan-50 to-blue-50 relative overflow-hidden">
+      <div className="absolute -top-32 -right-32 w-96 h-96 bg-cyan-300/25 rounded-full blur-3xl pointer-events-none" />
+      <header className="border-b bg-white/70 backdrop-blur-md sticky top-0 z-10 relative">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/" className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900">
+          <Link href="/" className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm font-medium">
             <ArrowLeft size={18} />
             Back to ClubMode
           </Link>
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 rounded-xl bg-cyan-500 text-white flex items-center justify-center">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center shadow-md">
               <Waves size={18} />
             </div>
             <div>
-              <h1 className="font-semibold text-lg">SwimMode</h1>
+              <h1 className="font-display font-bold text-lg leading-tight">SwimMode</h1>
               <p className="text-xs text-gray-500">Volunteer points tracking</p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
+      <main className="max-w-5xl mx-auto px-4 py-10 space-y-6 relative">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h2 className="font-display text-2xl text-gray-900">Seasons</h2>
-            <p className="text-sm text-gray-600">
+            <h2 className="font-display text-3xl font-bold text-gray-900">Seasons</h2>
+            <p className="text-sm text-gray-600 mt-1">
               Create a season, add jobs and families, track who's earned what.
             </p>
           </div>
           <button
             onClick={() => setShowCreate((s) => !s)}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg font-semibold text-sm"
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-600 hover:to-blue-700 text-white rounded-xl font-semibold text-sm shadow-md hover:shadow-lg transition-all"
           >
             <Plus size={16} />
             {showCreate ? 'Cancel' : 'New season'}
@@ -250,39 +251,67 @@ export default function SwimHomePage() {
             </button>
           </div>
         ) : (
-          <ul className="space-y-2">
+          <ul className="grid sm:grid-cols-2 gap-3">
             {seasons.map((s) => (
               <li key={s.id}>
                 <Link
                   href={`/swim/${s.id}`}
-                  className={`flex items-center justify-between gap-3 p-4 bg-white rounded-xl border-2 transition-all ${
+                  className={`group block p-5 bg-white rounded-2xl shadow-sm transition-all hover:shadow-lg hover:-translate-y-0.5 ${
                     s.status === 'archived'
-                      ? 'border-gray-200 opacity-60'
-                      : 'border-gray-200 hover:border-cyan-400 hover:shadow'
+                      ? 'ring-1 ring-gray-200 opacity-60'
+                      : 'ring-1 ring-gray-200 hover:ring-cyan-300'
                   }`}
                 >
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold text-gray-900">{s.name}</h3>
-                      {s.status === 'archived' && (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-700">
-                          <Archive size={10} /> Archived
-                        </span>
-                      )}
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-100 to-blue-100 text-cyan-700 flex items-center justify-center flex-shrink-0">
+                        <Waves size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-bold text-gray-900 truncate">{s.name}</h3>
+                        {s.start_date && s.end_date ? (
+                          <p className="text-[11px] text-gray-500">
+                            {s.start_date} → {s.end_date}
+                          </p>
+                        ) : (
+                          <p className="text-[11px] text-gray-400">No dates set</p>
+                        )}
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      {s.start_date && s.end_date
-                        ? `${s.start_date} → ${s.end_date}`
-                        : 'No dates set'}
-                      {' · '}
-                      {s.family_count} {s.family_count === 1 ? 'family' : 'families'}
-                      {' · '}
-                      {s.job_count} {s.job_count === 1 ? 'job' : 'jobs'}
-                      {' · '}
-                      Default target: {s.default_points_required} pts
-                    </p>
+                    {s.status === 'archived' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-700">
+                        <Archive size={10} /> Archived
+                      </span>
+                    ) : (
+                      <ChevronRight className="text-gray-300 group-hover:text-cyan-500 group-hover:translate-x-0.5 transition-all" size={20} />
+                    )}
                   </div>
-                  <ChevronRight className="text-gray-400" size={20} />
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-cyan-50 rounded-lg px-2 py-1.5">
+                      <div className="text-base font-extrabold text-cyan-900 leading-tight">
+                        {s.family_count}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-wider font-bold text-cyan-700">
+                        {s.family_count === 1 ? 'family' : 'families'}
+                      </div>
+                    </div>
+                    <div className="bg-blue-50 rounded-lg px-2 py-1.5">
+                      <div className="text-base font-extrabold text-blue-900 leading-tight">
+                        {s.job_count}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-wider font-bold text-blue-700">
+                        {s.job_count === 1 ? 'job' : 'jobs'}
+                      </div>
+                    </div>
+                    <div className="bg-emerald-50 rounded-lg px-2 py-1.5">
+                      <div className="text-base font-extrabold text-emerald-900 leading-tight">
+                        {s.default_points_required}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-wider font-bold text-emerald-700">
+                        target
+                      </div>
+                    </div>
+                  </div>
                 </Link>
               </li>
             ))}
