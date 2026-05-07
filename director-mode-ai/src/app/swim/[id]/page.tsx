@@ -221,32 +221,42 @@ export default function SwimSeasonDashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6">
-        <div className="border-b border-gray-200 mb-6 flex gap-1 overflow-x-auto">
-          {[
-            { id: 'tracker' as const, label: 'Tracker', icon: Activity },
-            { id: 'meets' as const, label: 'Meets', icon: CalendarDays },
-            { id: 'jobs' as const, label: 'Jobs', icon: Briefcase },
-            { id: 'families' as const, label: 'Families', icon: Users },
-            { id: 'settings' as const, label: 'Settings', icon: SettingsIcon },
-          ].map((t) => {
-            const Icon = t.icon;
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm whitespace-nowrap ${
-                  active
-                    ? 'border-cyan-500 text-cyan-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <Icon size={16} />
-                {t.label}
-              </button>
-            );
-          })}
-        </div>
+        {(() => {
+          const pendingCount = assignments.filter((a) => a.status === 'signed_up').length;
+          return (
+            <div className="border-b border-gray-200 mb-6 flex gap-1 overflow-x-auto">
+              {[
+                { id: 'tracker' as const, label: 'Tracker', icon: Activity, badge: pendingCount },
+                { id: 'meets' as const, label: 'Meets', icon: CalendarDays, badge: 0 },
+                { id: 'jobs' as const, label: 'Jobs', icon: Briefcase, badge: 0 },
+                { id: 'families' as const, label: 'Families', icon: Users, badge: 0 },
+                { id: 'settings' as const, label: 'Settings', icon: SettingsIcon, badge: 0 },
+              ].map((t) => {
+                const Icon = t.icon;
+                const active = tab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                    className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm whitespace-nowrap ${
+                      active
+                        ? 'border-cyan-500 text-cyan-600'
+                        : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    <Icon size={16} />
+                    {t.label}
+                    {t.badge > 0 && (
+                      <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 bg-amber-500 text-white text-[10px] font-bold rounded-full">
+                        {t.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {tab === 'tracker' && (
           <SwimTrackerTab

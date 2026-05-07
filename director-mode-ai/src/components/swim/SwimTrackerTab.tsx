@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus, Loader2, Check, Trash2, Download } from 'lucide-react';
+import { Plus, Loader2, Check, Trash2, Download, X, ClipboardCheck, Briefcase } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type {
   SwimSeason,
@@ -180,6 +180,108 @@ export default function SwimTrackerTab({
               : 'Add at least one family (in the Families tab) before awarding points.'}
         </div>
       )}
+
+      {/* Pending approvals — top-of-page panel for one-click confirmation */}
+      {(() => {
+        const pending = assignments
+          .filter((a) => a.status === 'signed_up')
+          .sort((a, b) => (a.id > b.id ? 1 : -1));
+        if (pending.length === 0) return null;
+        const familyById = new Map(families.map((f) => [f.id, f]));
+        return (
+          <div className="bg-gradient-to-br from-amber-50 to-orange-50 border-2 border-amber-300 rounded-2xl p-4 sm:p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm">
+                  <ClipboardCheck size={18} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-gray-900">
+                    {pending.length} pending {pending.length === 1 ? 'approval' : 'approvals'}
+                  </h3>
+                  <p className="text-xs text-amber-800">
+                    Families signed up — confirm below to credit their points.
+                  </p>
+                </div>
+              </div>
+              {pending.length > 1 && (
+                <button
+                  onClick={async () => {
+                    if (
+                      !confirm(`Approve all ${pending.length} pending signups at once?`)
+                    )
+                      return;
+                    setBusy('approve-all');
+                    for (const a of pending) {
+                      await supabase
+                        .from('swim_assignments')
+                        .update({
+                          status: 'completed',
+                          completed_at: new Date().toISOString(),
+                        })
+                        .eq('id', a.id);
+                    }
+                    await onRefresh();
+                    setBusy(null);
+                  }}
+                  disabled={busy === 'approve-all'}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm disabled:opacity-50"
+                >
+                  {busy === 'approve-all' && <Loader2 size={12} className="animate-spin" />}
+                  <Check size={12} /> Approve all
+                </button>
+              )}
+            </div>
+            <ul className="space-y-2">
+              {pending.map((a) => {
+                const job = jobById.get(a.job_id);
+                const fam = familyById.get(a.family_id);
+                return (
+                  <li
+                    key={a.id}
+                    className="flex items-center gap-3 bg-white rounded-xl p-3 ring-1 ring-amber-200"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center flex-shrink-0">
+                      <Briefcase size={15} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-900 text-sm truncate">
+                        {fam?.family_name ?? '(deleted family)'}
+                        <span className="text-gray-400 font-normal"> · </span>
+                        {job?.name ?? '(deleted job)'}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {job?.job_date ? `${job.job_date} · ` : ''}
+                        +{a.points_awarded} pts pending
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setStatus(a.id, 'completed')}
+                      disabled={busy === a.id}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm disabled:opacity-50"
+                    >
+                      {busy === a.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Check size={12} />
+                      )}
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => setStatus(a.id, 'no_show')}
+                      disabled={busy === a.id}
+                      title="Mark no-show (no points)"
+                      className="inline-flex items-center gap-1 px-2 py-1.5 border border-gray-300 hover:bg-gray-100 text-gray-700 text-xs font-medium rounded-lg disabled:opacity-50"
+                    >
+                      <X size={12} /> No-show
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })()}
 
       {showAdd && (
         <form
