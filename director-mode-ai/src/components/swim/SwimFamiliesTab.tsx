@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Link as LinkIcon,
   Check,
+  Mail,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { SwimFamily } from '@/app/swim/[id]/page';
@@ -37,6 +38,7 @@ export default function SwimFamiliesTab({
   const [error, setError] = useState<string | null>(null);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [emailed, setEmailed] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState({
     family_name: '',
@@ -123,6 +125,64 @@ export default function SwimFamiliesTab({
     } catch {
       window.prompt('Copy this link to share with the family:', linkFor(f.family_token));
     }
+  };
+
+  const emailLink = async (f: SwimFamily) => {
+    if (!f.primary_email) {
+      setError(
+        `${f.family_name} has no email on file — add one first (✎ Edit), then try again.`
+      );
+      return;
+    }
+    setError(null);
+    setBusy(`email-${f.id}`);
+    try {
+      const res = await fetch(`/api/swim/families/${f.id}/email-link`, {
+        method: 'POST',
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(j?.error || 'Could not send email.');
+      } else {
+        setEmailed(f.id);
+        setTimeout(() => setEmailed((e) => (e === f.id ? null : e)), 2200);
+      }
+    } catch (e: any) {
+      setError(e?.message || 'Network error sending email.');
+    }
+    setBusy(null);
+  };
+
+  const emailAll = async () => {
+    const withEmail = families.filter((f) => f.primary_email);
+    const withoutEmail = families.length - withEmail.length;
+    if (withEmail.length === 0) {
+      setError('No families have an email on file.');
+      return;
+    }
+    if (
+      !confirm(
+        `Email signup links to ${withEmail.length} ${withEmail.length === 1 ? 'family' : 'families'}` +
+          (withoutEmail ? ` (${withoutEmail} skipped — no email)` : '') +
+          '?'
+      )
+    )
+      return;
+    setError(null);
+    setBusy('email-all');
+    let sent = 0;
+    let failed = 0;
+    for (const f of withEmail) {
+      const res = await fetch(`/api/swim/families/${f.id}/email-link`, { method: 'POST' });
+      if (res.ok) sent++;
+      else failed++;
+    }
+    setImportMsg(
+      `✓ Sent ${sent} ${sent === 1 ? 'email' : 'emails'}` +
+        (failed ? ` · ${failed} failed` : '') +
+        (withoutEmail ? ` · ${withoutEmail} skipped (no email)` : '')
+    );
+    setBusy(null);
   };
 
   // Naive but adequate CSV parser. Handles quoted fields with commas.
@@ -267,6 +327,18 @@ export default function SwimFamiliesTab({
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={emailAll}
+            disabled={families.length === 0 || busy === 'email-all'}
+            className="inline-flex items-center gap-2 px-3 py-2 border border-cyan-300 hover:bg-cyan-50 text-cyan-700 rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            {busy === 'email-all' ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Mail size={14} />
+            )}
+            Email all links
+          </button>
           <button
             onClick={exportLinks}
             disabled={families.length === 0}
@@ -413,7 +485,7 @@ export default function SwimFamiliesTab({
                 <th className="text-left px-3 py-2">Contact</th>
                 <th className="text-left px-3 py-2 w-20">Swimmers</th>
                 <th className="text-left px-3 py-2 w-28">Target</th>
-                <th className="text-left px-3 py-2 w-32">Signup link</th>
+                <th className="text-left px-3 py-2 w-56">Signup link</th>
                 <th className="text-right px-3 py-2 w-24"></th>
               </tr>
             </thead>
@@ -445,20 +517,46 @@ export default function SwimFamiliesTab({
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <button
-                        onClick={() => copyLink(f)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium border border-cyan-300 text-cyan-700 hover:bg-cyan-50 rounded"
-                      >
-                        {copied === f.id ? (
-                          <>
-                            <Check size={12} /> Copied
-                          </>
-                        ) : (
-                          <>
-                            <LinkIcon size={12} /> Copy link
-                          </>
-                        )}
-                      </button>
+                      <div className="inline-flex gap-1">
+                        <button
+                          onClick={() => copyLink(f)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium border border-cyan-300 text-cyan-700 hover:bg-cyan-50 rounded"
+                        >
+                          {copied === f.id ? (
+                            <>
+                              <Check size={12} /> Copied
+                            </>
+                          ) : (
+                            <>
+                              <LinkIcon size={12} /> Copy
+                            </>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => emailLink(f)}
+                          disabled={busy === `email-${f.id}` || !f.primary_email}
+                          title={
+                            !f.primary_email
+                              ? 'No email on file — edit family to add one'
+                              : `Email link to ${f.primary_email}`
+                          }
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium border border-cyan-300 text-cyan-700 hover:bg-cyan-50 rounded disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {busy === `email-${f.id}` ? (
+                            <>
+                              <Loader2 size={12} className="animate-spin" /> Sending
+                            </>
+                          ) : emailed === f.id ? (
+                            <>
+                              <Check size={12} /> Sent
+                            </>
+                          ) : (
+                            <>
+                              <Mail size={12} /> Email
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-right">
                       <div className="inline-flex items-center gap-1">
