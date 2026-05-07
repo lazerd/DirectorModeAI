@@ -37,6 +37,13 @@ export function getSupabaseAdmin(): SupabaseClient<any, 'public', any> {
       autoRefreshToken: false,
       persistSession: false,
     },
+    global: {
+      // Next.js App Router caches `fetch()` GETs by default. Supabase-js uses
+      // fetch under the hood, so without this every SELECT through the admin
+      // client gets cached forever — newly-inserted rows never appear until a
+      // redeploy. We never want stale reads on the admin path.
+      fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+    },
   });
   return adminClient;
 }
