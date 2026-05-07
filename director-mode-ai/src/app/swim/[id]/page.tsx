@@ -12,12 +12,14 @@ import {
   Activity,
   Settings as SettingsIcon,
   AlertCircle,
+  CalendarDays,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import SwimJobsTab from '@/components/swim/SwimJobsTab';
 import SwimFamiliesTab from '@/components/swim/SwimFamiliesTab';
 import SwimTrackerTab from '@/components/swim/SwimTrackerTab';
 import SwimSettingsTab from '@/components/swim/SwimSettingsTab';
+import SwimMeetsTab from '@/components/swim/SwimMeetsTab';
 
 export type SwimSeason = {
   id: string;
@@ -29,9 +31,20 @@ export type SwimSeason = {
   status: 'active' | 'archived';
 };
 
+export type SwimMeet = {
+  id: string;
+  season_id: string;
+  name: string;
+  meet_date: string | null;
+  location: string | null;
+  opponent: string | null;
+  notes: string | null;
+};
+
 export type SwimJob = {
   id: string;
   season_id: string;
+  meet_id: string | null;
   name: string;
   description: string | null;
   points: number;
@@ -44,6 +57,7 @@ export type SwimFamily = {
   id: string;
   season_id: string;
   family_name: string;
+  family_token: string;
   primary_email: string | null;
   primary_phone: string | null;
   num_swimmers: number | null;
@@ -61,7 +75,15 @@ export type SwimAssignment = {
   notes: string | null;
 };
 
-type Tab = 'tracker' | 'jobs' | 'families' | 'settings';
+export type FamilyProgress = {
+  earned: number;
+  pending: number;
+  required: number;
+  percent: number;
+  pendingPercent: number;
+};
+
+type Tab = 'tracker' | 'meets' | 'jobs' | 'families' | 'settings';
 
 export default function SwimSeasonDashboard() {
   const params = useParams();
@@ -69,6 +91,7 @@ export default function SwimSeasonDashboard() {
   const id = Array.isArray(params.id) ? params.id[0] : (params.id as string);
 
   const [season, setSeason] = useState<SwimSeason | null>(null);
+  const [meets, setMeets] = useState<SwimMeet[]>([]);
   const [jobs, setJobs] = useState<SwimJob[]>([]);
   const [families, setFamilies] = useState<SwimFamily[]>([]);
   const [assignments, setAssignments] = useState<SwimAssignment[]>([]);
@@ -107,11 +130,13 @@ export default function SwimSeasonDashboard() {
       return (data as SwimAssignment[]) || [];
     };
 
-    const [jRes, fRes] = await Promise.all([
+    const [mRes, jRes, fRes] = await Promise.all([
+      supabase.from('swim_meets').select('*').eq('season_id', id),
       supabase.from('swim_jobs').select('*').eq('season_id', id).order('job_date', { nullsFirst: false }),
       supabase.from('swim_families').select('*').eq('season_id', id).order('family_name'),
     ]);
     const fams = (fRes.data as SwimFamily[]) || [];
+    setMeets((mRes.data as SwimMeet[]) || []);
     setJobs((jRes.data as SwimJob[]) || []);
     setFamilies(fams);
     setAssignments(await familyIdsThen(fams));
@@ -123,18 +148,19 @@ export default function SwimSeasonDashboard() {
   }, [fetchAll]);
 
   const familyProgress = useMemo(() => {
-    const map = new Map<
-      string,
-      { earned: number; required: number; percent: number }
-    >();
+    const map = new Map<string, FamilyProgress>();
     if (!season) return map;
     for (const f of families) {
       const required = f.points_required ?? season.default_points_required;
       const earned = assignments
         .filter((a) => a.family_id === f.id && a.status === 'completed')
         .reduce((sum, a) => sum + a.points_awarded, 0);
+      const pending = assignments
+        .filter((a) => a.family_id === f.id && a.status === 'signed_up')
+        .reduce((sum, a) => sum + a.points_awarded, 0);
       const percent = required > 0 ? Math.round((earned / required) * 100) : 0;
-      map.set(f.id, { earned, required, percent });
+      const pendingPercent = required > 0 ? Math.round((pending / required) * 100) : 0;
+      map.set(f.id, { earned, pending, required, percent, pendingPercent });
     }
     return map;
   }, [families, assignments, season]);
@@ -175,6 +201,7 @@ export default function SwimSeasonDashboard() {
             <h1 className="font-semibold text-xl text-gray-900 truncate">{season.name}</h1>
             <p className="text-xs text-gray-500">
               {families.length} {families.length === 1 ? 'family' : 'families'} ·{' '}
+              {meets.length} {meets.length === 1 ? 'meet' : 'meets'} ·{' '}
               {jobs.length} {jobs.length === 1 ? 'job' : 'jobs'} ·{' '}
               Default target: {season.default_points_required} pts
             </p>
@@ -186,6 +213,7 @@ export default function SwimSeasonDashboard() {
         <div className="border-b border-gray-200 mb-6 flex gap-1 overflow-x-auto">
           {[
             { id: 'tracker' as const, label: 'Tracker', icon: Activity },
+            { id: 'meets' as const, label: 'Meets', icon: CalendarDays },
             { id: 'jobs' as const, label: 'Jobs', icon: Briefcase },
             { id: 'families' as const, label: 'Families', icon: Users },
             { id: 'settings' as const, label: 'Settings', icon: SettingsIcon },
@@ -219,8 +247,11 @@ export default function SwimSeasonDashboard() {
             onRefresh={fetchAll}
           />
         )}
+        {tab === 'meets' && (
+          <SwimMeetsTab seasonId={season.id} meets={meets} jobs={jobs} onRefresh={fetchAll} />
+        )}
         {tab === 'jobs' && (
-          <SwimJobsTab seasonId={season.id} jobs={jobs} onRefresh={fetchAll} />
+          <SwimJobsTab seasonId={season.id} jobs={jobs} meets={meets} onRefresh={fetchAll} />
         )}
         {tab === 'families' && (
           <SwimFamiliesTab

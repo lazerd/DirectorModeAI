@@ -8,6 +8,7 @@ import type {
   SwimJob,
   SwimFamily,
   SwimAssignment,
+  FamilyProgress,
 } from '@/app/swim/[id]/page';
 
 export default function SwimTrackerTab({
@@ -22,7 +23,7 @@ export default function SwimTrackerTab({
   jobs: SwimJob[];
   families: SwimFamily[];
   assignments: SwimAssignment[];
-  familyProgress: Map<string, { earned: number; required: number; percent: number }>;
+  familyProgress: Map<string, FamilyProgress>;
   onRefresh: () => Promise<void> | void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -37,7 +38,6 @@ export default function SwimTrackerTab({
     notes: '',
   });
 
-  const familyById = new Map(families.map((f) => [f.id, f]));
   const jobById = new Map(jobs.map((j) => [j.id, j]));
 
   const addAssignment = async (e: React.FormEvent) => {
@@ -100,10 +100,13 @@ export default function SwimTrackerTab({
   };
 
   const exportCsv = () => {
-    const rows = [['Family', 'Earned', 'Target', '% Complete', 'Status', 'Email', 'Phone']];
+    const rows = [
+      ['Family', 'Earned', 'Pending', 'Target', '% Complete', 'Status', 'Email', 'Phone'],
+    ];
     for (const f of families) {
       const p = familyProgress.get(f.id);
       const earned = p?.earned ?? 0;
+      const pending = p?.pending ?? 0;
       const target = p?.required ?? season.default_points_required;
       const pct = p?.percent ?? 0;
       const status =
@@ -111,6 +114,7 @@ export default function SwimTrackerTab({
       rows.push([
         f.family_name,
         String(earned),
+        String(pending),
         String(target),
         `${pct}%`,
         status,
@@ -142,7 +146,10 @@ export default function SwimTrackerTab({
         <div>
           <h2 className="font-semibold text-lg text-gray-900">Tracker</h2>
           <p className="text-sm text-gray-600">
-            Award points as families volunteer. Behind families show first.
+            <span className="inline-block w-3 h-3 rounded-sm bg-emerald-500 align-middle mr-1" />
+            earned ·{' '}
+            <span className="inline-block w-3 h-3 rounded-sm bg-gray-400 align-middle mr-1" />
+            pending (signed up — confirm to count). Behind families show first.
           </p>
         </div>
         <div className="flex gap-2 flex-wrap">
@@ -286,26 +293,30 @@ export default function SwimTrackerTab({
         </form>
       )}
 
-      {/* Family progress cards */}
+      {/* Family progress cards with two-stage bar */}
       <div className="space-y-3">
         {sortedFamilies.map((f) => {
-          const p = familyProgress.get(f.id) || {
-            earned: 0,
-            required: season.default_points_required,
-            percent: 0,
-          };
+          const p =
+            familyProgress.get(f.id) || {
+              earned: 0,
+              pending: 0,
+              required: season.default_points_required,
+              percent: 0,
+              pendingPercent: 0,
+            };
           const fAssignments = assignments
             .filter((a) => a.family_id === f.id)
-            .sort((a, b) =>
-              (b.completed_at ?? b.id).localeCompare(a.completed_at ?? a.id)
-            );
-          const pctClamped = Math.min(100, p.percent);
-          const barColor =
+            .sort((a, b) => (b.completed_at ?? b.id).localeCompare(a.completed_at ?? a.id));
+          const earnedClamped = Math.min(100, p.percent);
+          const pendingClamped = Math.min(100 - earnedClamped, p.pendingPercent);
+          const earnedColor =
             p.percent >= 100
               ? 'bg-emerald-500'
               : p.percent >= 50
                 ? 'bg-amber-400'
                 : 'bg-red-400';
+          const pendingHasAny = p.pending > 0;
+          const signedUpCount = fAssignments.filter((a) => a.status === 'signed_up').length;
 
           return (
             <div key={f.id} className="bg-white border border-gray-200 rounded-xl p-4">
@@ -313,7 +324,11 @@ export default function SwimTrackerTab({
                 <div>
                   <h3 className="font-semibold text-gray-900">{f.family_name}</h3>
                   <p className="text-xs text-gray-500">
-                    {p.earned} / {p.required} pts ·{' '}
+                    {p.earned} / {p.required} pts earned
+                    {pendingHasAny && (
+                      <span className="text-gray-500"> · {p.pending} pending</span>
+                    )}
+                    {' · '}
                     {p.percent >= 100
                       ? 'Complete ✓'
                       : p.percent >= 50
@@ -326,12 +341,27 @@ export default function SwimTrackerTab({
                   <span className="text-sm text-gray-500">%</span>
                 </div>
               </div>
-              <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-3">
+              {/* Two-stage bar: earned (color) + pending (gray) layered */}
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-3 flex">
                 <div
-                  className={`h-full ${barColor} transition-all`}
-                  style={{ width: `${pctClamped}%` }}
+                  className={`h-full ${earnedColor} transition-all`}
+                  style={{ width: `${earnedClamped}%` }}
+                  title={`${p.earned} pts earned`}
                 />
+                {pendingClamped > 0 && (
+                  <div
+                    className="h-full bg-gray-400/70 transition-all"
+                    style={{ width: `${pendingClamped}%` }}
+                    title={`${p.pending} pts pending`}
+                  />
+                )}
               </div>
+              {signedUpCount > 0 && (
+                <p className="text-xs text-amber-700 mb-2">
+                  ⓘ {signedUpCount} signup{signedUpCount === 1 ? '' : 's'} waiting on confirmation
+                  — click ✓ to mark complete.
+                </p>
+              )}
               {fAssignments.length === 0 ? (
                 <p className="text-xs text-gray-500 italic">No volunteer history yet.</p>
               ) : (
@@ -354,9 +384,7 @@ export default function SwimTrackerTab({
                             {job?.name ?? '(deleted job)'}
                           </span>
                           {job?.job_date && (
-                            <span className="text-xs text-gray-500 ml-2">
-                              {job.job_date}
-                            </span>
+                            <span className="text-xs text-gray-500 ml-2">{job.job_date}</span>
                           )}
                           {a.notes && (
                             <span className="text-xs text-gray-500 ml-2">· {a.notes}</span>

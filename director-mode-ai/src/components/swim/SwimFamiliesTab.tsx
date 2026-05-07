@@ -9,6 +9,8 @@ import {
   Upload,
   Download,
   AlertCircle,
+  Link as LinkIcon,
+  Check,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import type { SwimFamily } from '@/app/swim/[id]/page';
@@ -23,7 +25,10 @@ export default function SwimFamiliesTab({
   seasonId: string;
   defaultPointsRequired: number;
   families: SwimFamily[];
-  familyProgress: Map<string, { earned: number; required: number; percent: number }>;
+  familyProgress: Map<
+    string,
+    { earned: number; pending: number; required: number; percent: number; pendingPercent: number }
+  >;
   onRefresh: () => Promise<void> | void;
 }) {
   const [showAdd, setShowAdd] = useState(false);
@@ -31,6 +36,7 @@ export default function SwimFamiliesTab({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [form, setForm] = useState({
     family_name: '',
@@ -104,6 +110,21 @@ export default function SwimFamiliesTab({
     setBusy(null);
   };
 
+  const linkFor = (token: string) =>
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/swim-family/${token}`
+      : `/swim-family/${token}`;
+
+  const copyLink = async (f: SwimFamily) => {
+    try {
+      await navigator.clipboard.writeText(linkFor(f.family_token));
+      setCopied(f.id);
+      setTimeout(() => setCopied((c) => (c === f.id ? null : c)), 1800);
+    } catch {
+      window.prompt('Copy this link to share with the family:', linkFor(f.family_token));
+    }
+  };
+
   // Naive but adequate CSV parser. Handles quoted fields with commas.
   const parseCsv = (raw: string): Array<Record<string, string>> => {
     const lines = raw
@@ -158,7 +179,6 @@ export default function SwimFamiliesTab({
         return;
       }
 
-      // Map common header variations
       const inserts = rows
         .map((r) => {
           const family_name =
@@ -212,6 +232,28 @@ export default function SwimFamiliesTab({
     URL.revokeObjectURL(url);
   };
 
+  const exportLinks = () => {
+    const rows = [['Family', 'Email', 'Phone', 'Signup Link']];
+    for (const f of [...families].sort((a, b) => a.family_name.localeCompare(b.family_name))) {
+      rows.push([
+        f.family_name,
+        f.primary_email ?? '',
+        f.primary_phone ?? '',
+        linkFor(f.family_token),
+      ]);
+    }
+    const csv = rows
+      .map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'swim-family-signup-links.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const sorted = [...families].sort((a, b) => a.family_name.localeCompare(b.family_name));
 
   return (
@@ -220,11 +262,18 @@ export default function SwimFamiliesTab({
         <div>
           <h2 className="font-semibold text-lg text-gray-900">Families</h2>
           <p className="text-sm text-gray-600">
-            Add families manually or upload a CSV. Per-family target overrides the season default
+            Each family has a private signup link. Per-family target overrides the season default
             ({defaultPointsRequired} pts).
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={exportLinks}
+            disabled={families.length === 0}
+            className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 hover:bg-gray-50 rounded-lg text-sm font-medium disabled:opacity-50"
+          >
+            <LinkIcon size={14} /> Export signup links
+          </button>
           <button
             onClick={downloadTemplate}
             className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 hover:bg-gray-50 rounded-lg text-sm font-medium"
@@ -364,6 +413,7 @@ export default function SwimFamiliesTab({
                 <th className="text-left px-3 py-2">Contact</th>
                 <th className="text-left px-3 py-2 w-20">Swimmers</th>
                 <th className="text-left px-3 py-2 w-28">Target</th>
+                <th className="text-left px-3 py-2 w-32">Signup link</th>
                 <th className="text-right px-3 py-2 w-24"></th>
               </tr>
             </thead>
@@ -393,6 +443,22 @@ export default function SwimFamiliesTab({
                           override
                         </span>
                       )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <button
+                        onClick={() => copyLink(f)}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium border border-cyan-300 text-cyan-700 hover:bg-cyan-50 rounded"
+                      >
+                        {copied === f.id ? (
+                          <>
+                            <Check size={12} /> Copied
+                          </>
+                        ) : (
+                          <>
+                            <LinkIcon size={12} /> Copy link
+                          </>
+                        )}
+                      </button>
                     </td>
                     <td className="px-3 py-2 text-right">
                       <div className="inline-flex items-center gap-1">

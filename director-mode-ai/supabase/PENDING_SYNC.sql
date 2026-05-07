@@ -554,6 +554,59 @@ CREATE POLICY "Director manages own assignments" ON swim_assignments
   );
 
 -- ============================================================================
+-- 11. SwimMode v2 — meets + per-family magic-link tokens
+-- ============================================================================
+-- Adds:
+--   swim_meets — group jobs by meet (e.g. "vs Lamorinda Jul 15")
+--   swim_jobs.meet_id — nullable FK
+--   swim_families.family_token — public-page magic link
+-- Source: supabase/migrations/swim_meets_and_family_tokens.sql
+
+CREATE TABLE IF NOT EXISTS swim_meets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  season_id UUID NOT NULL REFERENCES swim_seasons(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  meet_date DATE,
+  location TEXT,
+  opponent TEXT,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_swim_meets_season ON swim_meets(season_id);
+CREATE INDEX IF NOT EXISTS idx_swim_meets_date ON swim_meets(meet_date);
+
+ALTER TABLE swim_jobs
+  ADD COLUMN IF NOT EXISTS meet_id UUID REFERENCES swim_meets(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_swim_jobs_meet ON swim_jobs(meet_id);
+
+ALTER TABLE swim_families
+  ADD COLUMN IF NOT EXISTS family_token TEXT;
+UPDATE swim_families
+SET family_token = replace(uuid_generate_v4()::text, '-', '')
+WHERE family_token IS NULL;
+ALTER TABLE swim_families
+  ALTER COLUMN family_token SET NOT NULL;
+ALTER TABLE swim_families
+  ALTER COLUMN family_token SET DEFAULT replace(uuid_generate_v4()::text, '-', '');
+DROP INDEX IF EXISTS idx_swim_families_token;
+CREATE UNIQUE INDEX idx_swim_families_token ON swim_families(family_token);
+
+DROP TRIGGER IF EXISTS trg_swim_meets_touch ON swim_meets;
+CREATE TRIGGER trg_swim_meets_touch
+  BEFORE UPDATE ON swim_meets
+  FOR EACH ROW EXECUTE FUNCTION touch_swim_updated_at();
+
+ALTER TABLE swim_meets ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Director manages own meets" ON swim_meets;
+CREATE POLICY "Director manages own meets" ON swim_meets
+  FOR ALL USING (
+    EXISTS (SELECT 1 FROM swim_seasons s WHERE s.id = season_id AND s.director_id = auth.uid())
+  );
+
+NOTIFY pgrst, 'reload schema';
+
+-- ============================================================================
 -- End of pending sync. If you see "Success. No rows returned." the database
 -- is now aligned with every committed migration in director-mode-ai/supabase/
 -- migrations/. Safe to re-run this file any time.
