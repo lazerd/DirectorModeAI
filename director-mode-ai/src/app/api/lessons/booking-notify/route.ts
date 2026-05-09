@@ -1,7 +1,5 @@
-import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail, resolveCoachUserId, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
 function formatDateForCalendar(dateStr: string, timeStr: string): { start: string; end: string } {
   const date = new Date(dateStr);
@@ -48,9 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    // Email to coach
+    // Email to coach (the coach pays for both emails — they own the booking)
+    const ownerUserId = await resolveCoachUserId(undefined, coachEmail);
     const coachCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${clientName}`, slotDate, slotTime, location);
-    await resend.emails.send({
+    await sendBilledEmail(ownerUserId, {
       from: 'LastMinute Lessons <notifications@coachmode.ai>',
       to: coachEmail,
       subject: `New Booking: ${clientName} booked a lesson`,
@@ -77,7 +76,7 @@ export async function POST(request: NextRequest) {
     // Email to client (if email provided)
     if (clientEmail) {
       const clientCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${coachName || 'Coach'}`, slotDate, slotTime, location);
-      await resend.emails.send({
+      await sendBilledEmail(ownerUserId, {
         from: 'LastMinute Lessons <notifications@coachmode.ai>',
         to: clientEmail,
         subject: `Booking Confirmed: Lesson with ${coachName || 'your coach'}`,
@@ -104,6 +103,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof CreditLimitError) return creditLimitResponse(error);
     console.error('Booking notification error:', error);
     return NextResponse.json({ error: 'Failed to send notification' }, { status: 500 });
   }

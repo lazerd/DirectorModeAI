@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Users, Trophy, ListOrdered, Flag, Award, Settings, Share2, GitBranch, Swords } from "lucide-react";
+import { ArrowLeft, Users, Trophy, ListOrdered, Flag, Award, Settings, Share2, GitBranch, Swords, Sparkles } from "lucide-react";
+import Link from "next/link";
 import PlayersTab from "@/components/mixer/event/PlayersTab";
 import RoundsTab from "@/components/mixer/event/RoundsTab";
 import StandingsTab from "@/components/mixer/event/StandingsTab";
@@ -155,6 +156,12 @@ export default function EventDashboard() {
             </Button>
             
             <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+              <Link href={`/mixer/events/${params.id}/dj`} className="w-full sm:w-auto">
+                <Button size="lg" className="w-full sm:w-auto bg-yellow-300 text-[#001820] hover:bg-yellow-200">
+                  <Sparkles className="h-5 w-5 mr-2" />
+                  DJ Console
+                </Button>
+              </Link>
               <Button variant="outline" size="lg" onClick={() => setShowEditFormatDialog(true)} className="w-full sm:w-auto bg-white">
                 <Settings className="h-5 w-5 mr-2" />
                 <span className="hidden sm:inline">Edit Format</span>

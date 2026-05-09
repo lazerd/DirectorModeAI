@@ -1,8 +1,6 @@
-import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail, resolveCoachUserId, CreditLimitError } from '@/lib/email';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -105,9 +103,11 @@ export async function GET(request: NextRequest) {
         slot.location
       );
 
-      // Send reminder to client
+      // Send reminder to client. Each reminder is billed to the owning coach.
+      // If the coach has hit their cap (e.g., free tier), skip this one but keep iterating.
+      const coachUserId = await resolveCoachUserId(undefined, coach?.email);
       try {
-        await resend.emails.send({
+        await sendBilledEmail(coachUserId, {
           from: 'LastMinute Lessons <notifications@coachmode.ai>',
           to: client.email,
           subject: `Reminder: Lesson with ${coachName} tomorrow`,
@@ -142,7 +142,11 @@ export async function GET(request: NextRequest) {
 
         sentCount++;
       } catch (emailError) {
-        console.error('Failed to send reminder for slot:', slot.id, emailError);
+        if (emailError instanceof CreditLimitError) {
+          console.warn(`[reminder] Skipped slot ${slot.id} for coach ${coachUserId}: ${emailError.message}`);
+        } else {
+          console.error('Failed to send reminder for slot:', slot.id, emailError);
+        }
       }
     }
 

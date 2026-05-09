@@ -1,13 +1,31 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { hasFeature, consumeAiCall, CreditLimitError } from '@/lib/billing';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const { level, play_style, arm_issues, preference, durability_needs } = body;
 
-    // Get available strings from catalog
     const supabase = await createClient();
+
+    // Gate AI behind paid plans — fall back to mock for free users so the UX stays useful
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const allowAi = user ? await hasFeature(user.id, 'ai_recommendations') : false;
+    if (!allowAi) {
+      return NextResponse.json({
+        recommendations: getMockRecommendations(level, arm_issues, preference, durability_needs),
+        upgrade: {
+          message: 'AI-powered recommendations are a Pro feature. Showing standard picks.',
+          feature: 'ai_recommendations',
+          upgradeUrl: '/pricing',
+        },
+      });
+    }
+
+    // Get available strings from catalog
     const { data: strings } = await supabase
       .from('stringing_catalog')
       .select('*')
@@ -121,6 +139,13 @@ Please recommend 2-3 string setups for this player.`;
 
     if (!recommendations) {
       recommendations = getMockRecommendations(level, arm_issues, preference, durability_needs);
+    } else if (user) {
+      // Successful AI call — count it for analytics/usage display
+      try {
+        await consumeAiCall(user.id);
+      } catch (e) {
+        if (!(e instanceof CreditLimitError)) console.warn('[recommend] usage tracking failed', e);
+      }
     }
 
     return NextResponse.json({ recommendations });

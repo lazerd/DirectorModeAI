@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmails, resolveCoachUserId, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -98,18 +96,19 @@ export async function POST(request: NextRequest) {
       </div>
     `;
 
-    // Send to all clients
-    const emailPromises = clientEmails.map((email: string) =>
-      resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL || 'LastMinute Lessons <onboarding@resend.dev>',
-        to: email,
-        replyTo: coachEmail,
-        subject: `🎾 ${coachName || 'Your Coach'} has lesson time available!`,
-        html: emailHtml,
-      })
-    );
+    // Resolve who pays for these emails (the coach owns the blast)
+    const ownerUserId = await resolveCoachUserId(coachId, coachEmail);
 
-    const results = await Promise.allSettled(emailPromises);
+    // Send to all clients
+    const payloads = clientEmails.map((email: string) => ({
+      from: process.env.RESEND_FROM_EMAIL || 'LastMinute Lessons <onboarding@resend.dev>',
+      to: email,
+      replyTo: coachEmail,
+      subject: `🎾 ${coachName || 'Your Coach'} has lesson time available!`,
+      html: emailHtml,
+    }));
+
+    const results = await sendBilledEmails(ownerUserId, payloads);
     const successCount = results.filter(r => r.status === 'fulfilled').length;
     const failCount = results.filter(r => r.status === 'rejected').length;
 
@@ -135,6 +134,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
+    if (error instanceof CreditLimitError) return creditLimitResponse(error);
     console.error('Blast error:', error);
     return NextResponse.json({ error: 'Failed to send blast' }, { status: 500 });
   }

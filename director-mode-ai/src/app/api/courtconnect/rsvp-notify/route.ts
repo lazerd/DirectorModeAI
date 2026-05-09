@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -96,7 +94,7 @@ export async function POST(request: NextRequest) {
       </div>
     `;
 
-    await resend.emails.send({
+    await sendBilledEmail(event.created_by, {
       from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
       to: creator.email,
       subject: `${statusEmoji} ${playerName} ${statusLabel.toLowerCase()} - ${event.title}`,
@@ -138,7 +136,7 @@ export async function POST(request: NextRequest) {
             .single();
 
           if (promotedProfile?.email) {
-            await resend.emails.send({
+            await sendBilledEmail(event.created_by, {
               from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
               to: promotedProfile.email,
               subject: `🎉 You're in! Spot opened for ${event.title}`,
@@ -170,6 +168,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true });
 
   } catch (error) {
+    if (error instanceof CreditLimitError) return creditLimitResponse(error);
     console.error('RSVP notify error:', error);
     return NextResponse.json({ error: 'Failed to send notification' }, { status: 500 });
   }

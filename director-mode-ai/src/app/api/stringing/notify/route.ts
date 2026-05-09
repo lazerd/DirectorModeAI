@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail, creditLimitResponse, CreditLimitError } from '@/lib/email';
+import { createClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,9 +10,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email address required' }, { status: 400 });
     }
 
-    const { data, error } = await resend.emails.send({
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    const ownerUserId = user?.id || null;
+
+    const { data, error } = await sendBilledEmail(ownerUserId, {
       from: 'StringingMode <notifications@coachmode.ai>',
-      to: [to],
+      to: [to] as any,
       subject: '🎾 Your Racket is Ready for Pickup!',
       html: `
         <!DOCTYPE html>
@@ -40,7 +45,7 @@ export async function POST(request: NextRequest) {
             <div class="content">
               <p>Hi ${customerName || 'there'},</p>
               <p>Great news! Your racket has been strung and is ready for pickup.</p>
-              
+
               <div class="details">
                 <div class="detail-row">
                   <span class="label">Racket</span>
@@ -55,9 +60,9 @@ export async function POST(request: NextRequest) {
                   <span class="value">${tension || 'N/A'}</span>
                 </div>
               </div>
-              
+
               <p>Stop by anytime during business hours to pick it up. We look forward to seeing you!</p>
-              
+
               <div class="footer">
                 <p>Thanks for choosing us for your stringing needs!</p>
                 <p style="color: #9333ea; font-weight: 600;">StringingMode</p>
@@ -71,11 +76,12 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Resend error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: (error as any).message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, id: data?.id });
+    return NextResponse.json({ success: true, id: (data as any)?.id });
   } catch (err: any) {
+    if (err instanceof CreditLimitError) return creditLimitResponse(err);
     console.error('Email error:', err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }

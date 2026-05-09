@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -96,7 +94,7 @@ export async function POST(request: NextRequest) {
       `;
 
       try {
-        await resend.emails.send({
+        await sendBilledEmail(event.created_by, {
           from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
           to: profile.email,
           replyTo: creator?.email,
@@ -105,6 +103,7 @@ export async function POST(request: NextRequest) {
         });
         sent++;
       } catch (err) {
+        if (err instanceof CreditLimitError) return creditLimitResponse(err);
         console.error(`Failed to message ${profile.email}:`, err);
         failed++;
       }
@@ -113,6 +112,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, sent, failed });
 
   } catch (error) {
+    if (error instanceof CreditLimitError) return creditLimitResponse(error);
     console.error('Message players error:', error);
     return NextResponse.json({ error: 'Failed to send messages' }, { status: 500 });
   }

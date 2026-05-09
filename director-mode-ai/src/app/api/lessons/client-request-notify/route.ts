@@ -1,7 +1,5 @@
-import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail, resolveCoachUserId, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,7 +9,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    await resend.emails.send({
+    const ownerUserId = await resolveCoachUserId(undefined, coachEmail);
+    await sendBilledEmail(ownerUserId, {
       from: 'LastMinute Lessons <notifications@coachmode.ai>',
       to: coachEmail,
       subject: `New Client Request: ${clientName} wants to book lessons`,
@@ -35,6 +34,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof CreditLimitError) return creditLimitResponse(error);
     console.error('Client request notification error:', error);
     return NextResponse.json({ error: 'Failed to send notification' }, { status: 500 });
   }

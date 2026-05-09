@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { createClient } from '@supabase/supabase-js';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail, CreditLimitError } from '@/lib/email';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -103,7 +101,7 @@ export async function GET(request: NextRequest) {
         `;
 
         try {
-          await resend.emails.send({
+          await sendBilledEmail(event.created_by, {
             from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
             to: profile.email,
             subject: `Reminder: ${event.title} is tomorrow!`,
@@ -111,6 +109,10 @@ export async function GET(request: NextRequest) {
           });
           totalSent++;
         } catch (err) {
+          if (err instanceof CreditLimitError) {
+            console.warn(`[event-reminders] Skipping rest for event ${event.id}: organizer over cap`);
+            break;
+          }
           console.error(`Failed to send reminder to ${profile.email}:`, err);
         }
       }

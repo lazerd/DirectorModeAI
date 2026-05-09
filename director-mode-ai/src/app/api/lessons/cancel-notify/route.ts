@@ -1,19 +1,20 @@
-import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail, resolveCoachUserId, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
 export async function POST(request: NextRequest) {
   try {
-    const { 
-      recipientEmail, 
-      recipientName, 
+    const {
+      recipientEmail,
+      recipientName,
       cancelledBy,
       otherPartyName,
-      slotDate, 
+      slotDate,
       slotTime,
-      location 
+      location
     } = await request.json();
+
+    // The coach pays. If client cancelled, recipient is the coach. If coach cancelled, find them by recipientEmail anyway since we don't track which side it was.
+    const ownerUserId = await resolveCoachUserId(undefined, recipientEmail);
 
     if (!recipientEmail || !slotDate || !slotTime) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     const buttonText = isCoachNotification ? 'View Dashboard' : 'Book Another Lesson';
 
-    await resend.emails.send({
+    await sendBilledEmail(ownerUserId, {
       from: 'LastMinute Lessons <notifications@coachmode.ai>',
       to: recipientEmail,
       subject,
@@ -61,6 +62,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    if (error instanceof CreditLimitError) return creditLimitResponse(error);
     console.error('Cancel notification error:', error);
     return NextResponse.json({ error: 'Failed to send notification' }, { status: 500 });
   }
