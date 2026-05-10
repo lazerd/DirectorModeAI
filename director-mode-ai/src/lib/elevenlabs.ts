@@ -27,12 +27,12 @@ export interface VoicePreset {
 export const VOICE_PRESETS: VoicePreset[] = [
   {
     id: 'hype',
-    label: 'Deep Hype',
-    description: 'Deeper, more dramatic delivery',
-    voiceId: '29vD33N1CtxCmqQRPOHJ', // Drew — deep American narrator with announcer cadence
-    stability: 0.2,
+    label: 'Ring Announcer',
+    description: 'Boxing/WWE-style hype voice',
+    voiceId: 'QvlD90AkjGTCqc9685Rq', // Community ring-announcer voice
+    stability: 0.25,
     similarityBoost: 0.9,
-    styleExaggeration: 0.95,
+    styleExaggeration: 0.9,
   },
   {
     id: 'stadium',
