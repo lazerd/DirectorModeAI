@@ -334,6 +334,11 @@ function ShowTab({
   useEffect(() => {
     voicePresetIdRef.current = voicePresetId;
   }, [voicePresetId]);
+  const [customVoiceId, setCustomVoiceId] = useState('');
+  const customVoiceIdRef = useRef(customVoiceId);
+  useEffect(() => {
+    customVoiceIdRef.current = customVoiceId;
+  }, [customVoiceId]);
 
   const announcerRef = useRef<HTMLAudioElement | null>(null);
   const songRef = useRef<HTMLAudioElement | null>(null);
@@ -438,7 +443,12 @@ function ShowTab({
     const res = await fetch('/api/dj/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, eventId, voicePresetId: voicePresetIdRef.current }),
+      body: JSON.stringify({
+        text,
+        eventId,
+        voicePresetId: voicePresetIdRef.current,
+        customVoiceId: customVoiceIdRef.current,
+      }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -706,7 +716,7 @@ function ShowTab({
             </div>
             <div className="md:col-span-2">
               <label className="text-xs text-white/60 block mb-2">Announcer voice</label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                 {VOICE_PRESETS.map((v) => (
                   <button
                     type="button"
@@ -724,8 +734,36 @@ function ShowTab({
                     <div className="text-[10px] text-white/40 mt-0.5">{v.description}</div>
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setVoicePresetId('custom')}
+                  className={`text-left p-2.5 rounded-lg border transition-colors ${
+                    voicePresetId === 'custom'
+                      ? 'border-yellow-300 bg-yellow-300/10'
+                      : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
+                  }`}
+                >
+                  <div className={`text-xs font-medium ${voicePresetId === 'custom' ? 'text-yellow-300' : 'text-white'}`}>
+                    Custom
+                  </div>
+                  <div className="text-[10px] text-white/40 mt-0.5">Paste any voice ID</div>
+                </button>
               </div>
-              <VoicePreviewButton voicePresetId={voicePresetId} eventId={eventId} volume={volume} />
+              {voicePresetId === 'custom' && (
+                <div className="mt-2">
+                  <input
+                    value={customVoiceId}
+                    onChange={(e) => setCustomVoiceId(e.target.value.trim())}
+                    placeholder="Paste ElevenLabs voice ID (e.g., 29vD33N1CtxCmqQRPOHJ)"
+                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono placeholder:text-white/30"
+                  />
+                  <div className="text-[10px] text-white/40 mt-1.5">
+                    Browse <a href="https://elevenlabs.io/app/voice-library" target="_blank" rel="noopener" className="text-yellow-300 hover:underline">ElevenLabs Voice Library</a>
+                    , find a "boxing announcer" / "ring announcer" / "WWE" voice, click "Add to my voices", then paste the voice ID here.
+                  </div>
+                </div>
+              )}
+              <VoicePreviewButton voicePresetId={voicePresetId} customVoiceId={customVoiceId} eventId={eventId} volume={volume} />
             </div>
             <div className="md:col-span-2">
               <div className="flex items-center justify-between mb-1">
@@ -1429,10 +1467,12 @@ function WalkoutSongPicker({
 
 function VoicePreviewButton({
   voicePresetId,
+  customVoiceId,
   eventId,
   volume,
 }: {
   voicePresetId: string;
+  customVoiceId?: string;
   eventId: string;
   volume: number;
 }) {
@@ -1450,6 +1490,7 @@ function VoicePreviewButton({
           text: 'Now arriving on Court 3… Sarah Johnson! Let\'s give it up!',
           eventId,
           voicePresetId,
+          customVoiceId,
         }),
       });
       if (!res.ok) {

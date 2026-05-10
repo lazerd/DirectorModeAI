@@ -27,18 +27,18 @@ export interface VoicePreset {
 export const VOICE_PRESETS: VoicePreset[] = [
   {
     id: 'hype',
-    label: 'Hype Announcer',
-    description: 'Boxing-ring, "let\'s get ready to rumble" energy',
-    voiceId: 'ErXwobaYiN019PkySvjV', // Antoni — warm American, pushed to max style
-    stability: 0.25,
-    similarityBoost: 0.85,
+    label: 'Deep Hype',
+    description: 'Deeper, more dramatic delivery',
+    voiceId: '29vD33N1CtxCmqQRPOHJ', // Drew — deep American narrator with announcer cadence
+    stability: 0.2,
+    similarityBoost: 0.9,
     styleExaggeration: 0.95,
   },
   {
     id: 'stadium',
     label: 'Stadium Pro',
-    description: 'Deep, broadcast-booth authority',
-    voiceId: 'pNInz6obpgDQGcFmaJgB', // Adam — deep American narrator
+    description: 'Authoritative broadcast booth',
+    voiceId: 'pNInz6obpgDQGcFmaJgB', // Adam
     stability: 0.4,
     similarityBoost: 0.8,
     styleExaggeration: 0.7,
@@ -46,8 +46,8 @@ export const VOICE_PRESETS: VoicePreset[] = [
   {
     id: 'smooth',
     label: 'Smooth Host',
-    description: 'Modern, casual, friendly emcee (default)',
-    voiceId: 'nPczCjzI2devNBz1zQrb', // Brian — young narrator
+    description: 'Casual, friendly emcee',
+    voiceId: 'nPczCjzI2devNBz1zQrb', // Brian
     stability: 0.4,
     similarityBoost: 0.75,
     styleExaggeration: 0.65,
@@ -55,8 +55,8 @@ export const VOICE_PRESETS: VoicePreset[] = [
   {
     id: 'british',
     label: 'British Class',
-    description: 'Wimbledon-style commentary',
-    voiceId: 'onwK4e9ZLuTAKqWW03F9', // Daniel — British authoritative
+    description: 'Wimbledon commentary',
+    voiceId: 'onwK4e9ZLuTAKqWW03F9', // Daniel
     stability: 0.5,
     similarityBoost: 0.75,
     styleExaggeration: 0.55,
@@ -67,6 +67,23 @@ export const DEFAULT_VOICE_PRESET_ID = 'hype';
 
 export function getVoicePreset(id: string | undefined | null): VoicePreset {
   return VOICE_PRESETS.find((v) => v.id === id) ?? VOICE_PRESETS.find((v) => v.id === DEFAULT_VOICE_PRESET_ID)!;
+}
+
+/**
+ * Build a runtime voice preset from a custom ElevenLabs voice ID. The user
+ * can paste any voice ID from the ElevenLabs Voice Library here and we'll
+ * use it with high-energy default settings.
+ */
+export function buildCustomVoicePreset(voiceId: string): VoicePreset {
+  return {
+    id: 'custom',
+    label: 'Custom',
+    description: 'Custom voice ID',
+    voiceId,
+    stability: 0.3,
+    similarityBoost: 0.85,
+    styleExaggeration: 0.85,
+  };
 }
 
 export async function generateAnnouncerMp3(text: string, opts: TtsOptions = {}): Promise<Buffer> {
