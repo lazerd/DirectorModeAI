@@ -1118,6 +1118,7 @@ function WalkoutSongPicker({
   const [previewing, setPreviewing] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [duration, setDuration] = useState<number>(60);
+  const [isDragging, setIsDragging] = useState(false);
 
   async function handleUpload(file: File) {
     setUploading(true);
@@ -1218,8 +1219,34 @@ function WalkoutSongPicker({
                     if needed.
                   </p>
                   <label
-                    className={`block border-2 border-dashed border-white/20 rounded-xl p-8 text-center cursor-pointer hover:border-yellow-300/50 hover:bg-yellow-300/[0.02] transition-colors ${
+                    onDragEnter={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragging(true);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!isDragging) setIsDragging(true);
+                    }}
+                    onDragLeave={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragging(false);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsDragging(false);
+                      const f = e.dataTransfer.files?.[0];
+                      if (f) handleUpload(f);
+                    }}
+                    className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
                       uploading ? 'opacity-60 pointer-events-none' : ''
+                    } ${
+                      isDragging
+                        ? 'border-yellow-300 bg-yellow-300/10'
+                        : 'border-white/20 hover:border-yellow-300/50 hover:bg-yellow-300/[0.02]'
                     }`}
                   >
                     <input
@@ -1232,7 +1259,7 @@ function WalkoutSongPicker({
                       className="hidden"
                     />
                     <div className="text-white/80 font-medium">
-                      {uploading ? 'Uploading…' : 'Drop a file here or click to choose'}
+                      {uploading ? 'Uploading…' : isDragging ? 'Drop it!' : 'Drop a file here or click to choose'}
                     </div>
                     <div className="text-xs text-white/40 mt-2">Max 5 MB · MP3 / M4A / WAV / OGG</div>
                   </label>
