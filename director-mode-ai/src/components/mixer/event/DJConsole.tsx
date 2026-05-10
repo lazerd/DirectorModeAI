@@ -20,6 +20,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { generateScript, totalDurationSec, cueSpokenText, defaultOpeningText, defaultClosingText, type Cue, type ScriptOptions, type ScoringInfo, type ScriptMatch } from '@/lib/dj-script';
+import { VOICE_PRESETS } from '@/lib/elevenlabs';
 
 interface Player {
   id: string;
@@ -322,6 +323,17 @@ function ShowTab({
   const [rehearseOpen, setRehearseOpen] = useState(false);
   const [autoAdvance, setAutoAdvance] = useState(true);
   const autoAdvanceTimerRef = useRef<any>(null);
+  // Refs that track the latest values so async callbacks (announcer.onended, setTimeout)
+  // don't capture stale closure values from the render they were set up in.
+  const autoAdvanceRef = useRef(autoAdvance);
+  useEffect(() => {
+    autoAdvanceRef.current = autoAdvance;
+  }, [autoAdvance]);
+  const [voicePresetId, setVoicePresetId] = useState('hype');
+  const voicePresetIdRef = useRef(voicePresetId);
+  useEffect(() => {
+    voicePresetIdRef.current = voicePresetId;
+  }, [voicePresetId]);
 
   const announcerRef = useRef<HTMLAudioElement | null>(null);
   const songRef = useRef<HTMLAudioElement | null>(null);
@@ -426,7 +438,7 @@ function ShowTab({
     const res = await fetch('/api/dj/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, eventId }),
+      body: JSON.stringify({ text, eventId, voicePresetId: voicePresetIdRef.current }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -462,7 +474,10 @@ function ShowTab({
 
     // Wire up onended *before* playing
     const advanceOrPause = () => {
-      if (autoAdvance && index < cues.length - 1) {
+      // Read the latest autoAdvance from the ref so toggling mid-show works
+      const shouldAdvance = autoAdvanceRef.current;
+      console.log('[DJ] cue', index, 'ended; autoAdvance =', shouldAdvance, 'isLast =', index >= cues.length - 1);
+      if (shouldAdvance && index < cues.length - 1) {
         // Small gap between cues so it doesn't feel rushed
         autoAdvanceTimerRef.current = setTimeout(() => {
           playCueAt(index + 1);
@@ -493,12 +508,13 @@ function ShowTab({
     };
 
     setRunState({ kind: 'playing', index, phase: 'announcer' });
-    try {
-      await announcer.play();
-    } catch (err) {
-      console.error('announcer play failed', err);
-      setRunState({ kind: 'paused', index });
-    }
+    // Don't await — play() returns when audio STARTS, but a rejection (e.g., browser
+    // autoplay policy) would leave us stuck in 'paused' even though onended will still
+    // fire later. Just fire-and-forget; if the browser blocks playback the audio element
+    // emits an error event which we'd see in console but onended won't fire (correctly).
+    announcer.play().catch((err) => {
+      console.error('[DJ] announcer.play() failed', err);
+    });
   }
 
   function next() {
@@ -685,8 +701,31 @@ function ShowTab({
                   className="w-4 h-4"
                 />
                 Auto-advance between cues{' '}
-                <span className="text-white/30">(uncheck for manual Ballpark-DJ-style "hit Next per player")</span>
+                <span className="text-white/30">(uncheck for manual "hit Next per player" mode)</span>
               </label>
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-xs text-white/60 block mb-2">Announcer voice</label>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {VOICE_PRESETS.map((v) => (
+                  <button
+                    type="button"
+                    key={v.id}
+                    onClick={() => setVoicePresetId(v.id)}
+                    className={`text-left p-2.5 rounded-lg border transition-colors ${
+                      voicePresetId === v.id
+                        ? 'border-yellow-300 bg-yellow-300/10'
+                        : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
+                    }`}
+                  >
+                    <div className={`text-xs font-medium ${voicePresetId === v.id ? 'text-yellow-300' : 'text-white'}`}>
+                      {v.label}
+                    </div>
+                    <div className="text-[10px] text-white/40 mt-0.5">{v.description}</div>
+                  </button>
+                ))}
+              </div>
+              <VoicePreviewButton voicePresetId={voicePresetId} eventId={eventId} volume={volume} />
             </div>
             <div className="md:col-span-2">
               <div className="flex items-center justify-between mb-1">
@@ -1385,6 +1424,60 @@ function WalkoutSongPicker({
         )}
       </div>
     </div>
+  );
+}
+
+function VoicePreviewButton({
+  voicePresetId,
+  eventId,
+  volume,
+}: {
+  voicePresetId: string;
+  eventId: string;
+  volume: number;
+}) {
+  const [loading, setLoading] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const objUrlRef = useRef<string | null>(null);
+
+  async function play() {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/dj/speak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Now arriving on Court 3… Sarah Johnson! Let\'s give it up!',
+          eventId,
+          voicePresetId,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(err.message || 'Voice preview failed');
+        return;
+      }
+      const blob = await res.blob();
+      if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current);
+      objUrlRef.current = URL.createObjectURL(blob);
+      if (!audioRef.current) audioRef.current = new Audio();
+      audioRef.current.src = objUrlRef.current;
+      audioRef.current.volume = volume;
+      audioRef.current.play();
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={play}
+      disabled={loading}
+      className="mt-3 text-xs text-yellow-300 hover:text-yellow-200 disabled:opacity-50 flex items-center gap-1"
+    >
+      <Play size={11} /> {loading ? 'Generating preview…' : 'Preview this voice'}
+    </button>
   );
 }
 

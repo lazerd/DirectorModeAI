@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { eventCanUsePremium, claimFreeDjIfNeeded, getPlanContext, consumeTtsChars, eventHasDayPass } from '@/lib/billing';
-import { generateAnnouncerMp3 } from '@/lib/elevenlabs';
+import { generateAnnouncerMp3, getVoicePreset } from '@/lib/elevenlabs';
 
 export const runtime = 'nodejs';
 
@@ -20,13 +20,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
 
-    const { text, eventId } = await request.json();
+    const { text, eventId, voicePresetId } = await request.json();
     if (!text || !eventId) {
       return NextResponse.json({ error: 'text_and_eventId_required' }, { status: 400 });
     }
     if (text.length > 600) {
       return NextResponse.json({ error: 'text_too_long', message: 'Keep cue text under 600 characters.' }, { status: 400 });
     }
+    const preset = getVoicePreset(voicePresetId);
 
     // Gate access
     const allowed = await eventCanUsePremium(user.id, eventId, 'dj_console');
@@ -63,7 +64,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const mp3 = await generateAnnouncerMp3(text);
+    const mp3 = await generateAnnouncerMp3(text, {
+      voiceId: preset.voiceId,
+      stability: preset.stability,
+      similarityBoost: preset.similarityBoost,
+      styleExaggeration: preset.styleExaggeration,
+    });
     await consumeTtsChars(user.id, text.length);
 
     return new Response(new Uint8Array(mp3), {
