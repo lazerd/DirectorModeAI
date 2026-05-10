@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/server';
 import { getPlanContext, getUsage, TIER_LIMITS } from '@/lib/billing';
 import ManagePlanButton from '@/components/billing/ManagePlanButton';
 
+export const dynamic = 'force-dynamic';
+
 export default async function MixerSubscriptionPage() {
   const supabase = await createClient();
   const {
