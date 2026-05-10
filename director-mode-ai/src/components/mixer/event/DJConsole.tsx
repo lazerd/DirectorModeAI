@@ -19,7 +19,7 @@ import {
   Flag,
   ChevronDown,
 } from 'lucide-react';
-import { generateScript, totalDurationSec, cueSpokenText, type Cue, type ScriptOptions, type ScoringInfo, type ScriptMatch } from '@/lib/dj-script';
+import { generateScript, totalDurationSec, cueSpokenText, defaultOpeningText, defaultClosingText, type Cue, type ScriptOptions, type ScoringInfo, type ScriptMatch } from '@/lib/dj-script';
 
 interface Player {
   id: string;
@@ -306,8 +306,13 @@ function ShowTab({
   const [includeCourtIntros, setIncludeCourtIntros] = useState(true);
   const [includeScoringInfo, setIncludeScoringInfo] = useState(false);
   const [includeHype, setIncludeHype] = useState(false);
-  const [openingText, setOpeningText] = useState('');
-  const [closingText, setClosingText] = useState('');
+  const initialRound = rounds[0];
+  const [openingText, setOpeningText] = useState(() =>
+    initialRound ? defaultOpeningText(initialRound.roundNumber, eventName) : ''
+  );
+  const [closingText, setClosingText] = useState(() => defaultClosingText());
+  // Track which round each text was generated for, so switching round re-fills defaults
+  const [openingDefaultsForRoundId, setOpeningDefaultsForRoundId] = useState(initialRound?.id ?? null);
   const [showOptions, setShowOptions] = useState(false);
   const [runState, setRunState] = useState<RunState>({ kind: 'idle' });
   const [textOverrides, setTextOverrides] = useState<Record<string, string>>({});
@@ -322,6 +327,25 @@ function ShowTab({
     () => rounds.find((r) => r.id === selectedRoundId) ?? null,
     [rounds, selectedRoundId]
   );
+
+  // When the round changes, refresh the opening text default unless the user has customized it
+  // away from the previous round's default. We track openingDefaultsForRoundId to know when a
+  // round switch happens; if the current openingText still matches the previous round's
+  // default, we replace it with the new round's default. If the user typed something custom,
+  // we leave their edit alone.
+  useEffect(() => {
+    if (!round) return;
+    if (round.id === openingDefaultsForRoundId) return;
+    const prevRound = rounds.find((r) => r.id === openingDefaultsForRoundId);
+    const prevDefault = prevRound ? defaultOpeningText(prevRound.roundNumber, eventName) : '';
+    const userCustomized = openingText.trim() !== '' && openingText.trim() !== prevDefault.trim();
+    if (!userCustomized) {
+      setOpeningText(defaultOpeningText(round.roundNumber, eventName));
+    }
+    setOpeningDefaultsForRoundId(round.id);
+    // closingText doesn't depend on round number — leave it alone
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [round?.id]);
 
   // Find the prior round (one with a smaller round_number than current) for hype highlights
   const priorMatches: ScriptMatch[] = useMemo(() => {
@@ -651,21 +675,39 @@ function ShowTab({
               </label>
             </div>
             <div className="md:col-span-2">
-              <label className="text-xs text-white/60 block mb-1">Opening line (leave blank for default)</label>
-              <input
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-white/60">Opening line</label>
+                <button
+                  type="button"
+                  onClick={() => setOpeningText(round ? defaultOpeningText(round.roundNumber, eventName) : '')}
+                  className="text-[10px] text-white/40 hover:text-white/70 uppercase tracking-wider"
+                >
+                  Reset to default
+                </button>
+              </div>
+              <textarea
                 value={openingText}
                 onChange={(e) => setOpeningText(e.target.value)}
-                placeholder={`Welcome back to ${eventName}! It's time for Round ${round?.roundNumber ?? 1}…`}
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-white/30"
+                rows={2}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm resize-y"
               />
             </div>
             <div className="md:col-span-2">
-              <label className="text-xs text-white/60 block mb-1">Closing line</label>
-              <input
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs text-white/60">Closing line</label>
+                <button
+                  type="button"
+                  onClick={() => setClosingText(defaultClosingText())}
+                  className="text-[10px] text-white/40 hover:text-white/70 uppercase tracking-wider"
+                >
+                  Reset to default
+                </button>
+              </div>
+              <textarea
                 value={closingText}
                 onChange={(e) => setClosingText(e.target.value)}
-                placeholder="That's the lineup. Players ready… play ball!"
-                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder:text-white/30"
+                rows={2}
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm resize-y"
               />
             </div>
           </div>

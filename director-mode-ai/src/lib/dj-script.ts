@@ -72,12 +72,16 @@ const DEFAULT_OPTIONS = {
   closingText: '',
 } as const;
 
-function defaultOpening(roundNumber: number, eventName: string) {
+export function defaultOpeningText(roundNumber: number, eventName: string) {
   return `Welcome back to ${eventName}! It's time for Round ${roundNumber}. Players, this is your call.`;
 }
-function defaultClosing() {
+export function defaultClosingText() {
   return `That's the lineup. Players ready… play ball!`;
 }
+
+// Internal aliases used by generateScript
+const defaultOpening = defaultOpeningText;
+const defaultClosing = defaultClosingText;
 
 function scoringPhrase(scoring?: ScoringInfo): string {
   if (!scoring?.scoringFormat) return '';
