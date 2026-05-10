@@ -320,6 +320,8 @@ function ShowTab({
   const [runState, setRunState] = useState<RunState>({ kind: 'idle' });
   const [textOverrides, setTextOverrides] = useState<Record<string, string>>({});
   const [rehearseOpen, setRehearseOpen] = useState(false);
+  const [autoAdvance, setAutoAdvance] = useState(true);
+  const autoAdvanceTimerRef = useRef<any>(null);
 
   const announcerRef = useRef<HTMLAudioElement | null>(null);
   const songRef = useRef<HTMLAudioElement | null>(null);
@@ -400,6 +402,7 @@ function ShowTab({
 
   function stopAll() {
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
     if (announcerRef.current) {
       announcerRef.current.pause();
       announcerRef.current.currentTime = 0;
@@ -458,6 +461,17 @@ function ShowTab({
     announcer.volume = volume;
 
     // Wire up onended *before* playing
+    const advanceOrPause = () => {
+      if (autoAdvance && index < cues.length - 1) {
+        // Small gap between cues so it doesn't feel rushed
+        autoAdvanceTimerRef.current = setTimeout(() => {
+          playCueAt(index + 1);
+        }, 600);
+      } else {
+        setRunState({ kind: 'paused', index });
+      }
+    };
+
     announcer.onended = () => {
       if (cue.kind === 'player' && cue.walkoutSongUrl) {
         const song = songRef.current!;
@@ -470,13 +484,11 @@ function ShowTab({
         fadeTimerRef.current = setTimeout(() => {
           fadeOut(song, FADE_OUT_SEC, () => {
             song.pause();
-            // Auto-pause between cues — operator hits Next when ready
-            setRunState({ kind: 'paused', index });
+            advanceOrPause();
           });
         }, playMs);
       } else {
-        // No song to play — just pause for operator to hit Next
-        setRunState({ kind: 'paused', index });
+        advanceOrPause();
       }
     };
 
@@ -501,6 +513,7 @@ function ShowTab({
       }
       if (songRef.current) songRef.current.pause();
       if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+      if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
       playCueAt(cur + 1);
     }
   }
@@ -515,6 +528,7 @@ function ShowTab({
     }
     if (songRef.current) songRef.current.pause();
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
     playCueAt(cur - 1);
   }
 
@@ -522,6 +536,7 @@ function ShowTab({
     if (announcerRef.current && !announcerRef.current.paused) announcerRef.current.pause();
     if (songRef.current && !songRef.current.paused) songRef.current.pause();
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
     if (runState.kind === 'playing') {
       setRunState({ kind: 'paused', index: runState.index });
     }
@@ -661,6 +676,16 @@ function ShowTab({
                 ) : (
                   <span className="text-white/30">({priorMatches.filter((m) => m.winnerTeam).length} results available)</span>
                 )}
+              </label>
+              <label className="flex items-center gap-2 text-xs text-white/60 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoAdvance}
+                  onChange={(e) => setAutoAdvance(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                Auto-advance between cues{' '}
+                <span className="text-white/30">(uncheck for manual Ballpark-DJ-style "hit Next per player")</span>
               </label>
             </div>
             <div className="md:col-span-2">
