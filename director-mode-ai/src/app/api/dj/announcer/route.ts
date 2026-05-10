@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
 
     const service = await createServiceClient();
     const { data: player } = await service
-      .from('mixer_players')
+      .from('players')
       .select('id, name, walkout_announcer_audio_url')
       .eq('id', playerId)
       .single();
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
     } = service.storage.from('dj-audio').getPublicUrl(path);
 
     await service
-      .from('mixer_players')
+      .from('players')
       .update({ walkout_announcer_audio_url: publicUrl })
       .eq('id', playerId);
 

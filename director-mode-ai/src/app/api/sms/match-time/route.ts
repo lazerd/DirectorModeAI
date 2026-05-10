@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
 
     const service = await createServiceClient();
     const { data: round } = await service
-      .from('mixer_rounds')
+      .from('rounds')
       .select('round_number, event_id')
       .eq('id', roundId)
       .single();
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: matches } = await service
-      .from('mixer_matches')
+      .from('matches')
       .select('court_number, player1_id, player2_id, player3_id, player4_id')
       .eq('round_id', roundId);
 
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     const { data: players } = await service
-      .from('mixer_players')
+      .from('players')
       .select('id, name, phone, sms_opt_in')
       .in('id', playerIds);
 

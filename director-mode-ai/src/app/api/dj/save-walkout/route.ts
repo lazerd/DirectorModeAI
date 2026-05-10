@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
 
     const service = await createServiceClient();
     await service
-      .from('mixer_players')
+      .from('players')
       .update({
         walkout_song_url: songUrl || null,
         walkout_song_title: songTitle || null,

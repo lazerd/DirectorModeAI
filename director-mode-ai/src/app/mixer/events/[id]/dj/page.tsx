@@ -18,10 +18,11 @@ export default async function DJConsolePage({ params }: { params: Promise<{ id: 
   if (!user) redirect(`/login?redirect=/mixer/events/${eventId}/dj`);
 
   // Use service client for the event read so RLS doesn't reject server-side queries —
-  // we enforce ownership in code below.
+  // we enforce ownership in code below. The live tables are events/players/rounds/matches
+  // (v1); mixer_events etc. are 0-row v2 tables.
   const supabase = await createServiceClient();
   const { data: event } = await supabase
-    .from('mixer_events')
+    .from('events')
     .select('id, name, num_courts, user_id, scoring_format, target_games, round_length_minutes, match_format')
     .eq('id', eventId)
     .single();
@@ -69,17 +70,22 @@ export default async function DJConsolePage({ params }: { params: Promise<{ id: 
 
 
 
-  const { data: players } = await supabase
-    .from('mixer_players')
+  // Players are joined via event_players → players. Walkout fields live on players.
+  const { data: eventPlayers } = await supabase
+    .from('event_players')
     .select(
-      'id, name, walkout_song_url, walkout_song_title, walkout_song_artist, walkout_song_start_seconds, walkout_announcer_audio_url'
+      'player:players(id, name, walkout_song_url, walkout_song_title, walkout_song_artist, walkout_song_start_seconds, walkout_announcer_audio_url)'
     )
-    .eq('event_id', eventId)
-    .order('name');
+    .eq('event_id', eventId);
+
+  const players = (eventPlayers || [])
+    .map((ep: any) => ep.player)
+    .filter(Boolean)
+    .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
 
   // Fetch all rounds + matches so the script can reference real court assignments
   const { data: rounds } = await supabase
-    .from('mixer_rounds')
+    .from('rounds')
     .select('id, round_number, status')
     .eq('event_id', eventId)
     .order('round_number');
@@ -87,7 +93,7 @@ export default async function DJConsolePage({ params }: { params: Promise<{ id: 
   const roundIds = (rounds || []).map((r) => r.id);
   const { data: matches } = roundIds.length
     ? await supabase
-        .from('mixer_matches')
+        .from('matches')
         .select(
           'id, round_id, court_number, player1_id, player2_id, player3_id, player4_id, team1_score, team2_score, winner_team'
         )
@@ -117,7 +123,7 @@ export default async function DJConsolePage({ params }: { params: Promise<{ id: 
         eventId={eventId}
         eventName={event.name}
         numCourts={event.num_courts || 4}
-        players={(players || []).map((p) => ({
+        players={players.map((p: any) => ({
           id: p.id,
           name: p.name,
           walkoutSongUrl: p.walkout_song_url,

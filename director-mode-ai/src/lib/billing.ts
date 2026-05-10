@@ -119,7 +119,7 @@ export async function hasFeature(userId: string, feature: Feature): Promise<bool
 export async function eventHasDayPass(eventId: string): Promise<boolean> {
   const supabase = await createServiceClient();
   const { data } = await supabase
-    .from('mixer_events')
+    .from('events')
     .select('day_pass_purchased_at')
     .eq('id', eventId)
     .single();

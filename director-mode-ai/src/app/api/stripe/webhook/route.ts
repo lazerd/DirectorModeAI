@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
         if (eventId && session.mode === 'payment') {
           // Day Pass purchase — flip the event flag
           await service
-            .from('mixer_events')
+            .from('events')
             .update({
               day_pass_purchased_at: new Date().toISOString(),
               day_pass_stripe_session_id: session.id,
