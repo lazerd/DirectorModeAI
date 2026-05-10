@@ -157,39 +157,42 @@ export default function DJConsole({ eventId, eventName, numCourts, players: init
           eventId={eventId}
           player={players.find((p) => p.id === pickerForPlayerId)!}
           onClose={() => setPickerForPlayerId(null)}
-          onSave={async (track, startSeconds) => {
-            const res = await fetch('/api/dj/save-walkout', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                playerId: pickerForPlayerId,
-                eventId,
-                songUrl: track.audioUrl,
-                songTitle: track.title,
-                songArtist: track.user,
-                startSeconds,
-              }),
-            });
-            if (res.ok) {
-              setPlayers((prev) =>
-                prev.map((p) =>
-                  p.id === pickerForPlayerId
-                    ? {
-                        ...p,
-                        walkoutSongUrl: track.audioUrl,
-                        walkoutSongTitle: track.title,
-                        walkoutSongArtist: track.user,
-                        walkoutSongStartSeconds: startSeconds,
-                        walkoutAnnouncerAudioUrl: null,
-                      }
-                    : p
-                )
-              );
-              setPickerForPlayerId(null);
-            } else {
-              const err = await res.json();
-              alert(err.message || 'Could not save walkout song');
+          onSave={async (track, startSeconds, applyToAll) => {
+            const targetPlayerIds = applyToAll ? players.map((p) => p.id) : [pickerForPlayerId];
+            const results = await Promise.all(
+              targetPlayerIds.map((pid) =>
+                fetch('/api/dj/save-walkout', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    playerId: pid,
+                    eventId,
+                    songUrl: track.audioUrl,
+                    songTitle: track.title,
+                    songArtist: track.user,
+                    startSeconds,
+                  }),
+                }).then((r) => r.ok)
+              )
+            );
+            const succeeded = results.filter(Boolean).length;
+            if (succeeded === 0) {
+              alert('Could not save walkout song');
+              return;
             }
+            const updateFields = {
+              walkoutSongUrl: track.audioUrl,
+              walkoutSongTitle: track.title,
+              walkoutSongArtist: track.user,
+              walkoutSongStartSeconds: startSeconds,
+              walkoutAnnouncerAudioUrl: null,
+            };
+            setPlayers((prev) =>
+              prev.map((p) =>
+                applyToAll || p.id === pickerForPlayerId ? { ...p, ...updateFields } : p
+              )
+            );
+            setPickerForPlayerId(null);
           }}
           volume={volume}
         />
@@ -1100,6 +1103,14 @@ function RehearsalModal({
 // ============================================================
 // Walkout song picker (Pixabay)
 // ============================================================
+type PickerTab = 'upload' | 'library';
+
+interface UploadedClip {
+  url: string;
+  title: string;
+  duration: number | null;
+}
+
 function WalkoutSongPicker({
   eventId,
   player,
@@ -1110,57 +1121,75 @@ function WalkoutSongPicker({
   eventId: string;
   player: Player;
   onClose: () => void;
-  onSave: (track: PixabayTrack, startSeconds: number) => void;
+  onSave: (track: { audioUrl: string; title: string; user: string; duration: number; id: number }, startSeconds: number, applyToAll: boolean) => void;
   volume: number;
 }) {
-  const [query, setQuery] = useState('walkout hype');
-  const [tracks, setTracks] = useState<PixabayTrack[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [previewId, setPreviewId] = useState<number | null>(null);
-  const [selectedTrack, setSelectedTrack] = useState<PixabayTrack | null>(null);
+  const [tab, setTab] = useState<PickerTab>('upload');
+  const [uploaded, setUploaded] = useState<UploadedClip | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [startSeconds, setStartSeconds] = useState(0);
+  const [applyToAll, setApplyToAll] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [duration, setDuration] = useState<number>(60);
 
-  async function search(q: string) {
-    setLoading(true);
-    setQuery(q);
+  async function handleUpload(file: File) {
+    setUploading(true);
     try {
-      const res = await fetch(`/api/dj/pixabay-search?q=${encodeURIComponent(q)}&eventId=${eventId}`);
+      const fd = new FormData();
+      fd.set('file', file);
+      fd.set('eventId', eventId);
+      fd.set('playerId', player.id);
+      const res = await fetch('/api/dj/upload-walkout', { method: 'POST', body: fd });
       const data = await res.json();
-      if (res.ok) setTracks(data.tracks || []);
-      else alert(data.message || 'Search failed');
+      if (!res.ok) {
+        alert(data.message || 'Upload failed');
+        return;
+      }
+      setUploaded({ url: data.url, title: data.title, duration: data.duration });
+      setStartSeconds(0);
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   }
 
-  useEffect(() => {
-    search(query);
-    return () => {
-      if (previewAudioRef.current) previewAudioRef.current.pause();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  function previewToggle(track: PixabayTrack) {
-    if (!previewAudioRef.current) return;
-    if (previewId === track.id) {
+  function previewToggle() {
+    if (!previewAudioRef.current || !uploaded) return;
+    if (previewing) {
       previewAudioRef.current.pause();
-      setPreviewId(null);
+      setPreviewing(false);
       return;
     }
-    previewAudioRef.current.src = track.previewUrl || track.audioUrl;
+    previewAudioRef.current.src = uploaded.url;
     previewAudioRef.current.volume = volume;
-    previewAudioRef.current.currentTime = 0;
+    previewAudioRef.current.currentTime = startSeconds;
     previewAudioRef.current.play();
-    setPreviewId(track.id);
-    previewAudioRef.current.onended = () => setPreviewId(null);
+    setPreviewing(true);
+    previewAudioRef.current.onended = () => setPreviewing(false);
+  }
+
+  function save() {
+    if (!uploaded) return;
+    onSave(
+      {
+        audioUrl: uploaded.url,
+        title: uploaded.title,
+        user: 'Uploaded',
+        duration: duration,
+        id: Date.now(),
+      },
+      startSeconds,
+      applyToAll
+    );
   }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end md:items-center justify-center p-4">
-      <audio ref={previewAudioRef} />
-      <div className="bg-[#002838] border border-white/10 rounded-2xl w-full max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
+      <audio
+        ref={previewAudioRef}
+        onLoadedMetadata={(e) => setDuration(Math.floor(e.currentTarget.duration))}
+      />
+      <div className="bg-[#002838] border border-white/10 rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <div className="p-5 border-b border-white/10 flex items-center justify-between">
           <div>
             <div className="text-xs text-white/40 uppercase tracking-wider">Walkout song for</div>
@@ -1171,90 +1200,138 @@ function WalkoutSongPicker({
           </button>
         </div>
 
-        <div className="p-4 border-b border-white/10 flex gap-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && search(query)}
-            placeholder="Try: walkout, hype, rock, hip hop, anthem…"
-            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white placeholder:text-white/30 text-sm"
-          />
+        <div className="flex border-b border-white/10">
           <button
-            onClick={() => search(query)}
-            className="px-4 py-2 rounded-lg bg-yellow-300 text-[#001820] text-sm font-medium hover:bg-yellow-200 disabled:opacity-50"
-            disabled={loading}
+            onClick={() => setTab('upload')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              tab === 'upload' ? 'text-yellow-300 border-b-2 border-yellow-300' : 'text-white/50 hover:text-white'
+            }`}
           >
-            {loading ? 'Searching…' : 'Search'}
+            Upload your own
+          </button>
+          <button
+            onClick={() => setTab('library')}
+            className={`flex-1 py-3 text-sm font-medium transition-colors ${
+              tab === 'library' ? 'text-yellow-300 border-b-2 border-yellow-300' : 'text-white/50 hover:text-white'
+            }`}
+          >
+            Library
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-4">
-          {loading && tracks.length === 0 ? (
-            <div className="text-white/50 text-center py-12">Loading…</div>
-          ) : tracks.length === 0 ? (
-            <div className="text-white/40 text-center py-12">No tracks found.</div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {tracks.map((t) => {
-                const isSelected = selectedTrack?.id === t.id;
-                const isPreviewing = previewId === t.id;
-                return (
-                  <div
-                    key={t.id}
-                    onClick={() => setSelectedTrack(t)}
-                    className={`rounded-xl border p-3 cursor-pointer transition-colors ${
-                      isSelected
-                        ? 'border-yellow-300/50 bg-yellow-300/5'
-                        : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
+        <div className="overflow-y-auto flex-1 p-6">
+          {tab === 'upload' && (
+            <div>
+              {!uploaded ? (
+                <div>
+                  <p className="text-white/70 text-sm mb-4">
+                    Upload a 10–30 second MP3, M4A, or WAV clip. Trim it first at{' '}
+                    <a href="https://mp3cut.net" target="_blank" rel="noopener" className="text-yellow-300 hover:underline">
+                      mp3cut.net
+                    </a>{' '}
+                    if needed.
+                  </p>
+                  <label
+                    className={`block border-2 border-dashed border-white/20 rounded-xl p-8 text-center cursor-pointer hover:border-yellow-300/50 hover:bg-yellow-300/[0.02] transition-colors ${
+                      uploading ? 'opacity-60 pointer-events-none' : ''
                     }`}
                   >
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          previewToggle(t);
-                        }}
-                        className="w-9 h-9 rounded-full bg-yellow-300/10 hover:bg-yellow-300/20 text-yellow-300 flex items-center justify-center flex-shrink-0"
-                      >
-                        {isPreviewing ? <Square size={14} /> : <Play size={14} />}
-                      </button>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-white text-sm font-medium truncate">{t.title}</div>
-                        <div className="text-white/40 text-xs truncate">
-                          {t.user} · {t.duration}s
-                        </div>
-                      </div>
+                    <input
+                      type="file"
+                      accept="audio/*,.mp3,.m4a,.wav,.ogg"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) handleUpload(f);
+                      }}
+                      className="hidden"
+                    />
+                    <div className="text-white/80 font-medium">
+                      {uploading ? 'Uploading…' : 'Drop a file here or click to choose'}
                     </div>
+                    <div className="text-xs text-white/40 mt-2">Max 5 MB · MP3 / M4A / WAV / OGG</div>
+                  </label>
+                  <div className="mt-6 text-xs text-white/40 leading-relaxed">
+                    <strong className="text-white/60">Tip — getting a clip from Amazon Music or Spotify:</strong>
+                    <ol className="list-decimal list-inside mt-1 space-y-0.5">
+                      <li>Find the song on YouTube → use{' '}
+                        <a href="https://ytmp3.cc" target="_blank" rel="noopener" className="text-yellow-300 hover:underline">ytmp3.cc</a>{' '}
+                        to download MP3
+                      </li>
+                      <li>Trim to 10–15 sec at{' '}
+                        <a href="https://mp3cut.net" target="_blank" rel="noopener" className="text-yellow-300 hover:underline">mp3cut.net</a>
+                      </li>
+                      <li>Upload here</li>
+                    </ol>
                   </div>
-                );
-              })}
+                </div>
+              ) : (
+                <div className="rounded-xl border border-yellow-300/40 bg-yellow-300/5 p-4">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={previewToggle}
+                      className="w-12 h-12 rounded-full bg-yellow-300 text-[#001820] flex items-center justify-center hover:bg-yellow-200"
+                    >
+                      {previewing ? <Square size={18} /> : <Play size={18} />}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-white font-medium truncate">{uploaded.title}</div>
+                      <div className="text-xs text-white/50">Uploaded · {duration}s</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setUploaded(null);
+                        setStartSeconds(0);
+                      }}
+                      className="text-xs text-white/50 hover:text-white px-2"
+                    >
+                      Replace
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {tab === 'library' && (
+            <div className="text-center py-16 text-white/50">
+              <Music size={32} className="mx-auto mb-3 text-white/30" />
+              <div className="font-medium text-white/70 mb-2">Curated library coming soon</div>
+              <div className="text-sm text-white/40 max-w-sm mx-auto">
+                For now, use the <strong className="text-yellow-300">Upload your own</strong> tab. We're sourcing a starter pack of royalty-free walkout tracks.
+              </div>
             </div>
           )}
         </div>
 
-        {selectedTrack && (
-          <div className="p-4 border-t border-white/10 bg-[#001820]">
-            <div className="text-xs text-white/50 mb-2">
-              Selected: <span className="text-white">{selectedTrack.title}</span>
-            </div>
+        {uploaded && (
+          <div className="p-4 border-t border-white/10 bg-[#001820] space-y-3">
             <div className="flex items-center gap-3">
-              <label className="text-xs text-white/60 flex-shrink-0">Start at</label>
+              <label className="text-xs text-white/60 flex-shrink-0 w-16">Start at</label>
               <input
                 type="range"
                 min={0}
-                max={Math.max(0, selectedTrack.duration - 10)}
+                max={Math.max(0, duration - 5)}
                 value={startSeconds}
                 onChange={(e) => setStartSeconds(Number(e.target.value))}
                 className="flex-1"
               />
               <div className="text-xs text-white w-12 text-right">{startSeconds}s</div>
-              <button
-                onClick={() => onSave(selectedTrack, startSeconds)}
-                className="px-4 py-2 rounded-lg bg-yellow-300 text-[#001820] text-sm font-medium hover:bg-yellow-200"
-              >
-                Save walkout song
-              </button>
             </div>
+            <label className="flex items-center gap-2 text-xs text-white/60 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={applyToAll}
+                onChange={(e) => setApplyToAll(e.target.checked)}
+                className="w-4 h-4"
+              />
+              Use this song for <strong className="text-white">all players</strong> in the event (one click instead of picking individually)
+            </label>
+            <button
+              onClick={save}
+              className="w-full px-4 py-2.5 rounded-lg bg-yellow-300 text-[#001820] text-sm font-semibold hover:bg-yellow-200"
+            >
+              {applyToAll ? 'Save for all players' : 'Save walkout song'}
+            </button>
           </div>
         )}
       </div>
