@@ -416,23 +416,9 @@ function ShowTab({
   }
 
   async function fetchAnnouncerForCue(cue: Cue): Promise<string> {
-    const isOverridden = !!textOverrides[cue.id];
-    if (cue.kind === 'player' && !isOverridden) {
-      // Use cached per-player announcer (saves on ElevenLabs cost)
-      const res = await fetch('/api/dj/announcer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          playerId: cue.playerId,
-          eventId,
-          courtNumber: cue.courtNumber,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'announcer_failed');
-      return data.url;
-    }
-    // Custom text path: opening / hype / court_intro / closing / overridden player cue
+    // All cues route through /api/dj/speak so the rendered announcer text (which
+    // can be a team name like "Sarah and Mike", an overridden line from rehearsal,
+    // or any custom opening/closing/court-intro/hype text) gets spoken verbatim.
     const text = cueSpokenText(cue);
     const res = await fetch('/api/dj/speak', {
       method: 'POST',

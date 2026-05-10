@@ -219,19 +219,33 @@ export function generateScript(
       });
     }
 
-    for (const p of playerObjs) {
+    // Group players into teams. Doubles (4 players) → 2 teams of 2. Singles → 2 teams of 1.
+    // For mixed/odd counts, emit one cue per player as a fallback.
+    const isDoubles = playerObjs.length === 4;
+    const teams: ScriptPlayer[][] =
+      isDoubles
+        ? [[playerObjs[0], playerObjs[1]], [playerObjs[2], playerObjs[3]]]
+        : playerObjs.map((p) => [p]);
+
+    for (const team of teams) {
+      const primary = team.find((p) => p.walkoutSongUrl) ?? team[0];
+      const teammate = team.length > 1 ? team.find((p) => p.id !== primary.id) ?? null : null;
+      const announcerText =
+        team.length === 1
+          ? buildPlayerAnnouncerText(primary.name, match.courtNumber)
+          : `Now arriving on Court ${match.courtNumber}… ${formatTeam(team.map((p) => p.name))}!`;
       cues.push({
         kind: 'player',
-        id: `player-${match.id}-${p.id}`,
-        playerId: p.id,
-        playerName: p.name,
+        id: `team-${match.id}-${primary.id}`,
+        playerId: primary.id,
+        playerName: team.length === 1 ? primary.name : formatTeam(team.map((p) => p.name)),
         courtNumber: match.courtNumber,
-        announcerText: buildPlayerAnnouncerText(p.name, match.courtNumber),
-        announcerAudioUrl: p.walkoutAnnouncerAudioUrl,
-        walkoutSongUrl: p.walkoutSongUrl,
-        walkoutSongTitle: p.walkoutSongTitle,
-        walkoutSongStartSeconds: p.walkoutSongStartSeconds,
-        durationSec: p.walkoutSongUrl ? opts.walkoutDurationSec + 4 : 4,
+        announcerText,
+        announcerAudioUrl: null, // team intros aren't cached on player; always regenerate
+        walkoutSongUrl: primary.walkoutSongUrl,
+        walkoutSongTitle: primary.walkoutSongTitle,
+        walkoutSongStartSeconds: primary.walkoutSongStartSeconds,
+        durationSec: primary.walkoutSongUrl ? opts.walkoutDurationSec + 4 : 4,
       });
     }
   }
