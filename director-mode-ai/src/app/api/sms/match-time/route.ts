@@ -3,6 +3,8 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { sendSmsBatch } from '@/lib/twilio';
 import { getPlanContext, eventHasDayPass, CreditLimitError } from '@/lib/billing';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();

@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Sparkles } from 'lucide-react';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { eventCanUsePremium } from '@/lib/billing';
 import DJConsole from '@/components/mixer/event/DJConsole';
 import DayPassButton from '@/components/billing/DayPassButton';
@@ -11,12 +11,15 @@ export const dynamic = 'force-dynamic';
 export default async function DJConsolePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
 
-  const supabase = await createClient();
+  const auth = await createClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) redirect(`/login?redirect=/mixer/events/${eventId}/dj`);
 
+  // Use service client for the event read so RLS doesn't reject server-side queries —
+  // we enforce ownership in code below.
+  const supabase = await createServiceClient();
   const { data: event } = await supabase
     .from('mixer_events')
     .select('id, name, num_courts, user_id, scoring_format, target_games, round_length_minutes, match_format')

@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { eventCanUsePremium } from '@/lib/billing';
 import { searchPixabayMusic } from '@/lib/pixabay';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();

@@ -3,6 +3,8 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { eventCanUsePremium, consumeTtsChars, claimFreeDjIfNeeded, getPlanContext, eventHasDayPass } from '@/lib/billing';
 import { generateAnnouncerMp3, buildAnnouncementText } from '@/lib/elevenlabs';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
