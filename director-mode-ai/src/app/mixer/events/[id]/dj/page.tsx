@@ -6,6 +6,8 @@ import { eventCanUsePremium } from '@/lib/billing';
 import DJConsole from '@/components/mixer/event/DJConsole';
 import DayPassButton from '@/components/billing/DayPassButton';
 
+export const dynamic = 'force-dynamic';
+
 export default async function DJConsolePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
 
