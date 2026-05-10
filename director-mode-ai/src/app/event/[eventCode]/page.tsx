@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, Calendar, Clock, Trophy, TrendingUp, TrendingDown, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
+import PublicRoundTimer from "@/components/mixer/event/PublicRoundTimer";
+import PublicScoreDialog from "@/components/mixer/event/PublicScoreDialog";
 
 interface Event {
   id: string;
@@ -18,15 +20,19 @@ interface Event {
   start_time: string | null;
   scoring_format: string;
   num_courts: number;
+  round_length_minutes: number | null;
 }
 
 interface Standing {
+  player_id: string;
   player_name: string;
   wins: number;
   losses: number;
   games_won: number;
   games_lost: number;
+  games_differential: number;
   win_percentage: number;
+  display_rank: string;
 }
 
 interface Match {
@@ -35,10 +41,10 @@ interface Match {
   team1_score: number | null;
   team2_score: number | null;
   winner_team: number | null;
-  player1_name: string;
-  player2_name: string;
-  player3_name: string;
-  player4_name: string;
+  player1_name: string | null;
+  player2_name: string | null;
+  player3_name: string | null;
+  player4_name: string | null;
 }
 
 interface Round {
@@ -46,6 +52,7 @@ interface Round {
   round_number: number;
   status: string;
   start_time: string | null;
+  timer_paused_at: string | null;
   matches: Match[];
 }
 
@@ -57,6 +64,7 @@ export default function PublicEvent() {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scoreEntryMatch, setScoreEntryMatch] = useState<{ id: string; court_number: number; team1_score: number | null; team2_score: number | null; player1_name: string | null; player2_name: string | null; player3_name: string | null; player4_name: string | null } | null>(null);
 
   useEffect(() => {
     fetchEventData();
@@ -67,6 +75,9 @@ export default function PublicEvent() {
         fetchStandings();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, () => {
+        fetchRounds();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rounds' }, () => {
         fetchRounds();
       })
       .subscribe();
@@ -124,19 +135,78 @@ export default function PublicEvent() {
       `)
       .eq("event_id", eventData.id);
 
-    if (!error && data) {
-      const formattedStandings: Standing[] = data.map((item: any) => ({
-        player_name: item.players.name,
-        wins: item.wins || 0,
-        losses: item.losses || 0,
-        games_won: item.games_won || 0,
-        games_lost: item.games_lost || 0,
-        win_percentage: item.wins + item.losses > 0 
-          ? (item.wins / (item.wins + item.losses)) * 100 
-          : 0,
-      }));
+    const { data: matchData } = await supabase
+      .from("matches")
+      .select(`player1_id, player2_id, player3_id, player4_id, winner_team, rounds!inner(event_id)`)
+      .eq("rounds.event_id", eventData.id)
+      .not("winner_team", "is", null);
 
-      formattedStandings.sort((a, b) => b.win_percentage - a.win_percentage);
+    // Head-to-head between two players: in our schema, Team 1 = (p1, p3) and Team 2 = (p2, p4).
+    const headToHead = (a: string, b: string) => {
+      let aWins = 0, bWins = 0;
+      for (const m of matchData || []) {
+        const team1 = [m.player1_id, m.player3_id].filter(Boolean);
+        const team2 = [m.player2_id, m.player4_id].filter(Boolean);
+        const aTeam = team1.includes(a) ? 1 : team2.includes(a) ? 2 : null;
+        const bTeam = team1.includes(b) ? 1 : team2.includes(b) ? 2 : null;
+        if (aTeam && bTeam && aTeam !== bTeam) {
+          if (m.winner_team === aTeam) aWins++;
+          if (m.winner_team === bTeam) bWins++;
+        }
+      }
+      return { aWins, bWins };
+    };
+
+    if (!error && data) {
+      const formattedStandings: Standing[] = data.map((item: any) => {
+        const totalMatches = (item.wins ?? 0) + (item.losses ?? 0);
+        const gw = item.games_won ?? 0;
+        const gl = item.games_lost ?? 0;
+        return {
+          player_id: item.player_id,
+          player_name: item.players.name,
+          wins: item.wins ?? 0,
+          losses: item.losses ?? 0,
+          games_won: gw,
+          games_lost: gl,
+          games_differential: gw - gl,
+          win_percentage: totalMatches > 0 ? (item.wins / totalMatches) * 100 : 0,
+          display_rank: "",
+        };
+      });
+
+      formattedStandings.sort((a, b) => {
+        if (b.win_percentage !== a.win_percentage) return b.win_percentage - a.win_percentage;
+        if (b.games_differential !== a.games_differential) return b.games_differential - a.games_differential;
+        if (a.games_lost !== b.games_lost) return a.games_lost - b.games_lost;
+        const h2h = headToHead(a.player_id, b.player_id);
+        if (h2h.aWins !== h2h.bWins) return h2h.bWins - h2h.aWins;
+        return a.player_name.localeCompare(b.player_name);
+      });
+
+      // Display ranks with T- prefix on ties
+      for (let i = 0; i < formattedStandings.length; i++) {
+        if (i === 0) {
+          formattedStandings[i].display_rank = "1";
+          continue;
+        }
+        const cur = formattedStandings[i];
+        const prev = formattedStandings[i - 1];
+        const tiedOnAllVisible = cur.win_percentage === prev.win_percentage
+          && cur.games_differential === prev.games_differential
+          && cur.games_lost === prev.games_lost;
+        const h2h = tiedOnAllVisible ? headToHead(cur.player_id, prev.player_id) : { aWins: 0, bWins: 0 };
+        if (tiedOnAllVisible && h2h.aWins === h2h.bWins) {
+          if (!prev.display_rank.startsWith("T-")) {
+            const r = parseInt(prev.display_rank);
+            prev.display_rank = `T-${r}`;
+          }
+          cur.display_rank = prev.display_rank;
+        } else {
+          cur.display_rank = String(i + 1);
+        }
+      }
+
       setStandings(formattedStandings);
     }
   };
@@ -159,6 +229,7 @@ export default function PublicEvent() {
         round_number,
         status,
         start_time,
+        timer_paused_at,
         matches (
           id,
           court_number,
@@ -180,16 +251,17 @@ export default function PublicEvent() {
         round_number: round.round_number,
         status: round.status,
         start_time: round.start_time,
+        timer_paused_at: round.timer_paused_at ?? null,
         matches: round.matches.map((match: any) => ({
           id: match.id,
           court_number: match.court_number,
           team1_score: match.team1_score,
           team2_score: match.team2_score,
           winner_team: match.winner_team,
-          player1_name: match.player1?.name || "TBD",
-          player2_name: match.player2?.name || "TBD",
-          player3_name: match.player3?.name || "TBD",
-          player4_name: match.player4?.name || "TBD",
+          player1_name: match.player1?.name || null,
+          player2_name: match.player2?.name || null,
+          player3_name: match.player3?.name || null,
+          player4_name: match.player4?.name || null,
         })),
       }));
 
@@ -201,18 +273,18 @@ export default function PublicEvent() {
     const diff = gamesWon - gamesLost;
     if (diff > 0) {
       return (
-        <span className="flex items-center gap-1 text-green-600">
+        <span className="inline-flex items-center justify-center gap-1" style={{ color: '#16a34a' }}>
           <TrendingUp className="h-4 w-4" />+{diff}
         </span>
       );
     } else if (diff < 0) {
       return (
-        <span className="flex items-center gap-1 text-red-600">
+        <span className="inline-flex items-center justify-center gap-1" style={{ color: '#dc2626' }}>
           <TrendingDown className="h-4 w-4" />{diff}
         </span>
       );
     }
-    return <span className="text-muted-foreground">0</span>;
+    return <span style={{ color: '#6b7280' }}>0</span>;
   };
 
   if (loading) {
@@ -261,67 +333,59 @@ export default function PublicEvent() {
       </header>
 
       <main className="container mx-auto px-4 py-8">
-        <Tabs defaultValue="standings" className="w-full">
+        <Tabs defaultValue="rounds" className="w-full">
           <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 h-12">
             <TabsTrigger value="standings" className="text-sm sm:text-base">Standings</TabsTrigger>
             <TabsTrigger value="rounds" className="text-sm sm:text-base">Courts & Matches</TabsTrigger>
           </TabsList>
 
           <TabsContent value="standings" className="mt-6">
-            <Card>
+            <Card style={{ background: '#ffffff', color: '#111827' }}>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2" style={{ color: '#000000' }}>
                   <Trophy className="h-5 w-5" />
                   Current Standings
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent style={{ color: '#000000' }}>
                 {standings.length === 0 ? (
                   <p className="text-center text-muted-foreground py-8">
                     No matches have been played yet.
                   </p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="w-12">Rank</TableHead>
-                          <TableHead>Player</TableHead>
-                          <TableHead className="text-center">W</TableHead>
-                          <TableHead className="text-center">L</TableHead>
-                          <TableHead className="text-center">Win %</TableHead>
-                          <TableHead className="text-center">Games</TableHead>
-                          <TableHead className="text-center">+/-</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
+                  <div className="overflow-x-auto" style={{ color: '#000000' }}>
+                    <table className="w-full border-collapse" style={{ color: '#000000' }}>
+                      <thead>
+                        <tr style={{ borderBottom: '2px solid #e5e7eb' }}>
+                          <th className="text-left p-3 font-bold" style={{ color: '#000000' }}>Rank</th>
+                          <th className="text-left p-3 font-bold" style={{ color: '#000000' }}>Player</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>W</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>L</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>Win %</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>Games</th>
+                          <th className="text-center p-3 font-bold" style={{ color: '#000000' }}>+/-</th>
+                        </tr>
+                      </thead>
+                      <tbody>
                         {standings.map((standing, index) => (
-                          <TableRow key={standing.player_name}>
-                            <TableCell className="font-medium">
-                              {index === 0 ? (
-                                <span className="flex items-center gap-1">
-                                  🏆 {index + 1}
-                                </span>
+                          <tr key={standing.player_id} style={{ borderBottom: '1px solid #f3f4f6', color: '#111827' }}>
+                            <td className="p-3 font-bold" style={{ color: '#000000' }}>
+                              {index === 0 && standing.display_rank === "1" ? (
+                                <span className="flex items-center gap-1">🏆 1</span>
                               ) : (
-                                index + 1
+                                standing.display_rank
                               )}
-                            </TableCell>
-                            <TableCell className="font-medium">{standing.player_name}</TableCell>
-                            <TableCell className="text-center">{standing.wins}</TableCell>
-                            <TableCell className="text-center">{standing.losses}</TableCell>
-                            <TableCell className="text-center">
-                              {standing.win_percentage.toFixed(0)}%
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {standing.games_won}-{standing.games_lost}
-                            </TableCell>
-                            <TableCell className="text-center">
-                              {getGamesDiff(standing.games_won, standing.games_lost)}
-                            </TableCell>
-                          </TableRow>
+                            </td>
+                            <td className="p-3 font-semibold" style={{ color: '#000000' }}>{standing.player_name}</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{standing.wins}</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{standing.losses}</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{standing.win_percentage.toFixed(0)}%</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{standing.games_won}-{standing.games_lost}</td>
+                            <td className="text-center p-3" style={{ color: '#000000' }}>{getGamesDiff(standing.games_won, standing.games_lost)}</td>
+                          </tr>
                         ))}
-                      </TableBody>
-                    </Table>
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </CardContent>
@@ -329,6 +393,27 @@ export default function PublicEvent() {
           </TabsContent>
 
           <TabsContent value="rounds" className="mt-6 space-y-6">
+            {(() => {
+              const activeTimedRound = rounds.find(
+                (r) => r.status === "in_progress" && r.start_time
+              );
+              if (
+                activeTimedRound &&
+                activeTimedRound.start_time &&
+                event?.scoring_format === "timed" &&
+                event?.round_length_minutes
+              ) {
+                return (
+                  <PublicRoundTimer
+                    startTime={activeTimedRound.start_time}
+                    pausedAt={activeTimedRound.timer_paused_at}
+                    durationMinutes={event.round_length_minutes}
+                    roundNumber={activeTimedRound.round_number}
+                  />
+                );
+              }
+              return null;
+            })()}
             {rounds.length === 0 ? (
               <Card>
                 <CardContent className="py-8">
@@ -338,7 +423,9 @@ export default function PublicEvent() {
                 </CardContent>
               </Card>
             ) : (
-              rounds.map((round) => (
+              rounds.map((round) => {
+                const canEnterScore = round.status === "in_progress";
+                return (
                 <Card key={round.id}>
                   <CardHeader>
                     <div className="flex items-center justify-between">
@@ -347,41 +434,105 @@ export default function PublicEvent() {
                         {round.status.replace("_", " ")}
                       </Badge>
                     </div>
+                    {canEnterScore && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Tap your match to enter the score. The director will verify before completing the round.
+                      </p>
+                    )}
                   </CardHeader>
                   <CardContent>
                     <div className="grid gap-4">
-                      {round.matches.map((match) => (
-                        <div key={match.id} className="border rounded-lg p-4">
-                          <div className="flex items-center justify-between mb-3">
-                            <Badge variant="outline">Court {match.court_number}</Badge>
-                            {match.team1_score !== null && match.team2_score !== null && (
-                              <div className="text-lg font-bold">
-                                {match.team1_score} - {match.team2_score}
+                      {round.matches.map((match) => {
+                        const isBye = !match.player2_name;
+                        const isSingles = !isBye && !match.player3_name && !match.player4_name;
+
+                        if (isBye) {
+                          return (
+                            <div key={match.id} className="border rounded-lg p-4 flex items-center justify-between">
+                              <Badge variant="outline">BYE</Badge>
+                              <p className="text-sm font-medium">{match.player1_name}</p>
+                            </div>
+                          );
+                        }
+
+                        const cardCommon = "border rounded-lg p-4";
+                        const interactive = canEnterScore
+                          ? "cursor-pointer hover:border-primary hover:shadow-md transition-all active:scale-[0.99]"
+                          : "";
+
+                        const onClick = canEnterScore
+                          ? () => setScoreEntryMatch({
+                              id: match.id,
+                              court_number: match.court_number,
+                              team1_score: match.team1_score,
+                              team2_score: match.team2_score,
+                              player1_name: match.player1_name,
+                              player2_name: match.player2_name,
+                              player3_name: match.player3_name,
+                              player4_name: match.player4_name,
+                            })
+                          : undefined;
+
+                        return (
+                          <div
+                            key={match.id}
+                            className={`${cardCommon} ${interactive}`}
+                            onClick={onClick}
+                            role={canEnterScore ? "button" : undefined}
+                            tabIndex={canEnterScore ? 0 : undefined}
+                          >
+                            <div className="flex items-center justify-between mb-3">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline">Court {match.court_number}</Badge>
+                                {isSingles && <Badge variant="secondary">Singles</Badge>}
+                              </div>
+                              {match.team1_score !== null && match.team2_score !== null && (match.team1_score > 0 || match.team2_score > 0) && (
+                                <div className="text-lg font-bold">
+                                  {match.team1_score} - {match.team2_score}
+                                </div>
+                              )}
+                            </div>
+                            {isSingles ? (
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p>{match.player1_name}</p>
+                                </div>
+                                <div>
+                                  <p>{match.player2_name}</p>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="grid grid-cols-2 gap-4 text-sm">
+                                <div>
+                                  <p className="font-medium mb-1">Team 1</p>
+                                  <p>{match.player1_name}</p>
+                                  <p>{match.player3_name}</p>
+                                </div>
+                                <div>
+                                  <p className="font-medium mb-1">Team 2</p>
+                                  <p>{match.player2_name}</p>
+                                  <p>{match.player4_name}</p>
+                                </div>
                               </div>
                             )}
                           </div>
-                          <div className="grid grid-cols-2 gap-4 text-sm">
-                            <div>
-                              <p className="font-medium mb-1">Team 1</p>
-                              <p>{match.player1_name}</p>
-                              <p>{match.player2_name}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium mb-1">Team 2</p>
-                              <p>{match.player3_name}</p>
-                              <p>{match.player4_name}</p>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </CardContent>
                 </Card>
-              ))
+                );
+              })
             )}
           </TabsContent>
         </Tabs>
       </main>
+      <PublicScoreDialog
+        match={scoreEntryMatch}
+        open={!!scoreEntryMatch}
+        onOpenChange={(open) => { if (!open) setScoreEntryMatch(null); }}
+        onSaved={fetchRounds}
+      />
     </div>
   );
 }

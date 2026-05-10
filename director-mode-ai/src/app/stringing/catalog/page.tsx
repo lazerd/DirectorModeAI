@@ -51,7 +51,9 @@ export default function CatalogPage() {
     <div className="p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div><h1 className="font-semibold text-2xl">String Catalog</h1><p className="text-gray-500 text-sm">Manage your inventory</p></div>
-        <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700"><Plus size={18} />Add String</button>
+        {!showAdd && (
+          <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700"><Plus size={18} />Add String</button>
+        )}
       </div>
 
       <div className="relative mb-6">

@@ -102,19 +102,19 @@ export default function MixerHomePage() {
   }
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="font-semibold text-2xl sm:text-3xl mb-1">My Events</h1>
           <p className="text-gray-500">Manage your mixers and tournaments</p>
         </div>
-        <Link href="/mixer/select-format" className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600">
+        <Link href="/mixer/select-format" className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600">
           <Plus size={18} />
           Create Event
         </Link>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-xl border p-4 flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center bg-orange-100 text-orange-600">
             <Calendar size={22} />

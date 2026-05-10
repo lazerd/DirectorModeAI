@@ -280,12 +280,32 @@ select.input {
   padding-right: 2.5rem;
 }
 
+/* Form controls + labels: default to dark text so they're readable on
+   white card backgrounds (mixer/stringing/courtconnect forms). Inside .card
+   containers (the dark themed register/login surface) we restore the light
+   foreground via the .card override below. Components that opt into the
+   dark .input class set their own color and are unaffected. */
+label {
+  color: #334155;
+}
+
+input:not([class*="text-"]):not(.input),
+select:not([class*="text-"]):not(.input),
+textarea:not([class*="text-"]):not(.input) {
+  color: #0f172a;
+}
+
 .label {
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
-  color: hsl(var(--foreground));
+  color: #334155;
   margin-bottom: 0.375rem;
+}
+
+.card label,
+.card .label {
+  color: hsl(var(--foreground));
 }
 
 .label-muted {

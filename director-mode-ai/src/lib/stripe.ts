@@ -1,15 +1,46 @@
 import Stripe from 'stripe';
 
-const secretKey = process.env.STRIPE_SECRET_KEY;
+let _stripe: Stripe | null = null;
 
-if (!secretKey && process.env.NODE_ENV === 'production') {
-  console.warn('[stripe] STRIPE_SECRET_KEY not set');
+/**
+ * Lazily-initialized Stripe client (platform account). Throws at call time, not
+ * import time, so the build step (which has no env vars) never crashes.
+ */
+export function getStripe(): Stripe {
+  if (!_stripe) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key) throw new Error('STRIPE_SECRET_KEY is not set');
+    _stripe = new Stripe(key);
+  }
+  return _stripe;
 }
 
-export const stripe = new Stripe(secretKey || 'sk_test_placeholder', {
-  apiVersion: '2026-04-22.dahlia',
-  typescript: true,
+export const stripe = new Proxy({} as Stripe, {
+  get(_t, prop) {
+    return (getStripe() as any)[prop];
+  },
 });
+
+/**
+ * Platform fee CoachMode skims off each paid Connect Checkout charge.
+ * Charged to the connected account, routed to the platform account
+ * automatically by Stripe via `payment_intent_data.application_fee_amount`.
+ *
+ * 300 bps = 3%. Adjust here to change platform-wide. Per-tournament
+ * overrides could go on the events row later if needed.
+ */
+export const QUADS_PLATFORM_FEE_BPS = 300; // 3%
+
+/** Compute platform fee in cents (rounded), capped at 100% of the charge. */
+export function platformFeeForCents(amountCents: number): number {
+  if (QUADS_PLATFORM_FEE_BPS <= 0 || amountCents <= 0) return 0;
+  const fee = Math.round((amountCents * QUADS_PLATFORM_FEE_BPS) / 10_000);
+  return Math.min(fee, amountCents);
+}
+
+// ============================================================
+// ClubMode subscription / Day Pass price IDs (Pro plan rollout)
+// ============================================================
 
 export const PRICE_IDS = {
   pro_monthly: process.env.STRIPE_PRICE_PRO_MONTHLY || '',

@@ -39,9 +39,11 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
   const [players, setPlayers] = useState<PlayerSlot[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [courtNumbers, setCourtNumbers] = useState<Record<string, string>>({});
 
-  // Build player list from matches
+  // Build player list and court-number overrides from matches
   useEffect(() => {
+    setCourtNumbers(Object.fromEntries(matches.map(m => [m.id, String(m.court_number)])));
     const allPlayers: PlayerSlot[] = [];
     matches.forEach((match) => {
       const isBye = match.player1_id && !match.player2_id && !match.player3_id && !match.player4_id;
@@ -116,8 +118,28 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
   const handleSave = async () => {
     setSaving(true);
 
+    // Validate court numbers: must be positive integers, unique within this round.
+    const parsedCourts: Record<string, number> = {};
+    const seen = new Set<number>();
+    for (const m of matches) {
+      const raw = courtNumbers[m.id]?.trim() ?? '';
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n <= 0) {
+        toast({ variant: 'destructive', title: 'Invalid court number', description: `"${raw}" isn't a positive whole number.` });
+        setSaving(false);
+        return;
+      }
+      if (seen.has(n)) {
+        toast({ variant: 'destructive', title: 'Duplicate court number', description: `Court ${n} is assigned to more than one match.` });
+        setSaving(false);
+        return;
+      }
+      seen.add(n);
+      parsedCourts[m.id] = n;
+    }
+
     // Build match updates
-    const matchUpdates: Record<string, { player1_id: string | null; player2_id: string | null; player3_id: string | null; player4_id: string | null }> = {};
+    const matchUpdates: Record<string, { player1_id: string | null; player2_id: string | null; player3_id: string | null; player4_id: string | null; court_number: number }> = {};
 
     matches.forEach((match) => {
       matchUpdates[match.id] = {
@@ -125,6 +147,7 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
         player2_id: null,
         player3_id: null,
         player4_id: null,
+        court_number: parsedCourts[match.id],
       };
     });
 
@@ -242,8 +265,16 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
 
             return (
               <Card key={match.id} className="overflow-hidden border-2">
-                <div className="bg-gray-100 px-4 py-2 border-b">
-                  <p className="font-bold text-base text-gray-800">Court {match.court_number}</p>
+                <div className="bg-gray-100 px-4 py-2 border-b flex items-center gap-2">
+                  <label className="font-bold text-base text-gray-800">Court</label>
+                  <input
+                    type="number"
+                    min="1"
+                    inputMode="numeric"
+                    value={courtNumbers[match.id] ?? ''}
+                    onChange={(e) => setCourtNumbers((prev) => ({ ...prev, [match.id]: e.target.value }))}
+                    className="w-16 px-2 py-1 text-base font-bold border-2 border-gray-300 rounded text-gray-800 bg-white"
+                  />
                 </div>
                 <div className="p-3">
                   <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">

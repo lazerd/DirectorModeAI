@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Users, Mail, Phone, ChevronRight, Database } from 'lucide-react';
+import { Plus, Search, Users, Mail, Phone, ChevronRight, Database, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import VaultPicker from '@/components/shared/VaultPicker';
 
@@ -21,7 +21,9 @@ export default function CustomersPage() {
   const [search, setSearch] = useState('');
   const [showAddCustomer, setShowAddCustomer] = useState(false);
   const [newCustomer, setNewCustomer] = useState({ full_name: '', email: '', phone: '', notes: '' });
+  const [alsoAddToVault, setAlsoAddToVault] = useState(false);
   const [showVaultPicker, setShowVaultPicker] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchCustomers();
@@ -51,11 +53,62 @@ export default function CustomersPage() {
         notes: newCustomer.notes || null,
       });
 
-    if (!error) {
-      setNewCustomer({ full_name: '', email: '', phone: '', notes: '' });
-      setShowAddCustomer(false);
-      fetchCustomers();
+    if (error) {
+      alert(`Failed to add customer: ${error.message}`);
+      return;
     }
+
+    // Optionally mirror into the PlayerVault so CourtConnect sees them too.
+    if (alsoAddToVault) {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert('Customer added, but could not add to PlayerVault: not signed in.');
+      } else {
+        const { error: vaultErr } = await supabase
+          .from('cc_vault_players')
+          .insert({
+            director_id: user.id,
+            full_name: newCustomer.full_name,
+            email: newCustomer.email || null,
+            phone: newCustomer.phone || null,
+            notes: newCustomer.notes || null,
+          });
+        if (vaultErr) {
+          alert(`Customer added, but PlayerVault sync failed: ${vaultErr.message}`);
+        }
+      }
+    }
+
+    setNewCustomer({ full_name: '', email: '', phone: '', notes: '' });
+    setAlsoAddToVault(false);
+    setShowAddCustomer(false);
+    fetchCustomers();
+  };
+
+  const deleteCustomer = async (customer: Customer, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const confirmed = confirm(
+      `Delete ${customer.full_name}? This also removes any rackets and stringing jobs tied to this customer. This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(customer.id);
+    const supabase = createClient();
+    const { error } = await supabase
+      .from('stringing_customers')
+      .delete()
+      .eq('id', customer.id);
+
+    if (error) {
+      alert(`Failed to delete customer: ${error.message}`);
+      setDeletingId(null);
+      return;
+    }
+
+    setCustomers(prev => prev.filter(c => c.id !== customer.id));
+    setDeletingId(null);
   };
 
   const handleVaultImport = async (player: { full_name: string; email: string | null; phone: string | null; notes: string | null }) => {
@@ -162,6 +215,17 @@ export default function CustomersPage() {
                 />
               </div>
             </div>
+            <label className="flex items-center gap-2 mt-4 text-sm text-gray-700 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={alsoAddToVault}
+                onChange={(e) => setAlsoAddToVault(e.target.checked)}
+                className="w-4 h-4 accent-purple-600"
+              />
+              Also add to PlayerVault
+              <span className="text-gray-400">(makes them available across CourtConnect and other modes)</span>
+            </label>
+
             <div className="flex gap-3 mt-4">
               <button
                 onClick={() => setShowAddCustomer(false)}
@@ -229,7 +293,22 @@ export default function CustomersPage() {
                       </div>
                     </div>
                   </div>
-                  <ChevronRight size={20} className="text-gray-400" />
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => deleteCustomer(customer, e)}
+                      disabled={deletingId === customer.id}
+                      className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                      title={`Delete ${customer.full_name}`}
+                      aria-label={`Delete ${customer.full_name}`}
+                    >
+                      {deletingId === customer.id ? (
+                        <div className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+                      ) : (
+                        <Trash2 size={16} />
+                      )}
+                    </button>
+                    <ChevronRight size={20} className="text-gray-400" />
+                  </div>
                 </Link>
               ))}
             </div>

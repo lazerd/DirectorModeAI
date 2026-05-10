@@ -221,6 +221,14 @@ export default function NewStringingJobPage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     
+    const readyAtIso = (() => {
+      if (!quotedReadyAt) return null;
+      const offsetHours: Record<string, number> = { '2h': 2, '4h': 4, '24h': 24 };
+      const hours = offsetHours[quotedReadyAt];
+      if (hours == null) return null;
+      return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+    })();
+
     const jobData = {
       customer_id: selectedCustomer.id,
       racket_id: selectedRacket?.id || null,
@@ -230,7 +238,7 @@ export default function NewStringingJobPage() {
       cross_tension_lbs: crossTension,
       status: 'pending',
       requested_by_user_id: user?.id,
-      quoted_ready_at: quotedReadyAt || null,
+      quoted_ready_at: readyAtIso,
       internal_notes: internalNotes || null,
       play_style: aiForm.play_style || null,
       skill_level: aiForm.level,
@@ -717,15 +725,9 @@ export default function NewStringingJobPage() {
                   className="input"
                 >
                   <option value="">Select...</option>
-                  <option value={new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()}>
-                    2 hours
-                  </option>
-                  <option value={new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString()}>
-                    4 hours
-                  </option>
-                  <option value={new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()}>
-                    Tomorrow
-                  </option>
+                  <option value="2h">2 hours</option>
+                  <option value="4h">4 hours</option>
+                  <option value="24h">Tomorrow</option>
                 </select>
               </div>
 

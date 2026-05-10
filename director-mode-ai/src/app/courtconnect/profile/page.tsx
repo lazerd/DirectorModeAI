@@ -31,6 +31,7 @@ export default function PlayerProfilePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [playerId, setPlayerId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const [displayName, setDisplayName] = useState('');
   const [bio, setBio] = useState('');
@@ -57,12 +58,12 @@ export default function PlayerProfilePage() {
       .eq('id', user.id)
       .single();
 
-    // Check for existing player profile
+    // Check for existing player profile (maybeSingle so missing row isn't an error)
     const { data: player } = await supabase
       .from('cc_players')
       .select('*, sports:cc_player_sports(*)')
       .eq('profile_id', user.id)
-      .single();
+      .maybeSingle();
 
     if (player) {
       setPlayerId(player.id);
@@ -124,14 +125,25 @@ export default function PlayerProfilePage() {
   };
 
   const handleSave = async () => {
+    setError(null);
+
+    if (!displayName.trim()) {
+      setError('Display name is required.');
+      return;
+    }
+
     setSaving(true);
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setSaving(false); return; }
+    if (!user) {
+      setError('You must be signed in.');
+      setSaving(false);
+      return;
+    }
 
     const playerData = {
       profile_id: user.id,
-      display_name: displayName,
+      display_name: displayName.trim(),
       bio: bio || null,
       primary_sport: primarySport,
       preferred_days: preferredDays,
@@ -141,18 +153,41 @@ export default function PlayerProfilePage() {
     let currentPlayerId = playerId;
 
     if (playerId) {
-      await supabase.from('cc_players').update(playerData).eq('id', playerId);
-    } else {
-      const { data } = await supabase.from('cc_players').insert(playerData).select().single();
-      if (data) {
-        currentPlayerId = data.id;
-        setPlayerId(data.id);
+      const { error: updateErr } = await supabase
+        .from('cc_players')
+        .update(playerData)
+        .eq('id', playerId);
+      if (updateErr) {
+        setError(`Failed to update profile: ${updateErr.message}`);
+        setSaving(false);
+        return;
       }
+    } else {
+      const { data, error: insertErr } = await supabase
+        .from('cc_players')
+        .insert(playerData)
+        .select()
+        .single();
+      if (insertErr || !data) {
+        setError(`Failed to create profile: ${insertErr?.message || 'Unknown error'}`);
+        setSaving(false);
+        return;
+      }
+      currentPlayerId = data.id;
+      setPlayerId(data.id);
     }
 
     if (currentPlayerId) {
       // Delete existing sport ratings and re-insert
-      await supabase.from('cc_player_sports').delete().eq('player_id', currentPlayerId);
+      const { error: deleteErr } = await supabase
+        .from('cc_player_sports')
+        .delete()
+        .eq('player_id', currentPlayerId);
+      if (deleteErr) {
+        setError(`Failed to update ratings: ${deleteErr.message}`);
+        setSaving(false);
+        return;
+      }
 
       const ratingsToInsert = sportRatings
         .filter(s => s.sport)
@@ -166,7 +201,14 @@ export default function PlayerProfilePage() {
         }));
 
       if (ratingsToInsert.length > 0) {
-        await supabase.from('cc_player_sports').insert(ratingsToInsert);
+        const { error: ratingsErr } = await supabase
+          .from('cc_player_sports')
+          .insert(ratingsToInsert);
+        if (ratingsErr) {
+          setError(`Failed to save ratings: ${ratingsErr.message}`);
+          setSaving(false);
+          return;
+        }
       }
     }
 
@@ -344,8 +386,15 @@ export default function PlayerProfilePage() {
           </div>
         </div>
 
+        {error && (
+          <div className="alert alert-error text-sm" role="alert">
+            {error}
+          </div>
+        )}
+
         {/* Save */}
         <button
+          type="button"
           onClick={handleSave}
           className="btn btn-courtconnect w-full btn-lg"
           disabled={saving || !displayName}

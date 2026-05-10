@@ -181,10 +181,10 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
           games_won: currentStats.games_won - oldGamesWon + gamesWon,
           games_lost: currentStats.games_lost - oldGamesLost + gamesLost,
         };
-      }).filter(Boolean);
+      }).filter((u): u is NonNullable<typeof u> => u !== null);
 
       for (const update of updates) {
-        await supabase.from("event_players").update(update).eq("id", update!.id);
+        await supabase.from("event_players").update(update).eq("id", update.id);
       }
     }
 
@@ -207,7 +207,7 @@ const MatchScoreDialog = ({ match, open, onOpenChange, onScoreSaved, eventId, sc
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md bg-white">
+      <DialogContent className="max-w-md bg-white text-gray-900">
         <DialogHeader>
           <DialogTitle className="text-2xl">Court {match.court_number}</DialogTitle>
           <DialogDescription className="text-base">

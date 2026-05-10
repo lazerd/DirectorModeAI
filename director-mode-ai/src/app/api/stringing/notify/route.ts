@@ -16,9 +16,9 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
     const ownerUserId = user?.id || null;
 
-    const { data, error } = await sendBilledEmail(ownerUserId, {
+    const result = await sendBilledEmail(ownerUserId, {
       from: 'StringingMode <notifications@coachmode.ai>',
-      to: [to] as any,
+      to,
       subject: '🎾 Your Racket is Ready for Pickup!',
       html: `
         <!DOCTYPE html>
@@ -74,12 +74,12 @@ export async function POST(request: NextRequest) {
       `,
     });
 
-    if (error) {
-      console.error('Resend error:', error);
-      return NextResponse.json({ error: (error as any).message }, { status: 500 });
+    if (!result.sent) {
+      console.error('Send failed:', result.reason, (result as any).error);
+      return NextResponse.json({ error: (result as any).error || result.reason }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, id: (data as any)?.id });
+    return NextResponse.json({ success: true, id: result.messageId });
   } catch (err: any) {
     if (err instanceof CreditLimitError) return creditLimitResponse(err);
     console.error('Email error:', err);

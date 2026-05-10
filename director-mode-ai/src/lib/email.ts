@@ -1,12 +1,13 @@
 import { Resend } from 'resend';
 import { consumeEmailCredits, CreditLimitError } from '@/lib/billing';
 import { createServiceClient } from '@/lib/supabase/server';
+import { safeResendSend, type SafeSendResult } from '@/lib/emailUnsubscribe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 interface EmailPayload {
   from?: string;
-  to: string | string[];
+  to: string;
   subject: string;
   html: string;
   replyTo?: string;
@@ -14,11 +15,20 @@ interface EmailPayload {
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <onboarding@resend.dev>';
 
-export async function sendBilledEmail(userId: string | null, payload: EmailPayload) {
+/**
+ * Drop-in send that does TWO things at once:
+ *   1. Consumes one email credit on the owning user's plan (throws CreditLimitError if over cap)
+ *   2. Routes through safeResendSend so unsubscribed recipients are skipped + footer is appended
+ *
+ * Returns the SafeSendResult so callers can branch on `r.sent`. If the recipient was
+ * unsubscribed or the send failed, the credit was still consumed — keeps the implementation
+ * simple and avoids race conditions.
+ */
+export async function sendBilledEmail(userId: string | null, payload: EmailPayload): Promise<SafeSendResult> {
   if (userId) {
     await consumeEmailCredits(userId, 1);
   }
-  return resend.emails.send({
+  return safeResendSend(resend, {
     from: payload.from || DEFAULT_FROM,
     to: payload.to,
     subject: payload.subject,
@@ -27,13 +37,13 @@ export async function sendBilledEmail(userId: string | null, payload: EmailPaylo
   });
 }
 
-export async function sendBilledEmails(userId: string | null, payloads: EmailPayload[]) {
+export async function sendBilledEmails(userId: string | null, payloads: EmailPayload[]): Promise<SafeSendResult[]> {
   if (userId) {
     await consumeEmailCredits(userId, payloads.length);
   }
-  return Promise.allSettled(
+  return Promise.all(
     payloads.map((p) =>
-      resend.emails.send({
+      safeResendSend(resend, {
         from: p.from || DEFAULT_FROM,
         to: p.to,
         subject: p.subject,
@@ -109,3 +119,4 @@ export function creditLimitResponse(err: CreditLimitError) {
 }
 
 export { CreditLimitError };
+export type { SafeSendResult };

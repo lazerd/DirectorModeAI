@@ -109,8 +109,8 @@ export async function POST(request: NextRequest) {
     }));
 
     const results = await sendBilledEmails(ownerUserId, payloads);
-    const successCount = results.filter(r => r.status === 'fulfilled').length;
-    const failCount = results.filter(r => r.status === 'rejected').length;
+    const successCount = results.filter(r => r.sent).length;
+    const failCount = results.filter(r => !r.sent).length;
 
     // Mark slots as notified
     await supabase

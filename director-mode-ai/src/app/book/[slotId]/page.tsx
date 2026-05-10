@@ -234,7 +234,7 @@ export default function BookSlotPage() {
         <div className="bg-blue-50 rounded-xl p-4 mb-6 space-y-3">
           <div className="flex items-center gap-3">
             <Calendar className="h-5 w-5 text-blue-600 flex-shrink-0" />
-            <span className="font-medium">{format(startDate, 'EEEE, MMMM d, yyyy')}</span>
+            <span className="font-medium">{format(startDate, 'MM/dd/yyyy')}</span>
           </div>
           <div className="flex items-center gap-3">
             <Clock className="h-5 w-5 text-blue-600 flex-shrink-0" />

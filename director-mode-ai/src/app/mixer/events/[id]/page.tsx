@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Users, Trophy, ListOrdered, Flag, Award, Settings, Share2, GitBranch, Swords, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { shareMixerEvent } from "@/lib/share";
 import PlayersTab from "@/components/mixer/event/PlayersTab";
 import RoundsTab from "@/components/mixer/event/RoundsTab";
 import StandingsTab from "@/components/mixer/event/StandingsTab";
@@ -17,6 +18,16 @@ import EditEventFormatDialog from "@/components/mixer/event/EditEventFormatDialo
 import EventCodeQR from "@/components/mixer/event/EventCodeQR";
 import TournamentBracket from "@/components/mixer/event/TournamentBracket";
 import TeamBattleTab from "@/components/mixer/event/TeamBattleTab";
+import QuadsAdminDashboard from "@/components/mixer/event/QuadsAdminDashboard";
+import TournamentAdminDashboard from "@/components/mixer/event/TournamentAdminDashboard";
+import EventPublicSignupsPanel from "@/components/mixer/event/EventPublicSignupsPanel";
+
+const TOURNAMENT_FORMATS = new Set([
+  'rr-singles', 'rr-doubles',
+  'single-elim-singles', 'single-elim-doubles',
+  'fmlc-singles', 'fmlc-doubles',
+  'ffic-singles', 'ffic-doubles',
+]);
 import { format } from "date-fns";
 
 interface Event {
@@ -75,11 +86,42 @@ export default function EventDashboard() {
     setLoading(false);
   };
 
+  const handleShareEvent = async () => {
+    if (!event) return;
+    const result = await shareMixerEvent({
+      eventName: event.name,
+      eventCode: event.event_code,
+    });
+    if (result === "copied") {
+      toast({
+        title: "Link copied!",
+        description: "Paste it into SMS, email, or your team chat to share with players.",
+      });
+    } else if (result === "failed") {
+      toast({
+        variant: "destructive",
+        title: "Share failed",
+        description: "Couldn't copy or share the link. Try the Share tab instead.",
+      });
+    }
+    // "shared" and "cancelled" don't need a toast — OS feedback is enough.
+  };
+
   const endEvent = async () => {
+    const eventId = Array.isArray(params.id) ? params.id[0] : params.id;
+    if (!eventId) {
+      toast({
+        variant: "destructive",
+        title: "Error ending event",
+        description: "Missing event id.",
+      });
+      return;
+    }
+
     const { error } = await supabase
       .from("rounds")
       .update({ status: "completed", end_time: new Date().toISOString() })
-      .eq("event_id", params.id)
+      .eq("event_id", eventId)
       .neq("status", "completed");
 
     if (error) {
@@ -88,14 +130,15 @@ export default function EventDashboard() {
         title: "Error ending event",
         description: error.message,
       });
-    } else {
-      setEventEnded(true);
-      setActiveTab("summary");
-      toast({
-        title: "Event completed!",
-        description: "View final results and export data.",
-      });
+      return;
     }
+
+    setEventEnded(true);
+    setActiveTab("summary");
+    toast({
+      title: "Event completed!",
+      description: "View final results and export data.",
+    });
   };
 
   if (loading) {
@@ -104,6 +147,18 @@ export default function EventDashboard() {
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
       </div>
     );
+  }
+
+  // Quads tournaments use their own dashboard — public-signup, paid entry,
+  // flights of 4, magic-link scoring. None of the mixer-event UI applies.
+  if (event && event.match_format === 'quads') {
+    return <QuadsAdminDashboard eventId={event.id} />;
+  }
+
+  // Other tournament formats (RR, single-elim, FMLC, FFIC) use the generic
+  // tournament dashboard backed by tournament_entries / tournament_matches.
+  if (event && event.match_format && TOURNAMENT_FORMATS.has(event.match_format)) {
+    return <TournamentAdminDashboard eventId={event.id} />;
   }
 
   if (!event) return null;
@@ -162,6 +217,18 @@ export default function EventDashboard() {
                   DJ Console
                 </Button>
               </Link>
+
+              <Button
+                variant="default"
+                size="lg"
+                onClick={handleShareEvent}
+                className="w-full sm:w-auto bg-[#D3FB52] text-[#001820] hover:bg-[#D3FB52]/90 font-semibold"
+              >
+                <Share2 className="h-5 w-5 mr-2" />
+                <span className="hidden sm:inline">Share with players</span>
+                <span className="sm:hidden">Share</span>
+              </Button>
+
               <Button variant="outline" size="lg" onClick={() => setShowEditFormatDialog(true)} className="w-full sm:w-auto bg-white">
                 <Settings className="h-5 w-5 mr-2" />
                 <span className="hidden sm:inline">Edit Format</span>
@@ -221,6 +288,9 @@ export default function EventDashboard() {
       </header>
 
       <main className="container mx-auto px-4 py-6 max-w-7xl">
+        {/* Public signups panel — only visible if event has public_registration=true */}
+        <EventPublicSignupsPanel eventId={event.id} />
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full max-w-3xl mx-auto grid-cols-5 h-auto sm:h-14 p-1 gap-1">
             <TabsTrigger value="share" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">

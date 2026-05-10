@@ -72,7 +72,7 @@ export default function HistoryPage() {
                   </div>
                   <div>
                     <p className="font-medium">
-                      {format(new Date(blast.sent_at), 'EEEE, MMMM d, yyyy')}
+                      {format(new Date(blast.sent_at), 'MM/dd/yyyy')}
                     </p>
                     <p className="text-sm text-gray-500">
                       {format(new Date(blast.sent_at), 'h:mm a')}

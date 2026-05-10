@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { QrCode, Copy, Download, ExternalLink } from "lucide-react";
+import { QrCode, Copy, Download, ExternalLink, Share2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { shareMixerEvent } from "@/lib/share";
 
 interface EventCodeQRProps {
   eventCode: string;
@@ -16,7 +17,10 @@ const EventCodeQR = ({ eventCode, eventName }: EventCodeQRProps) => {
   const [publicUrl, setPublicUrl] = useState("");
 
   useEffect(() => {
-    const url = `https://club.coachmode.ai/event/${eventCode}`;
+    // Use the current origin so this works in dev, staging, and prod — the
+    // old hardcoded https://club.coachmode.ai URL broke local testing.
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const url = `${origin}/event/${eventCode}`;
     setPublicUrl(url);
 
     if (canvasRef.current) {
@@ -70,6 +74,26 @@ const EventCodeQR = ({ eventCode, eventName }: EventCodeQRProps) => {
 
   const handleOpenPublicView = () => {
     window.open(publicUrl, "_blank");
+  };
+
+  const handleNativeShare = async () => {
+    const result = await shareMixerEvent({ eventName, eventCode });
+    if (result === "copied") {
+      toast({
+        title: "Link copied!",
+        description: "Public event link copied to clipboard",
+      });
+    } else if (result === "shared") {
+      // The OS share sheet confirmed — no toast needed, the system UI
+      // already gave the user visual feedback.
+    } else if (result === "failed") {
+      toast({
+        title: "Share failed",
+        description: "Could not copy or share the link. Please try again.",
+        variant: "destructive",
+      });
+    }
+    // result === "cancelled" → user dismissed, stay silent.
   };
 
   return (
@@ -131,6 +155,13 @@ const EventCodeQR = ({ eventCode, eventName }: EventCodeQRProps) => {
               <Copy className="h-4 w-4" />
             </Button>
           </div>
+          {/* Prominent share button — on mobile this opens the native share
+              sheet (SMS, WhatsApp, email, etc.), on desktop it falls back to
+              copying the link to clipboard. */}
+          <Button onClick={handleNativeShare} className="w-full" size="lg">
+            <Share2 className="h-4 w-4 mr-2" />
+            Share with players
+          </Button>
         </div>
       </CardContent>
     </Card>

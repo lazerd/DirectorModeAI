@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Search, User } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import Link from 'next/link';
@@ -17,20 +17,44 @@ export default function FindCoachPage() {
   const [searched, setSearched] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const searchCoaches = async () => {
-    if (!searchQuery.trim()) return;
-    
+  useEffect(() => {
+    loadAllCoaches();
+  }, []);
+
+  const loadAllCoaches = async () => {
     setLoading(true);
     setSearched(true);
-    
     const supabase = createClient();
-    const { data } = await supabase
+    const { data, error } = await supabase
+      .from('lesson_coaches')
+      .select('id, display_name, slug')
+      .not('slug', 'is', null)
+      .order('display_name', { ascending: true })
+      .limit(50);
+
+    if (error) console.error('Coach load failed:', error);
+    setCoaches(data || []);
+    setLoading(false);
+  };
+
+  const searchCoaches = async () => {
+    if (!searchQuery.trim()) {
+      loadAllCoaches();
+      return;
+    }
+
+    setLoading(true);
+    setSearched(true);
+
+    const supabase = createClient();
+    const { data, error } = await supabase
       .from('lesson_coaches')
       .select('id, display_name, slug')
       .ilike('display_name', `%${searchQuery}%`)
       .not('slug', 'is', null)
       .limit(10);
 
+    if (error) console.error('Coach search failed:', error);
     setCoaches(data || []);
     setLoading(false);
   };
@@ -46,7 +70,7 @@ export default function FindCoachPage() {
       {/* Header */}
       <header className="bg-white border-b">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/client/dashboard" className="font-bold text-xl text-blue-600">LastMinute</Link>
+          <Link href="/client/dashboard" className="font-bold text-xl text-blue-600">CoachMode</Link>
           <Link href="/client/dashboard" className="text-sm text-gray-600 hover:text-blue-600">
             ← Back to My Lessons
           </Link>
@@ -71,7 +95,7 @@ export default function FindCoachPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Search coach name..."
-                className="w-full pl-10 pr-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full pl-10 pr-4 py-3 border rounded-lg text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <button
