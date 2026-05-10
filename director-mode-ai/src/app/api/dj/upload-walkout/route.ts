@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { eventCanUsePremium } from '@/lib/billing';
 
 export const dynamic = 'force-dynamic';
@@ -47,11 +48,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const service = await createServiceClient();
+    const admin = getSupabaseAdmin();
     const ext = file.name.split('.').pop()?.toLowerCase() || 'mp3';
     const path = `${user.id}/walkouts/${playerId}-${Date.now()}.${ext}`;
     const arrayBuf = await file.arrayBuffer();
-    const { error: uploadErr } = await service.storage
+    const { error: uploadErr } = await admin.storage
       .from('dj-audio')
       .upload(path, new Uint8Array(arrayBuf), {
         contentType: file.type || 'audio/mpeg',
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
     const {
       data: { publicUrl },
-    } = service.storage.from('dj-audio').getPublicUrl(path);
+    } = admin.storage.from('dj-audio').getPublicUrl(path);
 
     return NextResponse.json({
       url: publicUrl,

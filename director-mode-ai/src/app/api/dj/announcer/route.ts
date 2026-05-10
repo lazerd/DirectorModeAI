@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { eventCanUsePremium, consumeTtsChars, claimFreeDjIfNeeded, getPlanContext, eventHasDayPass } from '@/lib/billing';
 import { generateAnnouncerMp3, buildAnnouncementText } from '@/lib/elevenlabs';
 
@@ -67,9 +68,10 @@ export async function POST(request: NextRequest) {
     const text = buildAnnouncementText(player.name, courtNumber);
     const mp3 = await generateAnnouncerMp3(text);
 
-    // Upload to Supabase storage (bucket: dj-audio)
+    // Upload to Supabase storage (bucket: dj-audio) — use admin client so RLS doesn't block
+    const admin = getSupabaseAdmin();
     const path = `${user.id}/${eventId}/${player.id}.mp3`;
-    const { error: uploadErr } = await service.storage
+    const { error: uploadErr } = await admin.storage
       .from('dj-audio')
       .upload(path, mp3, { contentType: 'audio/mpeg', upsert: true });
     if (uploadErr) {
@@ -81,7 +83,7 @@ export async function POST(request: NextRequest) {
     }
     const {
       data: { publicUrl },
-    } = service.storage.from('dj-audio').getPublicUrl(path);
+    } = admin.storage.from('dj-audio').getPublicUrl(path);
 
     await service
       .from('players')
