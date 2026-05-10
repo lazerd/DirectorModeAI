@@ -1568,13 +1568,15 @@ function WalkoutSongPicker({
           )}
 
           {tab === 'library' && (
-            <div className="text-center py-16 text-white/50">
-              <Music size={32} className="mx-auto mb-3 text-white/30" />
-              <div className="font-medium text-white/70 mb-2">Curated library coming soon</div>
-              <div className="text-sm text-white/40 max-w-sm mx-auto">
-                For now, use the <strong className="text-yellow-300">Upload your own</strong> tab. We're sourcing a starter pack of royalty-free walkout tracks.
-              </div>
-            </div>
+            <LibraryPanel
+              onSelect={(track) => {
+                setUploaded({ url: track.url, title: track.title, duration: track.durationSec });
+                setStartSeconds(0);
+              }}
+              currentSelectedUrl={uploaded?.url}
+              previewAudioRef={previewAudioRef}
+              volume={volume}
+            />
           )}
         </div>
 
@@ -1609,6 +1611,124 @@ function WalkoutSongPicker({
             </button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+interface LibraryTrackResponse {
+  id: string;
+  title: string;
+  vibe: string;
+  composer: string;
+  durationSec: number;
+  url: string;
+  available: boolean;
+}
+
+function LibraryPanel({
+  onSelect,
+  currentSelectedUrl,
+  previewAudioRef,
+  volume,
+}: {
+  onSelect: (track: LibraryTrackResponse) => void;
+  currentSelectedUrl?: string;
+  previewAudioRef: React.MutableRefObject<HTMLAudioElement | null>;
+  volume: number;
+}) {
+  const [tracks, setTracks] = useState<LibraryTrackResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/dj/library')
+      .then((r) => r.json())
+      .then((d) => setTracks(d.tracks || []))
+      .finally(() => setLoading(false));
+  }, []);
+
+  function previewToggle(track: LibraryTrackResponse) {
+    if (!previewAudioRef.current || !track.available) return;
+    if (previewId === track.id) {
+      previewAudioRef.current.pause();
+      setPreviewId(null);
+      return;
+    }
+    previewAudioRef.current.src = track.url;
+    previewAudioRef.current.volume = volume;
+    previewAudioRef.current.currentTime = 0;
+    previewAudioRef.current.play();
+    setPreviewId(track.id);
+    previewAudioRef.current.onended = () => setPreviewId(null);
+  }
+
+  const seededCount = tracks.filter((t) => t.available).length;
+
+  if (loading) {
+    return <div className="text-center py-16 text-white/50">Loading library…</div>;
+  }
+
+  if (seededCount === 0) {
+    return (
+      <div className="text-center py-12 text-white/60">
+        <Music size={32} className="mx-auto mb-3 text-white/30" />
+        <div className="font-medium text-white/70 mb-2">Library not yet seeded</div>
+        <div className="text-sm text-white/40 max-w-md mx-auto">
+          The curated library has 15 public-domain tracks ready, but they need to be downloaded into your Supabase storage once.
+          Hit the seed endpoint as the admin:
+        </div>
+        <pre className="mt-4 inline-block text-left text-[10px] bg-black/40 p-3 rounded text-white/70">
+          curl -X POST {`{your-domain}`}/api/admin/dj/seed-library \{'\n'}
+          {'  '}-H {'"'}Authorization: Bearer $CRON_SECRET{'"'}
+        </pre>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="text-xs text-white/50 mb-3">
+        {seededCount} curated tracks · all public domain · click to select, ▶ to preview
+      </div>
+      <div className="grid grid-cols-1 gap-2">
+        {tracks.map((t) => {
+          const isSelected = t.url === currentSelectedUrl;
+          const isPreviewing = previewId === t.id;
+          return (
+            <div
+              key={t.id}
+              onClick={() => t.available && onSelect(t)}
+              className={`rounded-xl border p-3 cursor-pointer transition-colors ${
+                !t.available
+                  ? 'border-white/5 bg-white/[0.01] opacity-40 cursor-not-allowed'
+                  : isSelected
+                    ? 'border-yellow-300/50 bg-yellow-300/5'
+                    : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    previewToggle(t);
+                  }}
+                  disabled={!t.available}
+                  className="w-9 h-9 rounded-full bg-yellow-300/10 hover:bg-yellow-300/20 text-yellow-300 flex items-center justify-center flex-shrink-0 disabled:opacity-30"
+                >
+                  {isPreviewing ? <Square size={14} /> : <Play size={14} />}
+                </button>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white text-sm font-medium truncate">{t.title}</div>
+                  <div className="text-white/40 text-xs truncate">
+                    {t.composer} · {t.vibe}
+                  </div>
+                </div>
+                {!t.available && <span className="text-[10px] text-white/30">not seeded</span>}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
