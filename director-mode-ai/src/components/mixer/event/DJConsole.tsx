@@ -339,11 +339,71 @@ function ShowTab({
   useEffect(() => {
     customVoiceIdRef.current = customVoiceId;
   }, [customVoiceId]);
+  const [musicMode, setMusicMode] = useState<'per_player' | 'background'>('per_player');
+  const musicModeRef = useRef(musicMode);
+  useEffect(() => {
+    musicModeRef.current = musicMode;
+  }, [musicMode]);
+  const [backgroundSong, setBackgroundSong] = useState<{ url: string; title: string } | null>(null);
+  const [bgUploading, setBgUploading] = useState(false);
+  const backgroundRef = useRef<HTMLAudioElement | null>(null);
 
   const announcerRef = useRef<HTMLAudioElement | null>(null);
   const songRef = useRef<HTMLAudioElement | null>(null);
   const fadeTimerRef = useRef<any>(null);
   const customAudioUrlRef = useRef<string | null>(null);
+
+  const BG_NORMAL_VOL = 0.35;
+  const BG_DUCKED_VOL = 0.12;
+
+  function startBackgroundMusic() {
+    if (musicModeRef.current !== 'background' || !backgroundSong || !backgroundRef.current) return;
+    backgroundRef.current.src = backgroundSong.url;
+    backgroundRef.current.loop = true;
+    backgroundRef.current.volume = volume * BG_NORMAL_VOL;
+    backgroundRef.current.play().catch((e) => console.error('[DJ] bg play failed', e));
+  }
+
+  function stopBackgroundMusic() {
+    if (!backgroundRef.current) return;
+    backgroundRef.current.pause();
+    backgroundRef.current.currentTime = 0;
+  }
+
+  function duckBackground() {
+    if (!backgroundRef.current || backgroundRef.current.paused) return;
+    backgroundRef.current.volume = volume * BG_DUCKED_VOL;
+  }
+
+  function unduckBackground() {
+    if (!backgroundRef.current || backgroundRef.current.paused) return;
+    backgroundRef.current.volume = volume * BG_NORMAL_VOL;
+  }
+
+  // Background volume tracks master volume slider while playing
+  useEffect(() => {
+    if (!backgroundRef.current || backgroundRef.current.paused) return;
+    backgroundRef.current.volume = volume * BG_NORMAL_VOL;
+  }, [volume]);
+
+  async function uploadBackgroundSong(file: File) {
+    setBgUploading(true);
+    try {
+      const fd = new FormData();
+      fd.set('file', file);
+      fd.set('eventId', eventId);
+      fd.set('playerId', `bg-${eventId}`);
+      const res = await fetch('/api/dj/upload-walkout', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.message || 'Upload failed');
+        return;
+      }
+      setBackgroundSong({ url: data.url, title: data.title });
+    } finally {
+      setBgUploading(false);
+    }
+  }
 
   const round = useMemo(
     () => rounds.find((r) => r.id === selectedRoundId) ?? null,
@@ -432,6 +492,7 @@ function ShowTab({
       URL.revokeObjectURL(customAudioUrlRef.current);
       customAudioUrlRef.current = null;
     }
+    stopBackgroundMusic();
     setRunState({ kind: 'idle' });
   }
 
@@ -498,9 +559,14 @@ function ShowTab({
     };
 
     announcer.onended = () => {
-      if (cue.kind === 'player' && cue.walkoutSongUrl) {
+      // In background-music mode: skip per-player walkout song; bg music keeps playing
+      const playWalkoutSong =
+        musicModeRef.current !== 'background' &&
+        cue.kind === 'player' &&
+        !!cue.walkoutSongUrl;
+      if (playWalkoutSong) {
         const song = songRef.current!;
-        song.src = cue.walkoutSongUrl;
+        song.src = cue.walkoutSongUrl!;
         song.volume = volume;
         song.currentTime = cue.walkoutSongStartSeconds || 0;
         setRunState({ kind: 'playing', index, phase: 'song' });
@@ -509,13 +575,21 @@ function ShowTab({
         fadeTimerRef.current = setTimeout(() => {
           fadeOut(song, FADE_OUT_SEC, () => {
             song.pause();
+            unduckBackground();
             advanceOrPause();
           });
         }, playMs);
       } else {
+        unduckBackground();
         advanceOrPause();
       }
     };
+
+    // Start background music on the FIRST cue if in background mode
+    if (index === 0) {
+      startBackgroundMusic();
+    }
+    duckBackground();
 
     setRunState({ kind: 'playing', index, phase: 'announcer' });
     // Don't await — play() returns when audio STARTS, but a rejection (e.g., browser
@@ -613,6 +687,7 @@ function ShowTab({
     <div>
       <audio ref={announcerRef} />
       <audio ref={songRef} />
+      <audio ref={backgroundRef} />
 
       {/* Top: round picker + show options */}
       <div className="rounded-2xl border border-white/10 bg-[#002838] p-5 mb-4">
@@ -764,6 +839,80 @@ function ShowTab({
                 </div>
               )}
               <VoicePreviewButton voicePresetId={voicePresetId} customVoiceId={customVoiceId} eventId={eventId} volume={volume} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="text-xs text-white/60 block mb-2">Music style</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMusicMode('per_player')}
+                  className={`text-left p-3 rounded-lg border transition-colors ${
+                    musicMode === 'per_player'
+                      ? 'border-yellow-300 bg-yellow-300/10'
+                      : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
+                  }`}
+                >
+                  <div className={`text-xs font-medium ${musicMode === 'per_player' ? 'text-yellow-300' : 'text-white'}`}>
+                    Per-player walkouts
+                  </div>
+                  <div className="text-[10px] text-white/40 mt-0.5">
+                    Each player gets their own song after the announcer
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMusicMode('background')}
+                  className={`text-left p-3 rounded-lg border transition-colors ${
+                    musicMode === 'background'
+                      ? 'border-yellow-300 bg-yellow-300/10'
+                      : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
+                  }`}
+                >
+                  <div className={`text-xs font-medium ${musicMode === 'background' ? 'text-yellow-300' : 'text-white'}`}>
+                    Background music
+                  </div>
+                  <div className="text-[10px] text-white/40 mt-0.5">
+                    One song plays under the entire show, ducks during announcer
+                  </div>
+                </button>
+              </div>
+              {musicMode === 'background' && (
+                <div className="mt-3">
+                  {backgroundSong ? (
+                    <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-300/5 border border-yellow-300/30">
+                      <Music size={16} className="text-yellow-300 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs text-white truncate">{backgroundSong.title}</div>
+                        <div className="text-[10px] text-white/40">Background track</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setBackgroundSong(null)}
+                        className="text-xs text-white/50 hover:text-white"
+                      >
+                        Replace
+                      </button>
+                    </div>
+                  ) : (
+                    <label className={`block border border-dashed border-white/20 rounded-lg p-4 text-center cursor-pointer hover:border-yellow-300/50 ${bgUploading ? 'opacity-60 pointer-events-none' : ''}`}>
+                      <input
+                        type="file"
+                        accept="audio/*,.mp3,.m4a,.wav,.ogg"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) uploadBackgroundSong(f);
+                          e.target.value = '';
+                        }}
+                        className="hidden"
+                      />
+                      <div className="text-xs text-white/70">
+                        {bgUploading ? 'Uploading…' : 'Upload background track (MP3, 1–5 min recommended)'}
+                      </div>
+                      <div className="text-[10px] text-white/40 mt-1">Plays continuously, loops if shorter than the show</div>
+                    </label>
+                  )}
+                </div>
+              )}
             </div>
             <div className="md:col-span-2">
               <div className="flex items-center justify-between mb-1">
