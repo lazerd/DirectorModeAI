@@ -1119,6 +1119,7 @@ function WalkoutSongPicker({
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [duration, setDuration] = useState<number>(60);
   const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function handleUpload(file: File) {
     setUploading(true);
@@ -1218,7 +1219,24 @@ function WalkoutSongPicker({
                     </a>{' '}
                     if needed.
                   </p>
-                  <label
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="audio/*,.mp3,.m4a,.wav,.ogg"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleUpload(f);
+                      e.target.value = ''; // allow re-selecting the same file
+                    }}
+                    style={{ display: 'none' }}
+                  />
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click();
+                    }}
                     onDragEnter={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -1227,12 +1245,14 @@ function WalkoutSongPicker({
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      e.dataTransfer.dropEffect = 'copy';
                       if (!isDragging) setIsDragging(true);
                     }}
                     onDragLeave={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      setIsDragging(false);
+                      // Only flip off when leaving the dropzone itself, not entering a child
+                      if (e.currentTarget === e.target) setIsDragging(false);
                     }}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -1241,28 +1261,19 @@ function WalkoutSongPicker({
                       const f = e.dataTransfer.files?.[0];
                       if (f) handleUpload(f);
                     }}
-                    className={`block border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+                    className={`block border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-colors select-none ${
                       uploading ? 'opacity-60 pointer-events-none' : ''
                     } ${
                       isDragging
-                        ? 'border-yellow-300 bg-yellow-300/10'
+                        ? 'border-yellow-300 bg-yellow-300/15 scale-[1.02]'
                         : 'border-white/20 hover:border-yellow-300/50 hover:bg-yellow-300/[0.02]'
                     }`}
                   >
-                    <input
-                      type="file"
-                      accept="audio/*,.mp3,.m4a,.wav,.ogg"
-                      onChange={(e) => {
-                        const f = e.target.files?.[0];
-                        if (f) handleUpload(f);
-                      }}
-                      className="hidden"
-                    />
-                    <div className="text-white/80 font-medium">
-                      {uploading ? 'Uploading…' : isDragging ? 'Drop it!' : 'Drop a file here or click to choose'}
+                    <div className="text-white/80 font-medium pointer-events-none">
+                      {uploading ? 'Uploading…' : isDragging ? '⬇  Drop it!' : 'Drop a file here or click to choose'}
                     </div>
-                    <div className="text-xs text-white/40 mt-2">Max 5 MB · MP3 / M4A / WAV / OGG</div>
-                  </label>
+                    <div className="text-xs text-white/40 mt-2 pointer-events-none">Max 5 MB · MP3 / M4A / WAV / OGG</div>
+                  </div>
                   <div className="mt-6 text-xs text-white/40 leading-relaxed">
                     <strong className="text-white/60">Tip — getting a clip from Amazon Music or Spotify:</strong>
                     <ol className="list-decimal list-inside mt-1 space-y-0.5">
