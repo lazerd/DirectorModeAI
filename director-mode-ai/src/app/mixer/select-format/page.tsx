@@ -106,8 +106,8 @@ export default function SelectFormatPage() {
     },
     {
       id: 'round-robin',
-      name: 'Team Round Robin',
-      description: 'Fixed teams compete against all other teams.',
+      name: 'Round Robin (rotating)',
+      description: 'Partners change each round — casual mixer style. For FIXED-TEAM round robin where you enter player pairs, pick "Round Robin" in the Tournament Formats bucket below.',
       icon: '🔄',
     },
     {
