@@ -1371,6 +1371,30 @@ function WalkoutSongPicker({
   const [duration, setDuration] = useState<number>(60);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const dragCounter = useRef(0);
+
+  // Suppress the browser's default "open file in tab" behavior while this modal
+  // is mounted. Without this, dragover events on the page outside our dropzone
+  // don't get preventDefault'd, and the OS treats it as a non-drop region —
+  // which sometimes blocks our inner dropzone from receiving the drop too.
+  useEffect(() => {
+    const block = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onDrop = (e: DragEvent) => {
+      // If the user drops outside our dropzone, still don't let the browser
+      // open the file as a new page.
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener('dragover', block);
+    window.addEventListener('drop', onDrop);
+    return () => {
+      window.removeEventListener('dragover', block);
+      window.removeEventListener('drop', onDrop);
+    };
+  }, []);
 
   async function handleUpload(file: File) {
     setUploading(true);
@@ -1491,23 +1515,31 @@ function WalkoutSongPicker({
                     onDragEnter={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      dragCounter.current += 1;
                       setIsDragging(true);
                     }}
                     onDragOver={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                       e.dataTransfer.dropEffect = 'copy';
-                      if (!isDragging) setIsDragging(true);
+                      // Force yellow state on every dragover frame; covers cases where
+                      // dragenter doesn't fire reliably (e.g., entering directly into a child)
+                      setIsDragging(true);
                     }}
                     onDragLeave={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      // Only flip off when leaving the dropzone itself, not entering a child
-                      if (e.currentTarget === e.target) setIsDragging(false);
+                      // Counter pattern: only flip off when ALL nested enter events have left
+                      dragCounter.current -= 1;
+                      if (dragCounter.current <= 0) {
+                        dragCounter.current = 0;
+                        setIsDragging(false);
+                      }
                     }}
                     onDrop={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      dragCounter.current = 0;
                       setIsDragging(false);
                       const f = e.dataTransfer.files?.[0];
                       if (f) handleUpload(f);
@@ -1516,14 +1548,15 @@ function WalkoutSongPicker({
                       uploading ? 'opacity-60 pointer-events-none' : ''
                     } ${
                       isDragging
-                        ? 'border-yellow-300 bg-yellow-300/15 scale-[1.02]'
+                        ? 'border-yellow-300 bg-yellow-300/20 scale-[1.02]'
                         : 'border-white/20 hover:border-yellow-300/50 hover:bg-yellow-300/[0.02]'
                     }`}
                   >
+                    {/* pointer-events-none on inner content so it doesn't intercept drag events */}
                     <div className="text-white/80 font-medium pointer-events-none">
                       {uploading ? 'Uploading…' : isDragging ? '⬇  Drop it!' : 'Drop a file here or click to choose'}
                     </div>
-                    <div className="text-xs text-white/40 mt-2 pointer-events-none">Max 5 MB · MP3 / M4A / WAV / OGG</div>
+                    <div className="text-xs text-white/40 mt-2 pointer-events-none">Max 20 MB · MP3 / M4A / WAV / OGG</div>
                   </div>
                   <div className="mt-6 text-xs text-white/40 leading-relaxed">
                     <strong className="text-white/60">Tip — getting a clip from Amazon Music or Spotify:</strong>

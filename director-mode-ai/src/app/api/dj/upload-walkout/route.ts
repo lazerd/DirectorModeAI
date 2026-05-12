@@ -5,7 +5,7 @@ import { eventCanUsePremium } from '@/lib/billing';
 
 export const dynamic = 'force-dynamic';
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5 MB — covers ~2-3 minute MP3 at 128kbps
+const MAX_BYTES = 20 * 1024 * 1024; // 20 MB — covers up to ~8min MP3 at 320kbps or longer at lower bitrates
 const ALLOWED_TYPES = ['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/wav', 'audio/ogg', 'audio/webm'];
 
 export async function POST(request: NextRequest) {
