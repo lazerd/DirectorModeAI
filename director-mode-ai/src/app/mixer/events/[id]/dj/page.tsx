@@ -8,6 +8,29 @@ import DayPassButton from '@/components/billing/DayPassButton';
 
 export const dynamic = 'force-dynamic';
 
+const TOURNAMENT_FORMATS = new Set([
+  'rr-singles',
+  'rr-doubles',
+  'single-elim-singles',
+  'single-elim-doubles',
+  'fmlc-singles',
+  'fmlc-doubles',
+  'ffic-singles',
+  'ffic-doubles',
+]);
+
+/** Format a tournament entry as a single "player" name for the announcer. */
+function teamName(player_name: string, partner_name: string | null): string {
+  return partner_name ? `${player_name} / ${partner_name}` : player_name;
+}
+
+/** Convert a tournament_matches.court ("3" or "Center") to a court number. */
+function courtToNumber(court: string | null): number {
+  if (!court) return 0;
+  const n = parseInt(court, 10);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
 export default async function DJConsolePage({ params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
 
@@ -70,36 +93,113 @@ export default async function DJConsolePage({ params }: { params: Promise<{ id: 
 
 
 
-  // Players are joined via event_players → players. Walkout fields live on players.
-  const { data: eventPlayers } = await supabase
-    .from('event_players')
-    .select(
-      'player:players(id, name, walkout_song_url, walkout_song_title, walkout_song_artist, walkout_song_start_seconds, walkout_announcer_audio_url)'
-    )
-    .eq('event_id', eventId);
+  const isTournament = TOURNAMENT_FORMATS.has(event.match_format ?? '');
 
-  const players = (eventPlayers || [])
-    .map((ep: any) => ep.player)
-    .filter(Boolean)
-    .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+  let players: any[] = [];
+  let rounds: any[] = [];
+  let matches: any[] = [];
 
-  // Fetch all rounds + matches so the script can reference real court assignments
-  const { data: rounds } = await supabase
-    .from('rounds')
-    .select('id, round_number, status')
-    .eq('event_id', eventId)
-    .order('round_number');
+  if (isTournament) {
+    // Tournament path — players are tournament_entries (each row = a team
+    // for doubles or single player for singles), matches are tournament_matches.
+    const { data: entries } = await supabase
+      .from('tournament_entries')
+      .select('id, player_name, partner_name')
+      .eq('event_id', eventId)
+      .eq('position', 'in_draw');
 
-  const roundIds = (rounds || []).map((r) => r.id);
-  const { data: matches } = roundIds.length
-    ? await supabase
-        .from('matches')
-        .select(
-          'id, round_id, court_number, player1_id, player2_id, player3_id, player4_id, team1_score, team2_score, winner_team'
-        )
-        .in('round_id', roundIds)
-        .order('court_number')
-    : { data: [] };
+    // Walkout song fields aren't on tournament_entries (yet). For now the
+    // announcer runs without walkouts; the Setlist tab will silently fail
+    // on save since save-walkout still writes to the `players` table.
+    // TODO: add walkout_* columns to tournament_entries + extend save-walkout.
+    players = (entries || [])
+      .map((e: any) => ({
+        id: e.id,
+        name: teamName(e.player_name, e.partner_name),
+        walkout_song_url: null,
+        walkout_song_title: null,
+        walkout_song_artist: null,
+        walkout_song_start_seconds: 0,
+        walkout_announcer_audio_url: null,
+      }))
+      .sort((a: any, b: any) => a.name.localeCompare(b.name));
+
+    const { data: tournamentMatches } = await supabase
+      .from('tournament_matches')
+      .select(
+        'id, bracket, round, slot, player1_id, player3_id, court, score, winner_side, status'
+      )
+      .eq('event_id', eventId)
+      .order('round')
+      .order('slot');
+
+    // Build a synthetic "round" per (bracket, round) pair so the DJ script
+    // can group matches by round just like mixer events do.
+    const tm = (tournamentMatches || []) as any[];
+    const roundKey = (m: any) => `${m.bracket}-r${m.round}`;
+    const uniqueRoundKeys = Array.from(new Set(tm.map(roundKey)));
+    rounds = uniqueRoundKeys.map((key, idx) => {
+      const sample = tm.find((m) => roundKey(m) === key);
+      // All matches completed for this round → done. Any in progress → ongoing.
+      const inRound = tm.filter((m) => roundKey(m) === key);
+      const status = inRound.every((m) => m.status === 'completed')
+        ? 'completed'
+        : 'pending';
+      return {
+        id: key,
+        round_number: idx + 1,
+        status,
+        bracket: sample?.bracket ?? 'main',
+        round: sample?.round ?? idx + 1,
+      };
+    });
+
+    matches = tm.map((m: any) => ({
+      id: m.id,
+      round_id: roundKey(m),
+      court_number: courtToNumber(m.court),
+      player1_id: m.player1_id,
+      player2_id: null,
+      player3_id: m.player3_id,
+      player4_id: null,
+      team1_score: null,
+      team2_score: null,
+      winner_team:
+        m.winner_side === 'a' ? 1 : m.winner_side === 'b' ? 2 : null,
+    }));
+  } else {
+    // Legacy mixer path — players via event_players → players, matches via rounds → matches.
+    const { data: eventPlayers } = await supabase
+      .from('event_players')
+      .select(
+        'player:players(id, name, walkout_song_url, walkout_song_title, walkout_song_artist, walkout_song_start_seconds, walkout_announcer_audio_url)'
+      )
+      .eq('event_id', eventId);
+
+    players = (eventPlayers || [])
+      .map((ep: any) => ep.player)
+      .filter(Boolean)
+      .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+
+    const { data: mixerRounds } = await supabase
+      .from('rounds')
+      .select('id, round_number, status')
+      .eq('event_id', eventId)
+      .order('round_number');
+    rounds = mixerRounds || [];
+
+    const roundIds = rounds.map((r: any) => r.id);
+    const { data: mixerMatches } = roundIds.length
+      ? await supabase
+          .from('matches')
+          .select(
+            'id, round_id, court_number, player1_id, player2_id, player3_id, player4_id, team1_score, team2_score, winner_team'
+          )
+          .in('round_id', roundIds)
+          .order('court_number')
+      : { data: [] };
+    matches = mixerMatches || [];
+  }
 
   return (
     <div className="px-4 md:px-8 py-6 md:py-10 max-w-6xl mx-auto">

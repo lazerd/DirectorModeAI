@@ -22,6 +22,7 @@ import {
   ArrowDown,
   Tv,
   Printer,
+  Music,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
@@ -654,6 +655,14 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? 'Copied!' : 'Copy'}
         </button>
+        <Link
+          href={`/mixer/events/${eventId}/dj`}
+          target="_blank"
+          className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-300 hover:bg-yellow-200 text-[#001820] rounded text-xs font-bold flex-shrink-0"
+        >
+          <Music size={12} />
+          DJ Console
+        </Link>
         <Link
           href={`/mixer/events/${eventId}/console`}
           target="_blank"
