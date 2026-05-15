@@ -21,6 +21,7 @@ import {
   ArrowUp,
   ArrowDown,
   Tv,
+  Printer,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay } from '@/lib/quads';
@@ -652,6 +653,14 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         >
           <Tv size={12} />
           Live Console
+        </Link>
+        <Link
+          href={`/tournaments/${event.slug}/draw`}
+          target="_blank"
+          className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded text-xs font-semibold flex-shrink-0"
+        >
+          <Printer size={12} />
+          Print Draw
         </Link>
       </div>
 
