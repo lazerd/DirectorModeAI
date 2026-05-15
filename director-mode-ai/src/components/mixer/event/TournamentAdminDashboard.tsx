@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -78,6 +78,7 @@ type Match = {
   court: string | null;
   scheduled_at: string | null;
   scheduled_date: string | null;
+  winner_feeds_to: string | null;
 };
 
 const POSITION_LABELS: Record<Entry['position'], { label: string; color: string }> = {
@@ -246,6 +247,11 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
   const [scheduling, setScheduling] = useState(false);
   const [emailMode, setEmailMode] = useState<'scoring' | 'schedule' | null>(null);
 
+  // Bracket-connector SVG paths, keyed by bracket name. Recomputed on layout
+  // changes via useLayoutEffect (see below).
+  const canvasRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [connectorPaths, setConnectorPaths] = useState<Record<string, string[]>>({});
+
   const fetchAll = useCallback(async () => {
     setLoading(true);
     const supabase = createClient();
@@ -271,7 +277,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         .order('registered_at', { ascending: true }),
       supabase
         .from('tournament_matches')
-        .select('id, bracket, round, slot, match_type, player1_id, player2_id, player3_id, player4_id, score, winner_side, status, score_token, court, scheduled_at, scheduled_date')
+        .select('id, bracket, round, slot, match_type, player1_id, player2_id, player3_id, player4_id, score, winner_side, status, score_token, court, scheduled_at, scheduled_date, winner_feeds_to')
         .eq('event_id', eventId)
         .order('round'),
     ]);
@@ -283,6 +289,65 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
   useEffect(() => {
     fetchAll();
   }, [fetchAll]);
+
+  /**
+   * Measure each match card's position and build SVG paths connecting each
+   * match to its winner_feeds_to destination. Path goes: right edge of source
+   * → horizontal to midpoint of column gap → vertical to dest height →
+   * horizontal to left edge of dest. Recomputed when matches/editing change
+   * or the window resizes.
+   */
+  useLayoutEffect(() => {
+    const compute = () => {
+      const next: Record<string, string[]> = {};
+      for (const bracket of ['main', 'consolation'] as const) {
+        const container = canvasRefs.current[bracket];
+        if (!container) continue;
+        const bMatches = matches.filter((m) => m.bracket === bracket);
+        if (bMatches.length === 0) continue;
+        const matchByPosition = new Map<string, Match>();
+        for (const m of bMatches) {
+          matchByPosition.set(`${m.bracket}:${m.round}:${m.slot}`, m);
+        }
+        const containerRect = container.getBoundingClientRect();
+        const matchRects = new Map<string, DOMRect>();
+        container.querySelectorAll<HTMLElement>('[data-match-id]').forEach((el) => {
+          if (el.dataset.matchId) matchRects.set(el.dataset.matchId, el.getBoundingClientRect());
+        });
+        const paths: string[] = [];
+        for (const m of bMatches) {
+          if (!m.winner_feeds_to) continue;
+          const parts = m.winner_feeds_to.split(':');
+          if (parts.length < 3) continue;
+          const dest = matchByPosition.get(`${parts[0]}:${parts[1]}:${parts[2]}`);
+          if (!dest) continue;
+          const src = matchRects.get(m.id);
+          const dst = matchRects.get(dest.id);
+          if (!src || !dst) continue;
+          const srcX = src.right - containerRect.left;
+          const srcY = src.top + src.height / 2 - containerRect.top;
+          const dstX = dst.left - containerRect.left;
+          const dstY = dst.top + dst.height / 2 - containerRect.top;
+          const midX = (srcX + dstX) / 2;
+          paths.push(`M ${srcX} ${srcY} H ${midX} V ${dstY} H ${dstX}`);
+        }
+        next[bracket] = paths;
+      }
+      setConnectorPaths(next);
+    };
+    compute();
+    // Re-measure on resize. RAF guard against layout thrash.
+    let raf = 0;
+    const onResize = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(compute);
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [matches, editing, tab]);
 
   const publicUrl = useMemo(() => {
     if (!event) return '';
@@ -914,7 +979,28 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                           {bracketMatches.length} matches · {totalRounds} {totalRounds === 1 ? 'round' : 'rounds'}
                         </span>
                       </div>
-                      <div className="flex gap-6 min-w-max pb-2 items-stretch">
+                      <div
+                        ref={(el) => {
+                          canvasRefs.current[bracket] = el;
+                        }}
+                        className="relative min-w-max"
+                      >
+                        <svg
+                          className="absolute inset-0 pointer-events-none"
+                          width="100%"
+                          height="100%"
+                        >
+                          {(connectorPaths[bracket] ?? []).map((d, i) => (
+                            <path
+                              key={i}
+                              d={d}
+                              stroke="#d1d5db"
+                              strokeWidth={1.5}
+                              fill="none"
+                            />
+                          ))}
+                        </svg>
+                      <div className="flex gap-6 min-w-max pb-2 items-stretch relative">
                         {rounds.map((round, roundIdx) => {
                           const roundMatches = bracketMatches
                             .filter((m) => m.round === round)
@@ -1084,6 +1170,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                                   return (
                                     <div
                                       key={m.id}
+                                      data-match-id={m.id}
                                       className="border border-gray-300 rounded-lg bg-white shadow-sm overflow-hidden"
                                     >
                                       <TeamRow
@@ -1175,6 +1262,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                             </div>
                           );
                         })}
+                      </div>
                       </div>
                     </div>
                   );
