@@ -137,11 +137,11 @@ export default function SelectFormatPage() {
       icon: '🎾',
       subChoices: [
         {
-          id: 'single-elimination-singles',
+          id: 'single-elim-singles',
           name: 'Single Elimination',
           description: 'Lose once and you\'re out.',
           status: 'live',
-          route: '/mixer/events/new?format=single-elimination-singles',
+          route: '/mixer/tournaments/new?format=single-elim-singles',
         },
         {
           id: 'fmlc-singles',
@@ -166,11 +166,11 @@ export default function SelectFormatPage() {
       icon: '👥',
       subChoices: [
         {
-          id: 'single-elimination-doubles',
+          id: 'single-elim-doubles',
           name: 'Single Elimination',
           description: 'Lose once and you\'re out.',
           status: 'live',
-          route: '/mixer/events/new?format=single-elimination-doubles',
+          route: '/mixer/tournaments/new?format=single-elim-doubles',
         },
         {
           id: 'fmlc-doubles',
