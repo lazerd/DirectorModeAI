@@ -13,10 +13,10 @@
  * URL: /mixer/events/[id]/console
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, Loader2, RefreshCw, Tv } from 'lucide-react';
+import { ArrowLeft, Loader2, Megaphone, RefreshCw, Tv, Volume2, VolumeX } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { formatTimeDisplay, resolveCourtList } from '@/lib/quads';
 
@@ -55,6 +55,20 @@ const TOURNAMENT_FORMATS = new Set([
   'ffic-singles', 'ffic-doubles',
 ]);
 
+const VOICE_STORAGE_KEY = 'dm:console:voice';
+const RATE_STORAGE_KEY = 'dm:console:rate';
+
+/** Phrase a team for spoken announcement — "and" reads better than "/". */
+function spokenTeam(entry: Entry | undefined | null): string {
+  if (!entry) return 'TBD';
+  return entry.partner_name ? `${entry.player_name} and ${entry.partner_name}` : entry.player_name;
+}
+
+/** Build a single-court announcement line. */
+function buildCourtAnnouncement(court: string, sideA: string, sideB: string): string {
+  return `Players for Court ${court}: ${sideA}, versus ${sideB}. Please take Court ${court}.`;
+}
+
 export default function LiveConsolePage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : (params.id as string);
@@ -63,6 +77,78 @@ export default function LiveConsolePage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
+
+  // DJ mode — Web Speech API for announcing matches over the loudspeaker
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState<string>('');
+  const [rate, setRate] = useState(0.95);
+  const [speaking, setSpeaking] = useState(false);
+  const [showDjSettings, setShowDjSettings] = useState(false);
+  const speechSupported =
+    typeof window !== 'undefined' && typeof window.speechSynthesis !== 'undefined';
+  const announceQueueRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    if (!speechSupported) return;
+    const loadVoices = () => {
+      const list = window.speechSynthesis.getVoices();
+      setVoices(list);
+      // Restore from localStorage, or default to first English voice
+      const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(VOICE_STORAGE_KEY) : null;
+      const storedRate = typeof localStorage !== 'undefined' ? localStorage.getItem(RATE_STORAGE_KEY) : null;
+      if (storedRate) setRate(parseFloat(storedRate) || 0.95);
+      if (stored && list.some((v) => v.voiceURI === stored)) {
+        setSelectedVoice(stored);
+      } else {
+        const englishVoice = list.find((v) => v.lang.startsWith('en'));
+        if (englishVoice) setSelectedVoice(englishVoice.voiceURI);
+      }
+    };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    return () => {
+      if (window.speechSynthesis) window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, [speechSupported]);
+
+  const speak = useCallback(
+    (text: string) => {
+      if (!speechSupported || !text.trim()) return;
+      const voice = voices.find((v) => v.voiceURI === selectedVoice) || null;
+      const utter = new SpeechSynthesisUtterance(text);
+      if (voice) utter.voice = voice;
+      utter.rate = rate;
+      utter.volume = 1.0;
+      utter.onstart = () => setSpeaking(true);
+      utter.onend = () => {
+        const next = announceQueueRef.current.shift();
+        if (next) {
+          speak(next);
+        } else {
+          setSpeaking(false);
+        }
+      };
+      utter.onerror = () => setSpeaking(false);
+      window.speechSynthesis.speak(utter);
+    },
+    [speechSupported, voices, selectedVoice, rate]
+  );
+
+  const stopSpeaking = useCallback(() => {
+    if (!speechSupported) return;
+    announceQueueRef.current = [];
+    window.speechSynthesis.cancel();
+    setSpeaking(false);
+  }, [speechSupported]);
+
+  const queueSpeak = useCallback(
+    (lines: string[]) => {
+      if (!speechSupported || lines.length === 0) return;
+      announceQueueRef.current = lines.slice(1);
+      speak(lines[0]);
+    },
+    [speechSupported, speak]
+  );
 
   const fetchAll = useCallback(async () => {
     const supabase = createClient();
@@ -152,6 +238,9 @@ export default function LiveConsolePage() {
     return e.partner_name ? `${e.player_name} + ${e.partner_name}` : e.player_name;
   };
 
+  const entryFor = (id: string | null): Entry | undefined =>
+    id ? entries.find((x) => x.id === id) : undefined;
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#001820] text-white flex items-center justify-center">
@@ -202,6 +291,31 @@ export default function LiveConsolePage() {
     return { court, current, next };
   });
 
+  // Build "Call all courts" announcement — every court with active or upcoming match
+  const announceAllCourts = () => {
+    if (!speechSupported) return;
+    const lines: string[] = [];
+    for (const { court, current, next } of courtState) {
+      const match = current ?? next;
+      if (!match) continue;
+      const a = spokenTeam(entryFor(match.player1_id));
+      const b = spokenTeam(entryFor(match.player3_id));
+      lines.push(buildCourtAnnouncement(court, a, b));
+    }
+    if (lines.length === 0) {
+      speak('No matches scheduled to announce.');
+      return;
+    }
+    queueSpeak([`Players, listen up. ${lines.length} courts ready.`, ...lines]);
+  };
+
+  const announceCourt = (court: string, match: Match | undefined) => {
+    if (!speechSupported || !match) return;
+    const a = spokenTeam(entryFor(match.player1_id));
+    const b = spokenTeam(entryFor(match.player3_id));
+    speak(buildCourtAnnouncement(court, a, b));
+  };
+
   return (
     <div className="min-h-screen bg-[#001820] text-white p-4 sm:p-6 lg:p-8">
       <header className="flex items-center justify-between mb-6 flex-wrap gap-3">
@@ -219,10 +333,92 @@ export default function LiveConsolePage() {
             <h1 className="text-2xl font-bold">{event.name}</h1>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-white/50">
-          <RefreshCw size={12} /> Auto-refresh 30s · {now.toLocaleTimeString()}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {speechSupported ? (
+            <>
+              <button
+                onClick={speaking ? stopSpeaking : announceAllCourts}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg font-semibold text-sm ${
+                  speaking
+                    ? 'bg-red-500 hover:bg-red-600 text-white'
+                    : 'bg-[#D3FB52] hover:bg-[#bce844] text-[#001820]'
+                }`}
+              >
+                {speaking ? <VolumeX size={16} /> : <Megaphone size={16} />}
+                {speaking ? 'Stop' : 'Call to courts'}
+              </button>
+              <button
+                onClick={() => setShowDjSettings((s) => !s)}
+                className="p-2 hover:bg-white/10 rounded-lg text-white/60"
+                title="DJ voice settings"
+              >
+                <Volume2 size={16} />
+              </button>
+            </>
+          ) : (
+            <span className="text-xs text-white/30 italic">Voice unsupported in this browser</span>
+          )}
+          <span className="text-xs text-white/50 inline-flex items-center gap-1">
+            <RefreshCw size={12} /> 30s · {now.toLocaleTimeString()}
+          </span>
         </div>
       </header>
+
+      {showDjSettings && speechSupported && (
+        <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-6 grid sm:grid-cols-2 gap-4 max-w-2xl">
+          <div>
+            <label className="block text-xs uppercase tracking-wide text-white/50 mb-1">
+              Voice
+            </label>
+            <select
+              value={selectedVoice}
+              onChange={(e) => {
+                setSelectedVoice(e.target.value);
+                if (typeof localStorage !== 'undefined')
+                  localStorage.setItem(VOICE_STORAGE_KEY, e.target.value);
+              }}
+              className="w-full px-2 py-1.5 bg-[#002838] border border-white/10 rounded text-sm"
+            >
+              {voices.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI}>
+                  {v.name} ({v.lang})
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs uppercase tracking-wide text-white/50 mb-1">
+              Rate: {rate.toFixed(2)}×
+            </label>
+            <input
+              type="range"
+              min={0.5}
+              max={1.3}
+              step={0.05}
+              value={rate}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                setRate(v);
+                if (typeof localStorage !== 'undefined')
+                  localStorage.setItem(RATE_STORAGE_KEY, v.toString());
+              }}
+              className="w-full"
+            />
+          </div>
+          <div className="sm:col-span-2 flex gap-2">
+            <button
+              onClick={() => speak('Players, test announcement. Please take your courts.')}
+              className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded text-sm"
+            >
+              Test voice
+            </button>
+            <p className="text-xs text-white/50 self-center flex-1">
+              Plug this device's audio output into your PA system. Press "Call to courts"
+              to read every active + upcoming court.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {courtState.map(({ court, current, next }) => (
@@ -234,14 +430,26 @@ export default function LiveConsolePage() {
                 : 'bg-white/5 border-white/10'
             }`}
           >
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-2">
               <div className="text-3xl font-bold">{court}</div>
-              <div
-                className={`text-xs uppercase tracking-widest font-bold px-2 py-0.5 rounded-full ${
-                  current ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-white/50'
-                }`}
-              >
-                {current ? '● Live' : 'Open'}
+              <div className="flex items-center gap-2">
+                {speechSupported && (current || next) && (
+                  <button
+                    onClick={() => announceCourt(court, current ?? next)}
+                    disabled={speaking}
+                    title={`Announce match on Court ${court}`}
+                    className="p-1.5 bg-[#D3FB52]/20 hover:bg-[#D3FB52]/30 text-[#D3FB52] rounded-lg disabled:opacity-40"
+                  >
+                    <Megaphone size={14} />
+                  </button>
+                )}
+                <div
+                  className={`text-xs uppercase tracking-widest font-bold px-2 py-0.5 rounded-full ${
+                    current ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-white/50'
+                  }`}
+                >
+                  {current ? '● Live' : 'Open'}
+                </div>
               </div>
             </div>
 
