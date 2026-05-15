@@ -280,11 +280,10 @@ select.input {
   padding-right: 2.5rem;
 }
 
-/* Form controls + labels: default to dark text so they're readable on
-   white card backgrounds (mixer/stringing/courtconnect forms). Inside .card
-   containers (the dark themed register/login surface) we restore the light
-   foreground via the .card override below. Components that opt into the
-   dark .input class set their own color and are unaffected. */
+/* Form controls + labels: default to dark text on white so they're readable
+   on white card surfaces (mixer/tournaments/stringing/courtconnect forms).
+   Inline Tailwind `text-*` / `bg-*` classes opt out via the :not selector.
+   `.input` is the dark themed class used inside .card surfaces. */
 label {
   color: #334155;
 }
@@ -293,6 +292,23 @@ input:not([class*="text-"]):not(.input),
 select:not([class*="text-"]):not(.input),
 textarea:not([class*="text-"]):not(.input) {
   color: #0f172a;
+}
+
+input:not([class*="bg-"]):not(.input),
+select:not([class*="bg-"]):not(.input),
+textarea:not([class*="bg-"]):not(.input) {
+  background-color: #ffffff;
+}
+
+/* The body is dark-navy themed. macOS / iOS / Windows browsers in dark-mode
+   pick that up and auto-darken native form controls (date pickers,
+   datetime-local, time, native selects) — text becomes invisible even when
+   bg-white is set. Forcing `color-scheme: light` on form controls keeps
+   them rendering in light mode regardless of OS preference. */
+input,
+select,
+textarea {
+  color-scheme: light;
 }
 
 .label {
