@@ -89,6 +89,92 @@ const POSITION_LABELS: Record<Entry['position'], { label: string; color: string 
 
 type Tab = 'entries' | 'matches' | 'settings';
 
+/** Tennis round label: "Round of 16", "Quarterfinals", "Semifinals", "Final". */
+function roundLabel(round: number, totalRounds: number, bracket: 'main' | 'consolation'): string {
+  if (round === totalRounds) return bracket === 'consolation' ? 'Consolation Final' : 'Final';
+  if (round === totalRounds - 1) return 'Semifinals';
+  if (round === totalRounds - 2) return 'Quarterfinals';
+  const playersLeft = 2 ** (totalRounds - round + 1);
+  return `Round of ${playersLeft}`;
+}
+
+/** Split "6-4, 6-2" into per-side game tallies: { a: ['6','6'], b: ['4','2'] }. */
+function parseScoreSets(score: string | null): { a: string[]; b: string[] } | null {
+  if (!score) return null;
+  const setPairs = score.split(/[,\s]+/).filter(Boolean);
+  const a: string[] = [];
+  const b: string[] = [];
+  for (const s of setPairs) {
+    const m = s.match(/^(\d+)-(\d+)$/);
+    if (!m) return null;
+    a.push(m[1]);
+    b.push(m[2]);
+  }
+  return a.length === 0 ? null : { a, b };
+}
+
+/** Format a team for a bracket row: "Smith / Jones" or just "Smith" for singles. */
+function formatTeamName(entry: { player_name: string; partner_name: string | null } | null): string {
+  if (!entry) return '';
+  if (entry.partner_name) return `${entry.player_name} / ${entry.partner_name}`;
+  return entry.player_name;
+}
+
+/** Single team row in a bracket match card — seed chip, name(s), score digits per set. */
+function TeamRow({
+  entry,
+  won,
+  dimmed,
+  sets,
+}: {
+  entry: Entry | null | undefined;
+  won: boolean;
+  dimmed: boolean;
+  sets: string[] | null;
+}) {
+  if (!entry) {
+    return (
+      <div className="px-3 py-2 flex items-center justify-between gap-2 min-h-[42px]">
+        <div className="flex items-center gap-2 text-gray-400 italic text-sm">
+          <span className="w-6 inline-block text-center">—</span>
+          TBD
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div
+      className={`px-3 py-2 flex items-center justify-between gap-2 min-h-[42px] ${
+        won ? 'bg-emerald-50' : dimmed ? 'opacity-60' : ''
+      }`}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <span
+          className={`w-6 h-5 inline-flex items-center justify-center text-[10px] font-bold rounded flex-shrink-0 ${
+            entry.seed != null ? 'bg-gray-900 text-white' : 'text-gray-300 border border-gray-200'
+          }`}
+        >
+          {entry.seed ?? '·'}
+        </span>
+        <span className={`truncate text-sm text-gray-900 ${won ? 'font-bold' : 'font-medium'}`}>
+          {formatTeamName(entry)}
+        </span>
+      </div>
+      {sets && sets.length > 0 && (
+        <div
+          className={`font-mono text-sm tabular-nums whitespace-nowrap flex gap-1.5 flex-shrink-0 ${
+            won ? 'font-bold text-gray-900' : 'text-gray-600'
+          }`}
+        >
+          {sets.map((g, i) => (
+            <span key={i}>{g}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TournamentAdminDashboard({ eventId }: { eventId: string }) {
   const [event, setEvent] = useState<EventRow | null>(null);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -731,149 +817,221 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
             </div>
           ) : (
             <>
-              {Array.from(new Set(matches.map((m) => m.bracket))).map((bracket) => (
-                <div key={bracket} className="bg-white border border-gray-200 rounded-xl p-4">
-                  <h3 className="font-semibold mb-3 capitalize">{bracket} Bracket</h3>
-                  {Array.from(new Set(matches.filter((m) => m.bracket === bracket).map((m) => m.round)))
-                    .sort((a, b) => a - b)
-                    .map((round) => (
-                      <div key={round} className="mb-3">
-                        <div className="text-xs text-gray-500 uppercase tracking-wide mb-1.5">
-                          Round {round}
-                        </div>
-                        <div className="space-y-2">
-                          {matches
-                            .filter((m) => m.bracket === bracket && m.round === round)
-                            .sort((a, b) => a.slot - b.slot)
-                            .map((m) => {
-                              const a = labelEntry(m.player1_id);
-                              const b = labelEntry(m.player3_id);
-                              const aWon = m.winner_side === 'a';
-                              const bWon = m.winner_side === 'b';
-                              const isPending = m.status !== 'completed';
-                              const canScore = m.player1_id && m.player3_id;
-                              const isOpen = editing === m.id;
-                              if (isOpen) {
-                                return (
-                                  <div key={m.id} className="border-2 border-orange-300 bg-orange-50 rounded-lg p-3 space-y-2">
-                                    <div className="grid grid-cols-2 gap-2 text-sm">
-                                      <button
-                                        onClick={() => setScoreInput({ ...scoreInput, winner_side: 'a' })}
-                                        className={`px-2 py-1.5 rounded ${scoreInput.winner_side === 'a' ? 'bg-emerald-600 text-white' : 'bg-white border'}`}
-                                      >
-                                        {a} won
-                                      </button>
-                                      <button
-                                        onClick={() => setScoreInput({ ...scoreInput, winner_side: 'b' })}
-                                        className={`px-2 py-1.5 rounded ${scoreInput.winner_side === 'b' ? 'bg-emerald-600 text-white' : 'bg-white border'}`}
-                                      >
-                                        {b} won
-                                      </button>
-                                    </div>
-                                    <input
-                                      type="text"
-                                      placeholder='Score (e.g. "6-3, 6-4")'
-                                      value={scoreInput.score}
-                                      onChange={(e) => setScoreInput({ ...scoreInput, score: e.target.value })}
-                                      className="w-full px-2 py-1.5 border rounded text-sm text-gray-900"
-                                    />
-                                    {scoreInput.score && !isValidQuadScore(scoreInput.score) && (
-                                      <div className="text-xs text-red-600">
-                                        Format must be like <code>6-3</code> or <code>6-3, 6-4</code>.
-                                      </div>
-                                    )}
-                                    <div className="flex gap-2">
-                                      <button onClick={() => setEditing(null)} className="flex-1 px-2 py-1 text-sm border rounded hover:bg-gray-50">
-                                        Cancel
-                                      </button>
-                                      <button
-                                        onClick={() => saveScore(m)}
-                                        disabled={busy === m.id || !scoreInput.winner_side || !isValidQuadScore(scoreInput.score)}
-                                        className="flex-1 px-2 py-1 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
-                                      >
-                                        {busy === m.id ? 'Saving…' : 'Save'}
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              }
-                              return (
-                                <div key={m.id} className="border border-gray-200 rounded-lg p-2 text-sm space-y-2">
-                                  <div className="flex items-center gap-2">
-                                    <div className="flex-1 grid grid-cols-2 gap-1">
-                                      <div className={aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'} style={!aWon ? { color: '#000000' } : undefined}>
-                                        {a}
-                                      </div>
-                                      <div className={bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'} style={!bWon ? { color: '#000000' } : undefined}>
-                                        {b}
-                                      </div>
-                                    </div>
-                                    <div className="text-gray-700 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
-                                      {m.score || ''}
-                                    </div>
-                                    {canScore && isPending ? (
-                                      <button
-                                        onClick={() => openEdit(m)}
-                                        className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium text-xs whitespace-nowrap"
-                                      >
-                                        Enter Score
-                                      </button>
-                                    ) : !isPending ? (
-                                      <button onClick={() => openEdit(m)} className="px-2 py-1 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded text-xs flex items-center gap-1">
-                                        <Edit3 size={12} /> Edit
-                                      </button>
-                                    ) : (
-                                      <span className="text-xs text-gray-400 italic">awaiting</span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-2 text-xs text-gray-600 pl-1 flex-wrap">
-                                    <span>Date</span>
-                                    <input
-                                      type="date"
-                                      defaultValue={m.scheduled_date ?? ''}
-                                      onBlur={(e) => {
-                                        const v = e.target.value;
-                                        if ((m.scheduled_date ?? '') !== v) updateMatchSchedule(m.id, 'scheduled_date', v);
-                                      }}
-                                      className="px-1.5 py-0.5 border rounded text-gray-900"
-                                      style={{ color: '#000000' }}
-                                    />
-                                    <span className="ml-2">Court</span>
-                                    <input
-                                      type="text"
-                                      defaultValue={m.court ?? ''}
-                                      onBlur={(e) => {
-                                        const v = e.target.value.trim();
-                                        if ((m.court ?? '') !== v) updateMatchSchedule(m.id, 'court', v);
-                                      }}
-                                      placeholder="—"
-                                      className="w-14 px-1.5 py-0.5 border rounded text-gray-900"
-                                      style={{ color: '#000000' }}
-                                    />
-                                    <span className="ml-2">Start</span>
-                                    <input
-                                      type="time"
-                                      defaultValue={m.scheduled_at?.slice(0, 5) ?? ''}
-                                      onBlur={(e) => {
-                                        const v = e.target.value;
-                                        const current = m.scheduled_at?.slice(0, 5) ?? '';
-                                        if (current !== v) updateMatchSchedule(m.id, 'scheduled_at', v);
-                                      }}
-                                      className="px-1.5 py-0.5 border rounded text-gray-900"
-                                      style={{ color: '#000000' }}
-                                    />
-                                    {m.scheduled_at && (
-                                      <span className="text-gray-400">{formatTimeDisplay(m.scheduled_at)}</span>
-                                    )}
-                                  </div>
-                                </div>
-                              );
-                            })}
-                        </div>
+              {(['main', 'consolation'] as const)
+                .filter((bracket) => matches.some((m) => m.bracket === bracket))
+                .map((bracket) => {
+                  const bracketMatches = matches.filter((m) => m.bracket === bracket);
+                  const rounds = Array.from(new Set(bracketMatches.map((m) => m.round))).sort(
+                    (a, b) => a - b
+                  );
+                  const totalRounds = rounds.length;
+                  return (
+                    <div
+                      key={bracket}
+                      className="bg-white border border-gray-200 rounded-xl p-4 overflow-x-auto"
+                    >
+                      <div className="flex items-baseline justify-between mb-4">
+                        <h3 className="font-semibold text-gray-900">
+                          {bracket === 'main' ? 'Main Draw' : 'Consolation Draw'}
+                        </h3>
+                        <span className="text-xs text-gray-500">
+                          {bracketMatches.length} matches · {totalRounds} {totalRounds === 1 ? 'round' : 'rounds'}
+                        </span>
                       </div>
-                    ))}
-                </div>
-              ))}
+                      <div className="flex gap-6 min-w-max pb-2 items-stretch">
+                        {rounds.map((round, roundIdx) => {
+                          const roundMatches = bracketMatches
+                            .filter((m) => m.round === round)
+                            .sort((a, b) => a.slot - b.slot);
+                          return (
+                            <div
+                              key={round}
+                              className="flex flex-col min-w-[280px]"
+                            >
+                              <div className="text-center text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-3 pb-2 border-b border-gray-200">
+                                {roundLabel(roundIdx + 1, totalRounds, bracket)}
+                              </div>
+                              <div className="flex-1 flex flex-col justify-around gap-4">
+                                {roundMatches.map((m) => {
+                                  const teamA = m.player1_id ? entryById.get(m.player1_id) : null;
+                                  const teamB = m.player3_id ? entryById.get(m.player3_id) : null;
+                                  const aWon = m.winner_side === 'a';
+                                  const bWon = m.winner_side === 'b';
+                                  const isPending = m.status !== 'completed';
+                                  const canScore = !!(m.player1_id && m.player3_id);
+                                  const isOpen = editing === m.id;
+                                  const parsed = parseScoreSets(m.score);
+
+                                  if (isOpen) {
+                                    const aLabel = formatTeamName(teamA ?? null) || 'Side A';
+                                    const bLabel = formatTeamName(teamB ?? null) || 'Side B';
+                                    return (
+                                      <div
+                                        key={m.id}
+                                        className="border-2 border-orange-400 bg-orange-50 rounded-lg p-3 space-y-2"
+                                      >
+                                        <div className="text-[10px] font-semibold uppercase tracking-wider text-orange-700">
+                                          Enter Score
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2 text-xs">
+                                          <button
+                                            onClick={() =>
+                                              setScoreInput({ ...scoreInput, winner_side: 'a' })
+                                            }
+                                            className={`px-2 py-1.5 rounded font-medium ${
+                                              scoreInput.winner_side === 'a'
+                                                ? 'bg-emerald-600 text-white'
+                                                : 'bg-white border border-gray-300 text-gray-700'
+                                            }`}
+                                          >
+                                            {aLabel} won
+                                          </button>
+                                          <button
+                                            onClick={() =>
+                                              setScoreInput({ ...scoreInput, winner_side: 'b' })
+                                            }
+                                            className={`px-2 py-1.5 rounded font-medium ${
+                                              scoreInput.winner_side === 'b'
+                                                ? 'bg-emerald-600 text-white'
+                                                : 'bg-white border border-gray-300 text-gray-700'
+                                            }`}
+                                          >
+                                            {bLabel} won
+                                          </button>
+                                        </div>
+                                        <input
+                                          type="text"
+                                          placeholder='Score — e.g. "6-3, 6-4"'
+                                          value={scoreInput.score}
+                                          onChange={(e) =>
+                                            setScoreInput({ ...scoreInput, score: e.target.value })
+                                          }
+                                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white text-gray-900"
+                                        />
+                                        {scoreInput.score && !isValidQuadScore(scoreInput.score) && (
+                                          <div className="text-xs text-red-600">
+                                            Format must be like <code>6-3</code> or <code>6-3, 6-4</code>.
+                                          </div>
+                                        )}
+                                        <div className="flex gap-2">
+                                          <button
+                                            onClick={() => setEditing(null)}
+                                            className="flex-1 px-2 py-1.5 text-xs border border-gray-300 rounded hover:bg-gray-50 text-gray-700"
+                                          >
+                                            Cancel
+                                          </button>
+                                          <button
+                                            onClick={() => saveScore(m)}
+                                            disabled={
+                                              busy === m.id ||
+                                              !scoreInput.winner_side ||
+                                              !isValidQuadScore(scoreInput.score)
+                                            }
+                                            className="flex-1 px-2 py-1.5 text-xs bg-orange-500 text-white rounded font-semibold hover:bg-orange-600 disabled:opacity-50"
+                                          >
+                                            {busy === m.id ? 'Saving…' : 'Save'}
+                                          </button>
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+
+                                  return (
+                                    <div
+                                      key={m.id}
+                                      className="border border-gray-300 rounded-lg bg-white shadow-sm overflow-hidden"
+                                    >
+                                      <TeamRow
+                                        entry={teamA ?? null}
+                                        won={aWon}
+                                        dimmed={bWon}
+                                        sets={parsed?.a ?? null}
+                                      />
+                                      <div className="border-t border-gray-200" />
+                                      <TeamRow
+                                        entry={teamB ?? null}
+                                        won={bWon}
+                                        dimmed={aWon}
+                                        sets={parsed?.b ?? null}
+                                      />
+                                      <div className="border-t border-gray-100 bg-gray-50 px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px]">
+                                        <div className="flex items-center gap-1.5 text-gray-600 flex-wrap min-w-0">
+                                          {m.court ? (
+                                            <span className="font-medium text-gray-700">
+                                              Court {m.court}
+                                            </span>
+                                          ) : (
+                                            <span className="text-gray-400">No court</span>
+                                          )}
+                                          {m.scheduled_at && (
+                                            <span className="text-gray-500">
+                                              · {formatTimeDisplay(m.scheduled_at)}
+                                            </span>
+                                          )}
+                                        </div>
+                                        {canScore && isPending ? (
+                                          <button
+                                            onClick={() => openEdit(m)}
+                                            className="px-2.5 py-1 bg-orange-500 hover:bg-orange-600 text-white rounded text-[11px] font-semibold whitespace-nowrap"
+                                          >
+                                            Enter Score
+                                          </button>
+                                        ) : !isPending ? (
+                                          <button
+                                            onClick={() => openEdit(m)}
+                                            className="text-gray-500 hover:text-gray-900 flex items-center gap-1"
+                                          >
+                                            <Edit3 size={11} /> Edit
+                                          </button>
+                                        ) : (
+                                          <span className="text-gray-400 italic">awaiting</span>
+                                        )}
+                                      </div>
+                                      <div className="border-t border-gray-100 bg-white px-2.5 py-1.5 flex items-center gap-2 text-[10px] text-gray-500">
+                                        <input
+                                          type="date"
+                                          defaultValue={m.scheduled_date ?? ''}
+                                          onBlur={(e) => {
+                                            const v = e.target.value;
+                                            if ((m.scheduled_date ?? '') !== v)
+                                              updateMatchSchedule(m.id, 'scheduled_date', v);
+                                          }}
+                                          className="px-1 py-0.5 border border-gray-200 rounded text-[10px] bg-white text-gray-700"
+                                        />
+                                        <input
+                                          type="text"
+                                          defaultValue={m.court ?? ''}
+                                          onBlur={(e) => {
+                                            const v = e.target.value.trim();
+                                            if ((m.court ?? '') !== v)
+                                              updateMatchSchedule(m.id, 'court', v);
+                                          }}
+                                          placeholder="Court"
+                                          className="w-14 px-1 py-0.5 border border-gray-200 rounded text-[10px] bg-white text-gray-700"
+                                        />
+                                        <input
+                                          type="time"
+                                          defaultValue={m.scheduled_at?.slice(0, 5) ?? ''}
+                                          onBlur={(e) => {
+                                            const v = e.target.value;
+                                            const current = m.scheduled_at?.slice(0, 5) ?? '';
+                                            if (current !== v)
+                                              updateMatchSchedule(m.id, 'scheduled_at', v);
+                                          }}
+                                          className="px-1 py-0.5 border border-gray-200 rounded text-[10px] bg-white text-gray-700"
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
 
               {allMatchesDone && event.public_status !== 'completed' && (
                 <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 sm:p-5 flex items-center justify-between gap-3">
