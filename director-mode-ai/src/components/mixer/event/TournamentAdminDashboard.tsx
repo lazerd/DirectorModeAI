@@ -24,7 +24,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { isValidQuadScore, formatTimeDisplay } from '@/lib/quads';
+import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
 
 const FORMAT_LABELS: Record<string, string> = {
   'rr-singles': 'Round Robin — Singles',
@@ -45,6 +45,12 @@ type EventRow = {
   public_status: string;
   entry_fee_cents: number;
   max_players: number | null;
+  num_courts: number | null;
+  court_names: string[] | null;
+  event_date: string | null;
+  daily_start_time: string | null;
+  daily_end_time: string | null;
+  default_match_length_minutes: number | null;
 };
 
 type Entry = {
@@ -89,7 +95,7 @@ const POSITION_LABELS: Record<Entry['position'], { label: string; color: string 
   withdrawn: { label: 'Withdrawn', color: 'bg-red-100 text-red-700' },
 };
 
-type Tab = 'entries' | 'matches' | 'settings';
+type Tab = 'entries' | 'matches' | 'schedule' | 'settings';
 type ScoreOutcome = 'played' | 'walkover' | 'retired' | 'default';
 
 /** Accept tennis scores PLUS walkover/default/retired markers. */
@@ -258,7 +264,9 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
     const supabase = createClient();
     const { data: ev, error: evErr } = await supabase
       .from('events')
-      .select('id, name, slug, match_format, public_status, entry_fee_cents, max_players')
+      .select(
+        'id, name, slug, match_format, public_status, entry_fee_cents, max_players, num_courts, court_names, event_date, daily_start_time, daily_end_time, default_match_length_minutes'
+      )
       .eq('id', eventId)
       .maybeSingle();
     if (evErr) {
@@ -665,7 +673,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
       </div>
 
       <div className="border-b border-gray-200 mb-6 flex gap-1 overflow-x-auto">
-        {(['entries', 'matches', 'settings'] as const).map((t) => (
+        {(['entries', 'matches', 'schedule', 'settings'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -1316,6 +1324,15 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         </div>
       )}
 
+      {tab === 'schedule' && (
+        <ScheduleTab
+          event={event}
+          matches={matches}
+          entries={entries}
+          onUpdate={fetchAll}
+        />
+      )}
+
       {tab === 'settings' && (
         <div className="bg-white border border-gray-200 rounded-xl p-5 text-sm text-gray-600">
           <p className="font-medium text-gray-900 mb-2 flex items-center gap-2">
@@ -1327,6 +1344,323 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           </p>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Order-of-Play tab — drag-and-drop scheduling onto a Court × Time grid.
+ *
+ * - Left column: unscheduled matches (no court OR no scheduled_at).
+ * - Right: a column per court showing scheduled matches sorted by time.
+ * - Drag any match between columns to reassign court. Dropping on a court
+ *   column without specifying time auto-picks the next free slot
+ *   (latest scheduled_at + default_match_length_minutes, or daily start).
+ * - Inline time editor on each scheduled card; drag to Unscheduled to clear.
+ */
+function ScheduleTab({
+  event,
+  matches,
+  entries,
+  onUpdate,
+}: {
+  event: EventRow;
+  matches: Match[];
+  entries: Entry[];
+  onUpdate: () => void;
+}) {
+  const [dragOverCourt, setDragOverCourt] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const entryById = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+
+  const courts = useMemo(
+    () =>
+      resolveCourtList({
+        courtNames: event.court_names ?? null,
+        numCourts: event.num_courts ?? 0,
+      }),
+    [event.court_names, event.num_courts]
+  );
+  const matchLengthMin = event.default_match_length_minutes ?? 90;
+  const dailyStart = (event.daily_start_time ?? '09:00').slice(0, 5);
+
+  const isUnscheduled = (m: Match) => !m.court || !m.scheduled_at;
+  const unscheduled = matches.filter(isUnscheduled);
+
+  const matchesOnCourt = (court: string) =>
+    matches
+      .filter((m) => m.court === court && !!m.scheduled_at)
+      .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''));
+
+  /** Add `minutes` to an HH:MM string, returning HH:MM. */
+  const addMinutes = (hhmm: string, minutes: number): string => {
+    const [h, m] = hhmm.split(':').map((x) => parseInt(x, 10));
+    const total = h * 60 + m + minutes;
+    const nh = Math.floor((total % (24 * 60)) / 60);
+    const nm = total % 60;
+    return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
+  };
+
+  const nextFreeTimeOnCourt = (court: string): string => {
+    const scheduled = matchesOnCourt(court);
+    if (scheduled.length === 0) return dailyStart;
+    const last = scheduled[scheduled.length - 1].scheduled_at ?? dailyStart;
+    return addMinutes(last.slice(0, 5), matchLengthMin);
+  };
+
+  const updateMatch = async (
+    matchId: string,
+    updates: { court?: string | null; scheduled_at?: string | null; scheduled_date?: string | null }
+  ) => {
+    setBusy(true);
+    const supabase = createClient();
+    await supabase.from('tournament_matches').update(updates).eq('id', matchId);
+    await onUpdate();
+    setBusy(false);
+  };
+
+  const handleDragStart = (e: React.DragEvent, matchId: string) => {
+    e.dataTransfer.setData('text/match-id', matchId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDropOnCourt = async (e: React.DragEvent, court: string) => {
+    e.preventDefault();
+    setDragOverCourt(null);
+    const matchId = e.dataTransfer.getData('text/match-id');
+    if (!matchId) return;
+    const m = matches.find((x) => x.id === matchId);
+    if (!m) return;
+    // If the match is already on this court with a time, no-op.
+    if (m.court === court && m.scheduled_at) return;
+    // Keep existing time if dragged from another court; otherwise auto-pick.
+    const scheduled_at = m.scheduled_at ?? nextFreeTimeOnCourt(court);
+    const scheduled_date = m.scheduled_date ?? event.event_date ?? null;
+    await updateMatch(matchId, { court, scheduled_at, scheduled_date });
+  };
+
+  const handleDropOnUnscheduled = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverCourt(null);
+    const matchId = e.dataTransfer.getData('text/match-id');
+    if (!matchId) return;
+    await updateMatch(matchId, { court: null, scheduled_at: null });
+  };
+
+  const labelMatch = (m: Match): { a: string; b: string; round: string } => {
+    const teamA = m.player1_id ? entryById.get(m.player1_id) : null;
+    const teamB = m.player3_id ? entryById.get(m.player3_id) : null;
+    return {
+      a: teamA ? formatTeamName(teamA) : 'TBD',
+      b: teamB ? formatTeamName(teamB) : 'TBD',
+      round: `${m.bracket === 'consolation' ? 'C ' : ''}R${m.round}M${m.slot}`,
+    };
+  };
+
+  if (courts.length === 0) {
+    return (
+      <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-5">
+        <p className="font-medium">No courts configured.</p>
+        <p className="text-sm mt-1">
+          Set num_courts or court_names on this event to enable drag-and-drop scheduling.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-white border border-gray-200 rounded-xl p-3 text-sm text-gray-700 flex items-center gap-2">
+        <Calendar size={16} className="text-orange-500 flex-shrink-0" />
+        <span>
+          Drag matches between columns to (re)assign courts. Default match length{' '}
+          <strong>{matchLengthMin} min</strong>; daily start <strong>{dailyStart}</strong>.
+          Dropping on a court auto-picks the next free time slot.
+        </span>
+        {busy && <Loader2 size={14} className="animate-spin text-orange-500 flex-shrink-0" />}
+      </div>
+
+      <div className="flex gap-4 overflow-x-auto pb-2 items-start">
+        {/* Unscheduled queue */}
+        <ScheduleColumn
+          title="Unscheduled"
+          subtitle={`${unscheduled.length} match${unscheduled.length === 1 ? '' : 'es'}`}
+          accent="gray"
+          isDragOver={dragOverCourt === '__unscheduled__'}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOverCourt('__unscheduled__');
+          }}
+          onDragLeave={() => setDragOverCourt(null)}
+          onDrop={handleDropOnUnscheduled}
+        >
+          {unscheduled.length === 0 ? (
+            <div className="text-xs text-gray-400 italic text-center py-6">
+              All matches scheduled
+            </div>
+          ) : (
+            unscheduled.map((m) => {
+              const lab = labelMatch(m);
+              return (
+                <ScheduleCard
+                  key={m.id}
+                  matchId={m.id}
+                  onDragStart={handleDragStart}
+                  pillLabel={lab.round}
+                  teamA={lab.a}
+                  teamB={lab.b}
+                  time={null}
+                  status={m.status}
+                />
+              );
+            })
+          )}
+        </ScheduleColumn>
+
+        {/* One column per court */}
+        {courts.map((court) => {
+          const scheduledHere = matchesOnCourt(court);
+          return (
+            <ScheduleColumn
+              key={court}
+              title={`Court ${court}`}
+              subtitle={`${scheduledHere.length} match${scheduledHere.length === 1 ? '' : 'es'}`}
+              accent="orange"
+              isDragOver={dragOverCourt === court}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOverCourt(court);
+              }}
+              onDragLeave={() => setDragOverCourt(null)}
+              onDrop={(e) => handleDropOnCourt(e, court)}
+            >
+              {scheduledHere.length === 0 ? (
+                <div className="text-xs text-gray-400 italic text-center py-6">
+                  Drop a match here
+                </div>
+              ) : (
+                scheduledHere.map((m) => {
+                  const lab = labelMatch(m);
+                  return (
+                    <ScheduleCard
+                      key={m.id}
+                      matchId={m.id}
+                      onDragStart={handleDragStart}
+                      pillLabel={lab.round}
+                      teamA={lab.a}
+                      teamB={lab.b}
+                      time={m.scheduled_at?.slice(0, 5) ?? null}
+                      onTimeChange={(v) =>
+                        updateMatch(m.id, { scheduled_at: v || null })
+                      }
+                      status={m.status}
+                    />
+                  );
+                })
+              )}
+            </ScheduleColumn>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ScheduleColumn({
+  title,
+  subtitle,
+  accent,
+  isDragOver,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  accent: 'gray' | 'orange';
+  isDragOver: boolean;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent) => void;
+  children: React.ReactNode;
+}) {
+  const accentClasses =
+    accent === 'orange'
+      ? 'border-orange-200'
+      : 'border-gray-300';
+  return (
+    <div
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`flex flex-col min-w-[240px] w-[240px] bg-white rounded-xl border-2 transition-colors ${
+        isDragOver ? 'border-emerald-400 bg-emerald-50/40' : accentClasses
+      }`}
+    >
+      <div className="p-3 border-b border-gray-200">
+        <div className="font-semibold text-gray-900 text-sm">{title}</div>
+        <div className="text-[10px] text-gray-500 uppercase tracking-wider">{subtitle}</div>
+      </div>
+      <div className="flex-1 p-2 space-y-2 min-h-[200px]">{children}</div>
+    </div>
+  );
+}
+
+function ScheduleCard({
+  matchId,
+  onDragStart,
+  pillLabel,
+  teamA,
+  teamB,
+  time,
+  onTimeChange,
+  status,
+}: {
+  matchId: string;
+  onDragStart: (e: React.DragEvent, matchId: string) => void;
+  pillLabel: string;
+  teamA: string;
+  teamB: string;
+  time: string | null;
+  onTimeChange?: (v: string) => void;
+  status: string;
+}) {
+  const isCompleted = status === 'completed';
+  return (
+    <div
+      draggable={!isCompleted}
+      onDragStart={(e) => onDragStart(e, matchId)}
+      className={`border rounded-lg p-2 bg-white ${
+        isCompleted
+          ? 'border-gray-200 opacity-60 cursor-default'
+          : 'border-gray-300 cursor-grab active:cursor-grabbing hover:border-orange-400 hover:shadow-sm'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+          {pillLabel}
+        </span>
+        {time !== null && onTimeChange && (
+          <input
+            type="time"
+            defaultValue={time}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onBlur={(e) => {
+              const v = e.target.value;
+              if (v !== time) onTimeChange(v);
+            }}
+            className="text-[10px] px-1 py-0.5 border border-gray-200 rounded bg-white text-gray-700"
+          />
+        )}
+        {isCompleted && (
+          <span className="text-[9px] text-emerald-700 font-bold">DONE</span>
+        )}
+      </div>
+      <div className="text-xs text-gray-900 leading-tight truncate">{teamA}</div>
+      <div className="text-[10px] text-gray-400 leading-tight">vs</div>
+      <div className="text-xs text-gray-900 leading-tight truncate">{teamB}</div>
     </div>
   );
 }
