@@ -88,6 +88,38 @@ const POSITION_LABELS: Record<Entry['position'], { label: string; color: string 
 };
 
 type Tab = 'entries' | 'matches' | 'settings';
+type ScoreOutcome = 'played' | 'walkover' | 'retired' | 'default';
+
+/** Accept tennis scores PLUS walkover/default/retired markers. */
+function isValidTournamentScore(raw: string, outcome: ScoreOutcome): boolean {
+  const s = raw.trim();
+  if (outcome === 'walkover' || outcome === 'default') return true;
+  if (outcome === 'retired') {
+    if (!s) return true;
+    return isValidQuadScore(s);
+  }
+  return isValidQuadScore(s);
+}
+
+function buildScoreString(raw: string, outcome: ScoreOutcome): string {
+  const s = raw.trim();
+  if (outcome === 'walkover') return 'W/O';
+  if (outcome === 'default') return 'DEF';
+  if (outcome === 'retired') return s ? `${s}, RET` : 'RET';
+  return s;
+}
+
+/** Strip trailing modifier so the inline edit form can repopulate. */
+function detectOutcome(score: string | null): { outcome: ScoreOutcome; cleanScore: string } {
+  if (!score) return { outcome: 'played', cleanScore: '' };
+  const s = score.trim().toUpperCase();
+  if (s === 'W/O' || s === 'WO') return { outcome: 'walkover', cleanScore: '' };
+  if (s === 'DEF') return { outcome: 'default', cleanScore: '' };
+  if (s.endsWith(', RET') || s === 'RET') {
+    return { outcome: 'retired', cleanScore: score.replace(/,?\s*RET$/i, '').trim() };
+  }
+  return { outcome: 'played', cleanScore: score };
+}
 
 /** Tennis round label: "Round of 16", "Quarterfinals", "Semifinals", "Final". */
 function roundLabel(round: number, totalRounds: number, bracket: 'main' | 'consolation'): string {
@@ -126,11 +158,13 @@ function TeamRow({
   won,
   dimmed,
   sets,
+  marker,
 }: {
   entry: Entry | null | undefined;
   won: boolean;
   dimmed: boolean;
   sets: string[] | null;
+  marker?: string | null;
 }) {
   if (!entry) {
     return (
@@ -160,17 +194,24 @@ function TeamRow({
           {formatTeamName(entry)}
         </span>
       </div>
-      {sets && sets.length > 0 && (
-        <div
-          className={`font-mono text-sm tabular-nums whitespace-nowrap flex gap-1.5 flex-shrink-0 ${
-            won ? 'font-bold text-gray-900' : 'text-gray-600'
-          }`}
-        >
-          {sets.map((g, i) => (
-            <span key={i}>{g}</span>
-          ))}
-        </div>
-      )}
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {sets && sets.length > 0 && (
+          <div
+            className={`font-mono text-sm tabular-nums whitespace-nowrap flex gap-1.5 ${
+              won ? 'font-bold text-gray-900' : 'text-gray-600'
+            }`}
+          >
+            {sets.map((g, i) => (
+              <span key={i}>{g}</span>
+            ))}
+          </div>
+        )}
+        {won && marker && (
+          <span className="px-1.5 py-0.5 bg-gray-900 text-white text-[10px] font-bold rounded tracking-wider">
+            {marker}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -187,7 +228,11 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
   const [emailing, setEmailing] = useState(false);
   const [emailResult, setEmailResult] = useState<{ sent: number; total: number } | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [scoreInput, setScoreInput] = useState({ score: '', winner_side: '' as '' | 'a' | 'b' });
+  const [scoreInput, setScoreInput] = useState<{
+    score: string;
+    winner_side: '' | 'a' | 'b';
+    outcome: ScoreOutcome;
+  }>({ score: '', winner_side: '', outcome: 'played' });
   const [showAdd, setShowAdd] = useState(false);
   const [newPlayer, setNewPlayer] = useState({
     player_name: '',
@@ -414,12 +459,13 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
 
   const openEdit = (m: Match) => {
     setEditing(m.id);
-    setScoreInput({ score: m.score ?? '', winner_side: m.winner_side ?? '' });
+    const { outcome, cleanScore } = detectOutcome(m.score);
+    setScoreInput({ score: cleanScore, winner_side: m.winner_side ?? '', outcome });
   };
 
   const saveScore = async (m: Match) => {
     if (!scoreInput.winner_side) return;
-    if (!isValidQuadScore(scoreInput.score)) return;
+    if (!isValidTournamentScore(scoreInput.score, scoreInput.outcome)) return;
     setBusy(m.id);
     try {
       const res = await fetch(`/api/tournaments/match/${m.score_token}`, {
@@ -427,7 +473,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           winner_side: scoreInput.winner_side,
-          score: scoreInput.score,
+          score: buildScoreString(scoreInput.score, scoreInput.outcome),
           reported_by_name: 'Director',
         }),
       });
@@ -439,6 +485,15 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
       /* swallow */
     }
     setBusy(null);
+  };
+
+  const updateSeed = async (entryId: string, seedValue: string) => {
+    const supabase = createClient();
+    const trimmed = seedValue.trim();
+    const seed = trimmed === '' ? null : parseInt(trimmed, 10);
+    if (seed !== null && (!Number.isFinite(seed) || seed < 1 || seed > 999)) return;
+    await supabase.from('tournament_entries').update({ seed }).eq('id', entryId);
+    await fetchAll();
   };
 
   if (loading) {
@@ -663,7 +718,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 text-gray-600">
                   <tr>
-                    <th className="text-left px-3 py-2 w-10">#</th>
+                    <th className="text-left px-3 py-2 w-16" title="Manual seed — overrides rating-based seeding when bracket is generated">Seed</th>
                     <th className="text-left px-3 py-2">Player</th>
                     <th className="text-left px-3 py-2">Rating</th>
                     <th className="text-left px-3 py-2">Status</th>
@@ -673,12 +728,33 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                 </thead>
                 <tbody>
                   {entries
-                    .sort((a, b) => (b.composite_rating ?? 0) - (a.composite_rating ?? 0))
+                    .sort((a, b) => {
+                      // Manual seeds first (lowest seed = top), then by composite rating
+                      const aSeed = a.seed ?? Infinity;
+                      const bSeed = b.seed ?? Infinity;
+                      if (aSeed !== bSeed) return aSeed - bSeed;
+                      return (b.composite_rating ?? 0) - (a.composite_rating ?? 0);
+                    })
                     .map((entry) => {
                       const pos = POSITION_LABELS[entry.position];
                       return (
                         <tr key={entry.id} className="border-t border-gray-100">
-                          <td className="px-3 py-2 text-gray-500 text-xs">{entry.seed ?? '—'}</td>
+                          <td className="px-2 py-2">
+                            <input
+                              type="number"
+                              min={1}
+                              max={999}
+                              defaultValue={entry.seed ?? ''}
+                              onBlur={(e) => {
+                                const v = e.target.value;
+                                const cur = entry.seed?.toString() ?? '';
+                                if (v !== cur) updateSeed(entry.id, v);
+                              }}
+                              placeholder="—"
+                              className="w-12 px-1.5 py-1 border border-gray-200 rounded text-center text-xs bg-white text-gray-900"
+                              title="Set seed; blank = unseeded"
+                            />
+                          </td>
                           <td className="px-3 py-2">
                             <div className="font-medium text-gray-900">{entry.player_name}</div>
                             <div className="text-xs text-gray-500">
@@ -860,11 +936,28 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                                   const isPending = m.status !== 'completed';
                                   const canScore = !!(m.player1_id && m.player3_id);
                                   const isOpen = editing === m.id;
-                                  const parsed = parseScoreSets(m.score);
+                                  const { outcome: matchOutcome, cleanScore } = detectOutcome(m.score);
+                                  const parsed = parseScoreSets(cleanScore);
+                                  const marker =
+                                    matchOutcome === 'walkover'
+                                      ? 'W/O'
+                                      : matchOutcome === 'default'
+                                        ? 'DEF'
+                                        : matchOutcome === 'retired'
+                                          ? 'RET'
+                                          : null;
 
                                   if (isOpen) {
                                     const aLabel = formatTeamName(teamA ?? null) || 'Side A';
                                     const bLabel = formatTeamName(teamB ?? null) || 'Side B';
+                                    const outcomeOptions: { id: ScoreOutcome; label: string; hint: string }[] = [
+                                      { id: 'played', label: 'Played', hint: 'Match completed normally' },
+                                      { id: 'walkover', label: 'Walkover', hint: 'Opponent no-show — no match played' },
+                                      { id: 'retired', label: 'Retired', hint: 'Played partial — one team had to stop' },
+                                      { id: 'default', label: 'Default', hint: 'Disqualification / penalty' },
+                                    ];
+                                    const showScoreInput =
+                                      scoreInput.outcome === 'played' || scoreInput.outcome === 'retired';
                                     return (
                                       <div
                                         key={m.id}
@@ -899,20 +992,69 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                                             {bLabel} won
                                           </button>
                                         </div>
-                                        <input
-                                          type="text"
-                                          placeholder='Score — e.g. "6-3, 6-4"'
-                                          value={scoreInput.score}
-                                          onChange={(e) =>
-                                            setScoreInput({ ...scoreInput, score: e.target.value })
-                                          }
-                                          className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white text-gray-900"
-                                        />
-                                        {scoreInput.score && !isValidQuadScore(scoreInput.score) && (
-                                          <div className="text-xs text-red-600">
-                                            Format must be like <code>6-3</code> or <code>6-3, 6-4</code>.
+
+                                        <div>
+                                          <label className="block text-[10px] font-semibold uppercase tracking-wider text-gray-600 mb-1">
+                                            Outcome
+                                          </label>
+                                          <div className="grid grid-cols-4 gap-1">
+                                            {outcomeOptions.map((opt) => (
+                                              <button
+                                                key={opt.id}
+                                                type="button"
+                                                title={opt.hint}
+                                                onClick={() =>
+                                                  setScoreInput({ ...scoreInput, outcome: opt.id })
+                                                }
+                                                className={`px-1 py-1.5 rounded text-[11px] font-medium ${
+                                                  scoreInput.outcome === opt.id
+                                                    ? 'bg-gray-900 text-white'
+                                                    : 'bg-white border border-gray-300 text-gray-700 hover:border-gray-400'
+                                                }`}
+                                              >
+                                                {opt.label}
+                                              </button>
+                                            ))}
+                                          </div>
+                                        </div>
+
+                                        {showScoreInput && (
+                                          <>
+                                            <input
+                                              type="text"
+                                              placeholder={
+                                                scoreInput.outcome === 'retired'
+                                                  ? 'Partial score (e.g. "6-2, 3-1") — optional'
+                                                  : 'Score — e.g. "6-3, 6-4"'
+                                              }
+                                              value={scoreInput.score}
+                                              onChange={(e) =>
+                                                setScoreInput({ ...scoreInput, score: e.target.value })
+                                              }
+                                              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm bg-white text-gray-900"
+                                            />
+                                            {scoreInput.score &&
+                                              !isValidTournamentScore(
+                                                scoreInput.score,
+                                                scoreInput.outcome
+                                              ) && (
+                                                <div className="text-xs text-red-600">
+                                                  Format must be like <code>6-3</code> or <code>6-3, 6-4</code>.
+                                                </div>
+                                              )}
+                                          </>
+                                        )}
+
+                                        {!showScoreInput && (
+                                          <div className="text-xs text-gray-600 bg-white rounded px-2 py-1.5 border border-gray-200">
+                                            Will record as{' '}
+                                            <span className="font-mono font-semibold">
+                                              {scoreInput.outcome === 'walkover' ? 'W/O' : 'DEF'}
+                                            </span>{' '}
+                                            — no match score.
                                           </div>
                                         )}
+
                                         <div className="flex gap-2">
                                           <button
                                             onClick={() => setEditing(null)}
@@ -925,7 +1067,10 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                                             disabled={
                                               busy === m.id ||
                                               !scoreInput.winner_side ||
-                                              !isValidQuadScore(scoreInput.score)
+                                              !isValidTournamentScore(
+                                                scoreInput.score,
+                                                scoreInput.outcome
+                                              )
                                             }
                                             className="flex-1 px-2 py-1.5 text-xs bg-orange-500 text-white rounded font-semibold hover:bg-orange-600 disabled:opacity-50"
                                           >
@@ -946,6 +1091,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                                         won={aWon}
                                         dimmed={bWon}
                                         sets={parsed?.a ?? null}
+                                        marker={aWon ? marker : null}
                                       />
                                       <div className="border-t border-gray-200" />
                                       <TeamRow
@@ -953,6 +1099,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                                         won={bWon}
                                         dimmed={aWon}
                                         sets={parsed?.b ?? null}
+                                        marker={bWon ? marker : null}
                                       />
                                       <div className="border-t border-gray-100 bg-gray-50 px-2.5 py-1.5 flex items-center justify-between gap-2 text-[11px]">
                                         <div className="flex items-center gap-1.5 text-gray-600 flex-wrap min-w-0">
