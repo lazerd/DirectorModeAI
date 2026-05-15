@@ -59,15 +59,15 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     );
   }
 
-  // Pull entries that intend to play (in_draw or pending_payment that's
-  // since become paid). For Phase 2 simplicity: only entries marked
-  // 'in_draw' get a bracket spot.
+  // Pull entries that intend to play. Manual seeds are honored — if the
+  // director set seed = 1/2/3/4 on the Entries tab, those teams keep
+  // their seed positions. Unseeded entries are ordered by composite_rating
+  // descending and filled into the remaining seed slots.
   const { data: entriesRaw } = await admin
     .from('tournament_entries')
-    .select('id, composite_rating')
+    .select('id, composite_rating, seed')
     .eq('event_id', eventId)
-    .in('position', ['in_draw'])
-    .order('composite_rating', { ascending: false, nullsFirst: false });
+    .in('position', ['in_draw']);
 
   const entries = (entriesRaw as any[]) || [];
   if (entries.length < 2) {
@@ -77,19 +77,26 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     );
   }
 
+  // Sort: manual seeds first (1, 2, 3, ...), then unseeded by rating desc.
+  entries.sort((a, b) => {
+    const sa = a.seed ?? Infinity;
+    const sb = b.seed ?? Infinity;
+    if (sa !== sb) return sa - sb;
+    return (b.composite_rating ?? 0) - (a.composite_rating ?? 0);
+  });
+
   // Cap at max_players if set
   const maxPlayers = (ev as any).max_players ?? null;
   const inDraw = maxPlayers && maxPlayers > 0 ? entries.slice(0, maxPlayers) : entries;
   const waitlisted = maxPlayers && maxPlayers > 0 ? entries.slice(maxPlayers) : [];
 
-  // Wipe existing matches + reset seeds
+  // Wipe existing matches
   await admin.from('tournament_matches').delete().eq('event_id', eventId);
-  await admin
-    .from('tournament_entries')
-    .update({ seed: null })
-    .eq('event_id', eventId);
 
-  // Assign seeds 1..N to in-draw entries (already sorted by composite_rating desc)
+  // Re-assign seeds 1..N in the sorted order. Manual seeds 1..K filled
+  // contiguously from 1 stay put; unseeded entries fill K+1..N. If manual
+  // seeds have gaps (e.g. 1 + 5 but no 2/3/4), the relative order is
+  // preserved but values are compacted.
   for (let i = 0; i < inDraw.length; i++) {
     await admin
       .from('tournament_entries')
