@@ -51,6 +51,13 @@ interface Props {
 export default function CommandDock({ onApplied }: Props = {}) {
   const [listening, setListening] = useState(false);
   const [draft, setDraft] = useState('');
+  // Platform-aware shortcut hint: ⌘K on Mac, Ctrl+K everywhere else.
+  const [shortcutLabel, setShortcutLabel] = useState('Ctrl+K');
+  useEffect(() => {
+    if (typeof navigator === 'undefined') return;
+    const isMac = /Mac|iPad|iPhone|iPod/.test(navigator.platform);
+    setShortcutLabel(isMac ? '⌘K' : 'Ctrl+K');
+  }, []);
   const [submitting, setSubmitting] = useState(false);
   const [history, setHistory] = useState<Message[]>([]);
   const [open, setOpen] = useState(false); // chat panel
@@ -277,7 +284,7 @@ export default function CommandDock({ onApplied }: Props = {}) {
           className="flex-1 bg-transparent text-sm text-white placeholder:text-white/30 focus:outline-none disabled:opacity-50"
         />
         <kbd className="hidden sm:inline text-[10px] uppercase tracking-widest text-white/30 border border-white/10 rounded px-1.5 py-0.5">
-          ⌘K
+          {shortcutLabel}
         </kbd>
         <button
           type="button"
