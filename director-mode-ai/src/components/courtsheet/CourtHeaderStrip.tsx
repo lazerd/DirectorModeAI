@@ -68,7 +68,7 @@ export default function CourtHeaderStrip({
                   'font-semibold text-[#D3FB52] text-[11px]',
                 ].join(' ')}
               >
-                {c.number}
+                {c.number ?? (c.name ?? '?').slice(0, 3)}
               </div>
               <div className="min-w-0">
                 <div className="text-[12px] font-medium text-white/90 truncate">

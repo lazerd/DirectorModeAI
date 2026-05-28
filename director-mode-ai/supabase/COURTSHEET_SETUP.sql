@@ -1,10 +1,10 @@
 -- =================================================================
--- CourtSheet AI — one-shot setup
+-- CourtSheet AI — one-shot setup (v2 with 11 courts + pickleball split)
 -- =================================================================
 -- Paste this entire file into the Supabase SQL editor and Run.
 -- Idempotent end-to-end — safe to re-run.
 --
--- Contents (all 11 CourtSheet migrations in order):
+-- Contents (all 13 CourtSheet migrations in order):
 --   001 extensions          btree_gist (linchpin) + uuid-ossp
 --   002 clubs_extend        cc_clubs.timezone/operating_hours + cc_club_members
 --   003 courts              bookable courts table
@@ -13,13 +13,16 @@
 --   006 signups             reservation_signups (clinics/doubles/socials)
 --   007 audit               courtsheet_audit_log for who/what/when/undo
 --   008 backfill            SQL helpers (no data move)
---   009 seed_sleepy_hollow  Sleepy Hollow cc_clubs + 8 numbered courts
+--   009 seed_sleepy_hollow  Sleepy Hollow cc_clubs + courts 1-8
 --   010 lessons_court_id    nullable court_id on lesson_slots
 --   011 realtime            adds reservations + signups to supabase_realtime
+--   012 court_groups        parent_court_id + cross-court overlap trigger
+--   013 seed_sh_full        adds courts 9, 10, 11, 11a, 11b to Sleepy Hollow
 --
 -- ALTERs touch these existing tables:
 --   cc_clubs       — adds nullable/defaulted timezone + operating_hours
 --   lesson_slots   — adds nullable court_id
+--   courts         — adds parent_court_id; relaxes UNIQUE(number) to partial
 -- No existing row is invalidated.
 -- =================================================================
 
@@ -854,4 +857,171 @@ BEGIN
   ) THEN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.reservation_signups;
   END IF;
+END $$;
+-- ============================================
+-- CourtSheet AI — Phase 5+ / Migration 012
+-- Parent/child court groups (tennis court ↔ pickleball halves).
+-- ============================================
+-- *** REVIEW BEFORE APPLYING — this migration ALTERS courts (drops the
+--     UNIQUE on number, replaces with a partial unique) and ADDS a
+--     trigger on reservations. All changes are additive; no existing
+--     row breaks. ***
+--
+-- Models the real-world conversion case at Sleepy Hollow:
+--   Court 11 is a tennis court whose net can be removed to lay out two
+--   pickleball halves, "11a" and "11b". Booking semantics:
+--     - Reserve court 11      → 11a + 11b are blocked (physical overlap)
+--     - Reserve court 11a     → court 11 is blocked, 11b stays open
+--     - Reserve court 11b     → court 11 is blocked, 11a stays open
+--     - 11a and 11b can coexist (they're separate halves)
+--
+-- Data model: a self-referential parent_court_id on courts. 11a and 11b
+-- both point at 11. Booking a parent blocks all children. Booking a child
+-- blocks the parent. Sibling children do NOT block each other.
+--
+-- The same-court EXCLUDE constraint from migration 005 stays — it handles
+-- direct overlaps. This migration adds a TRIGGER that handles the
+-- cross-court parent/child case. The engine's conflict detector is also
+-- updated (src/lib/courtsheet/conflicts.ts) to surface these in previews;
+-- the trigger is the DB-level backstop.
+--
+-- Safe to re-run.
+-- ============================================
+
+-- 1) parent_court_id column.
+ALTER TABLE courts
+  ADD COLUMN IF NOT EXISTS parent_court_id UUID REFERENCES courts(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_courts_parent ON courts(parent_court_id)
+  WHERE parent_court_id IS NOT NULL;
+
+-- Disallow grandparents (no 3-level chains) so the block-set is always
+-- one hop deep. Enforced via CHECK on the column read at insert time.
+ALTER TABLE courts DROP CONSTRAINT IF EXISTS courts_no_grandparent;
+-- NOTE: deferring full CHECK because referencing other rows isn't
+-- allowed in a column CHECK. Enforced in the trigger below + engine.
+
+-- 2) Drop the strict UNIQUE(club_id, number); replace with partial-unique
+--    so child courts can have NULL number (their label lives in `name`).
+ALTER TABLE courts ALTER COLUMN number DROP NOT NULL;
+ALTER TABLE courts DROP CONSTRAINT IF EXISTS courts_club_id_number_key;
+
+CREATE UNIQUE INDEX IF NOT EXISTS courts_club_id_number_partial
+  ON courts(club_id, number)
+  WHERE number IS NOT NULL;
+
+-- 3) Group-aware conflict trigger.
+-- Fires BEFORE INSERT OR UPDATE on reservations. If the new row's court
+-- is part of a parent/child relationship, checks for overlapping
+-- non-cancelled reservations on the RELATED courts (parent + own
+-- children, NOT siblings). Raises with SQLSTATE 23P01 to match the
+-- existing EXCLUDE-constraint failure shape, so client error handlers
+-- treat both the same.
+CREATE OR REPLACE FUNCTION courtsheet_check_court_group_overlap()
+RETURNS TRIGGER AS $$
+DECLARE
+  v_parent_id UUID;
+  v_conflict_id UUID;
+  v_conflict_title TEXT;
+BEGIN
+  IF NEW.status = 'cancelled' THEN
+    RETURN NEW;
+  END IF;
+
+  -- Get the new court's parent, if any.
+  SELECT parent_court_id INTO v_parent_id FROM courts WHERE id = NEW.court_id;
+
+  -- Build the related-court set (this court excluded — same-court is
+  -- already handled by the EXCLUDE constraint from migration 005):
+  --   - The parent of this court (if any)
+  --   - The children of this court (if it is itself a parent)
+  WITH related AS (
+    SELECT v_parent_id AS id WHERE v_parent_id IS NOT NULL
+    UNION
+    SELECT id FROM courts WHERE parent_court_id = NEW.court_id
+  )
+  SELECT r.id, r.title INTO v_conflict_id, v_conflict_title
+  FROM reservations r
+  WHERE r.court_id IN (SELECT id FROM related)
+    AND r.status <> 'cancelled'
+    AND r.id <> NEW.id
+    AND tstzrange(r.starts_at, r.ends_at, '[)')
+        && tstzrange(NEW.starts_at, NEW.ends_at, '[)')
+  LIMIT 1;
+
+  IF v_conflict_id IS NOT NULL THEN
+    RAISE EXCEPTION
+      'no_double_booking via court group: court % conflicts with reservation "%" (%)',
+      NEW.court_id, v_conflict_title, v_conflict_id
+      USING ERRCODE = '23P01';
+  END IF;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_reservations_group_overlap ON reservations;
+CREATE TRIGGER trg_reservations_group_overlap
+  BEFORE INSERT OR UPDATE ON reservations
+  FOR EACH ROW
+  EXECUTE FUNCTION courtsheet_check_court_group_overlap();
+-- ============================================
+-- CourtSheet AI — Phase 5+ / Migration 013
+-- Sleepy Hollow seed correction — 11 courts + pickleball split.
+-- ============================================
+-- Sleepy Hollow actually has 11 courts. Court 11 doubles as two
+-- pickleball halves "11a" and "11b" (modeled as child courts via
+-- parent_court_id from migration 012).
+--
+-- Adds courts 9, 10, 11 (regular tennis) + 11a, 11b (pickleball children)
+-- to the Sleepy Hollow club seeded in migration 009. Idempotent.
+--
+-- Safe to re-run.
+-- ============================================
+
+DO $$
+DECLARE
+  v_club_id UUID;
+  v_court_11_id UUID;
+BEGIN
+  SELECT id INTO v_club_id FROM cc_clubs WHERE slug = 'sleepy-hollow' LIMIT 1;
+  IF v_club_id IS NULL THEN
+    RAISE NOTICE '013_seed_full skipped: Sleepy Hollow club not found (run 009 first)';
+    RETURN;
+  END IF;
+
+  -- Courts 9 and 10 — regular tennis.
+  INSERT INTO courts (club_id, number, sports, surface, indoor, display_order)
+  VALUES
+    (v_club_id, 9,  ARRAY['tennis']::TEXT[], 'hard', false, 9),
+    (v_club_id, 10, ARRAY['tennis']::TEXT[], 'hard', false, 10)
+  ON CONFLICT (club_id, number) DO NOTHING;
+
+  -- Court 11 — parent court (tennis).
+  INSERT INTO courts (club_id, number, sports, surface, indoor, display_order)
+  VALUES
+    (v_club_id, 11, ARRAY['tennis','pickleball']::TEXT[], 'hard', false, 11)
+  ON CONFLICT (club_id, number) DO NOTHING;
+
+  SELECT id INTO v_court_11_id
+  FROM courts
+  WHERE club_id = v_club_id AND number = 11
+  LIMIT 1;
+
+  -- Courts 11a and 11b — pickleball halves, children of court 11.
+  -- Number is NULL (partial-unique from 012 allows this); name carries
+  -- the label.
+  INSERT INTO courts (club_id, number, name, sports, surface, indoor, display_order, parent_court_id)
+  SELECT v_club_id, NULL, '11a', ARRAY['pickleball']::TEXT[], 'hard', false, 111, v_court_11_id
+  WHERE NOT EXISTS (
+    SELECT 1 FROM courts
+    WHERE club_id = v_club_id AND name = '11a'
+  );
+
+  INSERT INTO courts (club_id, number, name, sports, surface, indoor, display_order, parent_court_id)
+  SELECT v_club_id, NULL, '11b', ARRAY['pickleball']::TEXT[], 'hard', false, 112, v_court_11_id
+  WHERE NOT EXISTS (
+    SELECT 1 FROM courts
+    WHERE club_id = v_club_id AND name = '11b'
+  );
 END $$;

@@ -49,12 +49,13 @@ export interface ClubContext {
   /** Per-DOW operating window summary in HH:MM. */
   operating_hours: Record<string, Array<{ open: string; close: string }> | null>;
   courts: Array<{
-    number: number;
+    number: number | null;
     name: string | null;
     sports: string[];
     surface: string | null;
     indoor: boolean;
     status: string;
+    parent_court_id?: string | null;
   }>;
   upcoming: Array<{
     title: string;
@@ -159,6 +160,7 @@ async function buildContext(
       surface: c.surface,
       indoor: c.indoor,
       status: c.status,
+      parent_court_id: c.parent_court_id ?? null,
     })),
     upcoming,
   };

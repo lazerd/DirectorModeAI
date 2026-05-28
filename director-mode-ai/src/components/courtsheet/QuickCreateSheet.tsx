@@ -52,7 +52,7 @@ export default function QuickCreateSheet({
     setSubmitting(true);
     const intent: BookingIntent = {
       club_id: clubId,
-      courts: [court.number],
+      courts: [court.number ?? court.name ?? court.id],
       date_range: { start: date, end: date },
       time_range: { start: timeLocal, end: endTime },
       type,

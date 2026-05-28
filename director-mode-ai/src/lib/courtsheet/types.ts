@@ -35,13 +35,21 @@ export type CourtStatus = 'active' | 'maintenance' | 'hidden';
 export interface Court {
   id: string;
   club_id: string;
-  number: number;
+  /** Nullable for sub-courts (e.g. pickleball halves 11a/11b). */
+  number: number | null;
   name: string | null;
   sports: string[];
   surface: string | null;
   indoor: boolean;
   status: CourtStatus;
   display_order: number;
+  /**
+   * For sub-courts that share physical space with a parent (Sleepy
+   * Hollow's 11a / 11b ↔ 11): the parent court id. Booking a parent
+   * blocks all children; booking a child blocks the parent. Sibling
+   * children do NOT block each other.
+   */
+  parent_court_id?: string | null;
 }
 
 /** A concrete claim on a court for a span of time. */
