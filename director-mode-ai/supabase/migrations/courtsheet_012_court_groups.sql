@@ -35,20 +35,27 @@ ALTER TABLE courts
 CREATE INDEX IF NOT EXISTS idx_courts_parent ON courts(parent_court_id)
   WHERE parent_court_id IS NOT NULL;
 
--- Disallow grandparents (no 3-level chains) so the block-set is always
--- one hop deep. Enforced via CHECK on the column read at insert time.
-ALTER TABLE courts DROP CONSTRAINT IF EXISTS courts_no_grandparent;
--- NOTE: deferring full CHECK because referencing other rows isn't
--- allowed in a column CHECK. Enforced in the trigger below + engine.
-
--- 2) Drop the strict UNIQUE(club_id, number); replace with partial-unique
---    so child courts can have NULL number (their label lives in `name`).
+-- 2) Allow NULL number so child courts (e.g. 11a, 11b) can live by name.
+-- Plain UNIQUE(club_id, number) treats NULLs as non-equal in Postgres,
+-- so two rows with (same_club_id, NULL) coexist — the natural unique
+-- constraint already does what we want, without a partial index.
 ALTER TABLE courts ALTER COLUMN number DROP NOT NULL;
-ALTER TABLE courts DROP CONSTRAINT IF EXISTS courts_club_id_number_key;
 
-CREATE UNIQUE INDEX IF NOT EXISTS courts_club_id_number_partial
-  ON courts(club_id, number)
-  WHERE number IS NOT NULL;
+-- Self-heal: if an earlier version of this file replaced the constraint
+-- with a partial index, drop the index and restore the constraint so
+-- ON CONFLICT (club_id, number) keeps working in seed inserts.
+DROP INDEX IF EXISTS courts_club_id_number_partial;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'courts_club_id_number_key'
+      AND conrelid = 'public.courts'::regclass
+  ) THEN
+    ALTER TABLE courts ADD CONSTRAINT courts_club_id_number_key
+      UNIQUE (club_id, number);
+  END IF;
+END $$;
 
 -- 3) Group-aware conflict trigger.
 -- Fires BEFORE INSERT OR UPDATE on reservations. If the new row's court
