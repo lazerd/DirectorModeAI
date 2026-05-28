@@ -1,27 +1,24 @@
 -- =================================================================
--- CourtSheet AI — one-shot setup (v3: NULL-aware UNIQUE constraint)
+-- CourtSheet AI — one-shot setup (v4: SMS opt-in on signups)
 -- =================================================================
 -- Paste this entire file into the Supabase SQL editor and Run.
 -- Idempotent end-to-end — safe to re-run.
 --
--- v3 fix: migration 012 no longer drops the UNIQUE constraint on
---         courts(club_id, number) — plain UNIQUE already handles NULL
---         number correctly. Self-heals from the v2 broken state.
---
--- Contents (all 13 CourtSheet migrations in order):
+-- Contents (all 14 CourtSheet migrations in order):
 --   001 extensions          btree_gist (linchpin) + uuid-ossp
 --   002 clubs_extend        cc_clubs.timezone/operating_hours + cc_club_members
 --   003 courts              bookable courts table
---   004 reservation_series  recurrence template (camp Mon-Fri etc)
+--   004 reservation_series  recurrence template
 --   005 reservations        single source of truth + no_double_booking EXCLUDE
 --   006 signups             reservation_signups (clinics/doubles/socials)
---   007 audit               courtsheet_audit_log for who/what/when/undo
---   008 backfill            SQL helpers (no data move)
---   009 seed_sleepy_hollow  Sleepy Hollow cc_clubs + courts 1-8
+--   007 audit               courtsheet_audit_log
+--   008 backfill            SQL helpers
+--   009 seed_sleepy_hollow  Sleepy Hollow + courts 1-8
 --   010 lessons_court_id    nullable court_id on lesson_slots
 --   011 realtime            adds reservations + signups to supabase_realtime
 --   012 court_groups        parent_court_id + cross-court overlap trigger
---   013 seed_sh_full        adds courts 9, 10, 11, 11a, 11b to Sleepy Hollow
+--   013 seed_sh_full        adds courts 9, 10, 11, 11a, 11b
+--   014 sms_optin           reservation_signups.sms_phone + sms_opt_in
 -- =================================================================
 
 -- ============================================
@@ -1030,3 +1027,22 @@ BEGIN
     WHERE club_id = v_club_id AND name = '11b'
   );
 END $$;
+-- ============================================
+-- CourtSheet AI — Migration 014
+-- SMS opt-in on signups + bookings.
+-- ============================================
+-- Adds two optional columns to reservation_signups so a player joining a
+-- clinic / doubles / social can opt into a one-shot Twilio confirmation
+-- text. The booker-side SMS for staff bookings rides on reservations.meta
+-- (no schema change needed — meta is already JSONB).
+--
+-- Uses the existing src/lib/twilio.ts (TWILIO_ACCOUNT_SID/AUTH_TOKEN/
+-- PHONE_NUMBER) and the Pro tier's 200 SMS/month budget from billing.ts.
+-- No new env vars required.
+--
+-- Safe to re-run.
+-- ============================================
+
+ALTER TABLE reservation_signups
+  ADD COLUMN IF NOT EXISTS sms_phone   TEXT,
+  ADD COLUMN IF NOT EXISTS sms_opt_in  BOOLEAN NOT NULL DEFAULT false;

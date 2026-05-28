@@ -43,6 +43,36 @@ export async function POST(req: Request) {
         skipConflicting: body?.skipConflicting === true,
       }
     );
+
+    // Fire booker-SMS confirmation if the plan's first toCreate had the
+    // opt-in fields in meta. Fire-and-forget — never blocks the response.
+    if (result.created_ids.length > 0 && plan.toCreate.length > 0) {
+      const firstMeta = plan.toCreate[0].meta as Record<string, unknown> | undefined;
+      if (firstMeta?.booker_sms_opt_in && firstMeta?.booker_sms_phone) {
+        (async () => {
+          try {
+            const { data: createdRow } = await ctx.db
+              .from('reservations')
+              .select('*')
+              .eq('id', result.created_ids[0])
+              .single();
+            if (!createdRow) return;
+            const courts = engine.getCourts();
+            const court = courts.find((c) => c.id === createdRow.court_id) ?? null;
+            const { sendBookingConfirmation } = await import('@/lib/courtsheet/smsConfirm');
+            await sendBookingConfirmation({
+              reservation: createdRow as import('@/lib/courtsheet/types').Reservation,
+              court,
+              club: engine.getClub(),
+              actor_user_id: ctx.user.id,
+            });
+          } catch (err) {
+            console.error('[courtsheet sms] booking confirmation failed:', err);
+          }
+        })();
+      }
+    }
+
     return NextResponse.json({ result });
   } catch (err) {
     if (err instanceof PlanIdInvalidError) {

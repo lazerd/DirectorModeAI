@@ -25,13 +25,15 @@ export async function POST(req: Request, { params }: RouteParams) {
   const { id } = await params;
   const body = await req.json().catch(() => ({}));
   const note = (body?.note as string | null) ?? null;
+  const smsOptIn = body?.sms_opt_in === true;
+  const smsPhone = (body?.sms_phone as string | null) ?? null;
   let identity = (body?.identity as Record<string, unknown> | undefined) ?? {};
 
   // Look up the reservation to find its club (anyone with the link can try).
   const adminDb = getSupabaseAdmin();
   const { data: reservation } = await adminDb
     .from('reservations')
-    .select('id, club_id, signups_open, status')
+    .select('*')
     .eq('id', id)
     .maybeSingle();
   if (!reservation) {
@@ -77,6 +79,38 @@ export async function POST(req: Request, { params }: RouteParams) {
       note,
       actorUserId
     );
+
+    // Persist SMS opt-in onto the row (if requested) and fire the confirmation.
+    if (smsOptIn && smsPhone) {
+      await adminDb
+        .from('reservation_signups')
+        .update({ sms_phone: smsPhone, sms_opt_in: true })
+        .eq('id', result.signup.id);
+
+      // Fire-and-forget — failures never block the signup response.
+      (async () => {
+        try {
+          const club = engine.getClub();
+          const courts = engine.getCourts();
+          const court = courts.find((c) => c.id === reservation.court_id) ?? null;
+          const { sendSignupConfirmation } = await import('@/lib/courtsheet/smsConfirm');
+          await sendSignupConfirmation({
+            signup: {
+              ...result.signup,
+              sms_phone: smsPhone,
+              sms_opt_in: true,
+            },
+            reservation,
+            court,
+            club,
+            club_owner_user_id: club.owner_id,
+          });
+        } catch (err) {
+          console.error('[courtsheet sms] signup confirmation failed:', err);
+        }
+      })();
+    }
+
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json(

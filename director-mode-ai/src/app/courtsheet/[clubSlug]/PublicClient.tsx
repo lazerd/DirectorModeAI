@@ -226,6 +226,8 @@ function PublicSignupSheet({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [note, setNote] = useState('');
+  const [smsOptIn, setSmsOptIn] = useState(false);
+  const [smsPhone, setSmsPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   if (!target) return null;
@@ -240,6 +242,8 @@ function PublicSignupSheet({
         body: JSON.stringify({
           identity: { guest_name: name.trim(), guest_email: email.trim() },
           note: note.trim() || null,
+          sms_opt_in: smsOptIn && !!smsPhone.trim(),
+          sms_phone: smsOptIn ? smsPhone.trim() : null,
         }),
       });
       const data = await res.json();
@@ -295,6 +299,26 @@ function PublicSignupSheet({
             onChange={(e) => setNote(e.target.value)}
             className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#D3FB52]/60"
           />
+          <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+            <input
+              type="checkbox"
+              checked={smsOptIn}
+              onChange={(e) => setSmsOptIn(e.target.checked)}
+              className="h-4 w-4 rounded accent-[#D3FB52]"
+            />
+            <span className="text-sm text-white/80">Text me a confirmation</span>
+          </label>
+          {smsOptIn && (
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="+1 555 123 4567"
+              value={smsPhone}
+              onChange={(e) => setSmsPhone(e.target.value)}
+              className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#D3FB52]/60"
+            />
+          )}
         </div>
         <div className="flex gap-2">
           <button

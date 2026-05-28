@@ -11,7 +11,7 @@
 
 import { useState } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer';
-import { Calendar, Users, Clock } from 'lucide-react';
+import { Calendar, Users, Clock, MessageSquare } from 'lucide-react';
 import type { Court, ReservationType, BookingIntent } from '@/lib/courtsheet/types';
 import { allReservationTypes, typeLabel } from '@/lib/courtsheet/theme';
 import { timeToMinutes, minutesToTime } from '@/lib/courtsheet/timezones';
@@ -41,6 +41,8 @@ export default function QuickCreateSheet({
   const [signupsOpen, setSignupsOpen] = useState(false);
   const [capacity, setCapacity] = useState<number | ''>('');
   const [pitch, setPitch] = useState('');
+  const [smsOptIn, setSmsOptIn] = useState(false);
+  const [smsPhone, setSmsPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   if (!court) return null;
@@ -64,6 +66,9 @@ export default function QuickCreateSheet({
             pitch: pitch.trim() || undefined,
           }
         : undefined,
+      meta: smsOptIn && smsPhone.trim()
+        ? { booker_sms_opt_in: true, booker_sms_phone: smsPhone.trim() }
+        : undefined,
     };
     try {
       await onSubmit(intent);
@@ -73,6 +78,8 @@ export default function QuickCreateSheet({
       setSignupsOpen(false);
       setCapacity('');
       setPitch('');
+      setSmsOptIn(false);
+      setSmsPhone('');
     } finally {
       setSubmitting(false);
     }
@@ -189,6 +196,38 @@ export default function QuickCreateSheet({
                   onChange={(e) => setPitch(e.target.value)}
                   className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white placeholder:text-white/30"
                 />
+              </div>
+            )}
+          </div>
+
+          {/* SMS confirmation opt-in */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-3 space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={smsOptIn}
+                onChange={(e) => setSmsOptIn(e.target.checked)}
+                className="h-4 w-4 rounded accent-[#D3FB52]"
+              />
+              <div className="flex items-center gap-2">
+                <MessageSquare size={14} className="text-[#D3FB52]" />
+                <span className="text-sm font-medium">Text me a confirmation</span>
+              </div>
+            </label>
+            {smsOptIn && (
+              <div className="pl-7">
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  placeholder="+1 555 123 4567"
+                  value={smsPhone}
+                  onChange={(e) => setSmsPhone(e.target.value)}
+                  className="w-full bg-white/[0.04] border border-white/10 rounded-lg px-2 py-1.5 text-sm text-white placeholder:text-white/30"
+                />
+                <p className="text-[10px] text-white/40 mt-1">
+                  One-shot SMS via your Twilio number. Counts against your Pro 200/mo budget.
+                </p>
               </div>
             )}
           </div>

@@ -268,6 +268,9 @@ export interface Signup {
   note: string | null;
   signed_up_at: string;
   status_changed_at: string;
+  /** Optional Twilio SMS confirmation opt-in (migration 014). */
+  sms_phone?: string | null;
+  sms_opt_in?: boolean;
 }
 
 /** Operating hours JSON shape on cc_clubs. */
