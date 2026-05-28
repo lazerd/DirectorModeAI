@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Save } from 'lucide-react';
+import { Save, Copy, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import type { JTTClub } from '@/app/mixer/leagues/[id]/jtt/page';
 
@@ -28,6 +28,14 @@ export default function SettingsTab({ league, clubs, onRefresh }: Props) {
     return o;
   });
   const [saving, setSaving] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copyLink = (token: string, clubId: string) => {
+    const url = `${window.location.origin}/leagues/roster/${token}`;
+    navigator.clipboard.writeText(url);
+    setCopied(clubId);
+    setTimeout(() => setCopied(null), 2000);
+  };
 
   const saveClub = async (clubId: string) => {
     setSaving(clubId);
@@ -66,6 +74,46 @@ export default function SettingsTab({ league, clubs, onRefresh }: Props) {
           </p>
         )}
       </section>
+
+      {/* Coach Roster Links */}
+      {clubs.some(c => c.roster_token) && (
+        <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+          <header className="px-4 py-3 border-b border-gray-200 bg-gray-50">
+            <h2 className="font-semibold text-gray-900">Coach roster links</h2>
+            <p className="text-xs text-gray-500">
+              Send each coach their unique link so they can add players to their own roster. No login required.
+            </p>
+          </header>
+          <div className="divide-y divide-gray-100">
+            {clubs
+              .sort((a, b) => a.sort_order - b.sort_order)
+              .filter(c => c.roster_token)
+              .map(club => (
+                <div
+                  key={club.id}
+                  className="flex items-center justify-between px-4 py-3 text-sm"
+                >
+                  <div>
+                    <div className="font-medium text-gray-900">{club.name}</div>
+                    <div className="text-xs text-gray-400 font-mono truncate max-w-md">
+                      /leagues/roster/{club.roster_token}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => copyLink(club.roster_token!, club.id)}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-orange-500 text-white rounded text-xs font-medium hover:bg-orange-600"
+                  >
+                    {copied === club.id ? (
+                      <><Check size={12} /> Copied</>
+                    ) : (
+                      <><Copy size={12} /> Copy link</>
+                    )}
+                  </button>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
 
       <section className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         <header className="px-4 py-3 border-b border-gray-200 bg-gray-50">

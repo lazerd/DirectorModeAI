@@ -37,6 +37,7 @@ export type JTTClub = {
   color: string | null;
   sort_order: number;
   courts_available: number;
+  roster_token: string | null;
 };
 
 export type JTTDivision = {

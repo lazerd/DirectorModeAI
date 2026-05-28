@@ -95,7 +95,7 @@ export async function POST(request: Request) {
     const { data: clubs, error: clubsErr } = await admin
       .from('league_clubs')
       .insert(clubRows)
-      .select('id, short_code');
+      .select('id, short_code, roster_token');
     if (clubsErr || !clubs) {
       return NextResponse.json(
         { error: `Failed to create clubs: ${clubsErr?.message}` },
@@ -212,6 +212,15 @@ export async function POST(request: Request) {
       }
     }
 
+    // Build roster management links per club
+    const rosterLinks: Record<string, string> = {};
+    for (const c of clubs) {
+      const row = c as any;
+      if (row.roster_token) {
+        rosterLinks[row.short_code] = `/leagues/roster/${row.roster_token}`;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       leagueId,
@@ -222,6 +231,7 @@ export async function POST(request: Request) {
       divisionsCreated: divisions.length,
       matchupsCreated: matchups.length,
       linesCreated: lineRows.length,
+      rosterLinks,
     });
   } catch (e: any) {
     return NextResponse.json(
