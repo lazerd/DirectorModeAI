@@ -8,12 +8,15 @@
  * CommandDock) to the API routes.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LayoutGrid, Sparkles, Share2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { LayoutGrid, Sparkles, Share2, Printer, Download, Wifi, WifiOff } from 'lucide-react';
 import { toast } from 'sonner';
 import Link from 'next/link';
+import { createClient } from '@/lib/supabase/client';
 import type { Court, Reservation, Club, BookingIntent } from '@/lib/courtsheet/types';
 import { utcToLocalDate } from '@/lib/courtsheet/timezones';
+import { downloadReservationsCsv } from '@/lib/courtsheet/csv';
+import WeekStrip from '@/components/courtsheet/WeekStrip';
 import DateNav from '@/components/courtsheet/DateNav';
 import Filters from '@/components/courtsheet/Filters';
 import Sheet from '@/components/courtsheet/Sheet';
@@ -42,6 +45,7 @@ export default function StaffSheetClient({ club, initialCourts, ownerEmail }: Pr
     timeLocal: string;
   } | null>(null);
   const [openReservationId, setOpenReservationId] = useState<string | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
 
   const fetchReservations = useCallback(async () => {
     setLoading(true);
@@ -61,15 +65,66 @@ export default function StaffSheetClient({ club, initialCourts, ownerEmail }: Pr
     fetchReservations();
   }, [fetchReservations]);
 
-  // Light realtime: poll every 25s while tab is visible. Phase 5 will
-  // upgrade to supabase.channel subscriptions.
-  useEffect(() => {
-    const tick = () => {
+  // Supabase Realtime — postgres_changes on reservations + signups, scoped
+  // to this club. A debounced refetch keeps the grid coherent across rapid
+  // bursts (e.g. an AI plan creating 270 rows at once).
+  const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const queueRefetch = useCallback(() => {
+    if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+    refetchTimerRef.current = setTimeout(() => {
       if (document.visibilityState === 'visible') fetchReservations();
-    };
-    const id = setInterval(tick, 25_000);
-    return () => clearInterval(id);
+    }, 400);
   }, [fetchReservations]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    const channel = supabase
+      .channel(`cs:club:${club.id}`)
+      .on(
+        'postgres_changes' as any,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reservations',
+          filter: `club_id=eq.${club.id}`,
+        },
+        () => queueRefetch()
+      )
+      .on(
+        'postgres_changes' as any,
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reservation_signups',
+        },
+        () => queueRefetch()
+      )
+      .subscribe((status) => {
+        setRealtimeConnected(status === 'SUBSCRIBED');
+      });
+
+    // Poll-fallback heartbeat — fires only if realtime is silent for >45s.
+    // Covers cases where the realtime publication isn't enabled or the
+    // socket drops.
+    let lastSeen = Date.now();
+    const heartbeat = setInterval(() => {
+      if (Date.now() - lastSeen > 45_000 && document.visibilityState === 'visible') {
+        fetchReservations();
+        lastSeen = Date.now();
+      }
+    }, 15_000);
+    const onChange = () => {
+      lastSeen = Date.now();
+    };
+    document.addEventListener('visibilitychange', onChange);
+
+    return () => {
+      supabase.removeChannel(channel);
+      clearInterval(heartbeat);
+      document.removeEventListener('visibilitychange', onChange);
+      if (refetchTimerRef.current) clearTimeout(refetchTimerRef.current);
+    };
+  }, [club.id, fetchReservations, queueRefetch]);
 
   const onBlockMove = useCallback(
     async (
@@ -113,8 +168,15 @@ export default function StaffSheetClient({ club, initialCourts, ownerEmail }: Pr
         });
         if (!applyRes.ok) {
           const err = await applyRes.json();
-          toast.error(err.error === 'conflicts_block_apply' ? 'Conflict — drop blocked' : 'Move failed');
+          if (err.error === 'conflicts_block_apply') {
+            toast.error('Just got taken — refreshing', {
+              description: 'Another staff member booked this slot moments ago.',
+            });
+          } else {
+            toast.error('Move failed');
+          }
           setReservations(prev);
+          fetchReservations(); // re-sync from authoritative state
         } else {
           toast.success('Moved');
           fetchReservations();
@@ -208,7 +270,14 @@ export default function StaffSheetClient({ club, initialCourts, ownerEmail }: Pr
       });
       if (!applyRes.ok) {
         const err = await applyRes.json();
-        toast.error(err.error ?? 'Booking failed');
+        if (err.error === 'conflicts_block_apply') {
+          toast.error('Just got taken — try a different slot', {
+            description: 'Another staff member booked this moments ago.',
+          });
+          fetchReservations();
+        } else {
+          toast.error(err.error ?? 'Booking failed');
+        }
         return;
       }
       toast.success('Booked');
@@ -260,27 +329,70 @@ export default function StaffSheetClient({ club, initialCourts, ownerEmail }: Pr
               <div className="text-sm font-semibold truncate">{club.name}</div>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={sharePublic}
-            className="hidden sm:flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/80"
-            title="Share the public member view"
-          >
-            <Share2 size={13} />
-            Share public view
-          </button>
-        </div>
-        <div className="max-w-[1400px] mx-auto px-3 sm:px-6 pb-3 flex flex-wrap items-center gap-3">
-          <DateNav date={date} onChange={setDate} todayISO={todayISO} />
-          <div className="hidden sm:block flex-1" />
-          <div className="w-full sm:w-auto overflow-x-auto">
-            <Filters
-              desaturatedSources={desaturatedSources}
-              desaturatedTypes={desaturatedTypes}
-              onToggleSource={toggleSource}
-              onToggleType={toggleType}
-            />
+          <div className="flex items-center gap-1.5">
+            <div
+              className="flex items-center gap-1 px-2 h-9 text-[10px] uppercase tracking-widest text-white/40"
+              title={realtimeConnected ? 'Live updates connected' : 'Live updates disconnected — polling fallback'}
+              aria-label={realtimeConnected ? 'Live' : 'Offline polling'}
+            >
+              {realtimeConnected ? (
+                <Wifi size={11} className="text-emerald-400" />
+              ) : (
+                <WifiOff size={11} className="text-white/30" />
+              )}
+              <span className="hidden md:inline">{realtimeConnected ? 'Live' : 'Polling'}</span>
+            </div>
+            <a
+              href={`/courtsheet/staff/print?date=${encodeURIComponent(date)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden sm:flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/80"
+              title="Print the day sheet"
+            >
+              <Printer size={13} />
+              Print
+            </a>
+            <button
+              type="button"
+              onClick={() =>
+                downloadReservationsCsv({
+                  courts,
+                  reservations,
+                  timezone: club.timezone,
+                  filename: `courtsheet-${date}.csv`,
+                })
+              }
+              className="hidden sm:flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/80"
+              title="Download CSV"
+            >
+              <Download size={13} />
+              CSV
+            </button>
+            <button
+              type="button"
+              onClick={sharePublic}
+              className="flex items-center gap-1.5 px-3 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-medium text-white/80"
+              title="Share the public member view"
+            >
+              <Share2 size={13} />
+              <span className="hidden sm:inline">Share</span>
+            </button>
           </div>
+        </div>
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-6 pb-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <DateNav date={date} onChange={setDate} todayISO={todayISO} />
+            <div className="hidden sm:block flex-1" />
+            <div className="w-full sm:w-auto overflow-x-auto">
+              <Filters
+                desaturatedSources={desaturatedSources}
+                desaturatedTypes={desaturatedTypes}
+                onToggleSource={toggleSource}
+                onToggleType={toggleType}
+              />
+            </div>
+          </div>
+          <WeekStrip date={date} todayISO={todayISO} clubId={club.id} onPick={setDate} />
         </div>
       </div>
 

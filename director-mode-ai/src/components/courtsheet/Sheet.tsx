@@ -335,12 +335,19 @@ export default function Sheet({
   }, [drag, updateDrag, endDrag]);
 
   return (
-    <div className="relative w-full bg-[#001820] text-white">
+    <div
+      role="grid"
+      aria-label={`Court schedule for ${date}`}
+      aria-rowcount={hourLines.length}
+      aria-colcount={courts.length}
+      className="relative w-full bg-[#001820] text-white"
+    >
       {/* Time gutter is shared on the left. */}
       <div className="flex">
         <div
           className="w-12 shrink-0 sticky left-0 z-20 bg-[#001820]/95 backdrop-blur-sm border-r border-white/5"
           style={{ height: totalHeightPx }}
+          aria-hidden="true"
         >
           {hourLines.map((line) => (
             <div
@@ -373,6 +380,9 @@ export default function Sheet({
                 <div
                   key={court.id}
                   data-court-idx={idx}
+                  role="gridcell"
+                  aria-colindex={idx + 1}
+                  aria-label={`${court.name ?? `Court ${court.number}`} schedule column`}
                   className={[
                     'relative shrink-0 border-r border-white/5',
                     isMobile ? 'snap-start' : '',

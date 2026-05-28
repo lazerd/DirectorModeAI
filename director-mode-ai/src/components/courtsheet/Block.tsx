@@ -66,6 +66,7 @@ export default function Block({
     <div
       role="button"
       tabIndex={0}
+      aria-label={`${r.title}, ${new Date(r.starts_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} to ${new Date(r.ends_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${r.signups_open ? `, ${signupsCount ?? 0} signup${(signupsCount ?? 0) === 1 ? '' : 's'}` : ''}${isLive ? ', happening now' : ''}`}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') onClick?.();

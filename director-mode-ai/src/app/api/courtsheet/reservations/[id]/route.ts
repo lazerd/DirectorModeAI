@@ -65,10 +65,21 @@ export async function PATCH(req: Request, { params }: RouteParams) {
 }
 
 // DELETE — cancel the reservation (soft delete via status='cancelled').
+// If the reservation had open signups, fan out a cancellation email.
 export async function DELETE(_req: Request, { params }: RouteParams) {
   const { id } = await params;
   const ctx = await requireStaffForClub({ requireWrite: true });
   if ('error' in ctx) return ctx.error;
+
+  // Snapshot the reservation + active signups BEFORE cancelling so the
+  // notifier has everything it needs after the row flips.
+  const { data: priorRow } = await ctx.db
+    .from('reservations')
+    .select('*')
+    .eq('id', id)
+    .eq('club_id', ctx.club.id)
+    .maybeSingle();
+  const prior = priorRow as import('@/lib/courtsheet/types').Reservation | null;
 
   const { data, error } = await ctx.db
     .from('reservations')
@@ -87,6 +98,37 @@ export async function DELETE(_req: Request, { params }: RouteParams) {
     diff: { cancelled_ids: [data.id] },
     channel: 'ui',
   });
+
+  // Fire signup notifications (fire-and-forget — never blocks the cancel).
+  if (prior && prior.signups_open) {
+    (async () => {
+      try {
+        const { data: signups } = await ctx.db
+          .from('reservation_signups')
+          .select('*')
+          .eq('reservation_id', id)
+          .in('status', ['requested', 'confirmed']);
+        const { data: court } = await ctx.db
+          .from('courts')
+          .select('*')
+          .eq('id', prior.court_id)
+          .maybeSingle();
+        const { notifySignupsOfReservationChange } = await import(
+          '@/lib/courtsheet/signupNotify'
+        );
+        await notifySignupsOfReservationChange({
+          reservation: prior,
+          signups: (signups ?? []) as import('@/lib/courtsheet/types').Signup[],
+          court: court as import('@/lib/courtsheet/types').Court | null,
+          club: ctx.club,
+          kind: 'cancelled',
+          actor_user_id: ctx.user.id,
+        });
+      } catch (err) {
+        console.error('[signup notify on delete] failed:', err);
+      }
+    })();
+  }
 
   return NextResponse.json({ ok: true });
 }
