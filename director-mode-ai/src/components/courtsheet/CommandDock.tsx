@@ -158,17 +158,37 @@ export default function CommandDock({ onApplied }: Props = {}) {
     }
   }, [draft, history, submitting]);
 
-  const startVoice = useCallback(() => {
+  const startVoice = useCallback(async () => {
     const SR =
       (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
     if (!SR) {
-      toast.error('Voice not supported — try Chrome or Edge.');
+      toast.error('Voice not supported in this browser', {
+        description: 'Try Chrome, Edge, or Safari on a phone.',
+      });
       return;
     }
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       return;
     }
+
+    // Pre-flight: explicitly request mic permission so the browser shows
+    // its prompt up-front. Web Speech itself sometimes fails silently if
+    // the page doesn't have prior mic permission.
+    try {
+      if (navigator.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // We don't actually use the stream — just used it to trigger the
+        // permission prompt. Release it immediately.
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    } catch (err: any) {
+      toast.error('Microphone access denied', {
+        description: 'Click the lock/camera icon in the address bar to allow the mic, then try again.',
+      });
+      return;
+    }
+
     const rec = new SR();
     rec.lang = 'en-US';
     rec.continuous = false;
@@ -178,15 +198,32 @@ export default function CommandDock({ onApplied }: Props = {}) {
       setListening(false);
       recognitionRef.current = null;
     };
-    rec.onerror = () => setListening(false);
+    rec.onerror = (ev: any) => {
+      setListening(false);
+      const code = ev?.error as string | undefined;
+      const msg: Record<string, string> = {
+        'not-allowed': 'Microphone permission denied',
+        'service-not-allowed': 'Speech service blocked by browser settings',
+        'no-speech': "Didn't hear anything — try again, closer to the mic",
+        'audio-capture': 'No microphone detected on this device',
+        'network': 'Speech service network error',
+        'aborted': '',
+      };
+      const text = code ? msg[code] ?? `Voice error: ${code}` : 'Voice error';
+      if (text) toast.error(text);
+    };
     rec.onresult = (ev: any) => {
       const transcript = Array.from(ev.results)
         .map((r: any) => r[0].transcript)
         .join(' ');
       setDraft(transcript);
     };
-    rec.start();
-    recognitionRef.current = rec;
+    try {
+      rec.start();
+      recognitionRef.current = rec;
+    } catch (err: any) {
+      toast.error('Could not start the mic', { description: err?.message ?? String(err) });
+    }
   }, []);
 
   const confirmPlan = useCallback(
