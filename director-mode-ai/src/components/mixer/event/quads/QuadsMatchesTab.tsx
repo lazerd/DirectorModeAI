@@ -187,6 +187,14 @@ export default function QuadsMatchesTab({
         .update({ scheduled_at, court })
         .eq('id', matchId);
     }
+
+    // CourtSheet write-through (fire-and-forget).
+    fetch('/api/courtsheet/adapters/quads-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_id: event.id }),
+    }).catch(() => {});
+
     await onRefresh();
     setScheduling(false);
   };

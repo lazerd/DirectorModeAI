@@ -193,6 +193,15 @@ function CreateEventForm() {
       }
 
       trackEvent('feature_use', 'create_event', 'mixer');
+
+      // CourtSheet write-through (fire-and-forget). No-op when
+      // ENABLE_COURTSHEET_WRITES is off; never blocks navigation.
+      fetch('/api/courtsheet/adapters/mixer-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: data.id }),
+      }).catch(() => {});
+
       router.push(`/mixer/events/${data.id}`);
     } catch (err) {
       setError('An error occurred');

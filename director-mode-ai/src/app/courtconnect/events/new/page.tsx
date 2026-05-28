@@ -96,6 +96,15 @@ export default function CreateEventPage() {
     }
 
     trackEvent('feature_use', 'create_event', 'courtconnect');
+
+    // CourtSheet write-through (fire-and-forget). No-op when
+    // ENABLE_COURTSHEET_WRITES is off.
+    fetch('/api/courtsheet/adapters/courtconnect-event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event_id: data.id }),
+    }).catch(() => {});
+
     router.push(`/courtconnect/events/${data.id}`);
   };
 

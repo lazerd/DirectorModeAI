@@ -196,6 +196,13 @@ function CreateTournamentForm() {
         return;
       }
 
+      // CourtSheet write-through (fire-and-forget).
+      fetch('/api/courtsheet/adapters/mixer-event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event_id: data.id }),
+      }).catch(() => {});
+
       router.push(`/mixer/events/${data.id}`);
     } catch (err: any) {
       setError(err?.message || 'An error occurred');

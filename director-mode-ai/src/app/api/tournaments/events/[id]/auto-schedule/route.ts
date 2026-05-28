@@ -20,6 +20,7 @@ import {
   optimizeTournamentSchedule,
   type SchedulerMatch,
 } from '@/lib/tournamentScheduler';
+import { syncTournamentEvent } from '@/lib/courtsheet/adapters/tournaments';
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
@@ -129,8 +130,13 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       .eq('id', matchId);
   }
 
+  // CourtSheet write-through. No-op if ENABLE_COURTSHEET_WRITES is off.
+  // Failures are swallowed and logged — never block the scheduling response.
+  const courtSheetResult = await syncTournamentEvent(eventId);
+
   return NextResponse.json({
     matches_scheduled: out.assignments.size,
     unscheduled: out.unscheduled,
+    courtsheet: courtSheetResult ?? { adapter: 'disabled' },
   });
 }
