@@ -191,12 +191,25 @@ export default function CommandDock({ onApplied }: Props = {}) {
 
     const rec = new SR();
     rec.lang = 'en-US';
-    rec.continuous = false;
+    // continuous=true keeps listening through pauses — Edge ends the
+    // session too aggressively in non-continuous mode and the user gets
+    // nothing if their first word isn't immediate.
+    rec.continuous = true;
     rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    let gotAnyResult = false;
     rec.onstart = () => setListening(true);
+    rec.onspeechstart = () => {
+      // Audio detected — user is speaking.
+    };
     rec.onend = () => {
       setListening(false);
       recognitionRef.current = null;
+      if (!gotAnyResult) {
+        toast('Heard nothing — try again with mic closer', {
+          description: "If you typed something earlier, it's still in the box.",
+        });
+      }
     };
     rec.onerror = (ev: any) => {
       setListening(false);
@@ -216,7 +229,10 @@ export default function CommandDock({ onApplied }: Props = {}) {
       const transcript = Array.from(ev.results)
         .map((r: any) => r[0].transcript)
         .join(' ');
-      setDraft(transcript);
+      if (transcript.trim()) {
+        gotAnyResult = true;
+        setDraft(transcript);
+      }
     };
     try {
       rec.start();
