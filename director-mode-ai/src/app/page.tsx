@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import {
   Shuffle, Clock, Wrench, ArrowRight, LogOut, User, Calendar,
   UserCircle, Trophy, Users, GraduationCap, Database, ExternalLink,
-  Sparkles, Check, ChevronRight, Zap, Shield, BarChart3, Waves
+  Sparkles, Check, ChevronRight, Zap, Shield, BarChart3, Waves,
+  LayoutGrid
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import ProductShowcase from "@/components/shared/ProductShowcase";
@@ -74,6 +75,17 @@ export default function HomePage() {
   };
 
   const tools = [
+    {
+      name: "CourtSheet AI",
+      tag: "COURTS",
+      description: "The live grid of every court reservation across the club. Type or speak commands to book.",
+      icon: LayoutGrid,
+      color: "text-cyan-400",
+      bg: "bg-cyan-400/10",
+      border: "border-cyan-400/20",
+      tagColor: "bg-cyan-400/10 text-cyan-400",
+      onClick: () => goToTool("/courtsheet/staff"),
+    },
     {
       name: "MixerMode AI",
       tag: "EVENTS",
@@ -398,6 +410,7 @@ export default function HomePage() {
             <h2 className="text-lg font-bold mb-5 text-center text-white/80">Quick Access</h2>
             <div className="grid md:grid-cols-3 gap-3">
               {[
+                { href: "/courtsheet/staff", icon: LayoutGrid, name: "CourtSheet", color: "bg-cyan-500 hover:bg-cyan-600" },
                 { href: "/mixer/home", icon: Shuffle, name: "MixerMode", color: "bg-orange-500 hover:bg-orange-600" },
                 { onClick: goToLessons, icon: Clock, name: "Lessons", color: "bg-blue-500 hover:bg-blue-600" },
                 { href: "/stringing/jobs", icon: Wrench, name: "Stringing", color: "bg-pink-500 hover:bg-pink-600" },

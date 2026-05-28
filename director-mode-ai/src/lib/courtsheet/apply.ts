@@ -145,6 +145,8 @@ export async function applyPlan(
 
   // Inserts.
   if (candidates.length > 0) {
+    const source: import('./types').ReservationSource =
+      ctx.channel === 'ai' ? 'ai' : ctx.channel === 'cron' ? 'import' : 'manual';
     const rows = candidates.map((c) => ({
       club_id: plan.club_id,
       court_id: c.court_id,
@@ -158,7 +160,7 @@ export async function applyPlan(
       signups_open: c.signups_open,
       signups_capacity: c.signups_capacity,
       signups_pitch: c.signups_pitch,
-      source: 'ai',
+      source,
       created_by: ctx.actor_user_id,
     }));
     // Insert in chunks of 200 so PostgREST stays happy on big plans.
@@ -251,23 +253,31 @@ async function createSeriesFromPlan(
   plan: Plan,
   actor: string
 ): Promise<string | null> {
-  // The planner doesn't carry the original intent on the Plan; for Phase
-  // 1 we record a minimal series row keyed off the summary. Phase 2's UI
-  // can fetch the series and present "edit this and following" by
-  // re-emitting an intent.
+  if (plan.toCreate.length === 0) return null;
+  const intent = plan.intent;
+  // Without an intent we still need *something* (move/modify operations
+  // that create multiple rows don't carry one). Derive a minimal series
+  // shape from the dates.
   const dates = plan.toCreate.map((c) => c.starts_at).sort();
-  if (dates.length === 0) return null;
+  const range_start = intent?.date_range.start ?? dates[0].slice(0, 10);
+  const range_end = intent?.date_range.end ?? dates[dates.length - 1].slice(0, 10);
+  const time_start = intent?.time_range.start ?? '00:00';
+  const time_end = intent?.time_range.end ?? '23:59';
+
   const { data, error } = await db
     .from('reservation_series')
     .insert({
       club_id: plan.club_id,
-      title: plan.toCreate[0].title,
-      type: plan.toCreate[0].type,
-      range_start: dates[0].slice(0, 10),
-      range_end: dates[dates.length - 1].slice(0, 10),
-      time_start: '00:00',
-      time_end: '23:59',
-      meta: { from_plan_summary: plan.summary },
+      title: intent?.title ?? plan.toCreate[0].title,
+      type: intent?.type ?? plan.toCreate[0].type,
+      range_start,
+      range_end,
+      time_start,
+      time_end,
+      days_of_week: intent?.days_of_week ?? [],
+      exclusions: intent?.exclusions ?? [],
+      intent: intent ?? {},
+      meta: intent?.meta ?? { from_plan_summary: plan.summary },
       created_by: actor,
     })
     .select('id')

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import AnalyticsTracker from "@/components/shared/AnalyticsTracker";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "ClubMode AI - The Complete Racquet Sports Platform",
@@ -17,6 +18,7 @@ export default function RootLayout({
       <body>
         <AnalyticsTracker />
         {children}
+        <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#002838', color: '#fff', border: '1px solid rgba(255,255,255,0.08)' } }} />
       </body>
     </html>
   );

@@ -101,6 +101,7 @@ export async function planBooking(
     toCancel: [],
     conflicts,
     summary: summarize(intent, instances, ctx.club.timezone),
+    intent,
   };
 }
 

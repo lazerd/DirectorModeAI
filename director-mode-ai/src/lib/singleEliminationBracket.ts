@@ -43,13 +43,27 @@ function standardSeedPairs(size: number): Array<[number, number]> {
     round += 1;
   }
 
-  // order is now size entries long, in positional order top→bottom of the draw.
-  // R1 matches are adjacent pairs: (order[0], order[1]), (order[2], order[3]), ...
-  const pairs: Array<[number, number]> = [];
+  // Stack-order pairs.
+  const stackPairs: Array<[number, number]> = [];
   for (let i = 0; i < size; i += 2) {
-    pairs.push([order[i], order[i + 1]]);
+    stackPairs.push([order[i], order[i + 1]]);
   }
-  return pairs;
+
+  // Reorder to Serve Tennis bracket convention. In each half, the
+  // higher-priority sub-seed gravitates toward the bracket center (just
+  // above/below the midline) instead of staying in stack order. Recursion:
+  // for n pairs, the permutation is the n/2 permutation, followed by the
+  // n/2 permutation shifted by n/2 and REVERSED.
+  const numPairs = size / 2;
+  const perm = tennisPermutation(numPairs);
+  return perm.map((p) => stackPairs[p]);
+}
+
+function tennisPermutation(n: number): number[] {
+  if (n <= 2) return Array.from({ length: n }, (_, i) => i);
+  const half = tennisPermutation(n / 2);
+  const second = half.map((p) => p + n / 2).reverse();
+  return [...half, ...second];
 }
 
 /** Round up to the next power of 2 (at least 2). */

@@ -225,6 +225,13 @@ export interface Plan {
     spans: string; // e.g. "Mon–Fri, Jun 1 – Jul 31, 8:00–12:00"
   };
   /**
+   * The original BookingIntent that produced this plan, if any. Apply uses
+   * it to populate reservation_series rows with real recurrence shape so
+   * Phase 2's "edit this and following" can replay it cleanly. Null for
+   * Mutations (cancel/move/modify).
+   */
+  intent?: BookingIntent;
+  /**
    * Reverse-plan: what to apply to undo this plan. Stored on the audit
    * row at apply time. Empty before apply.
    */

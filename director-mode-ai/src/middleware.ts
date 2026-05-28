@@ -41,6 +41,10 @@ export async function middleware(request: NextRequest) {
     '/mixer/settings',
     '/lessons/dashboard',
     '/stringing/jobs',
+    // CourtSheet staff view requires auth. Public /courtsheet/[clubSlug]
+    // does NOT — handled by the route, not the matcher (auth check inside
+    // the route distinguishes staff vs public surface).
+    '/courtsheet/staff',
   ];
   const isProtectedPath = protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path)

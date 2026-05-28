@@ -15,7 +15,11 @@ export type Feature =
   | 'custom_subdomain'
   | 'multi_day_tournament'
   | 'advanced_analytics'
-  | 'sms';
+  | 'sms'
+  // Pro full-access CourtSheet (grid editing, AI command, signups, multi-day).
+  // Free tier still sees today's sheet read-only — gated at the route/UI, not
+  // by removing this from PRO_FEATURES. See /courtsheet for the implementation.
+  | 'court_sheet';
 
 export const TIER_LIMITS = {
   free: { emails: 25, sms: 0, photos_per_event: 5, vault_size: 25 },
@@ -35,6 +39,7 @@ const PRO_FEATURES: ReadonlyArray<Feature> = [
   'multi_day_tournament',
   'advanced_analytics',
   'sms',
+  'court_sheet',
 ];
 
 const FEATURES_BY_TIER: Record<PlanTier, ReadonlyArray<Feature>> = {
