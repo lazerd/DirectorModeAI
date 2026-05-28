@@ -321,7 +321,7 @@ export default function StaffSheetClient({ club, initialCourts, ownerEmail }: Pr
         </div>
       )}
 
-      <CommandDock />
+      <CommandDock onApplied={fetchReservations} />
 
       <QuickCreateSheet
         open={!!quickCreate}
