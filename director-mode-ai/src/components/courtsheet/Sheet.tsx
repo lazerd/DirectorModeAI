@@ -360,15 +360,48 @@ export default function Sheet({
           ))}
         </div>
 
-        {/* Court strip: horizontal on mobile (snap), grid on desktop. */}
+        {/* Court strip: horizontal on mobile (snap), grid on desktop.
+            Sheet owns the horizontal scroll so the court-name header
+            row at the top scrolls in lockstep with the columns. */}
         <div
           ref={containerRef}
           className={[
             'relative flex-1',
             isMobile ? 'overflow-x-auto snap-x snap-mandatory' : 'overflow-x-auto',
           ].join(' ')}
-          style={{ height: totalHeightPx }}
+          style={{ height: totalHeightPx + 56 }}
         >
+          {/* Sticky court-name header row inside the scroll container. */}
+          <div
+            className="sticky top-0 z-30 flex bg-[#001820]/95 backdrop-blur-md border-b border-white/[0.06] h-14"
+            style={{ width: isMobile ? `${courts.length * 100}vw` : 'auto' }}
+          >
+            {courts.map((court) => {
+              const colWidth = isMobile
+                ? '100vw'
+                : `${Math.max(150, 1100 / Math.max(courts.length, 1))}px`;
+              return (
+                <div
+                  key={`hdr-${court.id}`}
+                  className="shrink-0 px-2 flex items-center gap-2 border-r border-white/[0.04]"
+                  style={{ width: colWidth }}
+                >
+                  <div className="h-7 w-7 rounded-full flex items-center justify-center bg-[#D3FB52]/10 border border-[#D3FB52]/20 font-semibold text-[#D3FB52] text-[11px]">
+                    {court.number ?? (court.name ?? '?').slice(0, 3)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-medium text-white/90 truncate">
+                      {court.name ?? `Court ${court.number}`}
+                    </div>
+                    <div className="text-[9px] uppercase tracking-widest text-white/40 truncate">
+                      {court.sports.join(' · ')}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
           <div
             className="flex"
             style={{ height: totalHeightPx, width: isMobile ? `${courts.length * 100}vw` : 'auto' }}

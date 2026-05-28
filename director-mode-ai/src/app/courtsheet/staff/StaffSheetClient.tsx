@@ -20,7 +20,6 @@ import WeekStrip from '@/components/courtsheet/WeekStrip';
 import DateNav from '@/components/courtsheet/DateNav';
 import Filters from '@/components/courtsheet/Filters';
 import Sheet from '@/components/courtsheet/Sheet';
-import CourtHeaderStrip from '@/components/courtsheet/CourtHeaderStrip';
 import QuickCreateSheet from '@/components/courtsheet/QuickCreateSheet';
 import ReservationDrawer from '@/components/courtsheet/ReservationDrawer';
 import CommandDock from '@/components/courtsheet/CommandDock';
@@ -412,12 +411,6 @@ export default function StaffSheetClient({ club, initialCourts, ownerEmail }: Pr
         </div>
       ) : (
         <div className="max-w-[1400px] mx-auto">
-          <CourtHeaderStrip
-            courts={courts}
-            reservations={reservations}
-            nowMs={Date.now()}
-            isMobile={false}
-          />
           <Sheet
             club={{ id: club.id, timezone: club.timezone }}
             courts={courts}
