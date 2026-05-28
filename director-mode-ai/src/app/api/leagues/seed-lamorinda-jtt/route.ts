@@ -5,7 +5,7 @@
  *   - leagues row (format=team)
  *   - 5 clubs (OCC, MCC, Rancho, Sleepy Hollow, Meadow)
  *   - 4 divisions (10&U / 12&U / 13&O Tuesdays, Open Thursdays)
- *   - league_division_clubs (Meadow 10U-only; others in all 4)
+ *   - league_division_clubs (Meadow in 10U & 12U; others in all 4)
  *   - league_team_matchups for the full season (Jun 9 – Jul 16)
  *   - empty league_matchup_lines for each matchup per division.line_format
  *

@@ -229,10 +229,10 @@ export const LAMORINDA_2026 = {
       line_format: 'singles_and_doubles',
     },
   ] as DraftDivision[],
-  // Which clubs play in which division. Meadow is 10U-only.
+  // Which clubs play in which division. Meadow is in 10U and 12U only.
   divisionClubs: {
     '10U': ['OCC', 'MCC', 'RAN', 'SH', 'MDW'],
-    '12U': ['OCC', 'MCC', 'RAN', 'SH'],
+    '12U': ['OCC', 'MCC', 'RAN', 'SH', 'MDW'],
     '13O': ['OCC', 'MCC', 'RAN', 'SH'],
     OPEN: ['OCC', 'MCC', 'RAN', 'SH'],
   } as Record<string, string[]>,
@@ -245,6 +245,7 @@ export const LAMORINDA_2026 = {
 
     { division_short: '12U', match_date: '2026-06-09', away_short: 'OCC', home_short: 'MCC' },
     { division_short: '12U', match_date: '2026-06-09', away_short: 'RAN', home_short: 'SH' },
+    // Meadow bye (12U)
 
     { division_short: '13O', match_date: '2026-06-09', away_short: 'OCC', home_short: 'MCC' },
     { division_short: '13O', match_date: '2026-06-09', away_short: 'RAN', home_short: 'SH' },
@@ -255,7 +256,8 @@ export const LAMORINDA_2026 = {
     // Rancho bye (10U)
 
     { division_short: '12U', match_date: '2026-06-16', away_short: 'SH', home_short: 'MCC' },
-    { division_short: '12U', match_date: '2026-06-16', away_short: 'RAN', home_short: 'OCC' },
+    { division_short: '12U', match_date: '2026-06-16', away_short: 'MDW', home_short: 'OCC' },
+    // Rancho bye (12U)
 
     { division_short: '13O', match_date: '2026-06-16', away_short: 'SH', home_short: 'MCC' },
     { division_short: '13O', match_date: '2026-06-16', away_short: 'RAN', home_short: 'OCC' },
@@ -265,8 +267,9 @@ export const LAMORINDA_2026 = {
     { division_short: '10U', match_date: '2026-06-23', away_short: 'MCC', home_short: 'RAN' },
     // OCC bye (10U)
 
-    { division_short: '12U', match_date: '2026-06-23', away_short: 'OCC', home_short: 'SH' },
+    { division_short: '12U', match_date: '2026-06-23', away_short: 'MDW', home_short: 'SH' },
     { division_short: '12U', match_date: '2026-06-23', away_short: 'MCC', home_short: 'RAN' },
+    // OCC bye (12U)
 
     { division_short: '13O', match_date: '2026-06-23', away_short: 'OCC', home_short: 'SH' },
     { division_short: '13O', match_date: '2026-06-23', away_short: 'MCC', home_short: 'RAN' },
@@ -279,7 +282,8 @@ export const LAMORINDA_2026 = {
     // MCC bye (10U)
 
     { division_short: '12U', match_date: '2026-07-07', away_short: 'SH', home_short: 'RAN' },
-    { division_short: '12U', match_date: '2026-07-07', away_short: 'MCC', home_short: 'OCC' },
+    { division_short: '12U', match_date: '2026-07-07', away_short: 'MDW', home_short: 'OCC' },
+    // MCC bye (12U)
 
     { division_short: '13O', match_date: '2026-07-07', away_short: 'SH', home_short: 'RAN' },
     { division_short: '13O', match_date: '2026-07-07', away_short: 'MCC', home_short: 'OCC' },
@@ -290,7 +294,8 @@ export const LAMORINDA_2026 = {
     // SH bye (10U)
 
     { division_short: '12U', match_date: '2026-07-14', away_short: 'OCC', home_short: 'RAN' },
-    { division_short: '12U', match_date: '2026-07-14', away_short: 'SH', home_short: 'MCC' },
+    { division_short: '12U', match_date: '2026-07-14', away_short: 'MDW', home_short: 'MCC' },
+    // SH bye (12U)
 
     { division_short: '13O', match_date: '2026-07-14', away_short: 'OCC', home_short: 'RAN' },
     { division_short: '13O', match_date: '2026-07-14', away_short: 'SH', home_short: 'MCC' },
