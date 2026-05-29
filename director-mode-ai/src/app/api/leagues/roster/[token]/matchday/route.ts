@@ -331,5 +331,106 @@ export async function POST(
     return NextResponse.json({ success: true });
   }
 
+  // --- ADD A LINE (singles or doubles) ---
+  if (action === 'addLine') {
+    const { matchup_id, line_type } = body;
+    if (!matchup_id || (line_type !== 'singles' && line_type !== 'doubles')) {
+      return NextResponse.json({ error: 'matchup_id and line_type (singles|doubles) required.' }, { status: 400 });
+    }
+
+    // Get current max line_number for this matchup
+    const { data: existing } = await admin
+      .from('league_matchup_lines')
+      .select('line_number')
+      .eq('matchup_id', matchup_id)
+      .order('line_number', { ascending: false })
+      .limit(1);
+
+    const nextNum = ((existing?.[0] as any)?.line_number || 0) + 1;
+
+    const { data: inserted, error: insErr } = await admin
+      .from('league_matchup_lines')
+      .insert({
+        matchup_id,
+        line_type,
+        line_number: nextNum,
+      })
+      .select('id, line_type, line_number')
+      .single();
+
+    if (insErr) {
+      return NextResponse.json({ error: insErr.message }, { status: 500 });
+    }
+    return NextResponse.json({ success: true, line: inserted });
+  }
+
+  // --- REMOVE A LINE ---
+  if (action === 'removeLine') {
+    const { line_id } = body;
+    if (!line_id) {
+      return NextResponse.json({ error: 'line_id required.' }, { status: 400 });
+    }
+    const { error: delErr } = await admin
+      .from('league_matchup_lines')
+      .delete()
+      .eq('id', line_id);
+    if (delErr) {
+      return NextResponse.json({ error: delErr.message }, { status: 500 });
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  // --- SET COURTS for a matchup ---
+  if (action === 'setCourts') {
+    const { matchup_id, courts } = body;
+    if (!matchup_id || courts === undefined) {
+      return NextResponse.json({ error: 'matchup_id and courts required.' }, { status: 400 });
+    }
+    const courtsVal = parseInt(courts, 10);
+    if (isNaN(courtsVal) || courtsVal < 0 || courtsVal > 50) {
+      return NextResponse.json({ error: 'courts must be 0-50.' }, { status: 400 });
+    }
+    await admin
+      .from('league_team_matchups')
+      .update({ courts_override: courtsVal })
+      .eq('id', matchup_id);
+    return NextResponse.json({ success: true });
+  }
+
+  // --- USE SUGGESTED LINEUP (bulk-create lines) ---
+  if (action === 'useSuggestion') {
+    const { matchup_id, singles, doubles } = body;
+    if (!matchup_id || singles === undefined || doubles === undefined) {
+      return NextResponse.json({ error: 'matchup_id, singles, and doubles required.' }, { status: 400 });
+    }
+
+    // Get current max line_number
+    const { data: existing } = await admin
+      .from('league_matchup_lines')
+      .select('line_number')
+      .eq('matchup_id', matchup_id)
+      .order('line_number', { ascending: false })
+      .limit(1);
+
+    let nextNum = ((existing?.[0] as any)?.line_number || 0) + 1;
+    const rows: Array<{ matchup_id: string; line_type: string; line_number: number }> = [];
+
+    for (let i = 0; i < singles; i++) {
+      rows.push({ matchup_id, line_type: 'singles', line_number: nextNum++ });
+    }
+    for (let i = 0; i < doubles; i++) {
+      rows.push({ matchup_id, line_type: 'doubles', line_number: nextNum++ });
+    }
+
+    if (rows.length > 0) {
+      const { error: insErr } = await admin.from('league_matchup_lines').insert(rows);
+      if (insErr) {
+        return NextResponse.json({ error: insErr.message }, { status: 500 });
+      }
+    }
+
+    return NextResponse.json({ success: true, created: rows.length });
+  }
+
   return NextResponse.json({ error: `Unknown action: ${action}` }, { status: 400 });
 }

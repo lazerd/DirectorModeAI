@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -12,11 +12,14 @@ import {
   ChevronLeft,
   ChevronRight,
   Check,
+  Plus,
+  Trash2,
+  Lightbulb,
 } from 'lucide-react';
 
 type Club = { id: string; name: string; short_code: string; courts_available: number };
-type Division = { id: string; name: string; short_code: string; start_time: string | null; end_time: string | null; line_format: string; sort_order: number };
-type Matchup = { id: string; division_id: string; match_date: string; home_club_id: string; away_club_id: string; home_lines_won: number; away_lines_won: number; winner: string | null; status: string };
+type Division = { id: string; name: string; short_code: string; start_time: string | null; end_time: string | null; sort_order: number };
+type Matchup = { id: string; division_id: string; match_date: string; home_club_id: string; away_club_id: string; home_lines_won: number; away_lines_won: number; winner: string | null; status: string; courts_override: number | null };
 type Roster = { id: string; division_id: string; club_id: string; player_name: string; ladder_position: number | null; status: string };
 type Line = { id: string; matchup_id: string; line_type: 'singles' | 'doubles'; line_number: number; home_player1_id: string | null; home_player2_id: string | null; away_player1_id: string | null; away_player2_id: string | null; score: string | null; winner: 'home' | 'away' | null; status: string };
 type Checkin = { roster_id: string; matchup_id: string };
@@ -32,6 +35,19 @@ type FetchResult = {
   lines: Line[];
   checkins: Checkin[];
 };
+
+function computeSuggestion(courts: number, playersPerSide: number) {
+  if (courts <= 0 || playersPerSide <= 0) return { singles: 0, doubles: 0, benched: 0 };
+  const doublesNeeded = Math.max(0, playersPerSide - courts);
+  const singles = Math.min(courts - doublesNeeded, playersPerSide);
+  if (singles < 0) {
+    // More players than 2x courts — all doubles, some bench
+    const maxDoubles = courts;
+    const canPlay = maxDoubles * 2;
+    return { singles: 0, doubles: maxDoubles, benched: Math.max(0, playersPerSide - canPlay) };
+  }
+  return { singles, doubles: doublesNeeded, benched: 0 };
+}
 
 export default function MatchDayPage() {
   const params = useParams();
@@ -110,17 +126,14 @@ export default function MatchDayPage() {
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
-      {/* Header */}
       <div className="mb-4">
-        <div className="flex items-center justify-between mb-1">
-          <Link
-            href={`/leagues/roster/${token}`}
-            className="text-sm text-orange-600 hover:text-orange-700"
-          >
-            &larr; Back to roster
-          </Link>
-        </div>
-        <h1 className="font-semibold text-2xl text-gray-900">{club.name} — Match Day</h1>
+        <Link
+          href={`/leagues/roster/${token}`}
+          className="text-sm text-orange-600 hover:text-orange-700"
+        >
+          &larr; Back to roster
+        </Link>
+        <h1 className="font-semibold text-2xl text-gray-900 mt-1">{club.name} — Match Day</h1>
       </div>
 
       {/* Date Navigation */}
@@ -135,7 +148,7 @@ export default function MatchDayPage() {
         <div className="text-center">
           <div className="font-semibold text-gray-900">{dateLabel}</div>
           <div className="text-xs text-gray-500">
-            {matchups.length} matchup{matchups.length !== 1 ? 's' : ''} for {club.name}
+            {matchups.length} matchup{matchups.length !== 1 ? 's' : ''}
           </div>
         </div>
         <button
@@ -147,7 +160,6 @@ export default function MatchDayPage() {
         </button>
       </div>
 
-      {/* One section per matchup (division) */}
       {matchups
         .sort((a, b) => {
           const divA = divisions.find(d => d.id === a.division_id);
@@ -158,15 +170,6 @@ export default function MatchDayPage() {
           const division = divisions.find(d => d.id === matchup.division_id);
           const homeClub = clubs.find(c => c.id === matchup.home_club_id);
           const awayClub = clubs.find(c => c.id === matchup.away_club_id);
-          const opponent = matchup.home_club_id === club.id ? awayClub : homeClub;
-          const isHome = matchup.home_club_id === club.id;
-          const matchupLines = lines.filter(l => l.matchup_id === matchup.id);
-          const matchupRosters = rosters.filter(r => r.division_id === matchup.division_id);
-          const homeRosters = matchupRosters.filter(r => r.club_id === matchup.home_club_id && r.status === 'active');
-          const awayRosters = matchupRosters.filter(r => r.club_id === matchup.away_club_id && r.status === 'active');
-          const myRosters = isHome ? homeRosters : awayRosters;
-          const matchupCheckins = checkins.filter(c => matchupLines.length === 0 || true).filter(c => myRosters.some(r => r.id === c.roster_id));
-
           if (!division || !homeClub || !awayClub) return null;
 
           return (
@@ -177,10 +180,8 @@ export default function MatchDayPage() {
               homeClub={homeClub}
               awayClub={awayClub}
               myClub={club}
-              isHome={isHome}
-              homeRosters={homeRosters}
-              awayRosters={awayRosters}
-              lines={matchupLines}
+              rosters={rosters}
+              lines={lines.filter(l => l.matchup_id === matchup.id)}
               checkedInIds={checkedInIds}
               postAction={postAction}
             />
@@ -200,9 +201,7 @@ function MatchupSection({
   homeClub,
   awayClub,
   myClub,
-  isHome,
-  homeRosters,
-  awayRosters,
+  rosters,
   lines,
   checkedInIds,
   postAction,
@@ -212,20 +211,36 @@ function MatchupSection({
   homeClub: Club;
   awayClub: Club;
   myClub: Club;
-  isHome: boolean;
-  homeRosters: Roster[];
-  awayRosters: Roster[];
+  rosters: Roster[];
   lines: Line[];
   checkedInIds: Set<string>;
   postAction: (body: Record<string, any>) => Promise<void>;
 }) {
+  const isHome = matchup.home_club_id === myClub.id;
+  const matchupRosters = rosters.filter(r => r.division_id === matchup.division_id);
+  const homeRosters = matchupRosters.filter(r => r.club_id === matchup.home_club_id && r.status === 'active');
+  const awayRosters = matchupRosters.filter(r => r.club_id === matchup.away_club_id && r.status === 'active');
   const myRosters = isHome ? homeRosters : awayRosters;
   const myCheckedIn = myRosters.filter(r => checkedInIds.has(r.id));
+
+  // Courts: override > home club default
+  const courts = matchup.courts_override ?? homeClub.courts_available ?? 0;
+  const [courtsInput, setCourtsInput] = useState(courts.toString());
+
+  // Suggestion based on check-ins and courts
+  const homeCheckedIn = homeRosters.filter(r => checkedInIds.has(r.id));
+  const awayCheckedIn = awayRosters.filter(r => checkedInIds.has(r.id));
+  const hasCheckins = homeCheckedIn.length > 0 || awayCheckedIn.length > 0;
+  const playersPerSide = hasCheckins
+    ? Math.min(homeCheckedIn.length, awayCheckedIn.length)
+    : Math.min(homeRosters.length, awayRosters.length);
+  const suggestion = computeSuggestion(courts, playersPerSide);
+
   const allCompleted = lines.length > 0 && lines.every(l => l.status === 'completed');
 
   return (
     <div className="mb-8">
-      {/* Division Header */}
+      {/* Division Header + Score */}
       <div className="bg-gray-900 text-white rounded-t-xl px-4 py-3">
         <div className="flex items-center justify-between">
           <div>
@@ -247,7 +262,7 @@ function MatchupSection({
       </div>
 
       <div className="bg-white border border-t-0 border-gray-200 rounded-b-xl">
-        {/* Check-in Section */}
+        {/* Check-in */}
         <div className="p-4 border-b border-gray-100">
           <div className="flex items-center justify-between mb-2">
             <h3 className="font-medium text-gray-900 flex items-center gap-2">
@@ -260,7 +275,7 @@ function MatchupSection({
           </div>
 
           {myRosters.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No players on your roster for this division yet.</p>
+            <p className="text-sm text-gray-400 italic">No players on your roster for this division.</p>
           ) : (
             <>
               <div className="border border-gray-200 rounded-md divide-y divide-gray-100 mb-2">
@@ -286,7 +301,7 @@ function MatchupSection({
                           className="w-4 h-4 accent-orange-500"
                         />
                         <span className="w-5 text-right text-gray-400 text-xs font-mono">
-                          {r.ladder_position ? `#${r.ladder_position}` : '—'}
+                          #{r.ladder_position || '—'}
                         </span>
                         <span className="flex-1 text-gray-900">{r.player_name}</span>
                         {checked && <Check size={14} className="text-green-500" />}
@@ -312,29 +327,108 @@ function MatchupSection({
           )}
         </div>
 
-        {/* Auto-assign button */}
-        <div className="px-4 py-3 border-b border-gray-100">
-          <button
-            onClick={() => postAction({ action: 'autoAssign', matchup_id: matchup.id })}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-md text-sm font-semibold hover:bg-orange-600 w-full justify-center"
-          >
-            <Zap size={14} />
-            Auto-assign lines by strength
-          </button>
-          <p className="text-xs text-gray-500 mt-1 text-center">
-            Assigns strongest checked-in players to lines automatically
-          </p>
+        {/* Courts Input */}
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-900">Courts available today:</label>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={courtsInput}
+              onChange={e => setCourtsInput(e.target.value)}
+              className="w-16 px-2 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 text-center"
+            />
+            {parseInt(courtsInput) !== courts && (
+              <button
+                onClick={() => postAction({ action: 'setCourts', matchup_id: matchup.id, courts: courtsInput })}
+                className="px-3 py-1.5 bg-gray-900 text-white rounded-md text-xs font-medium hover:bg-gray-800"
+              >
+                Update
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Lines / Score Entry */}
-        <div className="divide-y divide-gray-100">
-          {lines.length === 0 ? (
-            <div className="p-4 text-sm text-gray-400 italic text-center">
-              No lines set up yet. Check in players and auto-assign to create lines.
+        {/* Suggestion */}
+        {playersPerSide > 0 && courts > 0 && lines.length === 0 && (
+          <div className="p-4 border-b border-gray-100 bg-amber-50">
+            <div className="flex items-start gap-2">
+              <Lightbulb size={16} className="text-amber-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm text-amber-900">
+                  <span className="font-medium">{courts} courts, {playersPerSide} players per side.</span>
+                  {' '}Suggested:{' '}
+                  <span className="font-semibold">
+                    {suggestion.singles} singles + {suggestion.doubles} doubles
+                  </span>
+                  {suggestion.singles + suggestion.doubles > 0 && (
+                    <span className="text-amber-700">
+                      {' '}({suggestion.singles + suggestion.doubles * 2} players each side
+                      {suggestion.benched > 0 ? `, ${suggestion.benched} sitting` : ', everyone plays'})
+                    </span>
+                  )}
+                </p>
+                <button
+                  onClick={() => postAction({
+                    action: 'useSuggestion',
+                    matchup_id: matchup.id,
+                    singles: suggestion.singles,
+                    doubles: suggestion.doubles,
+                  })}
+                  className="mt-2 inline-flex items-center gap-1 px-3 py-1.5 bg-amber-600 text-white rounded-md text-xs font-semibold hover:bg-amber-700"
+                >
+                  <Zap size={12} />
+                  Use this
+                </button>
+              </div>
             </div>
-          ) : (
-            lines.map(line => (
-              <LineScoreEntry
+          </div>
+        )}
+
+        {/* Build Scorecard - Add Lines */}
+        <div className="p-4 border-b border-gray-100">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-medium text-gray-900">Scorecard</h3>
+            <span className="text-xs text-gray-500">{lines.length} line{lines.length !== 1 ? 's' : ''}</span>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => postAction({ action: 'addLine', matchup_id: matchup.id, line_type: 'singles' })}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-orange-400 hover:text-orange-600 transition-colors"
+            >
+              <Plus size={14} />
+              Add Singles
+            </button>
+            <button
+              onClick={() => postAction({ action: 'addLine', matchup_id: matchup.id, line_type: 'doubles' })}
+              className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-600 hover:border-orange-400 hover:text-orange-600 transition-colors"
+            >
+              <Plus size={14} />
+              Add Doubles
+            </button>
+          </div>
+        </div>
+
+        {/* Auto-assign button (only when lines exist) */}
+        {lines.length > 0 && (
+          <div className="px-4 py-3 border-b border-gray-100">
+            <button
+              onClick={() => postAction({ action: 'autoAssign', matchup_id: matchup.id })}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-md text-sm font-semibold hover:bg-orange-600 w-full justify-center"
+            >
+              <Zap size={14} />
+              Auto-fill players by strength
+            </button>
+          </div>
+        )}
+
+        {/* Line Cards */}
+        <div className="divide-y divide-gray-100">
+          {lines
+            .sort((a, b) => a.line_number - b.line_number)
+            .map(line => (
+              <LineCard
                 key={line.id}
                 line={line}
                 homeClub={homeClub}
@@ -343,11 +437,9 @@ function MatchupSection({
                 awayRosters={awayRosters}
                 postAction={postAction}
               />
-            ))
-          )}
+            ))}
         </div>
 
-        {/* Match complete indicator */}
         {allCompleted && (
           <div className="p-4 bg-green-50 text-green-700 text-sm font-medium text-center rounded-b-xl flex items-center justify-center gap-2">
             <Trophy size={16} />
@@ -359,7 +451,7 @@ function MatchupSection({
   );
 }
 
-function LineScoreEntry({
+function LineCard({
   line,
   homeClub,
   awayClub,
@@ -377,8 +469,7 @@ function LineScoreEntry({
   const [score, setScore] = useState(line.score || '');
   const [winner, setWinner] = useState<'home' | 'away' | null>(line.winner);
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(line.status === 'completed');
-
+  const completed = line.status === 'completed';
   const isDoubles = line.line_type === 'doubles';
 
   const findPlayer = (id: string | null) => {
@@ -392,33 +483,42 @@ function LineScoreEntry({
   const awayP2 = findPlayer(line.away_player2_id);
 
   const submitScore = async () => {
-    if (!winner) return;
-    if (!score.trim()) return;
+    if (!winner || !score.trim()) return;
     setSubmitting(true);
-    await postAction({
-      action: 'submitScore',
-      line_id: line.id,
-      winner,
-      score: score.trim(),
-    });
-    setSubmitted(true);
+    await postAction({ action: 'submitScore', line_id: line.id, winner, score: score.trim() });
     setSubmitting(false);
   };
 
+  const removeLine = async () => {
+    if (completed) {
+      if (!confirm('This line has a score. Delete it? The matchup score will update.')) return;
+    }
+    await postAction({ action: 'removeLine', line_id: line.id });
+  };
+
   return (
-    <div className={`p-4 ${submitted ? 'bg-green-50' : ''}`}>
+    <div className={`p-4 ${completed ? 'bg-green-50' : ''}`}>
       <div className="flex items-center justify-between mb-2">
         <h4 className="font-medium text-gray-900">
           Line {line.line_number} · {isDoubles ? 'Doubles' : 'Singles'}
         </h4>
-        {submitted && (
-          <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-            Completed
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {completed && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+              Done
+            </span>
+          )}
+          <button
+            onClick={removeLine}
+            className="p-1 text-gray-300 hover:text-red-500 transition-colors"
+            title="Remove this line"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
 
-      {/* Players assigned */}
+      {/* Players */}
       <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
         <div>
           <div className="text-xs text-gray-500 uppercase mb-0.5">{awayClub.short_code}</div>
@@ -444,8 +544,8 @@ function LineScoreEntry({
         </div>
       </div>
 
-      {/* Score entry (only if not already completed, or allow editing) */}
-      {!submitted ? (
+      {/* Score Entry */}
+      {!completed ? (
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <button
