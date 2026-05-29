@@ -1,6 +1,7 @@
 /**
- * GET  /api/leagues/roster/[token] — fetch club info, divisions, and roster
- * POST /api/leagues/roster/[token] — add a player to the club's roster
+ * GET    /api/leagues/roster/[token] — fetch club info, divisions, and roster
+ * POST   /api/leagues/roster/[token] — add a player to the club's roster
+ * PATCH  /api/leagues/roster/[token] — reorder players (swap ladder positions)
  * DELETE /api/leagues/roster/[token] — remove a player by id
  *
  * Magic-link roster management for JTT coaches. No auth required; the
@@ -37,7 +38,7 @@ export async function GET(
     admin.from('leagues').select('id, name, slug, status').eq('id', club.league_id).single(),
     admin.from('league_divisions').select('id, name, short_code, sort_order').eq('league_id', club.league_id).order('sort_order'),
     admin.from('league_division_clubs').select('division_id, club_id').eq('club_id', club.id),
-    admin.from('league_team_rosters').select('*').eq('club_id', club.id).order('ladder_position', { ascending: true, nullsFirst: false }),
+    admin.from('league_team_rosters').select('id, division_id, club_id, player_name, ntrp, utr, ladder_position, status').eq('club_id', club.id).order('ladder_position', { ascending: true, nullsFirst: false }),
   ]);
 
   const league = leagueRes.data as any;
@@ -67,16 +68,7 @@ export async function POST(
   }
 
   const body = await request.json().catch(() => ({}));
-  const {
-    division_id,
-    player_name,
-    player_email,
-    parent_name,
-    parent_email,
-    parent_phone,
-    ntrp,
-    utr,
-  } = body as Record<string, any>;
+  const { division_id, player_name, ntrp, utr } = body as Record<string, any>;
 
   if (!division_id || !player_name?.trim()) {
     return NextResponse.json(
@@ -119,10 +111,6 @@ export async function POST(
       division_id,
       club_id: club.id,
       player_name: player_name.trim(),
-      player_email: player_email?.trim() || null,
-      parent_name: parent_name?.trim() || null,
-      parent_email: parent_email?.trim() || null,
-      parent_phone: parent_phone?.trim() || null,
       ntrp: ntrp ? parseFloat(ntrp) : null,
       utr: utr ? parseFloat(utr) : null,
       ladder_position: nextLadder,
@@ -136,6 +124,54 @@ export async function POST(
   }
 
   return NextResponse.json({ success: true, player: inserted });
+}
+
+export async function PATCH(
+  request: Request,
+  { params }: { params: { token: string } }
+) {
+  const club = await resolveClub(params.token);
+  if (!club) {
+    return NextResponse.json({ error: 'Token not recognized.' }, { status: 404 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const swaps = body?.swaps as Array<{ id: string; ladder_position: number }> | undefined;
+
+  if (!swaps || !Array.isArray(swaps) || swaps.length === 0) {
+    return NextResponse.json(
+      { error: 'swaps array is required.' },
+      { status: 400 }
+    );
+  }
+
+  const admin = getSupabaseAdmin();
+
+  // Verify all players belong to this club before updating
+  const { data: owned } = await admin
+    .from('league_team_rosters')
+    .select('id')
+    .eq('club_id', club.id)
+    .in('id', swaps.map(s => s.id));
+
+  const ownedIds = new Set((owned || []).map((r: any) => r.id));
+  const unauthorized = swaps.filter(s => !ownedIds.has(s.id));
+  if (unauthorized.length > 0) {
+    return NextResponse.json(
+      { error: 'Cannot reorder players from another club.' },
+      { status: 403 }
+    );
+  }
+
+  // Apply all position swaps
+  for (const swap of swaps) {
+    await admin
+      .from('league_team_rosters')
+      .update({ ladder_position: swap.ladder_position })
+      .eq('id', swap.id);
+  }
+
+  return NextResponse.json({ success: true });
 }
 
 export async function DELETE(

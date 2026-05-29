@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Loader2, AlertCircle, UserPlus, Trash2, Check, Users } from 'lucide-react';
+import { Loader2, AlertCircle, UserPlus, Trash2, Check, Users, ArrowUp, ArrowDown } from 'lucide-react';
 
 type Club = { id: string; name: string; short_code: string };
 type League = { id: string; name: string; slug: string; status: string };
@@ -11,10 +11,6 @@ type Roster = {
   id: string;
   division_id: string;
   player_name: string;
-  player_email: string | null;
-  parent_name: string | null;
-  parent_email: string | null;
-  parent_phone: string | null;
   ntrp: number | null;
   utr: number | null;
   ladder_position: number | null;
@@ -39,14 +35,11 @@ export default function CoachRosterPage() {
   const [adding, setAdding] = useState(false);
   const [divisionId, setDivisionId] = useState('');
   const [playerName, setPlayerName] = useState('');
-  const [playerEmail, setPlayerEmail] = useState('');
-  const [parentName, setParentName] = useState('');
-  const [parentEmail, setParentEmail] = useState('');
-  const [parentPhone, setParentPhone] = useState('');
   const [ntrp, setNtrp] = useState('');
   const [utr, setUtr] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitMsg, setSubmitMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [reordering, setReordering] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -89,10 +82,6 @@ export default function CoachRosterPage() {
         body: JSON.stringify({
           division_id: divisionId,
           player_name: playerName.trim(),
-          player_email: playerEmail.trim() || null,
-          parent_name: parentName.trim() || null,
-          parent_email: parentEmail.trim() || null,
-          parent_phone: parentPhone.trim() || null,
           ntrp: ntrp || null,
           utr: utr || null,
         }),
@@ -103,10 +92,6 @@ export default function CoachRosterPage() {
       }
       setSubmitMsg({ type: 'ok', text: `${playerName.trim()} added!` });
       setPlayerName('');
-      setPlayerEmail('');
-      setParentName('');
-      setParentEmail('');
-      setParentPhone('');
       setNtrp('');
       setUtr('');
       fetchData();
@@ -130,6 +115,37 @@ export default function CoachRosterPage() {
       fetchData();
     } catch (e: any) {
       alert(`Failed to remove: ${e.message}`);
+    }
+  };
+
+  const movePlayer = async (divRosters: Roster[], index: number, direction: 'up' | 'down') => {
+    const swapIndex = direction === 'up' ? index - 1 : index + 1;
+    if (swapIndex < 0 || swapIndex >= divRosters.length) return;
+
+    const playerA = divRosters[index];
+    const playerB = divRosters[swapIndex];
+
+    setReordering(true);
+    try {
+      const res = await fetch(`/api/leagues/roster/${token}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          swaps: [
+            { id: playerA.id, ladder_position: playerB.ladder_position },
+            { id: playerB.id, ladder_position: playerA.ladder_position },
+          ],
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      fetchData();
+    } catch (e: any) {
+      alert(`Failed to reorder: ${e.message}`);
+    } finally {
+      setReordering(false);
     }
   };
 
@@ -165,6 +181,10 @@ export default function CoachRosterPage() {
           {club.name} Roster
         </h1>
         <p className="text-gray-500 text-sm">{league.name}</p>
+        <p className="text-gray-400 text-xs mt-1">
+          Add players in strength order (strongest first). Use the arrows to rearrange.
+          The system will automatically update the ladder as match results come in.
+        </p>
       </div>
 
       {/* Add Player Form */}
@@ -209,58 +229,8 @@ export default function CoachRosterPage() {
               />
             </div>
 
-            {/* Player Email */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Player email <span className="text-gray-400 font-normal">(optional)</span>
-              </label>
-              <input
-                value={playerEmail}
-                onChange={e => setPlayerEmail(e.target.value)}
-                placeholder="player@email.com"
-                type="email"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-              />
-            </div>
-
-            {/* Parent Info */}
-            <div className="border-t border-gray-100 pt-3">
-              <p className="text-xs font-medium text-gray-500 uppercase mb-2">Parent / Guardian</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
-                  <input
-                    value={parentName}
-                    onChange={e => setParentName(e.target.value)}
-                    placeholder="Parent name"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                  <input
-                    value={parentPhone}
-                    onChange={e => setParentPhone(e.target.value)}
-                    placeholder="(555) 555-5555"
-                    type="tel"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  />
-                </div>
-              </div>
-              <div className="mt-3">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  value={parentEmail}
-                  onChange={e => setParentEmail(e.target.value)}
-                  placeholder="parent@email.com"
-                  type="email"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                />
-              </div>
-            </div>
-
             {/* Ratings */}
-            <div className="border-t border-gray-100 pt-3">
+            <div>
               <p className="text-xs font-medium text-gray-500 uppercase mb-2">Ratings (optional)</p>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -335,30 +305,45 @@ export default function CoachRosterPage() {
               <p className="text-gray-400 text-sm italic">No players yet — add some above!</p>
             ) : (
               <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-                {divRosters.map((r: Roster) => (
+                {divRosters.map((r: Roster, idx: number) => (
                   <div key={r.id} className="px-4 py-3 flex items-center justify-between">
-                    <div>
-                      <span className="text-gray-400 text-xs font-mono mr-2">
-                        #{r.ladder_position || '—'}
+                    <div className="flex items-center gap-2">
+                      <span className="text-orange-500 text-sm font-bold w-6 text-center">
+                        {r.ladder_position || '—'}
                       </span>
                       <span className="font-medium text-gray-900">{r.player_name}</span>
                       {r.ntrp && (
-                        <span className="ml-2 text-xs text-gray-500">NTRP {r.ntrp}</span>
+                        <span className="text-xs text-gray-500">NTRP {r.ntrp}</span>
                       )}
                       {r.utr && (
-                        <span className="ml-2 text-xs text-gray-500">UTR {r.utr}</span>
-                      )}
-                      {r.parent_name && (
-                        <span className="ml-3 text-xs text-gray-400">Parent: {r.parent_name}</span>
+                        <span className="text-xs text-gray-500">UTR {r.utr}</span>
                       )}
                     </div>
-                    <button
-                      onClick={() => removePlayer(r.id, r.player_name)}
-                      className="text-gray-300 hover:text-red-500 transition-colors"
-                      title="Remove player"
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => movePlayer(divRosters, idx, 'up')}
+                        disabled={idx === 0 || reordering}
+                        className="p-1 text-gray-400 hover:text-orange-500 disabled:opacity-20 transition-colors"
+                        title="Move up"
+                      >
+                        <ArrowUp size={16} />
+                      </button>
+                      <button
+                        onClick={() => movePlayer(divRosters, idx, 'down')}
+                        disabled={idx === divRosters.length - 1 || reordering}
+                        className="p-1 text-gray-400 hover:text-orange-500 disabled:opacity-20 transition-colors"
+                        title="Move down"
+                      >
+                        <ArrowDown size={16} />
+                      </button>
+                      <button
+                        onClick={() => removePlayer(r.id, r.player_name)}
+                        className="p-1 text-gray-300 hover:text-red-500 transition-colors ml-1"
+                        title="Remove player"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

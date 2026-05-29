@@ -17,6 +17,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { recomputeLadder } from '@/lib/jtt';
 
 type Body = {
   winner?: 'home' | 'away';
@@ -85,6 +86,54 @@ export async function POST(
 
   if (updErr) {
     return NextResponse.json({ error: updErr.message }, { status: 500 });
+  }
+
+  // Auto re-ladder both clubs in this division after score submission
+  try {
+    const { data: matchup } = await admin
+      .from('league_team_matchups')
+      .select('division_id, home_club_id, away_club_id')
+      .eq('id', (existing as any).matchup_id)
+      .single();
+
+    if (matchup) {
+      const m = matchup as any;
+      const clubIds = [m.home_club_id, m.away_club_id];
+
+      // Get all matchup IDs in this division (for pulling all lines)
+      const { data: divMatchups } = await admin
+        .from('league_team_matchups')
+        .select('id')
+        .eq('division_id', m.division_id);
+      const matchupIds = (divMatchups || []).map((dm: any) => dm.id);
+
+      // Get all completed lines in this division
+      const { data: allLines } = await admin
+        .from('league_matchup_lines')
+        .select('home_player1_id, home_player2_id, away_player1_id, away_player2_id, winner, status')
+        .in('matchup_id', matchupIds)
+        .eq('status', 'completed');
+
+      for (const clubId of clubIds) {
+        const { data: clubRosters } = await admin
+          .from('league_team_rosters')
+          .select('id, ladder_position, status')
+          .eq('club_id', clubId)
+          .eq('division_id', m.division_id);
+
+        if (clubRosters && clubRosters.length > 0) {
+          const updates = recomputeLadder(clubRosters as any[], (allLines || []) as any[]);
+          for (const u of updates) {
+            await admin
+              .from('league_team_rosters')
+              .update({ ladder_position: u.newPosition })
+              .eq('id', u.rosterId);
+          }
+        }
+      }
+    }
+  } catch {
+    // Re-ladder is best-effort — don't fail the score submission
   }
 
   return NextResponse.json({ success: true });
