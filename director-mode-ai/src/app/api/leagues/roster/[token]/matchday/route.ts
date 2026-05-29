@@ -338,10 +338,67 @@ export async function POST(
     if (!line_id || !slot || !validSlots.includes(slot)) {
       return NextResponse.json({ error: 'line_id and valid slot required.' }, { status: 400 });
     }
+
+    // Validate: if assigning (not clearing), check player isn't already in another slot on same line
+    if (roster_id) {
+      const { data: line } = await admin
+        .from('league_matchup_lines')
+        .select('home_player1_id, home_player2_id, away_player1_id, away_player2_id')
+        .eq('id', line_id)
+        .single();
+      if (line) {
+        const l = line as any;
+        const otherSlots = validSlots.filter(s => s !== slot);
+        const occupied = otherSlots.filter(s => l[s] === roster_id);
+        if (occupied.length > 0) {
+          return NextResponse.json({ error: 'Player is already assigned to another slot on this line.' }, { status: 400 });
+        }
+      }
+    }
+
     await admin
       .from('league_matchup_lines')
       .update({ [slot]: roster_id || null })
       .eq('id', line_id);
+    return NextResponse.json({ success: true });
+  }
+
+  // --- REVISE SCORE (unlock a completed line) ---
+  if (action === 'reviseScore') {
+    const { line_id } = body;
+    if (!line_id) {
+      return NextResponse.json({ error: 'line_id required.' }, { status: 400 });
+    }
+    await admin
+      .from('league_matchup_lines')
+      .update({ winner: null, score: null, status: 'pending', reported_at: null, reported_by_name: null })
+      .eq('id', line_id);
+    return NextResponse.json({ success: true });
+  }
+
+  // --- CLEAR ALL LINES for a matchup ---
+  if (action === 'clearLines') {
+    const { matchup_id } = body;
+    if (!matchup_id) {
+      return NextResponse.json({ error: 'matchup_id required.' }, { status: 400 });
+    }
+    // Only delete lines that haven't been scored
+    const { data: completedLines } = await admin
+      .from('league_matchup_lines')
+      .select('id')
+      .eq('matchup_id', matchup_id)
+      .eq('status', 'completed');
+
+    if (completedLines && completedLines.length > 0) {
+      return NextResponse.json({
+        error: `${completedLines.length} line(s) already scored. Revise or remove them individually first.`,
+      }, { status: 400 });
+    }
+
+    await admin
+      .from('league_matchup_lines')
+      .delete()
+      .eq('matchup_id', matchup_id);
     return NextResponse.json({ success: true });
   }
 
@@ -360,22 +417,28 @@ export async function POST(
       .order('line_number', { ascending: false })
       .limit(1);
 
-    const nextNum = ((existing?.[0] as any)?.line_number || 0) + 1;
+    let nextNum = ((existing?.[0] as any)?.line_number || 0) + 1;
 
-    const { data: inserted, error: insErr } = await admin
-      .from('league_matchup_lines')
-      .insert({
-        matchup_id,
-        line_type,
-        line_number: nextNum,
-      })
-      .select('id, line_type, line_number')
-      .single();
+    // Retry with incremented line_number if collision (concurrent add)
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: inserted, error: insErr } = await admin
+        .from('league_matchup_lines')
+        .insert({
+          matchup_id,
+          line_type,
+          line_number: nextNum + attempt,
+        })
+        .select('id, line_type, line_number')
+        .single();
 
-    if (insErr) {
-      return NextResponse.json({ error: insErr.message }, { status: 500 });
+      if (!insErr) {
+        return NextResponse.json({ success: true, line: inserted });
+      }
+      if (!insErr.message.includes('duplicate') && !insErr.message.includes('unique')) {
+        return NextResponse.json({ error: insErr.message }, { status: 500 });
+      }
     }
-    return NextResponse.json({ success: true, line: inserted });
+    return NextResponse.json({ error: 'Could not create line — try again.' }, { status: 500 });
   }
 
   // --- REMOVE A LINE ---

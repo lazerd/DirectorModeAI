@@ -57,6 +57,12 @@ export default function MatchDayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dateOverride, setDateOverride] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  const showToast = (type: 'ok' | 'err', text: string) => {
+    setToast({ type, text });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const fetchData = useCallback(async () => {
     try {
@@ -81,12 +87,21 @@ export default function MatchDayPage() {
   }, [fetchData]);
 
   const postAction = async (body: Record<string, any>) => {
-    await fetch(`/api/leagues/roster/${token}/matchday`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    fetchData();
+    try {
+      const res = await fetch(`/api/leagues/roster/${token}/matchday`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast('err', err.error || `Failed (${res.status})`);
+        return;
+      }
+      fetchData();
+    } catch (e: any) {
+      showToast('err', e.message || 'Network error');
+    }
   };
 
   if (loading) {
@@ -135,6 +150,18 @@ export default function MatchDayPage() {
         </Link>
         <h1 className="font-semibold text-2xl text-gray-900 mt-1">{club.name} — Match Day</h1>
       </div>
+
+      {/* Error/Success Toast */}
+      {toast && (
+        <div className={`mb-4 rounded-lg p-3 text-sm flex items-start gap-2 ${
+          toast.type === 'err'
+            ? 'bg-red-50 border border-red-200 text-red-700'
+            : 'bg-green-50 border border-green-200 text-green-700'
+        }`}>
+          {toast.type === 'err' ? <AlertCircle size={14} className="mt-0.5" /> : <Check size={14} className="mt-0.5" />}
+          {toast.text}
+        </div>
+      )}
 
       {/* Date Navigation */}
       <div className="flex items-center justify-between bg-white border border-gray-200 rounded-xl p-3 mb-6">
@@ -226,6 +253,11 @@ function MatchupSection({
   // Courts: override > home club default
   const courts = matchup.courts_override ?? homeClub.courts_available ?? 0;
   const [courtsInput, setCourtsInput] = useState(courts.toString());
+
+  // Sync courtsInput when data refreshes
+  useEffect(() => {
+    setCourtsInput(courts.toString());
+  }, [courts]);
 
   // Suggestion based on check-ins and courts
   const homeCheckedIn = homeRosters.filter(r => checkedInIds.has(r.id));
@@ -408,6 +440,18 @@ function MatchupSection({
               Add Doubles
             </button>
           </div>
+          {lines.length > 0 && (
+            <button
+              onClick={() => {
+                if (confirm('Clear all unscored lines from this matchup?')) {
+                  postAction({ action: 'clearLines', matchup_id: matchup.id });
+                }
+              }}
+              className="mt-2 text-xs text-gray-500 hover:text-red-500"
+            >
+              Clear scorecard
+            </button>
+          )}
         </div>
 
         {/* Auto-assign button (only when lines exist) */}
@@ -595,9 +639,21 @@ function LineCard({
           </button>
         </div>
       ) : (
-        <div className="text-sm text-gray-600">
-          <span className="font-medium">{line.winner === 'home' ? homeClub.short_code : awayClub.short_code} won</span>
-          {' · '}{line.score || score}
+        <div className="flex items-center justify-between">
+          <div className="text-sm text-gray-600">
+            <span className="font-medium">{line.winner === 'home' ? homeClub.short_code : awayClub.short_code} won</span>
+            {' · '}{line.score || score}
+          </div>
+          <button
+            onClick={() => {
+              if (confirm('Revise this score? It will unlock the line for editing.')) {
+                postAction({ action: 'reviseScore', line_id: line.id });
+              }
+            }}
+            className="text-xs text-orange-600 hover:text-orange-700 font-medium"
+          >
+            Revise
+          </button>
         </div>
       )}
     </div>
