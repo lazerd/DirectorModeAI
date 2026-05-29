@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Loader2, AlertCircle, UserPlus, Trash2, Check, Users, ArrowUp, ArrowDown } from 'lucide-react';
+import Link from 'next/link';
+import { Loader2, AlertCircle, UserPlus, Trash2, Check, Users, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 
 type Club = { id: string; name: string; short_code: string };
 type League = { id: string; name: string; slug: string; status: string };
@@ -185,6 +186,13 @@ export default function CoachRosterPage() {
           Add players in strength order (strongest first). Use the arrows to rearrange.
           The system will automatically update the ladder as match results come in.
         </p>
+        <Link
+          href={`/leagues/roster/${token}/matchday`}
+          className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-md text-sm font-semibold hover:bg-orange-600"
+        >
+          <Calendar size={16} />
+          Match Day
+        </Link>
       </div>
 
       {/* Add Player Form */}
