@@ -331,6 +331,20 @@ export async function POST(
     return NextResponse.json({ success: true });
   }
 
+  // --- ASSIGN PLAYER to a line slot ---
+  if (action === 'assignPlayer') {
+    const { line_id, slot, roster_id } = body;
+    const validSlots = ['home_player1_id', 'home_player2_id', 'away_player1_id', 'away_player2_id'];
+    if (!line_id || !slot || !validSlots.includes(slot)) {
+      return NextResponse.json({ error: 'line_id and valid slot required.' }, { status: 400 });
+    }
+    await admin
+      .from('league_matchup_lines')
+      .update({ [slot]: roster_id || null })
+      .eq('id', line_id);
+    return NextResponse.json({ success: true });
+  }
+
   // --- ADD A LINE (singles or doubles) ---
   if (action === 'addLine') {
     const { matchup_id, line_type } = body;

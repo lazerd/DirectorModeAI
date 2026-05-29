@@ -472,16 +472,6 @@ function LineCard({
   const completed = line.status === 'completed';
   const isDoubles = line.line_type === 'doubles';
 
-  const findPlayer = (id: string | null) => {
-    if (!id) return null;
-    return [...homeRosters, ...awayRosters].find(r => r.id === id);
-  };
-
-  const homeP1 = findPlayer(line.home_player1_id);
-  const homeP2 = findPlayer(line.home_player2_id);
-  const awayP1 = findPlayer(line.away_player1_id);
-  const awayP2 = findPlayer(line.away_player2_id);
-
   const submitScore = async () => {
     if (!winner || !score.trim()) return;
     setSubmitting(true);
@@ -519,26 +509,46 @@ function LineCard({
       </div>
 
       {/* Players */}
-      <div className="grid grid-cols-2 gap-3 mb-3 text-sm">
+      <div className="grid grid-cols-2 gap-3 mb-3">
         <div>
-          <div className="text-xs text-gray-500 uppercase mb-0.5">{awayClub.short_code}</div>
-          <div className="text-gray-900">
-            {awayP1 ? awayP1.player_name : <span className="text-gray-400 italic">TBD</span>}
-          </div>
+          <div className="text-xs text-gray-500 uppercase mb-1">{awayClub.short_code}</div>
+          <PlayerPicker
+            rosters={awayRosters}
+            value={line.away_player1_id}
+            onChange={v => postAction({ action: 'assignPlayer', line_id: line.id, slot: 'away_player1_id', roster_id: v })}
+            label={isDoubles ? 'Player 1' : 'Player'}
+            disabled={completed}
+          />
           {isDoubles && (
-            <div className="text-gray-900">
-              {awayP2 ? awayP2.player_name : <span className="text-gray-400 italic">TBD</span>}
+            <div className="mt-1">
+              <PlayerPicker
+                rosters={awayRosters}
+                value={line.away_player2_id}
+                onChange={v => postAction({ action: 'assignPlayer', line_id: line.id, slot: 'away_player2_id', roster_id: v })}
+                label="Player 2"
+                disabled={completed}
+              />
             </div>
           )}
         </div>
         <div>
-          <div className="text-xs text-gray-500 uppercase mb-0.5">{homeClub.short_code}</div>
-          <div className="text-gray-900">
-            {homeP1 ? homeP1.player_name : <span className="text-gray-400 italic">TBD</span>}
-          </div>
+          <div className="text-xs text-gray-500 uppercase mb-1">{homeClub.short_code}</div>
+          <PlayerPicker
+            rosters={homeRosters}
+            value={line.home_player1_id}
+            onChange={v => postAction({ action: 'assignPlayer', line_id: line.id, slot: 'home_player1_id', roster_id: v })}
+            label={isDoubles ? 'Player 1' : 'Player'}
+            disabled={completed}
+          />
           {isDoubles && (
-            <div className="text-gray-900">
-              {homeP2 ? homeP2.player_name : <span className="text-gray-400 italic">TBD</span>}
+            <div className="mt-1">
+              <PlayerPicker
+                rosters={homeRosters}
+                value={line.home_player2_id}
+                onChange={v => postAction({ action: 'assignPlayer', line_id: line.id, slot: 'home_player2_id', roster_id: v })}
+                label="Player 2"
+                disabled={completed}
+              />
             </div>
           )}
         </div>
@@ -591,5 +601,37 @@ function LineCard({
         </div>
       )}
     </div>
+  );
+}
+
+function PlayerPicker({
+  rosters,
+  value,
+  onChange,
+  label,
+  disabled,
+}: {
+  rosters: Roster[];
+  value: string | null;
+  onChange: (v: string | null) => void;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <select
+      value={value || ''}
+      onChange={e => onChange(e.target.value || null)}
+      disabled={disabled}
+      className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 disabled:bg-gray-50 disabled:text-gray-500"
+    >
+      <option value="">{label} — choose —</option>
+      {rosters
+        .sort((a, b) => (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999))
+        .map(r => (
+          <option key={r.id} value={r.id}>
+            {r.ladder_position ? `#${r.ladder_position} ` : ''}{r.player_name}
+          </option>
+        ))}
+    </select>
   );
 }
