@@ -204,10 +204,11 @@ export default function MatchDayPage() {
               key={matchup.id}
               matchup={matchup}
               division={division}
+              allDivisions={divisions}
               homeClub={homeClub}
               awayClub={awayClub}
               myClub={club}
-              rosters={rosters}
+              allRosters={rosters}
               lines={lines.filter(l => l.matchup_id === matchup.id)}
               checkedInIds={checkedInIds}
               postAction={postAction}
@@ -225,28 +226,53 @@ export default function MatchDayPage() {
 function MatchupSection({
   matchup,
   division,
+  allDivisions,
   homeClub,
   awayClub,
   myClub,
-  rosters,
+  allRosters,
   lines,
   checkedInIds,
   postAction,
 }: {
   matchup: Matchup;
   division: Division;
+  allDivisions: Division[];
   homeClub: Club;
   awayClub: Club;
   myClub: Club;
-  rosters: Roster[];
+  allRosters: Roster[];
   lines: Line[];
   checkedInIds: Set<string>;
   postAction: (body: Record<string, any>) => Promise<void>;
 }) {
   const isHome = matchup.home_club_id === myClub.id;
-  const matchupRosters = rosters.filter(r => r.division_id === matchup.division_id);
+  const matchupRosters = allRosters.filter(r => r.division_id === matchup.division_id);
   const homeRosters = matchupRosters.filter(r => r.club_id === matchup.home_club_id && r.status === 'active');
   const awayRosters = matchupRosters.filter(r => r.club_id === matchup.away_club_id && r.status === 'active');
+
+  // Cross-division players: on same club but different division, not already on this division's roster
+  const homeNames = new Set(homeRosters.map(r => r.player_name));
+  const awayNames = new Set(awayRosters.map(r => r.player_name));
+  const otherHomeRosters = allRosters.filter(r =>
+    r.club_id === matchup.home_club_id && r.division_id !== matchup.division_id &&
+    r.status === 'active' && !homeNames.has(r.player_name)
+  );
+  const otherAwayRosters = allRosters.filter(r =>
+    r.club_id === matchup.away_club_id && r.division_id !== matchup.division_id &&
+    r.status === 'active' && !awayNames.has(r.player_name)
+  );
+  // Deduplicate cross-division players (might be in multiple other divisions)
+  const dedup = (arr: Roster[]) => {
+    const seen = new Set<string>();
+    return arr.filter(r => {
+      if (seen.has(r.player_name)) return false;
+      seen.add(r.player_name);
+      return true;
+    });
+  };
+  const otherHome = dedup(otherHomeRosters);
+  const otherAway = dedup(otherAwayRosters);
   const myRosters = isHome ? homeRosters : awayRosters;
   const myCheckedIn = myRosters.filter(r => checkedInIds.has(r.id));
 
@@ -479,6 +505,10 @@ function MatchupSection({
                 awayClub={awayClub}
                 homeRosters={homeRosters}
                 awayRosters={awayRosters}
+                otherHomeRosters={otherHome}
+                otherAwayRosters={otherAway}
+                divisionId={division.id}
+                allDivisions={allDivisions}
                 postAction={postAction}
               />
             ))}
@@ -501,6 +531,10 @@ function LineCard({
   awayClub,
   homeRosters,
   awayRosters,
+  otherHomeRosters,
+  otherAwayRosters,
+  divisionId,
+  allDivisions,
   postAction,
 }: {
   line: Line;
@@ -508,6 +542,10 @@ function LineCard({
   awayClub: Club;
   homeRosters: Roster[];
   awayRosters: Roster[];
+  otherHomeRosters: Roster[];
+  otherAwayRosters: Roster[];
+  divisionId: string;
+  allDivisions: Division[];
   postAction: (body: Record<string, any>) => Promise<void>;
 }) {
   const [score, setScore] = useState(line.score || '');
@@ -558,8 +596,11 @@ function LineCard({
           <div className="text-xs text-gray-500 uppercase mb-1">{awayClub.short_code}</div>
           <PlayerPicker
             rosters={awayRosters}
+            otherRosters={otherAwayRosters}
+            allDivisions={allDivisions}
             value={line.away_player1_id}
             onChange={v => postAction({ action: 'assignPlayer', line_id: line.id, slot: 'away_player1_id', roster_id: v })}
+            onPullUp={rosterId => postAction({ action: 'pullUpPlayer', source_roster_id: rosterId, target_division_id: divisionId, line_id: line.id, slot: 'away_player1_id' })}
             label={isDoubles ? 'Player 1' : 'Player'}
             disabled={completed}
           />
@@ -567,8 +608,11 @@ function LineCard({
             <div className="mt-1">
               <PlayerPicker
                 rosters={awayRosters}
+                otherRosters={otherAwayRosters}
+                allDivisions={allDivisions}
                 value={line.away_player2_id}
                 onChange={v => postAction({ action: 'assignPlayer', line_id: line.id, slot: 'away_player2_id', roster_id: v })}
+                onPullUp={rosterId => postAction({ action: 'pullUpPlayer', source_roster_id: rosterId, target_division_id: divisionId, line_id: line.id, slot: 'away_player2_id' })}
                 label="Player 2"
                 disabled={completed}
               />
@@ -579,8 +623,11 @@ function LineCard({
           <div className="text-xs text-gray-500 uppercase mb-1">{homeClub.short_code}</div>
           <PlayerPicker
             rosters={homeRosters}
+            otherRosters={otherHomeRosters}
+            allDivisions={allDivisions}
             value={line.home_player1_id}
             onChange={v => postAction({ action: 'assignPlayer', line_id: line.id, slot: 'home_player1_id', roster_id: v })}
+            onPullUp={rosterId => postAction({ action: 'pullUpPlayer', source_roster_id: rosterId, target_division_id: divisionId, line_id: line.id, slot: 'home_player1_id' })}
             label={isDoubles ? 'Player 1' : 'Player'}
             disabled={completed}
           />
@@ -588,8 +635,11 @@ function LineCard({
             <div className="mt-1">
               <PlayerPicker
                 rosters={homeRosters}
+                otherRosters={otherHomeRosters}
+                allDivisions={allDivisions}
                 value={line.home_player2_id}
                 onChange={v => postAction({ action: 'assignPlayer', line_id: line.id, slot: 'home_player2_id', roster_id: v })}
+                onPullUp={rosterId => postAction({ action: 'pullUpPlayer', source_roster_id: rosterId, target_division_id: divisionId, line_id: line.id, slot: 'home_player2_id' })}
                 label="Player 2"
                 disabled={completed}
               />
@@ -662,21 +712,39 @@ function LineCard({
 
 function PlayerPicker({
   rosters,
+  otherRosters,
+  allDivisions,
   value,
   onChange,
+  onPullUp,
   label,
   disabled,
 }: {
   rosters: Roster[];
+  otherRosters: Roster[];
+  allDivisions: Division[];
   value: string | null;
   onChange: (v: string | null) => void;
+  onPullUp: (rosterId: string) => void;
   label: string;
   disabled?: boolean;
 }) {
+  const divName = (divId: string) => {
+    const d = allDivisions.find(x => x.id === divId);
+    return d ? d.short_code : '';
+  };
+
   return (
     <select
       value={value || ''}
-      onChange={e => onChange(e.target.value || null)}
+      onChange={e => {
+        const v = e.target.value;
+        if (v.startsWith('pullup:')) {
+          onPullUp(v.slice(7));
+        } else {
+          onChange(v || null);
+        }
+      }}
       disabled={disabled}
       className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900 disabled:bg-gray-50 disabled:text-gray-500"
     >
@@ -688,6 +756,17 @@ function PlayerPicker({
             {r.ladder_position ? `#${r.ladder_position} ` : ''}{r.player_name}
           </option>
         ))}
+      {otherRosters.length > 0 && (
+        <optgroup label="— Pull up from other division —">
+          {otherRosters
+            .sort((a, b) => a.player_name.localeCompare(b.player_name))
+            .map(r => (
+              <option key={`pullup-${r.id}`} value={`pullup:${r.id}`}>
+                {r.player_name} ({divName(r.division_id)})
+              </option>
+            ))}
+        </optgroup>
+      )}
     </select>
   );
 }

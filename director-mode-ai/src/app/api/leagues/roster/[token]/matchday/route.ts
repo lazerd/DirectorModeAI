@@ -95,10 +95,18 @@ export async function GET(
   const divIdsForMatchups = [...new Set(matchups.map((m: any) => m.division_id))];
   const clubIdsForMatchups = [...new Set(matchups.flatMap((m: any) => [m.home_club_id, m.away_club_id]))];
 
+  // Also get ALL division IDs in the league (for cross-division player pull-up)
+  const { data: allDivsInLeague } = await admin
+    .from('league_divisions')
+    .select('id')
+    .eq('league_id', club.league_id);
+  const allDivisionIds = (allDivsInLeague || []).map((d: any) => d.id);
+
   const [divsRes, clubsRes, rostersRes, linesRes, checkinsRes] = await Promise.all([
-    admin.from('league_divisions').select('id, name, short_code, start_time, end_time, line_format, sort_order').in('id', divIdsForMatchups).order('sort_order'),
+    admin.from('league_divisions').select('id, name, short_code, start_time, end_time, line_format, sort_order').eq('league_id', club.league_id).order('sort_order'),
     admin.from('league_clubs').select('id, name, short_code, courts_available').in('id', clubIdsForMatchups),
-    admin.from('league_team_rosters').select('id, division_id, club_id, player_name, ladder_position, status').in('division_id', divIdsForMatchups).in('club_id', clubIdsForMatchups).order('ladder_position', { ascending: true, nullsFirst: false }),
+    // Fetch rosters for ALL divisions (not just today's) so cross-division pull-up works
+    admin.from('league_team_rosters').select('id, division_id, club_id, player_name, ladder_position, status').in('division_id', allDivisionIds).in('club_id', clubIdsForMatchups).order('ladder_position', { ascending: true, nullsFirst: false }),
     admin.from('league_matchup_lines').select('*').in('matchup_id', matchupIds).order('line_number'),
     admin.from('league_matchup_checkins').select('roster_id, matchup_id').in('matchup_id', matchupIds),
   ]);
@@ -361,6 +369,81 @@ export async function POST(
       .update({ [slot]: roster_id || null })
       .eq('id', line_id);
     return NextResponse.json({ success: true });
+  }
+
+  // --- PULL UP PLAYER from another division ---
+  if (action === 'pullUpPlayer') {
+    const { source_roster_id, target_division_id, matchup_id, line_id, slot } = body;
+    if (!source_roster_id || !target_division_id) {
+      return NextResponse.json({ error: 'source_roster_id and target_division_id required.' }, { status: 400 });
+    }
+
+    // Get the source player's info
+    const { data: source } = await admin
+      .from('league_team_rosters')
+      .select('player_name, player_email, ntrp, utr, club_id')
+      .eq('id', source_roster_id)
+      .single();
+    if (!source) {
+      return NextResponse.json({ error: 'Source player not found.' }, { status: 404 });
+    }
+    const s = source as any;
+
+    // Check if this player already exists in the target division (by name + club)
+    const { data: existing } = await admin
+      .from('league_team_rosters')
+      .select('id')
+      .eq('club_id', s.club_id)
+      .eq('division_id', target_division_id)
+      .eq('player_name', s.player_name)
+      .maybeSingle();
+
+    let newRosterId: string;
+    if (existing) {
+      newRosterId = (existing as any).id;
+    } else {
+      // Get next ladder position
+      const { data: maxPos } = await admin
+        .from('league_team_rosters')
+        .select('ladder_position')
+        .eq('club_id', s.club_id)
+        .eq('division_id', target_division_id)
+        .order('ladder_position', { ascending: false })
+        .limit(1);
+      const nextLadder = ((maxPos?.[0] as any)?.ladder_position || 0) + 1;
+
+      const { data: inserted, error: insErr } = await admin
+        .from('league_team_rosters')
+        .insert({
+          division_id: target_division_id,
+          club_id: s.club_id,
+          player_name: s.player_name,
+          player_email: s.player_email,
+          ntrp: s.ntrp,
+          utr: s.utr,
+          ladder_position: nextLadder,
+          status: 'active',
+        })
+        .select('id')
+        .single();
+      if (insErr || !inserted) {
+        return NextResponse.json({ error: insErr?.message || 'Failed to create roster entry.' }, { status: 500 });
+      }
+      newRosterId = (inserted as any).id;
+    }
+
+    // If line_id and slot provided, also assign them to the line
+    if (line_id && slot) {
+      const validSlots = ['home_player1_id', 'home_player2_id', 'away_player1_id', 'away_player2_id'];
+      if (validSlots.includes(slot)) {
+        await admin
+          .from('league_matchup_lines')
+          .update({ [slot]: newRosterId })
+          .eq('id', line_id);
+      }
+    }
+
+    return NextResponse.json({ success: true, roster_id: newRosterId });
   }
 
   // --- REVISE SCORE (unlock a completed line) ---
