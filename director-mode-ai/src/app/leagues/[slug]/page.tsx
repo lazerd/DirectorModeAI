@@ -9,6 +9,7 @@ import {
   Users,
   BarChart3,
   ListChecks,
+  UserCheck,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -179,7 +180,7 @@ async function JTTLanding({ league }: { league: any }) {
   const leagueId = league.id;
 
   const [clubsRes, divisionsRes, matchupsRes, linesRes] = await Promise.all([
-    supabase.from('league_clubs').select('*').eq('league_id', leagueId).order('sort_order'),
+    supabase.from('league_clubs').select('*, roster_token').eq('league_id', leagueId).order('sort_order'),
     supabase.from('league_divisions').select('*').eq('league_id', leagueId).order('sort_order'),
     supabase
       .from('league_team_matchups')
@@ -283,6 +284,29 @@ async function JTTLanding({ league }: { league: any }) {
             <ArrowRight size={16} className="text-white/60 flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
           </Link>
         </div>
+
+        {/* Coach Match Day Links */}
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60 mb-3 flex items-center gap-2">
+            <UserCheck size={16} />
+            Coach Match Day
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {clubs.filter((c: any) => c.roster_token).map((c: any) => (
+              <Link
+                key={c.id}
+                href={`/leagues/roster/${c.roster_token}/matchday`}
+                className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-white/20 bg-white/5 hover:bg-white/10 hover:border-white/40 transition-colors"
+              >
+                <UserCheck size={14} className="text-[#D3FB52] flex-shrink-0" />
+                <span className="text-sm text-white font-medium truncate">{c.name}</span>
+              </Link>
+            ))}
+          </div>
+          <p className="text-xs text-white/40 mt-2">
+            Coaches: tap your club to check in players, auto-assign lines, and enter scores.
+          </p>
+        </section>
 
         {/* Schedule */}
         <section>
