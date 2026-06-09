@@ -29,9 +29,16 @@ const SH = clubs.find(c => c.short_code === 'SH').id;
 
 // Existing SH roster rows, keyed by division_id + lowercased name
 const { data: existingRosters } = await admin
-  .from('league_team_rosters').select('id, player_name, division_id, parent_email').eq('club_id', SH);
+  .from('league_team_rosters').select('id, player_name, division_id, parent_email, ladder_position').eq('club_id', SH);
 const rosterKey = (divId, name) => `${divId}||${name.trim().toLowerCase()}`;
 const rosterMap = new Map(existingRosters.map(r => [rosterKey(r.division_id, r.player_name), r]));
+
+// Next ladder_position per division (so new players get a real position and the
+// up/down strength-reorder controls work — null positions make swaps a no-op).
+const nextLadder = {};
+for (const r of existingRosters) {
+  nextLadder[r.division_id] = Math.max(nextLadder[r.division_id] ?? 0, r.ladder_position ?? 0);
+}
 
 // SH matchups -> { division_id: { 'YYYY-MM-DD': [matchup_id,...] } }
 const { data: matchups } = await admin
@@ -69,9 +76,11 @@ for (const rec of records) {
     if (DRY) {
       rosterId = `DRY-${rec.division}-${rec.player_name}`;
     } else {
+      const pos = (nextLadder[divId] = (nextLadder[divId] ?? 0) + 1);
       const { data: ins, error } = await admin.from('league_team_rosters').insert({
         division_id: divId, club_id: SH, player_name: rec.player_name,
         parent_name: rec.parent_name, parent_email: rec.parent_email, parent_phone: rec.parent_phone,
+        ladder_position: pos,
       }).select('id').single();
       if (error) { console.log(`ERR insert roster ${rec.player_name}:`, error.message); continue; }
       rosterId = ins.id;

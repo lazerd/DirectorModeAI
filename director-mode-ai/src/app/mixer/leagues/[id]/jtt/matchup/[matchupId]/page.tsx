@@ -13,6 +13,8 @@ import {
   Copy,
   Check,
   UserCheck,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -253,6 +255,36 @@ export default function MatchupFacilitatorPage() {
     });
   };
 
+  // Reorder a club's strength ladder right from the match page. Renumbers the
+  // displayed list densely (1..N) on each move so it works even if some players
+  // still have a null ladder_position (swapping null↔null would be a no-op).
+  const moveInClub = async (clubId: string, rosterId: string, dir: -1 | 1) => {
+    const list = (clubId === matchup?.home_club_id ? activeHome : activeAway)
+      .slice()
+      .sort(
+        (a, b) =>
+          (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999) ||
+          a.player_name.localeCompare(b.player_name)
+      );
+    const idx = list.findIndex(r => r.id === rosterId);
+    const j = idx + dir;
+    if (idx === -1 || j < 0 || j >= list.length) return;
+    [list[idx], list[j]] = [list[j], list[idx]];
+    const supabase = createClient();
+    const changed = list
+      .map((r, i) => ({ id: r.id, pos: i + 1, current: r.ladder_position }))
+      .filter(u => u.current !== u.pos);
+    await Promise.all(
+      changed.map(u =>
+        supabase
+          .from('league_team_rosters')
+          .update({ ladder_position: u.pos })
+          .eq('id', u.id)
+      )
+    );
+    fetchAll();
+  };
+
   const regenerateLines = async () => {
     const completed = lines.filter(l => l.status === 'completed');
     if (completed.length > 0) {
@@ -400,6 +432,7 @@ export default function MatchupFacilitatorPage() {
             onToggle={toggleCheckin}
             onCheckAll={() => checkInAllActive(awayClub.id)}
             onClearAll={() => clearCheckins(awayClub.id)}
+            onMove={(rosterId, dir) => moveInClub(awayClub.id, rosterId, dir)}
           />
           <AttendanceColumn
             label={`Home · ${homeClub.name}`}
@@ -408,6 +441,7 @@ export default function MatchupFacilitatorPage() {
             onToggle={toggleCheckin}
             onCheckAll={() => checkInAllActive(homeClub.id)}
             onClearAll={() => clearCheckins(homeClub.id)}
+            onMove={(rosterId, dir) => moveInClub(homeClub.id, rosterId, dir)}
           />
         </div>
       </section>
@@ -690,6 +724,7 @@ function AttendanceColumn({
   onToggle,
   onCheckAll,
   onClearAll,
+  onMove,
 }: {
   label: string;
   rosters: Roster[];
@@ -697,8 +732,14 @@ function AttendanceColumn({
   onToggle: (rosterId: string) => void;
   onCheckAll: () => void;
   onClearAll: () => void;
+  onMove?: (rosterId: string, dir: -1 | 1) => void;
 }) {
   const here = rosters.filter(r => checkedInIds.has(r.id)).length;
+  const sorted = [...rosters].sort(
+    (a, b) =>
+      (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999) ||
+      a.player_name.localeCompare(b.player_name)
+  );
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
@@ -712,28 +753,48 @@ function AttendanceColumn({
       ) : (
         <>
           <div className="border border-gray-200 rounded-md divide-y divide-gray-100 mb-2">
-            {rosters
-              .sort((a, b) => (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999))
-              .map(r => {
+            {sorted.map((r, i) => {
                 const checked = checkedInIds.has(r.id);
                 return (
-                  <label
+                  <div
                     key={r.id}
-                    className={`flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer ${
+                    className={`flex items-center gap-2 px-3 py-1.5 text-sm ${
                       checked ? 'bg-green-50' : ''
                     }`}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => onToggle(r.id)}
-                      className="w-4 h-4"
-                    />
-                    <span className="w-5 text-right text-gray-400 text-xs">
-                      {r.ladder_position ? `#${r.ladder_position}` : '—'}
-                    </span>
-                    <span className="flex-1 text-gray-900">{r.player_name}</span>
-                  </label>
+                    <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => onToggle(r.id)}
+                        className="w-4 h-4"
+                      />
+                      <span className="w-5 text-right text-gray-400 text-xs">
+                        {`#${i + 1}`}
+                      </span>
+                      <span className="flex-1 truncate text-gray-900">{r.player_name}</span>
+                    </label>
+                    {onMove && (
+                      <span className="flex items-center gap-0.5 shrink-0">
+                        <button
+                          onClick={() => onMove(r.id, -1)}
+                          disabled={i === 0}
+                          className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                          title="Move up (stronger)"
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => onMove(r.id, 1)}
+                          disabled={i === sorted.length - 1}
+                          className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
+                          title="Move down (weaker)"
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                      </span>
+                    )}
+                  </div>
                 );
               })}
           </div>
