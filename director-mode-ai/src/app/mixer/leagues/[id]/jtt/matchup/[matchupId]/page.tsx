@@ -15,13 +15,12 @@ import {
   UserCheck,
   ArrowUp,
   ArrowDown,
+  Plus,
+  Minus,
+  Sparkles,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import {
-  autoAssignByStrength,
-  optimizeLines,
-  buildLineSkeleton,
-} from '@/lib/jtt';
+import { autoAssignByStrength, optimizeLines } from '@/lib/jtt';
 
 type Club = {
   id: string;
@@ -64,6 +63,7 @@ type Line = {
   matchup_id: string;
   line_type: 'singles' | 'doubles';
   line_number: number;
+  round_number: number;
   home_player1_id: string | null;
   home_player2_id: string | null;
   away_player1_id: string | null;
@@ -140,7 +140,10 @@ export default function MatchupFacilitatorPage() {
     const rostersList = (rRes.data as Roster[]) || [];
     setHomeRosters(rostersList.filter(r => r.club_id === matchupRow.home_club_id));
     setAwayRosters(rostersList.filter(r => r.club_id === matchupRow.away_club_id));
-    setLines((lRes.data as Line[]) || []);
+    // round_number defaults to 1 so the page works before the rounds migration runs.
+    setLines(
+      ((lRes.data as Line[]) || []).map(l => ({ ...l, round_number: l.round_number ?? 1 }))
+    );
 
     const ciList = ((ciRes.data as { roster_id: string }[]) || []).map(x => x.roster_id);
     setCheckedInIds(new Set(ciList));
@@ -176,10 +179,29 @@ export default function MatchupFacilitatorPage() {
     [courtsForThisMatchup, availableHome.length, availableAway.length]
   );
 
-  const runAutoAssign = async () => {
-    const patches = autoAssignByStrength(lines, availableHome, availableAway);
+  // Group lines into rounds, each round's courts sorted by line_number.
+  const rounds = useMemo(() => {
+    const byRound = new Map<number, Line[]>();
+    for (const l of lines) {
+      const arr = byRound.get(l.round_number) || [];
+      arr.push(l);
+      byRound.set(l.round_number, arr);
+    }
+    return [...byRound.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([round, ls]) => ({
+        round,
+        lines: ls.sort((a, b) => a.line_number - b.line_number),
+      }));
+  }, [lines]);
+
+  // Auto-assign players by strength within ONE round (so a later round can
+  // reuse the same players from a fresh pool).
+  const autoAssignRound = async (round: number) => {
+    const roundLines = lines.filter(l => l.round_number === round);
+    const patches = autoAssignByStrength(roundLines, availableHome, availableAway);
     if (patches.length === 0) {
-      alert('All lines are already assigned — clear players first to re-auto-assign.');
+      alert('Every court in this round already has players — clear them first to re-assign.');
       return;
     }
     const supabase = createClient();
@@ -194,6 +216,25 @@ export default function MatchupFacilitatorPage() {
             away_player2_id: p.away_player2_id,
           })
           .eq('id', p.id)
+      )
+    );
+    fetchAll();
+  };
+
+  const clearRoundAssignments = async (round: number) => {
+    const roundLines = lines.filter(l => l.round_number === round);
+    const supabase = createClient();
+    await Promise.all(
+      roundLines.map(l =>
+        supabase
+          .from('league_matchup_lines')
+          .update({
+            home_player1_id: null,
+            home_player2_id: null,
+            away_player1_id: null,
+            away_player2_id: null,
+          })
+          .eq('id', l.id)
       )
     );
     fetchAll();
@@ -285,60 +326,123 @@ export default function MatchupFacilitatorPage() {
     fetchAll();
   };
 
-  const regenerateLines = async () => {
-    const completed = lines.filter(l => l.status === 'completed');
-    if (completed.length > 0) {
-      if (
-        !confirm(
-          `${completed.length} line${completed.length === 1 ? '' : 's'} already scored. Regenerating will delete those results. Continue?`
-        )
-      )
-        return;
-    } else if (lines.some(l => l.home_player1_id || l.away_player1_id)) {
-      if (!confirm('This will replace the current line layout. Continue?')) return;
+  const nextLineNumber = () =>
+    (lines.reduce((max, l) => Math.max(max, l.line_number), 0) || 0) + 1;
+
+  // Create a new round with one scorecard per court in use. The singles/doubles
+  // split defaults to the optimizer's recommendation; leftover courts (when
+  // attendance can't fill them) default to singles. Then auto-assigns players.
+  const createRound = async () => {
+    const courts = courtsForThisMatchup;
+    if (courts < 1) {
+      alert('Set the number of courts in use (above) to at least 1 first.');
+      return;
     }
-    const { singles, doubles } = optimizer;
-    if (singles === 0 && doubles === 0) {
+    const rounds = lines.map(l => l.round_number);
+    const nextRound = (rounds.length ? Math.max(...rounds) : 0) + 1;
+    const singles = Math.min(courts, optimizer.singles);
+    const doubles = Math.min(courts - singles, optimizer.doubles);
+    let n = nextLineNumber();
+    const newLines = Array.from({ length: courts }, (_, i) => ({
+      matchup_id: matchupId,
+      round_number: nextRound,
+      line_number: n++,
+      line_type: (i < singles ? 'singles' : i < singles + doubles ? 'doubles' : 'singles') as
+        | 'singles'
+        | 'doubles',
+    }));
+    const supabase = createClient();
+    const { error: insErr } = await supabase.from('league_matchup_lines').insert(newLines);
+    if (insErr) {
       alert(
-        `Can't generate lines: ${
-          optimizer.warning || 'No courts or no players checked in.'
-        }`
+        insErr.message.includes('round_number')
+          ? 'Rounds aren’t enabled on the database yet — run the leagues_jtt_rounds.sql migration in Supabase, then try again.'
+          : `Couldn’t create round: ${insErr.message}`
       );
       return;
     }
-    const skel = buildLineSkeleton(singles, doubles);
+    await fetchAll();
+    if (availableHome.length && availableAway.length) await autoAssignRound(nextRound);
+  };
+
+  const deleteRound = async (round: number) => {
+    const roundLines = lines.filter(l => l.round_number === round);
+    const scored = roundLines.filter(l => l.status === 'completed').length;
+    if (
+      !confirm(
+        `Delete Round ${round} (${roundLines.length} court${roundLines.length === 1 ? '' : 's'}${
+          scored ? `, ${scored} already scored` : ''
+        })?`
+      )
+    )
+      return;
     const supabase = createClient();
-    // Wipe existing lines, then insert the new skeleton. ON DELETE CASCADE
-    // on the lines table takes the checkins' references with it — nope,
-    // checkins reference rosters, not lines. Safe to just delete lines.
-    await supabase.from('league_matchup_lines').delete().eq('matchup_id', matchupId);
-    await supabase.from('league_matchup_lines').insert(
-      skel.map(l => ({
-        matchup_id: matchupId,
-        line_type: l.line_type,
-        line_number: l.line_number,
-      }))
+    await supabase
+      .from('league_matchup_lines')
+      .delete()
+      .in('id', roundLines.map(l => l.id));
+    fetchAll();
+  };
+
+  const addCourtToRound = async (round: number) => {
+    const supabase = createClient();
+    const { error: insErr } = await supabase.from('league_matchup_lines').insert({
+      matchup_id: matchupId,
+      round_number: round,
+      line_number: nextLineNumber(),
+      line_type: 'singles',
+    });
+    if (insErr) {
+      alert(`Couldn’t add court: ${insErr.message}`);
+      return;
+    }
+    fetchAll();
+  };
+
+  const removeLine = async (lineId: string) => {
+    const supabase = createClient();
+    await supabase.from('league_matchup_lines').delete().eq('id', lineId);
+    fetchAll();
+  };
+
+  // Set a single court's line type. Switching to singles clears the 2nd players.
+  const setLineType = async (line: Line, type: 'singles' | 'doubles') => {
+    if (line.line_type === type) return;
+    const supabase = createClient();
+    const patch: Partial<Line> =
+      type === 'singles'
+        ? { line_type: type, home_player2_id: null, away_player2_id: null }
+        : { line_type: type };
+    await supabase.from('league_matchup_lines').update(patch).eq('id', line.id);
+    fetchAll();
+  };
+
+  // Bulk-set a round's split: first `singlesCount` courts singles, rest doubles.
+  const applyRoundSplit = async (round: number, singlesCount: number) => {
+    const roundLines = lines
+      .filter(l => l.round_number === round)
+      .sort((a, b) => a.line_number - b.line_number);
+    const supabase = createClient();
+    const changes = roundLines
+      .map((l, i) => ({ l, type: (i < singlesCount ? 'singles' : 'doubles') as 'singles' | 'doubles' }))
+      .filter(({ l, type }) => type !== l.line_type);
+    await Promise.all(
+      changes.map(({ l, type }) => {
+        const patch: Partial<Line> =
+          type === 'singles'
+            ? { line_type: type, home_player2_id: null, away_player2_id: null }
+            : { line_type: type };
+        return supabase.from('league_matchup_lines').update(patch).eq('id', l.id);
+      })
     );
     fetchAll();
   };
 
-  const clearAllAssignments = async () => {
-    if (!confirm('Clear all player assignments for this matchup?')) return;
-    const supabase = createClient();
-    await Promise.all(
-      lines.map(l =>
-        supabase
-          .from('league_matchup_lines')
-          .update({
-            home_player1_id: null,
-            home_player2_id: null,
-            away_player1_id: null,
-            away_player2_id: null,
-          })
-          .eq('id', l.id)
-      )
-    );
-    fetchAll();
+  // Let the optimizer pick the split for this round given courts + attendance.
+  const aiOptimizeRound = async (round: number) => {
+    const roundLines = lines.filter(l => l.round_number === round);
+    const opt = optimizeLines(roundLines.length, availableHome.length, availableAway.length);
+    await applyRoundSplit(round, Math.min(roundLines.length, opt.singles));
   };
 
   useEffect(() => {
@@ -480,13 +584,6 @@ export default function MatchupFacilitatorPage() {
             )}
           </div>
           <div className="flex flex-col gap-2">
-            <button
-              onClick={regenerateLines}
-              disabled={optimizer.singles === 0 && optimizer.doubles === 0}
-              className="inline-flex items-center gap-2 px-3 py-1.5 bg-gray-900 text-white rounded-md text-sm font-medium hover:bg-gray-800 disabled:opacity-50"
-            >
-              Regenerate lines from attendance
-            </button>
             <CourtsOverrideInput
               value={matchup.courts_override}
               onSet={async v => {
@@ -499,48 +596,196 @@ export default function MatchupFacilitatorPage() {
               }}
               defaultCourts={homeClub.courts_available}
             />
+            <p className="text-xs text-gray-400 text-right">
+              New rounds start with {courtsForThisMatchup} court
+              {courtsForThisMatchup === 1 ? '' : 's'}.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* Assignment controls */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <button
-          onClick={runAutoAssign}
-          className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-500 text-white rounded-md text-sm font-medium hover:bg-orange-600"
-        >
-          <Zap size={14} />
-          Auto-assign by strength
-        </button>
-        <button
-          onClick={clearAllAssignments}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 rounded-md text-sm text-gray-700 hover:bg-gray-50"
-        >
-          Clear all
-        </button>
-        <p className="text-xs text-gray-500">
-          Pulls top-ranked players from the checked-in pool (or full active roster
-          if nobody is checked in yet). Singles lines get #1, doubles get the next
-          pair. Manual overrides stick.
-        </p>
-      </div>
-
-      {/* Lines */}
-      <div className="space-y-4">
-        {lines.map(line => (
-          <LineEditor
-            key={line.id}
-            line={line}
+      {/* Rounds */}
+      <div className="space-y-6">
+        {rounds.map(({ round, lines: roundLines }) => (
+          <RoundCard
+            key={round}
+            round={round}
+            roundLines={roundLines}
             homeRosters={homeRosters}
             awayRosters={awayRosters}
             homeClub={homeClub}
             awayClub={awayClub}
-            onUpdate={patch => updateLine(line.id, patch)}
+            saving={saving}
+            onUpdateLine={updateLine}
+            onSetLineType={setLineType}
+            onRemoveLine={removeLine}
+            onAddCourt={() => addCourtToRound(round)}
+            onApplySplit={n => applyRoundSplit(round, n)}
+            onAiOptimize={() => aiOptimizeRound(round)}
+            onAutoAssign={() => autoAssignRound(round)}
+            onClearAssignments={() => clearRoundAssignments(round)}
+            onDeleteRound={() => deleteRound(round)}
+          />
+        ))}
+
+        <button
+          onClick={createRound}
+          className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-orange-300 text-orange-700 rounded-xl text-sm font-medium hover:bg-orange-50"
+        >
+          <Plus size={16} />
+          {rounds.length === 0
+            ? `Create Round 1 (${courtsForThisMatchup} court${courtsForThisMatchup === 1 ? '' : 's'})`
+            : `Add Round ${rounds.length + 1}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RoundCard({
+  round,
+  roundLines,
+  homeRosters,
+  awayRosters,
+  homeClub,
+  awayClub,
+  saving,
+  onUpdateLine,
+  onSetLineType,
+  onRemoveLine,
+  onAddCourt,
+  onApplySplit,
+  onAiOptimize,
+  onAutoAssign,
+  onClearAssignments,
+  onDeleteRound,
+}: {
+  round: number;
+  roundLines: Line[];
+  homeRosters: Roster[];
+  awayRosters: Roster[];
+  homeClub: Club;
+  awayClub: Club;
+  saving: string | null;
+  onUpdateLine: (lineId: string, patch: Partial<Line>) => void;
+  onSetLineType: (line: Line, type: 'singles' | 'doubles') => void;
+  onRemoveLine: (lineId: string) => void;
+  onAddCourt: () => void;
+  onApplySplit: (singlesCount: number) => void;
+  onAiOptimize: () => void;
+  onAutoAssign: () => void;
+  onClearAssignments: () => void;
+  onDeleteRound: () => void;
+}) {
+  const singlesCount = roundLines.filter(l => l.line_type === 'singles').length;
+  const doublesCount = roundLines.length - singlesCount;
+  const scored = roundLines.filter(l => l.status === 'completed').length;
+  const allScored = roundLines.length > 0 && scored === roundLines.length;
+
+  return (
+    <section className="border border-gray-200 rounded-xl overflow-hidden">
+      <header className="bg-gray-50 border-b border-gray-200 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <h2 className="font-semibold text-gray-900">Round {round}</h2>
+            <span className="text-xs text-gray-500">
+              {roundLines.length} court{roundLines.length === 1 ? '' : 's'} ·{' '}
+              {singlesCount}S / {doublesCount}D
+            </span>
+            {allScored && (
+              <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                All scored
+              </span>
+            )}
+          </div>
+          <button
+            onClick={onDeleteRound}
+            className="text-gray-400 hover:text-red-600 p-1"
+            title="Delete this round"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+
+        {/* Split + AI + assignment controls */}
+        <div className="flex items-center gap-x-4 gap-y-2 flex-wrap mt-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-gray-600">Singles</span>
+            <button
+              onClick={() => onApplySplit(Math.max(0, singlesCount - 1))}
+              disabled={singlesCount <= 0}
+              className="p-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-100 disabled:opacity-30"
+              title="Fewer singles (more doubles)"
+            >
+              <Minus size={13} />
+            </button>
+            <span className="w-5 text-center text-sm font-semibold text-gray-900 tabular-nums">
+              {singlesCount}
+            </span>
+            <button
+              onClick={() => onApplySplit(Math.min(roundLines.length, singlesCount + 1))}
+              disabled={singlesCount >= roundLines.length}
+              className="p-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-100 disabled:opacity-30"
+              title="More singles (fewer doubles)"
+            >
+              <Plus size={13} />
+            </button>
+            <span className="text-xs text-gray-400">/ {doublesCount} doubles</span>
+          </div>
+
+          <button
+            onClick={onAiOptimize}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-indigo-600 text-white rounded-md text-xs font-medium hover:bg-indigo-700"
+            title="Let AI pick the optimal singles/doubles split from attendance"
+          >
+            <Sparkles size={13} />
+            AI optimize split
+          </button>
+
+          <span className="text-gray-200">|</span>
+
+          <button
+            onClick={onAutoAssign}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-orange-500 text-white rounded-md text-xs font-medium hover:bg-orange-600"
+            title="Fill courts with the strongest available players"
+          >
+            <Zap size={13} />
+            Auto-assign players
+          </button>
+          <button
+            onClick={onClearAssignments}
+            className="text-xs text-gray-500 hover:text-gray-800"
+          >
+            Clear players
+          </button>
+        </div>
+      </header>
+
+      <div className="p-4 space-y-4">
+        {roundLines.map((line, i) => (
+          <LineEditor
+            key={line.id}
+            line={line}
+            courtNumber={i + 1}
+            homeRosters={homeRosters}
+            awayRosters={awayRosters}
+            homeClub={homeClub}
+            awayClub={awayClub}
+            onUpdate={patch => onUpdateLine(line.id, patch)}
+            onSetType={type => onSetLineType(line, type)}
+            onRemove={() => onRemoveLine(line.id)}
             saving={saving === line.id}
           />
         ))}
+        <button
+          onClick={onAddCourt}
+          className="inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800"
+        >
+          <Plus size={13} />
+          Add a court
+        </button>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -568,19 +813,25 @@ function TeamScore({
 
 function LineEditor({
   line,
+  courtNumber,
   homeRosters,
   awayRosters,
   homeClub,
   awayClub,
   onUpdate,
+  onSetType,
+  onRemove,
   saving,
 }: {
   line: Line;
+  courtNumber: number;
   homeRosters: Roster[];
   awayRosters: Roster[];
   homeClub: Club;
   awayClub: Club;
   onUpdate: (patch: Partial<Line>) => void;
+  onSetType: (type: 'singles' | 'doubles') => void;
+  onRemove: () => void;
   saving: boolean;
 }) {
   const [score, setScore] = useState(line.score || '');
@@ -604,11 +855,28 @@ function LineEditor({
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <h3 className="font-semibold text-gray-900">
-            Line {line.line_number} · {isDoubles ? 'Doubles' : 'Singles'}
-          </h3>
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <div className="flex items-center gap-3">
+          <h3 className="font-semibold text-gray-900">Court {courtNumber}</h3>
+          {/* Singles / Doubles toggle */}
+          <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
+            <button
+              onClick={() => onSetType('singles')}
+              className={`px-2.5 py-1 font-medium ${
+                !isDoubles ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Singles
+            </button>
+            <button
+              onClick={() => onSetType('doubles')}
+              className={`px-2.5 py-1 font-medium ${
+                isDoubles ? 'bg-gray-900 text-white' : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Doubles
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <CopyScoringLink token={line.score_token} />
@@ -623,6 +891,13 @@ function LineEditor({
           >
             {line.status.replace('_', ' ')}
           </span>
+          <button
+            onClick={onRemove}
+            className="text-gray-300 hover:text-red-600"
+            title="Remove this court"
+          >
+            <Trash2 size={14} />
+          </button>
         </div>
       </div>
 
