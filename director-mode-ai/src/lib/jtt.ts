@@ -662,3 +662,151 @@ export function autoAssignByStrength(
 
   return patches;
 }
+
+type AssignLine = {
+  id: string;
+  line_type: 'singles' | 'doubles';
+  line_number: number;
+  home_player1_id: string | null;
+  home_player2_id: string | null;
+  away_player1_id: string | null;
+  away_player2_id: string | null;
+};
+type AssignRoster = { id: string; ladder_position: number | null; status: string };
+
+/**
+ * Plan one side (home or away) of a single round, balancing singles vs doubles
+ * across rounds. `getter` returns [player1, player2] for the chosen side.
+ *
+ * Within the round, players who have played FEWER singles in the other rounds
+ * are preferred for singles (and likewise for doubles), so over a match each
+ * player gets a roughly equal mix. Strength (ladder) seeds the lines: the
+ * strongest chosen singles player takes the lowest line number; doubles lines
+ * are filled strongest-pair first. Already-filled slots are respected.
+ *
+ * Returns a map of lineId → [player1, player2] for the lines it changed.
+ */
+function planRoundSide(
+  roundLines: AssignLine[],
+  otherLines: AssignLine[],
+  rosters: AssignRoster[],
+  getter: (l: AssignLine) => [string | null, string | null]
+): Map<string, [string | null, string | null]> {
+  const lad = (id: string) =>
+    rosters.find(r => r.id === id)?.ladder_position ?? 9999;
+  const active = rosters.filter(r => r.status === 'active');
+
+  // Prior singles/doubles counts from the OTHER rounds.
+  const priorS = new Map<string, number>();
+  const priorD = new Map<string, number>();
+  for (const l of otherLines) {
+    const [a, b] = getter(l);
+    for (const id of [a, b]) {
+      if (!id) continue;
+      const m = l.line_type === 'singles' ? priorS : priorD;
+      m.set(id, (m.get(id) ?? 0) + 1);
+    }
+  }
+
+  // Players already slotted somewhere in this round are off the table.
+  const used = new Set<string>();
+  for (const l of roundLines) {
+    const [a, b] = getter(l);
+    if (a) used.add(a);
+    if (b) used.add(b);
+  }
+
+  const result = new Map<string, [string | null, string | null]>();
+  const byLine = (a: AssignLine, b: AssignLine) => a.line_number - b.line_number;
+  const singlesLines = roundLines.filter(l => l.line_type === 'singles').sort(byLine);
+  const doublesLines = roundLines.filter(l => l.line_type === 'doubles').sort(byLine);
+
+  // --- Singles ---
+  const emptySingles = singlesLines.filter(l => !getter(l)[0]);
+  const singlesPick = active
+    .filter(r => !used.has(r.id))
+    .sort(
+      (p, q) =>
+        (priorS.get(p.id) ?? 0) - (priorS.get(q.id) ?? 0) || lad(p.id) - lad(q.id)
+    )
+    .slice(0, emptySingles.length)
+    .sort((p, q) => lad(p.id) - lad(q.id)); // seed by strength
+  emptySingles.forEach((l, i) => {
+    const r = singlesPick[i];
+    if (!r) return;
+    used.add(r.id);
+    const [, b] = getter(l);
+    result.set(l.id, [r.id, b]);
+  });
+
+  // --- Doubles ---
+  const doublesNeed = doublesLines.map(l => {
+    const [a, b] = getter(l);
+    return { id: l.id, cur: [a, b] as [string | null, string | null], slots: (a ? 0 : 1) + (b ? 0 : 1) };
+  });
+  const totalDoublesSlots = doublesNeed.reduce((s, d) => s + d.slots, 0);
+  const doublesPick = active
+    .filter(r => !used.has(r.id))
+    .sort(
+      (p, q) =>
+        (priorD.get(p.id) ?? 0) - (priorD.get(q.id) ?? 0) || lad(p.id) - lad(q.id)
+    )
+    .slice(0, totalDoublesSlots)
+    .sort((p, q) => lad(p.id) - lad(q.id)); // strongest pair on the first doubles line
+  let di = 0;
+  for (const d of doublesNeed) {
+    let [a, b] = d.cur;
+    if (!a && di < doublesPick.length) a = doublesPick[di++].id;
+    if (!b && di < doublesPick.length) b = doublesPick[di++].id;
+    if (a !== d.cur[0] || b !== d.cur[1]) result.set(d.id, [a, b]);
+  }
+
+  return result;
+}
+
+/**
+ * Round-aware auto-assign: fills one round's empty lines while balancing how
+ * much singles vs doubles each player gets across ALL rounds of the matchup.
+ *
+ * Example (4 players, 2 singles + 1 doubles per round):
+ *   Round 1 → singles #1, #2 ; doubles #3+#4
+ *   Round 2 → singles #3, #4 ; doubles #1+#2   (rotated, so everyone gets one of each)
+ *
+ * Manual assignments already on a line are kept.
+ */
+export function autoAssignRoundBalanced(
+  roundLines: AssignLine[],
+  otherLines: AssignLine[],
+  homeRosters: AssignRoster[],
+  awayRosters: AssignRoster[]
+): Array<{
+  id: string;
+  home_player1_id: string | null;
+  home_player2_id: string | null;
+  away_player1_id: string | null;
+  away_player2_id: string | null;
+}> {
+  const homePlan = planRoundSide(roundLines, otherLines, homeRosters, l => [
+    l.home_player1_id,
+    l.home_player2_id,
+  ]);
+  const awayPlan = planRoundSide(roundLines, otherLines, awayRosters, l => [
+    l.away_player1_id,
+    l.away_player2_id,
+  ]);
+
+  const patches = [];
+  for (const l of roundLines) {
+    const h = homePlan.get(l.id);
+    const aw = awayPlan.get(l.id);
+    if (!h && !aw) continue;
+    patches.push({
+      id: l.id,
+      home_player1_id: h ? h[0] : l.home_player1_id,
+      home_player2_id: h ? h[1] : l.home_player2_id,
+      away_player1_id: aw ? aw[0] : l.away_player1_id,
+      away_player2_id: aw ? aw[1] : l.away_player2_id,
+    });
+  }
+  return patches;
+}

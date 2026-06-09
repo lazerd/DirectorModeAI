@@ -20,7 +20,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { autoAssignByStrength, optimizeLines } from '@/lib/jtt';
+import { autoAssignRoundBalanced, optimizeLines } from '@/lib/jtt';
 
 type Club = {
   id: string;
@@ -199,7 +199,15 @@ export default function MatchupFacilitatorPage() {
   // reuse the same players from a fresh pool).
   const autoAssignRound = async (round: number) => {
     const roundLines = lines.filter(l => l.round_number === round);
-    const patches = autoAssignByStrength(roundLines, availableHome, availableAway);
+    const otherLines = lines.filter(l => l.round_number !== round);
+    // Balances singles vs doubles across rounds (e.g. who played doubles in
+    // round 1 gets singles in round 2), seeded by strength within each round.
+    const patches = autoAssignRoundBalanced(
+      roundLines,
+      otherLines,
+      availableHome,
+      availableAway
+    );
     if (patches.length === 0) {
       alert('Every court in this round already has players — clear them first to re-assign.');
       return;
