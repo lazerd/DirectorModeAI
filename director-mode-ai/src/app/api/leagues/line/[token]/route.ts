@@ -39,15 +39,23 @@ export async function POST(
   }
 
   const body = (await request.json().catch(() => ({}))) as Body;
-  if (body.winner !== 'home' && body.winner !== 'away') {
+  const hasWinner = body.winner === 'home' || body.winner === 'away';
+  if (body.winner != null && !hasWinner) {
     return NextResponse.json(
       { error: 'winner must be "home" or "away".' },
       { status: 400 }
     );
   }
-  if (!body.score || typeof body.score !== 'string' || body.score.length > 100) {
+  if (body.score != null && (typeof body.score !== 'string' || body.score.length > 100)) {
     return NextResponse.json(
-      { error: 'score is required (max 100 chars).' },
+      { error: 'score must be a string (max 100 chars).' },
+      { status: 400 }
+    );
+  }
+  const trimmedScore = body.score?.trim() || null;
+  if (!hasWinner && !trimmedScore) {
+    return NextResponse.json(
+      { error: 'Enter a score or pick a winner.' },
       { status: 400 }
     );
   }
@@ -67,9 +75,9 @@ export async function POST(
   }
 
   const patch: Record<string, any> = {
-    winner: body.winner,
-    score: body.score.trim(),
-    status: 'completed',
+    winner: hasWinner ? body.winner : null,
+    score: trimmedScore,
+    status: hasWinner ? 'completed' : 'in_progress',
     reported_at: new Date().toISOString(),
     reported_by_token: token,
     reported_by_name: body.reported_by_name?.slice(0, 80) || null,

@@ -523,6 +523,46 @@ export default function MatchupFacilitatorPage() {
     fetchAll({ silent: true });
   };
 
+  // Save a court's score via the line's magic-link token endpoint, which uses
+  // the service role server-side. This lets ANY coach (not just the league
+  // director) record scores — direct table writes are RLS-locked to the
+  // director, which is why non-director coaches saw "didn't save".
+  const saveScore = async (
+    line: Line,
+    payload: { score: string | null; winner: 'home' | 'away' | null }
+  ) => {
+    if (!line.score_token) {
+      // No token (shouldn't happen) — fall back to a direct write.
+      await updateLine(line.id, {
+        score: payload.score,
+        winner: payload.winner,
+        status: payload.winner ? 'completed' : payload.score ? 'in_progress' : 'pending',
+      });
+      return;
+    }
+    setSaving(line.id);
+    try {
+      const res = await fetch(`/api/leagues/line/${line.score_token}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          score: payload.score ?? '',
+          winner: payload.winner ?? undefined,
+        }),
+      });
+      const resBody = await res.json().catch(() => ({}));
+      setSaving(null);
+      if (!res.ok) {
+        alert(`Couldn’t save: ${resBody.error || `HTTP ${res.status}`}`);
+        return;
+      }
+      fetchAll({ silent: true });
+    } catch (e) {
+      setSaving(null);
+      alert(`Couldn’t save: ${e instanceof Error ? e.message : 'network error'}`);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -669,6 +709,7 @@ export default function MatchupFacilitatorPage() {
             awayClub={awayClub}
             saving={saving}
             onUpdateLine={updateLine}
+            onSaveScore={saveScore}
             onSetLineType={setLineType}
             onRemoveLine={removeLine}
             onAddCourt={() => addCourtToRound(round)}
@@ -703,6 +744,7 @@ function RoundCard({
   awayClub,
   saving,
   onUpdateLine,
+  onSaveScore,
   onSetLineType,
   onRemoveLine,
   onAddCourt,
@@ -720,6 +762,10 @@ function RoundCard({
   awayClub: Club;
   saving: string | null;
   onUpdateLine: (lineId: string, patch: Partial<Line>) => void;
+  onSaveScore: (
+    line: Line,
+    payload: { score: string | null; winner: 'home' | 'away' | null }
+  ) => void;
   onSetLineType: (line: Line, type: 'singles' | 'doubles') => void;
   onRemoveLine: (lineId: string) => void;
   onAddCourt: () => void;
@@ -824,6 +870,7 @@ function RoundCard({
             homeClub={homeClub}
             awayClub={awayClub}
             onUpdate={patch => onUpdateLine(line.id, patch)}
+            onSaveScore={payload => onSaveScore(line, payload)}
             onSetType={type => onSetLineType(line, type)}
             onRemove={() => onRemoveLine(line.id)}
             saving={saving === line.id}
@@ -871,6 +918,7 @@ function LineEditor({
   homeClub,
   awayClub,
   onUpdate,
+  onSaveScore,
   onSetType,
   onRemove,
   saving,
@@ -882,6 +930,7 @@ function LineEditor({
   homeClub: Club;
   awayClub: Club;
   onUpdate: (patch: Partial<Line>) => void;
+  onSaveScore: (payload: { score: string | null; winner: 'home' | 'away' | null }) => void;
   onSetType: (type: 'singles' | 'doubles') => void;
   onRemove: () => void;
   saving: boolean;
@@ -901,11 +950,7 @@ function LineEditor({
   const locked = hasResult && !editing && !dirty;
 
   const save = () => {
-    onUpdate({
-      score: score.trim() || null,
-      winner,
-      status: winner ? 'completed' : score.trim() ? 'in_progress' : 'pending',
-    });
+    onSaveScore({ score: score.trim() || null, winner });
     setEditing(false);
   };
 
