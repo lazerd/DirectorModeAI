@@ -74,6 +74,12 @@ type Line = {
   score_token: string | null;
 };
 
+type SlotField =
+  | 'home_player1_id'
+  | 'home_player2_id'
+  | 'away_player1_id'
+  | 'away_player2_id';
+
 export default function MatchupFacilitatorPage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : (params.id as string);
@@ -484,6 +490,73 @@ export default function MatchupFacilitatorPage() {
     fetchAll({ silent: true });
   };
 
+  // Assign a player to a court slot, swapping to prevent the same player being
+  // on two courts in the SAME round. If the picked player is already in another
+  // slot (same side, same round), they move here and whoever they displaced
+  // takes their old spot. (A player CAN still appear across different rounds.)
+  const assignPlayer = async (line: Line, field: SlotField, playerId: string | null) => {
+    const prev = line[field];
+    if (playerId === prev) return;
+
+    const isHome = field.startsWith('home');
+    const sideFields: SlotField[] = isHome
+      ? ['home_player1_id', 'home_player2_id']
+      : ['away_player1_id', 'away_player2_id'];
+
+    const updates: Array<{ id: string; patch: Partial<Line> }> = [];
+
+    if (playerId) {
+      // Where is this player currently sitting in this round (same side)?
+      let foundLine: Line | null = null;
+      let foundField: SlotField | null = null;
+      for (const l of lines.filter(x => x.round_number === line.round_number)) {
+        for (const f of sideFields) {
+          if (l.id === line.id && f === field) continue;
+          if (l[f] === playerId) {
+            foundLine = l;
+            foundField = f;
+            break;
+          }
+        }
+        if (foundLine) break;
+      }
+
+      if (foundLine && foundField) {
+        if (foundLine.id === line.id) {
+          // Same line (e.g. doubles P1<->P2): swap within the one row.
+          updates.push({ id: line.id, patch: { [field]: playerId, [foundField]: prev } });
+        } else {
+          // Different court: target gets the player, their old slot gets whoever
+          // was here (prev) — a true swap that keeps everyone in exactly one spot.
+          updates.push({ id: line.id, patch: { [field]: playerId } });
+          updates.push({ id: foundLine.id, patch: { [foundField]: prev } });
+        }
+      } else {
+        updates.push({ id: line.id, patch: { [field]: playerId } });
+      }
+    } else {
+      updates.push({ id: line.id, patch: { [field]: null } });
+    }
+
+    const supabase = createClient();
+    const results = await Promise.all(
+      updates.map(u =>
+        supabase.from('league_matchup_lines').update(u.patch).eq('id', u.id).select('id')
+      )
+    );
+    if (results.some(r => r.error)) {
+      alert(`Couldn’t update lineup: ${results.find(r => r.error)?.error?.message}`);
+      return;
+    }
+    if (results.some(r => !r.data || r.data.length === 0)) {
+      alert(
+        'Couldn’t update lineup — you may not have edit permission on this league (run the coach-access SQL) or you’re signed out.'
+      );
+      return;
+    }
+    fetchAll({ silent: true });
+  };
+
   // Bulk-set a round's split: first `singlesCount` courts singles, rest doubles.
   const applyRoundSplit = async (round: number, singlesCount: number) => {
     const roundLines = lines
@@ -720,12 +793,12 @@ export default function MatchupFacilitatorPage() {
             key={round}
             round={round}
             roundLines={roundLines}
-            homeRosters={homeRosters}
-            awayRosters={awayRosters}
+            homeRosters={availableHome}
+            awayRosters={availableAway}
             homeClub={homeClub}
             awayClub={awayClub}
             saving={saving}
-            onUpdateLine={updateLine}
+            onAssign={assignPlayer}
             onSaveScore={saveScore}
             onSetLineType={setLineType}
             onRemoveLine={removeLine}
@@ -760,7 +833,7 @@ function RoundCard({
   homeClub,
   awayClub,
   saving,
-  onUpdateLine,
+  onAssign,
   onSaveScore,
   onSetLineType,
   onRemoveLine,
@@ -778,7 +851,7 @@ function RoundCard({
   homeClub: Club;
   awayClub: Club;
   saving: string | null;
-  onUpdateLine: (lineId: string, patch: Partial<Line>) => void;
+  onAssign: (line: Line, field: SlotField, playerId: string | null) => void;
   onSaveScore: (
     line: Line,
     payload: { score: string | null; winner: 'home' | 'away' | null }
@@ -886,7 +959,7 @@ function RoundCard({
             awayRosters={awayRosters}
             homeClub={homeClub}
             awayClub={awayClub}
-            onUpdate={patch => onUpdateLine(line.id, patch)}
+            onAssign={(field, playerId) => onAssign(line, field, playerId)}
             onSaveScore={payload => onSaveScore(line, payload)}
             onSetType={type => onSetLineType(line, type)}
             onRemove={() => onRemoveLine(line.id)}
@@ -934,7 +1007,7 @@ function LineEditor({
   awayRosters,
   homeClub,
   awayClub,
-  onUpdate,
+  onAssign,
   onSaveScore,
   onSetType,
   onRemove,
@@ -946,7 +1019,7 @@ function LineEditor({
   awayRosters: Roster[];
   homeClub: Club;
   awayClub: Club;
-  onUpdate: (patch: Partial<Line>) => void;
+  onAssign: (field: SlotField, playerId: string | null) => void;
   onSaveScore: (payload: { score: string | null; winner: 'home' | 'away' | null }) => void;
   onSetType: (type: 'singles' | 'doubles') => void;
   onRemove: () => void;
@@ -1040,7 +1113,7 @@ function LineEditor({
           <PlayerPicker
             rosters={awayRosters}
             value={line.away_player1_id}
-            onChange={v => onUpdate({ away_player1_id: v })}
+            onChange={v => onAssign('away_player1_id', v)}
             placeholder={isDoubles ? 'Player 1' : 'Player'}
           />
           {isDoubles && (
@@ -1048,7 +1121,7 @@ function LineEditor({
               <PlayerPicker
                 rosters={awayRosters}
                 value={line.away_player2_id}
-                onChange={v => onUpdate({ away_player2_id: v })}
+                onChange={v => onAssign('away_player2_id', v)}
                 placeholder="Player 2"
               />
             </div>
@@ -1062,7 +1135,7 @@ function LineEditor({
           <PlayerPicker
             rosters={homeRosters}
             value={line.home_player1_id}
-            onChange={v => onUpdate({ home_player1_id: v })}
+            onChange={v => onAssign('home_player1_id', v)}
             placeholder={isDoubles ? 'Player 1' : 'Player'}
           />
           {isDoubles && (
@@ -1070,7 +1143,7 @@ function LineEditor({
               <PlayerPicker
                 rosters={homeRosters}
                 value={line.home_player2_id}
-                onChange={v => onUpdate({ home_player2_id: v })}
+                onChange={v => onAssign('home_player2_id', v)}
                 placeholder="Player 2"
               />
             </div>
