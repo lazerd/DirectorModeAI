@@ -765,12 +765,48 @@ function planRoundSide(
 }
 
 /**
- * Round-aware auto-assign: fills one round's empty lines while balancing how
- * much singles vs doubles each player gets across ALL rounds of the matchup.
+ * Place `items` into `slots` 1:1, preferring arrangements where isBad() is
+ * false (e.g. avoid a rematch). Backtracks for a fully-clean arrangement;
+ * falls back to input (strength) order if none exists. items are tried in
+ * their given order, so position 0 gets the first acceptable item, etc.
+ */
+function assignAvoiding<S, I>(
+  slots: S[],
+  items: I[],
+  isBad: (slot: S, item: I) => boolean
+): (I | null)[] {
+  const n = slots.length;
+  const used = new Array(items.length).fill(false);
+  const res: (I | null)[] = new Array(n).fill(null);
+  const solve = (pos: number): boolean => {
+    if (pos === n) return true;
+    for (let k = 0; k < items.length; k++) {
+      if (used[k] || isBad(slots[pos], items[k])) continue;
+      used[k] = true;
+      res[pos] = items[k];
+      if (solve(pos + 1)) return true;
+      used[k] = false;
+      res[pos] = null;
+    }
+    return false;
+  };
+  if (solve(0)) return res;
+  const fallback: (I | null)[] = new Array(n).fill(null);
+  for (let i = 0; i < n && i < items.length; i++) fallback[i] = items[i];
+  return fallback;
+}
+
+/**
+ * Round-aware auto-assign: fills one round's empty lines while (1) balancing how
+ * much singles vs doubles each player gets across ALL rounds, and (2) avoiding
+ * REMATCHES — the away side is paired against the home side so nobody faces the
+ * same opponent they already played in another round.
  *
  * Example (4 players, 2 singles + 1 doubles per round):
  *   Round 1 → singles #1, #2 ; doubles #3+#4
- *   Round 2 → singles #3, #4 ; doubles #1+#2   (rotated, so everyone gets one of each)
+ *   Round 2 → singles #3, #4 ; doubles #1+#2   (rotated singles/doubles)
+ *   …and within that, away players are shuffled across courts so no singles or
+ *   doubles pairing repeats a prior round.
  *
  * Manual assignments already on a line are kept.
  */
@@ -786,26 +822,108 @@ export function autoAssignRoundBalanced(
   away_player1_id: string | null;
   away_player2_id: string | null;
 }> {
+  // 1. Home side — balanced singles/doubles, seeded by strength.
   const homePlan = planRoundSide(roundLines, otherLines, homeRosters, l => [
     l.home_player1_id,
     l.home_player2_id,
   ]);
-  const awayPlan = planRoundSide(roundLines, otherLines, awayRosters, l => [
-    l.away_player1_id,
-    l.away_player2_id,
-  ]);
+  const homeOf = (l: AssignLine): [string | null, string | null] =>
+    homePlan.get(l.id) ?? [l.home_player1_id, l.home_player2_id];
 
+  // 2. Prior opponents + away balance counts from the other rounds.
+  const ladA = (id: string) =>
+    awayRosters.find(r => r.id === id)?.ladder_position ?? 9999;
+  const activeAway = awayRosters.filter(r => r.status === 'active');
+  const priorAwayS = new Map<string, number>();
+  const priorAwayD = new Map<string, number>();
+  const priorSinglesOpp = new Set<string>(); // "homeId|awayId"
+  const priorDoublesOpp = new Set<string>(); // "h1,h2|a1,a2" (sorted)
+  for (const l of otherLines) {
+    for (const id of [l.away_player1_id, l.away_player2_id]) {
+      if (!id) continue;
+      const m = l.line_type === 'singles' ? priorAwayS : priorAwayD;
+      m.set(id, (m.get(id) ?? 0) + 1);
+    }
+    if (l.line_type === 'singles') {
+      if (l.home_player1_id && l.away_player1_id)
+        priorSinglesOpp.add(l.home_player1_id + '|' + l.away_player1_id);
+    } else {
+      const hs = [l.home_player1_id, l.home_player2_id].filter(Boolean).sort().join(',');
+      const as = [l.away_player1_id, l.away_player2_id].filter(Boolean).sort().join(',');
+      if (hs && as) priorDoublesOpp.add(hs + '|' + as);
+    }
+  }
+
+  const usedAway = new Set<string>();
+  for (const l of roundLines) {
+    if (l.away_player1_id) usedAway.add(l.away_player1_id);
+    if (l.away_player2_id) usedAway.add(l.away_player2_id);
+  }
+  const chooseAway = (priorCount: Map<string, number>, need: number) =>
+    activeAway
+      .filter(r => !usedAway.has(r.id))
+      .sort(
+        (p, q) =>
+          (priorCount.get(p.id) ?? 0) - (priorCount.get(q.id) ?? 0) ||
+          ladA(p.id) - ladA(q.id)
+      )
+      .slice(0, need)
+      .sort((p, q) => ladA(p.id) - ladA(q.id))
+      .map(r => r.id);
+
+  const byLine = (a: AssignLine, b: AssignLine) => a.line_number - b.line_number;
+  const singlesLines = roundLines.filter(l => l.line_type === 'singles').sort(byLine);
+  const doublesLines = roundLines.filter(l => l.line_type === 'doubles').sort(byLine);
+
+  // 3. Away singles — choose by balance, then pair to courts avoiding rematches.
+  const awayAssign = new Map<string, [string | null, string | null]>();
+  const emptyASingles = singlesLines.filter(l => !l.away_player1_id);
+  const chosenS = chooseAway(priorAwayS, emptyASingles.length);
+  chosenS.forEach(id => usedAway.add(id));
+  const pairedS = assignAvoiding(
+    emptyASingles.map(l => homeOf(l)[0]),
+    chosenS,
+    (hid, aid) => !!hid && priorSinglesOpp.has(hid + '|' + aid)
+  );
+  emptyASingles.forEach((l, i) => {
+    if (pairedS[i]) awayAssign.set(l.id, [pairedS[i], null]);
+  });
+
+  // 4. Away doubles — choose by balance, form pairs, assign avoiding rematches.
+  const emptyADoubles = doublesLines.filter(l => !l.away_player1_id || !l.away_player2_id);
+  const chosenD = chooseAway(priorAwayD, emptyADoubles.length * 2);
+  chosenD.forEach(id => usedAway.add(id));
+  const awayPairs: Array<[string | null, string | null]> = emptyADoubles.map((_, i) => [
+    chosenD[i * 2] ?? null,
+    chosenD[i * 2 + 1] ?? null,
+  ]);
+  const pairedD = assignAvoiding(
+    emptyADoubles.map(l => {
+      const [h1, h2] = homeOf(l);
+      return [h1, h2].filter(Boolean).sort().join(',');
+    }),
+    awayPairs,
+    (hset, apair) => {
+      const aset = apair.filter(Boolean).sort().join(',');
+      return !!hset && !!aset && priorDoublesOpp.has(hset + '|' + aset);
+    }
+  );
+  emptyADoubles.forEach((l, i) => {
+    if (pairedD[i]) awayAssign.set(l.id, pairedD[i] as [string | null, string | null]);
+  });
+
+  // 5. Merge home + away into patches.
   const patches = [];
   for (const l of roundLines) {
     const h = homePlan.get(l.id);
-    const aw = awayPlan.get(l.id);
-    if (!h && !aw) continue;
+    const a = awayAssign.get(l.id);
+    if (!h && !a) continue;
     patches.push({
       id: l.id,
       home_player1_id: h ? h[0] : l.home_player1_id,
       home_player2_id: h ? h[1] : l.home_player2_id,
-      away_player1_id: aw ? aw[0] : l.away_player1_id,
-      away_player2_id: aw ? aw[1] : l.away_player2_id,
+      away_player1_id: a ? a[0] : l.away_player1_id,
+      away_player2_id: a ? a[1] : l.away_player2_id,
     });
   }
   return patches;
