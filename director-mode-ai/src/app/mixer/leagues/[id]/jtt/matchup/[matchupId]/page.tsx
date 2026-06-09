@@ -233,20 +233,37 @@ export default function MatchupFacilitatorPage() {
 
   const clearRoundAssignments = async (round: number) => {
     const roundLines = lines.filter(l => l.round_number === round);
-    const supabase = createClient();
-    await Promise.all(
-      roundLines.map(l =>
-        supabase
-          .from('league_matchup_lines')
-          .update({
-            home_player1_id: null,
-            home_player2_id: null,
-            away_player1_id: null,
-            away_player2_id: null,
-          })
-          .eq('id', l.id)
-      )
+    const assigned = roundLines.filter(
+      l =>
+        l.home_player1_id || l.home_player2_id || l.away_player1_id || l.away_player2_id
     );
+    if (assigned.length === 0) return; // nothing to clear
+    const supabase = createClient();
+    // One batched write; .select() back so a 0-row result (RLS/permission block)
+    // surfaces instead of silently doing nothing.
+    const { data, error } = await supabase
+      .from('league_matchup_lines')
+      .update({
+        home_player1_id: null,
+        home_player2_id: null,
+        away_player1_id: null,
+        away_player2_id: null,
+      })
+      .in(
+        'id',
+        roundLines.map(l => l.id)
+      )
+      .select('id');
+    if (error) {
+      alert(`Couldn’t clear players: ${error.message}`);
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert(
+        'Couldn’t clear players — you may not have edit permission on this league (run the coach-access SQL) or you’re signed out.'
+      );
+      return;
+    }
     fetchAll({ silent: true });
   };
 
