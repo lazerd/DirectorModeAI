@@ -93,8 +93,10 @@ export default function MatchupFacilitatorPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
 
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
+    // Silent refresh keeps the page mounted (no spinner) so entering a score
+    // on one court never wipes what you're typing on another.
+    if (!opts?.silent) setLoading(true);
     const supabase = createClient();
     const { data: m, error: mErr } = await supabase
       .from('league_team_matchups')
@@ -226,7 +228,7 @@ export default function MatchupFacilitatorPage() {
           .eq('id', p.id)
       )
     );
-    fetchAll();
+    fetchAll({ silent: true });
   };
 
   const clearRoundAssignments = async (round: number) => {
@@ -245,7 +247,7 @@ export default function MatchupFacilitatorPage() {
           .eq('id', l.id)
       )
     );
-    fetchAll();
+    fetchAll({ silent: true });
   };
 
   const toggleCheckin = async (rosterId: string) => {
@@ -331,7 +333,7 @@ export default function MatchupFacilitatorPage() {
           .eq('id', u.id)
       )
     );
-    fetchAll();
+    fetchAll({ silent: true });
   };
 
   const nextLineNumber = () =>
@@ -369,7 +371,7 @@ export default function MatchupFacilitatorPage() {
       );
       return;
     }
-    await fetchAll();
+    await fetchAll({ silent: true });
     if (availableHome.length && availableAway.length) await autoAssignRound(nextRound);
   };
 
@@ -389,7 +391,7 @@ export default function MatchupFacilitatorPage() {
       .from('league_matchup_lines')
       .delete()
       .in('id', roundLines.map(l => l.id));
-    fetchAll();
+    fetchAll({ silent: true });
   };
 
   const addCourtToRound = async (round: number) => {
@@ -404,13 +406,13 @@ export default function MatchupFacilitatorPage() {
       alert(`Couldn’t add court: ${insErr.message}`);
       return;
     }
-    fetchAll();
+    fetchAll({ silent: true });
   };
 
   const removeLine = async (lineId: string) => {
     const supabase = createClient();
     await supabase.from('league_matchup_lines').delete().eq('id', lineId);
-    fetchAll();
+    fetchAll({ silent: true });
   };
 
   // Set a single court's line type. Switching to singles clears the 2nd players.
@@ -422,7 +424,7 @@ export default function MatchupFacilitatorPage() {
         ? { line_type: type, home_player2_id: null, away_player2_id: null }
         : { line_type: type };
     await supabase.from('league_matchup_lines').update(patch).eq('id', line.id);
-    fetchAll();
+    fetchAll({ silent: true });
   };
 
   // Bulk-set a round's split: first `singlesCount` courts singles, rest doubles.
@@ -443,7 +445,7 @@ export default function MatchupFacilitatorPage() {
         return supabase.from('league_matchup_lines').update(patch).eq('id', l.id);
       })
     );
-    fetchAll();
+    fetchAll({ silent: true });
   };
 
   // Let the optimizer pick the split for this round given courts + attendance.
@@ -454,22 +456,31 @@ export default function MatchupFacilitatorPage() {
   };
 
   useEffect(() => {
-    fetchAll();
+    fetchAll({ silent: true });
   }, [fetchAll]);
 
   const updateLine = async (lineId: string, patch: Partial<Line>) => {
     setSaving(lineId);
     const supabase = createClient();
-    const { error: updErr } = await supabase
+    // .select() so we can tell a real save from a silent 0-row no-op (e.g. RLS
+    // blocking the write returns success with no rows updated).
+    const { data, error: updErr } = await supabase
       .from('league_matchup_lines')
       .update(patch)
-      .eq('id', lineId);
+      .eq('id', lineId)
+      .select('id');
     setSaving(null);
     if (updErr) {
-      alert(`Failed: ${updErr.message}`);
+      alert(`Couldn’t save: ${updErr.message}`);
       return;
     }
-    fetchAll();
+    if (!data || data.length === 0) {
+      alert(
+        'Score didn’t save — you may not have permission on this league, or you’re signed out. Try refreshing/re-logging in.'
+      );
+      return;
+    }
+    fetchAll({ silent: true });
   };
 
   if (loading) {
@@ -600,7 +611,7 @@ export default function MatchupFacilitatorPage() {
                   .from('league_team_matchups')
                   .update({ courts_override: v })
                   .eq('id', matchupId);
-                fetchAll();
+                fetchAll({ silent: true });
               }}
               defaultCourts={homeClub.courts_available}
             />
@@ -843,21 +854,19 @@ function LineEditor({
   saving: boolean;
 }) {
   const [score, setScore] = useState(line.score || '');
-  const [status, setStatus] = useState(line.status);
+  const [winner, setWinner] = useState<'home' | 'away' | null>(line.winner);
 
   const isDoubles = line.line_type === 'doubles';
 
-  const submit = () => {
+  // Unsaved if the local score or winner differs from what's stored.
+  const dirty =
+    (score.trim() || null) !== (line.score || null) || winner !== line.winner;
+
+  const save = () => {
     onUpdate({
       score: score.trim() || null,
-      status,
-    });
-  };
-
-  const setWinner = (winner: 'home' | 'away' | null) => {
-    onUpdate({
       winner,
-      status: winner ? 'completed' : 'pending',
+      status: winner ? 'completed' : score.trim() ? 'in_progress' : 'pending',
     });
   };
 
@@ -955,20 +964,18 @@ function LineEditor({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2 items-center">
+      <div className="flex flex-wrap items-center gap-2">
         <input
           value={score}
           onChange={e => setScore(e.target.value)}
-          onBlur={submit}
           placeholder="Score, e.g. 6-3, 6-4"
-          className="px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900"
+          className="flex-1 min-w-[140px] px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900"
         />
         <div className="flex gap-1">
           <button
-            onClick={() => setWinner('away')}
-            disabled={saving}
+            onClick={() => setWinner(winner === 'away' ? null : 'away')}
             className={`px-3 py-2 rounded-md text-sm font-medium ${
-              line.winner === 'away'
+              winner === 'away'
                 ? 'bg-orange-500 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
@@ -976,10 +983,9 @@ function LineEditor({
             {awayClub.short_code} won
           </button>
           <button
-            onClick={() => setWinner('home')}
-            disabled={saving}
+            onClick={() => setWinner(winner === 'home' ? null : 'home')}
             className={`px-3 py-2 rounded-md text-sm font-medium ${
-              line.winner === 'home'
+              winner === 'home'
                 ? 'bg-orange-500 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
@@ -987,15 +993,25 @@ function LineEditor({
             {homeClub.short_code} won
           </button>
         </div>
-        {line.winner && (
-          <button
-            onClick={() => setWinner(null)}
-            className="text-gray-400 hover:text-red-600 p-2"
-            title="Clear result"
-          >
-            <Trash2 size={16} />
-          </button>
-        )}
+        {/* Per-court Save: writes score + winner together. */}
+        <button
+          onClick={save}
+          disabled={saving || !dirty}
+          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold ${
+            dirty
+              ? 'bg-green-600 text-white hover:bg-green-700'
+              : 'bg-gray-100 text-gray-400'
+          } disabled:opacity-60`}
+        >
+          {saving ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : dirty ? (
+            <Save size={14} />
+          ) : (
+            <Check size={14} />
+          )}
+          {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+        </button>
       </div>
     </div>
   );
