@@ -415,6 +415,46 @@ export default function MatchupFacilitatorPage() {
     fetchAll({ silent: true });
   };
 
+  // Changing "courts in use" resizes every not-yet-scored round to N courts:
+  // add singles courts to grow, drop trailing courts to shrink. Rounds that
+  // already have a score are left untouched so results are never lost.
+  const setCourtsInUse = async (n: number) => {
+    const supabase = createClient();
+    await supabase
+      .from('league_team_matchups')
+      .update({ courts_override: n })
+      .eq('id', matchupId);
+    const inserts: Array<{
+      matchup_id: string;
+      round_number: number;
+      line_number: number;
+      line_type: 'singles';
+    }> = [];
+    const deleteIds: string[] = [];
+    let counter = nextLineNumber();
+    for (const r of [...new Set(lines.map(l => l.round_number))]) {
+      const rl = lines
+        .filter(l => l.round_number === r)
+        .sort((a, b) => a.line_number - b.line_number);
+      if (rl.some(l => l.winner || l.score)) continue; // don't disturb a scored round
+      if (n > rl.length) {
+        for (let i = 0; i < n - rl.length; i++)
+          inserts.push({
+            matchup_id: matchupId,
+            round_number: r,
+            line_number: counter++,
+            line_type: 'singles',
+          });
+      } else if (n < rl.length) {
+        rl.slice(n).forEach(l => deleteIds.push(l.id));
+      }
+    }
+    if (deleteIds.length)
+      await supabase.from('league_matchup_lines').delete().in('id', deleteIds);
+    if (inserts.length) await supabase.from('league_matchup_lines').insert(inserts);
+    fetchAll({ silent: true });
+  };
+
   // Set a single court's line type. Switching to singles clears the 2nd players.
   const setLineType = async (line: Line, type: 'singles' | 'doubles') => {
     if (line.line_type === type) return;
@@ -605,19 +645,12 @@ export default function MatchupFacilitatorPage() {
           <div className="flex flex-col gap-2">
             <CourtsOverrideInput
               value={matchup.courts_override}
-              onSet={async v => {
-                const supabase = createClient();
-                await supabase
-                  .from('league_team_matchups')
-                  .update({ courts_override: v })
-                  .eq('id', matchupId);
-                fetchAll({ silent: true });
-              }}
+              onSet={v => setCourtsInUse(v ?? homeClub.courts_available)}
               defaultCourts={homeClub.courts_available}
             />
             <p className="text-xs text-gray-400 text-right">
-              New rounds start with {courtsForThisMatchup} court
-              {courtsForThisMatchup === 1 ? '' : 's'}.
+              Resizes the current round to {courtsForThisMatchup} court
+              {courtsForThisMatchup === 1 ? '' : 's'} (scored rounds are left as-is).
             </p>
           </div>
         </div>
