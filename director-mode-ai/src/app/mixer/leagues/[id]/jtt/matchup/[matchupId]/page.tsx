@@ -855,6 +855,7 @@ function LineEditor({
 }) {
   const [score, setScore] = useState(line.score || '');
   const [winner, setWinner] = useState<'home' | 'away' | null>(line.winner);
+  const [editing, setEditing] = useState(false);
 
   const isDoubles = line.line_type === 'doubles';
 
@@ -862,13 +863,31 @@ function LineEditor({
   const dirty =
     (score.trim() || null) !== (line.score || null) || winner !== line.winner;
 
+  // A saved result collapses to a read-only summary until "Edit score" is tapped.
+  const hasResult = !!line.score || !!line.winner;
+  const locked = hasResult && !editing && !dirty;
+
   const save = () => {
     onUpdate({
       score: score.trim() || null,
       winner,
       status: winner ? 'completed' : score.trim() ? 'in_progress' : 'pending',
     });
+    setEditing(false);
   };
+
+  const cancelEdit = () => {
+    setScore(line.score || '');
+    setWinner(line.winner);
+    setEditing(false);
+  };
+
+  const winnerLabel =
+    line.winner === 'home'
+      ? `${homeClub.short_code} won`
+      : line.winner === 'away'
+      ? `${awayClub.short_code} won`
+      : 'Scored';
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4">
@@ -964,55 +983,83 @@ function LineEditor({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          value={score}
-          onChange={e => setScore(e.target.value)}
-          placeholder="Score, e.g. 6-3, 6-4"
-          className="flex-1 min-w-[140px] px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900"
-        />
-        <div className="flex gap-1">
+      {locked ? (
+        // Saved result — read-only summary with an Edit link to redo it.
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm">
+            <span className="font-semibold text-gray-900">{winnerLabel}</span>
+            {line.score && <span className="text-gray-600 ml-2">{line.score}</span>}
+          </div>
           <button
-            onClick={() => setWinner(winner === 'away' ? null : 'away')}
-            className={`px-3 py-2 rounded-md text-sm font-medium ${
-              winner === 'away'
-                ? 'bg-orange-500 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
+            onClick={() => setEditing(true)}
+            className="text-xs text-orange-600 hover:text-orange-700 underline"
           >
-            {awayClub.short_code} won
-          </button>
-          <button
-            onClick={() => setWinner(winner === 'home' ? null : 'home')}
-            className={`px-3 py-2 rounded-md text-sm font-medium ${
-              winner === 'home'
-                ? 'bg-orange-500 text-white'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-          >
-            {homeClub.short_code} won
+            Edit score
           </button>
         </div>
-        {/* Per-court Save: writes score + winner together. */}
-        <button
-          onClick={save}
-          disabled={saving || !dirty}
-          className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold ${
-            dirty
-              ? 'bg-green-600 text-white hover:bg-green-700'
-              : 'bg-gray-100 text-gray-400'
-          } disabled:opacity-60`}
-        >
-          {saving ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : dirty ? (
-            <Save size={14} />
-          ) : (
-            <Check size={14} />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={score}
+              onChange={e => setScore(e.target.value)}
+              placeholder="Score, e.g. 6-3, 6-4"
+              className="flex-1 min-w-[140px] px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-900"
+            />
+            <div className="flex gap-1">
+              <button
+                onClick={() => setWinner(winner === 'away' ? null : 'away')}
+                className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  winner === 'away'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {awayClub.short_code} won
+              </button>
+              <button
+                onClick={() => setWinner(winner === 'home' ? null : 'home')}
+                className={`px-3 py-2 rounded-md text-sm font-medium ${
+                  winner === 'home'
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+              >
+                {homeClub.short_code} won
+              </button>
+            </div>
+            {/* Per-court Save: writes score + winner together. */}
+            <button
+              onClick={save}
+              disabled={saving || !dirty}
+              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold ${
+                dirty
+                  ? 'bg-green-600 text-white hover:bg-green-700'
+                  : 'bg-gray-100 text-gray-400'
+              } disabled:opacity-60`}
+            >
+              {saving ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : dirty ? (
+                <Save size={14} />
+              ) : (
+                <Check size={14} />
+              )}
+              {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+            </button>
+          </div>
+          {hasResult && editing && (
+            <div className="mt-1.5 text-right">
+              <button
+                onClick={cancelEdit}
+                className="text-xs text-gray-500 hover:text-gray-800"
+              >
+                Cancel
+              </button>
+            </div>
           )}
-          {saving ? 'Saving…' : dirty ? 'Save' : 'Saved'}
-        </button>
-      </div>
+        </>
+      )}
     </div>
   );
 }
