@@ -453,9 +453,10 @@ export default function MatchupFacilitatorPage() {
             <div className="text-sm text-gray-600 mb-1">
               <span className="font-medium text-gray-900">{courtsForThisMatchup}</span>{' '}
               courts at {homeClub.name}
-              {matchup.courts_override !== null && (
-                <span className="text-xs text-orange-600 ml-2">(override for today)</span>
-              )}
+              {matchup.courts_override !== null &&
+                matchup.courts_override !== homeClub.courts_available && (
+                  <span className="text-xs text-orange-600 ml-2">(override for today)</span>
+                )}
             </div>
             <div className="text-sm text-gray-600">
               Playing today:{' '}
@@ -828,53 +829,38 @@ function CourtsOverrideInput({
   onSet: (v: number | null) => void;
   defaultCourts: number;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState<string>(value?.toString() ?? '');
-
-  if (!editing) {
-    return (
-      <button
-        onClick={() => {
-          setDraft(value?.toString() ?? '');
-          setEditing(true);
-        }}
-        className="text-xs text-gray-500 hover:text-gray-800 underline"
-      >
-        {value === null ? `Override courts (default ${defaultCourts})` : 'Edit court override'}
-      </button>
-    );
-  }
+  const MAX = 20;
+  // Effective courts in use = explicit override if set, otherwise the club default.
+  const current = value ?? defaultCourts;
+  const step = (delta: number) => {
+    const next = Math.max(0, Math.min(MAX, current + delta));
+    if (next !== current) onSet(next);
+  };
 
   return (
-    <div className="flex items-center gap-2">
-      <input
-        type="number"
-        min={0}
-        max={20}
-        value={draft}
-        onChange={e => setDraft(e.target.value)}
-        placeholder={`${defaultCourts}`}
-        className="w-16 px-2 py-1 text-sm border border-gray-300 rounded text-gray-900"
-      />
-      <button
-        onClick={() => {
-          const parsed = draft === '' ? null : parseInt(draft, 10);
-          onSet(Number.isNaN(parsed) ? null : parsed);
-          setEditing(false);
-        }}
-        className="text-xs px-2 py-1 bg-gray-900 text-white rounded"
-      >
-        Set
-      </button>
-      <button
-        onClick={() => {
-          onSet(null);
-          setEditing(false);
-        }}
-        className="text-xs text-gray-500"
-      >
-        Reset
-      </button>
+    <div className="flex flex-col items-end gap-1">
+      <span className="text-xs text-gray-600">Number of courts in use for the match</span>
+      <div className="flex items-center gap-1">
+        <button
+          onClick={() => step(-1)}
+          disabled={current <= 0}
+          className="p-1.5 border border-gray-300 rounded-md text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+          title="One fewer court"
+        >
+          <ArrowDown size={16} />
+        </button>
+        <span className="w-10 text-center text-xl font-semibold text-gray-900 tabular-nums">
+          {current}
+        </span>
+        <button
+          onClick={() => step(1)}
+          disabled={current >= MAX}
+          className="p-1.5 border border-gray-300 rounded-md text-gray-600 hover:bg-gray-50 disabled:opacity-30"
+          title="One more court"
+        >
+          <ArrowUp size={16} />
+        </button>
+      </div>
     </div>
   );
 }
