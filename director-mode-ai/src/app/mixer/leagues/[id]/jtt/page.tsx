@@ -121,9 +121,11 @@ export default function JTTLeaguePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
-    setLoading(true);
+    // Silent refresh skips the full-page spinner so the tab content stays
+    // mounted (preserves scroll position after an in-place edit).
+    if (!opts?.silent) setLoading(true);
     const supabase = createClient();
     const { data: leagueRow, error: lErr } = await supabase
       .from('leagues')
@@ -271,7 +273,7 @@ export default function JTTLeaguePage() {
           divisions={divisions}
           matchups={matchups}
           lines={lines}
-          onRefresh={fetchAll}
+          onRefresh={() => fetchAll({ silent: true })}
         />
       )}
 
@@ -284,7 +286,7 @@ export default function JTTLeaguePage() {
           rosters={rosters}
           matchups={matchups}
           lines={lines}
-          onRefresh={fetchAll}
+          onRefresh={() => fetchAll({ silent: true })}
         />
       )}
 
@@ -304,7 +306,7 @@ export default function JTTLeaguePage() {
         <SettingsTab
           league={league}
           clubs={clubs}
-          onRefresh={fetchAll}
+          onRefresh={() => fetchAll({ silent: true })}
         />
       )}
     </div>

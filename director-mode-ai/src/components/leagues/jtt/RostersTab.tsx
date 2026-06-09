@@ -1,16 +1,32 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   UserPlus,
   Trash2,
   X,
   Save,
-  ArrowUp,
-  ArrowDown,
   Shuffle,
   Sparkles,
+  GripVertical,
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { createClient } from '@/lib/supabase/client';
 import type {
   JTTClub,
@@ -20,7 +36,7 @@ import type {
   JTTLine,
   JTTMatchup,
 } from '@/app/mixer/leagues/[id]/jtt/page';
-import { DAY_OF_WEEK_LABELS, recomputeLadder } from '@/lib/jtt';
+import { DAY_OF_WEEK_LABELS } from '@/lib/jtt';
 
 type Props = {
   leagueId: string;
@@ -136,32 +152,6 @@ export default function RostersTab({
     return acc;
   }, [lines]);
 
-  const [reladdering, setReladdering] = useState<string | null>(null);
-
-  const reladder = async (divisionId: string, clubId: string) => {
-    const teamRosters = rostersFor(divisionId, clubId);
-    if (teamRosters.length === 0) return;
-    const divisionLines = lines.filter(l =>
-      matchups.some(m => m.id === l.matchup_id && m.division_id === divisionId)
-    );
-    const updates = recomputeLadder(teamRosters, divisionLines);
-    if (updates.length === 0) return;
-
-    setReladdering(`${divisionId}:${clubId}`);
-    const supabase = createClient();
-    // Apply in parallel — positions are independent
-    await Promise.all(
-      updates.map(u =>
-        supabase
-          .from('league_team_rosters')
-          .update({ ladder_position: u.newPosition })
-          .eq('id', u.rosterId)
-      )
-    );
-    setReladdering(null);
-    onRefresh();
-  };
-
   const openAdd = (divisionId: string, clubId: string) => {
     setAdding({ divisionId, clubId });
     setForm({
@@ -216,29 +206,6 @@ export default function RostersTab({
     const supabase = createClient();
     await supabase.from('league_team_rosters').delete().eq('id', rosterId);
     onRefresh();
-  };
-
-  const swapLadder = async (a: JTTRoster, b: JTTRoster) => {
-    const supabase = createClient();
-    await Promise.all([
-      supabase
-        .from('league_team_rosters')
-        .update({ ladder_position: b.ladder_position })
-        .eq('id', a.id),
-      supabase
-        .from('league_team_rosters')
-        .update({ ladder_position: a.ladder_position })
-        .eq('id', b.id),
-    ]);
-    onRefresh();
-  };
-
-  const move = (divisionId: string, clubId: string, rosterId: string, dir: -1 | 1) => {
-    const list = rostersFor(divisionId, clubId);
-    const idx = list.findIndex(r => r.id === rosterId);
-    const other = list[idx + dir];
-    if (!other) return;
-    swapLadder(list[idx], other);
   };
 
   if (divisions.length === 0) {
@@ -324,28 +291,13 @@ export default function RostersTab({
                           ({teamRosters.length} {teamRosters.length === 1 ? 'player' : 'players'})
                         </span>
                       </h4>
-                      <div className="flex items-center gap-3">
-                        {teamRosters.length > 1 && (
-                          <button
-                            onClick={() => reladder(division.id, club.id)}
-                            disabled={reladdering === `${division.id}:${club.id}`}
-                            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800 disabled:opacity-50"
-                            title="Reorder by current W-L"
-                          >
-                            <Shuffle size={13} />
-                            {reladdering === `${division.id}:${club.id}`
-                              ? 'Reordering...'
-                              : 'Re-ladder by W-L'}
-                          </button>
-                        )}
-                        <button
-                          onClick={() => openAdd(division.id, club.id)}
-                          className="inline-flex items-center gap-1 text-sm text-orange-600 hover:text-orange-700"
-                        >
-                          <UserPlus size={14} />
-                          Add player
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => openAdd(division.id, club.id)}
+                        className="inline-flex items-center gap-1 text-sm text-orange-600 hover:text-orange-700"
+                      >
+                        <UserPlus size={14} />
+                        Add player
+                      </button>
                     </div>
 
                     {teamRosters.length === 0 && !isAdding && (
@@ -353,51 +305,11 @@ export default function RostersTab({
                     )}
 
                     {teamRosters.length > 0 && (
-                      <ol className="divide-y divide-gray-100 border border-gray-100 rounded-md">
-                        {teamRosters.map((r, i) => {
-                          const rec = recordsByRoster.get(r.id);
-                          return (
-                          <li key={r.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                            <span className="w-6 text-right text-gray-400">{i + 1}.</span>
-                            <span className="flex-1 text-gray-900">{r.player_name}</span>
-                            {rec && (rec.wins + rec.losses > 0) && (
-                              <span className="text-xs font-medium text-gray-700">
-                                {rec.wins}–{rec.losses}
-                              </span>
-                            )}
-                            {r.utr && (
-                              <span className="text-xs text-gray-500">UTR {r.utr}</span>
-                            )}
-                            {r.ntrp && (
-                              <span className="text-xs text-gray-500">NTRP {r.ntrp}</span>
-                            )}
-                            <button
-                              onClick={() => move(division.id, club.id, r.id, -1)}
-                              disabled={i === 0}
-                              className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
-                              title="Move up"
-                            >
-                              <ArrowUp size={14} />
-                            </button>
-                            <button
-                              onClick={() => move(division.id, club.id, r.id, 1)}
-                              disabled={i === teamRosters.length - 1}
-                              className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
-                              title="Move down"
-                            >
-                              <ArrowDown size={14} />
-                            </button>
-                            <button
-                              onClick={() => remove(r.id)}
-                              className="text-gray-400 hover:text-red-600"
-                              title="Remove"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </li>
-                          );
-                        })}
-                      </ol>
+                      <SortableTeamRoster
+                        teamRosters={teamRosters}
+                        records={recordsByRoster}
+                        onRemove={remove}
+                      />
                     )}
 
                     {isAdding && (
@@ -481,6 +393,179 @@ export default function RostersTab({
           </section>
         );
       })}
+    </div>
+  );
+}
+
+type TeamRecord = { wins: number; losses: number };
+
+/**
+ * One club's roster in one division: drag-to-reorder tiles + a Save button.
+ * Reordering is local (no DB write / no refetch) until "Save order" is clicked,
+ * so the page never jumps. Resyncs from props only when the set of players
+ * changes (add/remove), so an unsaved drag is never clobbered.
+ */
+function SortableTeamRoster({
+  teamRosters,
+  records,
+  onRemove,
+}: {
+  teamRosters: JTTRoster[];
+  records: Map<string, TeamRecord>;
+  onRemove: (rosterId: string) => void;
+}) {
+  const [items, setItems] = useState<JTTRoster[]>(teamRosters);
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  // Resync from props only when the player set changes (add/remove). Identity
+  // of teamRosters changes every render, so key off the sorted id list.
+  const idSig = [...teamRosters].map(r => r.id).sort().join(',');
+  useEffect(() => {
+    setItems(teamRosters);
+    setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [idSig]);
+
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = items.findIndex(r => r.id === active.id);
+    const newIndex = items.findIndex(r => r.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    setItems(arrayMove(items, oldIndex, newIndex));
+    setDirty(true);
+  };
+
+  const sortByRecord = () => {
+    const sorted = [...items].sort((a, b) => {
+      const ra = records.get(a.id) || { wins: 0, losses: 0 };
+      const rb = records.get(b.id) || { wins: 0, losses: 0 };
+      const diff = rb.wins - rb.losses - (ra.wins - ra.losses);
+      if (diff !== 0) return diff;
+      return rb.wins - ra.wins;
+    });
+    setItems(sorted);
+    setDirty(true);
+  };
+
+  const save = async () => {
+    setSaving(true);
+    const supabase = createClient();
+    const changed = items
+      .map((r, i) => ({ r, pos: i + 1 }))
+      .filter(({ r, pos }) => r.ladder_position !== pos);
+    await Promise.all(
+      changed.map(({ r, pos }) =>
+        supabase.from('league_team_rosters').update({ ladder_position: pos }).eq('id', r.id)
+      )
+    );
+    // Reflect saved positions locally so the dirty diff is clean afterward.
+    setItems(prev => prev.map((r, i) => ({ ...r, ladder_position: i + 1 })));
+    setSaving(false);
+    setDirty(false);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        {items.length > 1 ? (
+          <button
+            onClick={sortByRecord}
+            className="inline-flex items-center gap-1 text-xs text-gray-500 hover:text-gray-800"
+            title="Reorder by current W-L (review, then Save)"
+          >
+            <Shuffle size={13} />
+            Sort by W-L
+          </button>
+        ) : (
+          <span />
+        )}
+        {dirty && (
+          <button
+            onClick={save}
+            disabled={saving}
+            className="inline-flex items-center gap-1.5 px-3 py-1 bg-orange-500 text-white rounded-md text-xs font-medium hover:bg-orange-600 disabled:opacity-50"
+          >
+            <Save size={13} />
+            {saving ? 'Saving…' : 'Save order'}
+          </button>
+        )}
+      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <SortableContext items={items} strategy={verticalListSortingStrategy}>
+          <div className="space-y-1.5">
+            {items.map((r, i) => (
+              <SortableRosterTile
+                key={r.id}
+                roster={r}
+                index={i}
+                record={records.get(r.id)}
+                onRemove={() => onRemove(r.id)}
+              />
+            ))}
+          </div>
+        </SortableContext>
+      </DndContext>
+    </div>
+  );
+}
+
+function SortableRosterTile({
+  roster,
+  index,
+  record,
+  onRemove,
+}: {
+  roster: JTTRoster;
+  index: number;
+  record?: TeamRecord;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: roster.id,
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="flex items-center gap-2 px-2 py-2 text-sm bg-white border border-gray-200 rounded-lg"
+    >
+      <button
+        type="button"
+        {...listeners}
+        {...attributes}
+        className="cursor-grab active:cursor-grabbing touch-none p-1 text-gray-400 hover:text-gray-600"
+        title="Drag to reorder"
+      >
+        <GripVertical size={16} />
+      </button>
+      <span className="w-6 text-right text-gray-400">{index + 1}.</span>
+      <span className="flex-1 text-gray-900">{roster.player_name}</span>
+      {record && record.wins + record.losses > 0 && (
+        <span className="text-xs font-medium text-gray-700">
+          {record.wins}–{record.losses}
+        </span>
+      )}
+      {roster.utr && <span className="text-xs text-gray-500">UTR {roster.utr}</span>}
+      {roster.ntrp && <span className="text-xs text-gray-500">NTRP {roster.ntrp}</span>}
+      <button
+        onClick={onRemove}
+        className="text-gray-400 hover:text-red-600 p-1"
+        title="Remove"
+      >
+        <Trash2 size={14} />
+      </button>
     </div>
   );
 }
