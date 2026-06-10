@@ -129,7 +129,7 @@ export default function MatchConfirmEmailModal({ leagueId, matchupId, onClose }:
                 }}
                 rows={5}
                 placeholder="parent1@email.com, parent2@email.com"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono bg-white text-gray-900 placeholder-gray-400"
               />
               <p className="text-[11px] text-gray-400 mt-1">
                 Prefilled from each confirmed player&apos;s parent (or player) email. Comma or line separated.
@@ -143,7 +143,7 @@ export default function MatchConfirmEmailModal({ leagueId, matchupId, onClose }:
                 onChange={e => setNote(e.target.value)}
                 rows={3}
                 placeholder="Wear your team shirt and bring water!"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder-gray-400"
               />
             </div>
 

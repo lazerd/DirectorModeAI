@@ -136,7 +136,7 @@ export default function ResultsEmailModal({ leagueId, leagueName, matchups, line
                 <select
                   value={date}
                   onChange={e => setDate(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
                 >
                   {availableDates.map(d => (
                     <option key={d} value={d}>
@@ -158,7 +158,7 @@ export default function ResultsEmailModal({ leagueId, leagueName, matchups, line
                   }}
                   rows={4}
                   placeholder="coach1@club.com, coach2@club.com"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono bg-white text-gray-900 placeholder-gray-400"
                 />
                 <p className="text-[11px] text-gray-400 mt-1">
                   Prefilled from each club&apos;s contact email (Settings tab). Comma or line separated.
@@ -174,7 +174,7 @@ export default function ResultsEmailModal({ leagueId, leagueName, matchups, line
                   onChange={e => setNote(e.target.value)}
                   rows={3}
                   placeholder="Great matches today, everyone!"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder-gray-400"
                 />
               </div>
 
