@@ -18,8 +18,10 @@ export type ConfirmEmailInput = {
   endTime: string | null;
   homeClubName: string;
   awayClubName: string;
-  /** Confirmed players, in display order (e.g. ladder order, grouped by club). */
+  /** Available players (marked "Available" in the form), grouped by club. */
   confirmed: Array<{ name: string; clubName: string; clubShort: string }>;
+  /** Players who responded "Maybe" — listed as tentative, not core recipients. */
+  maybe?: string[];
   note?: string | null;
 };
 
@@ -103,8 +105,14 @@ export function buildJTTConfirmationEmail(input: ConfirmEmailInput): ConfirmEmai
         <div style="${styles.row}"><span style="${styles.label}">Location</span> ${esc(homeClubName)} (home courts)</div>
       </div>
 
-      <h2 style="${styles.h2}">Confirmed players (${confirmed.length})</h2>
-      ${confirmed.length === 0 ? '<p style="font-size:14px;color:#6b7280;">No players confirmed yet.</p>' : playersHtml}
+      <h2 style="${styles.h2}">Available players (${confirmed.length})</h2>
+      ${confirmed.length === 0 ? '<p style="font-size:14px;color:#6b7280;">No players have marked themselves available yet.</p>' : playersHtml}
+
+      ${input.maybe && input.maybe.length > 0 ? `
+      <h2 style="${styles.h2}">Responded "Maybe" (${input.maybe.length})</h2>
+      <ul style="margin:0;padding-left:20px;">
+        ${input.maybe.map(n => `<li style="${styles.li}color:#6b7280;">${esc(n)}</li>`).join('')}
+      </ul>` : ''}
 
       <p style="font-size:12px;color:#9ca3af;margin-top:24px;border-top:1px solid #e5e7eb;padding-top:12px;">
         Please arrive 10–15 minutes early to warm up. Reply to this email if you can no longer make it.
@@ -119,10 +127,14 @@ export function buildJTTConfirmationEmail(input: ConfirmEmailInput): ConfirmEmai
   textLines.push(`Date: ${prettyDate}`);
   textLines.push(`Time: ${timeStr}`);
   textLines.push(`Location: ${homeClubName} (home courts)`, '');
-  textLines.push(`Confirmed players (${confirmed.length}):`);
+  textLines.push(`Available players (${confirmed.length}):`);
   for (const { clubName, players } of byClub.values()) {
     textLines.push(`  ${clubName}:`);
     players.forEach(p => textLines.push(`    - ${p}`));
+  }
+  if (input.maybe && input.maybe.length > 0) {
+    textLines.push('', `Responded "Maybe" (${input.maybe.length}):`);
+    input.maybe.forEach(n => textLines.push(`    - ${n}`));
   }
   textLines.push('', 'Please arrive 10–15 minutes early to warm up.');
 

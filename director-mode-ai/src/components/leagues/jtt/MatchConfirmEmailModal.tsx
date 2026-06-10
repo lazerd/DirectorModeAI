@@ -19,7 +19,8 @@ export default function MatchConfirmEmailModal({ leagueId, matchupId, onClose }:
   const [loading, setLoading] = useState(true);
   const [subject, setSubject] = useState('');
   const [html, setHtml] = useState('');
-  const [confirmedCount, setConfirmedCount] = useState<number | null>(null);
+  const [availableCount, setAvailableCount] = useState<number | null>(null);
+  const [maybeCount, setMaybeCount] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
 
   const [sending, setSending] = useState(false);
@@ -48,7 +49,8 @@ export default function MatchConfirmEmailModal({ leagueId, matchupId, onClose }:
         }
         setSubject(data.subject || '');
         setHtml(data.html || '');
-        setConfirmedCount(data.confirmedCount ?? null);
+        setAvailableCount(data.availableCount ?? null);
+        setMaybeCount(data.maybeCount ?? 0);
         if (!recipientsTouched) {
           setRecipientsText(
             (data.defaultRecipients as Recipient[] | undefined)?.map(r => r.email).join(', ') || ''
@@ -103,7 +105,7 @@ export default function MatchConfirmEmailModal({ leagueId, matchupId, onClose }:
       <div className="bg-white w-full sm:max-w-3xl sm:rounded-2xl shadow-xl flex flex-col max-h-screen sm:max-h-[92vh] overflow-hidden">
         <div className="flex items-center gap-2 px-4 sm:px-6 py-3 border-b border-gray-200">
           <Mail size={18} className="text-orange-600" />
-          <h2 className="font-semibold text-gray-900 flex-1">Email confirmed players</h2>
+          <h2 className="font-semibold text-gray-900 flex-1">Email available players</h2>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">
             <X size={18} />
           </button>
@@ -112,9 +114,9 @@ export default function MatchConfirmEmailModal({ leagueId, matchupId, onClose }:
         <div className="flex flex-col lg:flex-row flex-1 min-h-0">
           <div className="lg:w-80 shrink-0 border-b lg:border-b-0 lg:border-r border-gray-200 p-4 space-y-4 overflow-y-auto">
             <p className="text-sm text-gray-600">
-              {confirmedCount === null
-                ? 'Loading confirmed players…'
-                : `${confirmedCount} player${confirmedCount === 1 ? '' : 's'} confirmed (checked in) for this match.`}
+              {availableCount === null
+                ? 'Reading availability form…'
+                : `${availableCount} player${availableCount === 1 ? '' : 's'} marked Available in the RSVP form${maybeCount ? `, ${maybeCount} Maybe` : ''}.`}
             </p>
 
             <div>
@@ -133,7 +135,7 @@ export default function MatchConfirmEmailModal({ leagueId, matchupId, onClose }:
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono bg-white text-gray-900 placeholder-gray-400"
               />
               <p className="text-[11px] text-gray-400 mt-1">
-                Prefilled from each confirmed player&apos;s parent (or player) email. Comma or line separated.
+                Prefilled from the parent emails of players who marked Available in the RSVP form. Comma or line separated.
               </p>
             </div>
 

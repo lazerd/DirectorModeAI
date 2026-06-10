@@ -1,20 +1,26 @@
 /**
  * POST /api/leagues/[id]/jtt/matchup/[matchupId]/confirm-email
  *
- * Director-only. Builds a "you're confirmed for this match" email listing every
- * checked-in (confirmed) player for the matchup and confirming the date / time /
- * location, then previews or sends it to those players' parents.
+ * Director-only. Day-before match confirmation. Reads who marked themselves
+ * "Available" in the Sleepy Hollow availability form (Google Sheet) for this
+ * matchup's division + date, then previews or sends a confirmation email to
+ * those players' parents confirming date / time / host-club location.
+ *
+ * NOTE: source of truth is the availability FORM (RSVP), not day-of check-ins.
  *
  * Body: { mode: 'preview' | 'send', recipients?: string[], note?: string }
  *
- * preview → { subject, html, defaultRecipients: {email,name}[], confirmedCount }
+ * preview → { subject, html, defaultRecipients, availableCount, maybeCount }
  * send    → { sent, skipped, failed, total }
  */
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { buildJTTConfirmationEmail } from '@/lib/jttMatchEmail';
+import { fetchAvailability } from '@/lib/jttAvailability';
 import { sendBilledEmail, creditLimitResponse, CreditLimitError } from '@/lib/email';
+
+export const runtime = 'nodejs';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -36,7 +42,7 @@ export async function POST(
     const admin = getSupabaseAdmin();
     const { data: league } = await admin
       .from('leagues')
-      .select('id, name, director_id, format')
+      .select('id, name, director_id')
       .eq('id', leagueId)
       .maybeSingle();
     if (!league || (league as any).director_id !== user.id) {
@@ -54,10 +60,9 @@ export async function POST(
     }
     const m = matchup as any;
 
-    const [dRes, cRes, ciRes] = await Promise.all([
-      admin.from('league_divisions').select('id, name, start_time, end_time, league_id').eq('id', m.division_id).maybeSingle(),
+    const [dRes, cRes] = await Promise.all([
+      admin.from('league_divisions').select('id, name, short_code, start_time, end_time, league_id').eq('id', m.division_id).maybeSingle(),
       admin.from('league_clubs').select('id, name, short_code').in('id', [m.home_club_id, m.away_club_id]),
-      admin.from('league_matchup_checkins').select('roster_id').eq('matchup_id', matchupId),
     ]);
 
     const division = dRes.data as any;
@@ -67,63 +72,55 @@ export async function POST(
     const clubs = (cRes.data as Array<{ id: string; name: string; short_code: string }>) || [];
     const homeClub = clubs.find(c => c.id === m.home_club_id);
     const awayClub = clubs.find(c => c.id === m.away_club_id);
-    const clubById = new Map(clubs.map(c => [c.id, c]));
+    const shClub = clubs.find(c => c.short_code === 'SH');
 
-    const checkedInIds = ((ciRes.data as Array<{ roster_id: string }>) || []).map(x => x.roster_id);
-
-    let confirmedRosters: Array<{
-      id: string; player_name: string; club_id: string; ladder_position: number | null;
-      parent_email: string | null; parent_name: string | null; player_email: string | null;
-    }> = [];
-    if (checkedInIds.length > 0) {
-      const { data: rRes } = await admin
-        .from('league_team_rosters')
-        .select('id, player_name, club_id, ladder_position, parent_email, parent_name, player_email')
-        .in('id', checkedInIds);
-      confirmedRosters = (rRes as typeof confirmedRosters) || [];
+    // The availability form only covers Sleepy Hollow players.
+    if (!shClub) {
+      return NextResponse.json(
+        { error: 'This match doesn’t involve Sleepy Hollow. The availability form only covers SH players, so there’s no one to confirm here.' },
+        { status: 400 }
+      );
     }
 
-    // Order: home club first, then away; ladder order within each club.
-    const order = (clubId: string) => (clubId === m.home_club_id ? 0 : 1);
-    confirmedRosters.sort(
-      (a, b) =>
-        order(a.club_id) - order(b.club_id) ||
-        (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999) ||
-        a.player_name.localeCompare(b.player_name)
-    );
+    const matchDate = String(m.match_date).slice(0, 10);
 
-    const confirmed = confirmedRosters.map(r => ({
-      name: r.player_name,
-      clubName: clubById.get(r.club_id)?.name || '',
-      clubShort: clubById.get(r.club_id)?.short_code || '',
-    }));
+    // --- Read availability from the Google form/sheet ---
+    let available: Awaited<ReturnType<typeof fetchAvailability>> = [];
+    try {
+      const entries = await fetchAvailability(division.short_code, matchDate);
+      available = entries;
+    } catch (err: any) {
+      return NextResponse.json({ error: err?.message || 'Could not read the availability sheet.' }, { status: 502 });
+    }
+
+    const yes = available.filter(e => e.status === 'available');
+    const maybe = available.filter(e => e.status === 'maybe');
 
     const email = buildJTTConfirmationEmail({
       leagueName: (league as any).name,
       divisionName: division.name,
-      date: String(m.match_date).slice(0, 10),
+      date: matchDate,
       startTime: m.start_time || division.start_time || null,
       endTime: division.end_time || null,
       homeClubName: homeClub?.name || 'Home',
       awayClubName: awayClub?.name || 'Away',
-      confirmed,
+      confirmed: yes.map(e => ({ name: e.player_name, clubName: shClub.name, clubShort: 'SH' })),
+      maybe: maybe.map(e => e.player_name),
       note,
     });
 
-    // Recipients: parent_email (preferred) or player_email of each confirmed player.
-    const defaultRecipients = confirmedRosters
-      .map(r => {
-        const e = (r.parent_email || r.player_email || '').trim();
-        return e ? { email: e, name: r.parent_name || r.player_name } : null;
-      })
-      .filter((x): x is { email: string; name: string } => !!x && EMAIL_RE.test(x.email));
+    // Recipients: parent emails of AVAILABLE players (maybes are listed, not emailed).
+    const defaultRecipients = yes
+      .map(e => (e.parent_email && EMAIL_RE.test(e.parent_email.trim()) ? { email: e.parent_email.trim(), name: e.parent_name || e.player_name } : null))
+      .filter((x): x is { email: string; name: string } => !!x);
 
     if (mode === 'preview') {
       return NextResponse.json({
         subject: email.subject,
         html: email.html,
         defaultRecipients,
-        confirmedCount: confirmed.length,
+        availableCount: yes.length,
+        maybeCount: maybe.length,
       });
     }
 
@@ -134,7 +131,7 @@ export async function POST(
       .filter((e, i, arr) => EMAIL_RE.test(e) && arr.indexOf(e) === i);
 
     if (recipients.length === 0) {
-      return NextResponse.json({ error: 'No valid recipient emails. Confirmed players need a parent or player email on the roster.' }, { status: 400 });
+      return NextResponse.json({ error: 'No valid recipient emails among the available players. Check that their parent emails are filled in on the form.' }, { status: 400 });
     }
 
     const replyTo = user.email || undefined;

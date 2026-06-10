@@ -728,12 +728,11 @@ export default function MatchupFacilitatorPage() {
             </span>
             <button
               onClick={() => setConfirmEmailOpen(true)}
-              disabled={!hasCheckins}
-              title={hasCheckins ? 'Email all confirmed players' : 'Check in players first'}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-40"
+              title="Email a confirmation to players who marked Available in the RSVP form"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-orange-600 text-white hover:bg-orange-700"
             >
               <Mail size={13} />
-              Email confirmed players
+              Email available players
             </button>
           </div>
         </div>
