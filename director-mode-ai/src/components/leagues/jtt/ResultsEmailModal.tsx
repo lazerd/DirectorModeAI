@@ -136,6 +136,7 @@ export default function ResultsEmailModal({ leagueId, leagueName, matchups, line
                 <select
                   value={date}
                   onChange={e => setDate(e.target.value)}
+                  style={{ color: '#111827', backgroundColor: '#fff' }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900"
                 >
                   {availableDates.map(d => (
@@ -158,6 +159,7 @@ export default function ResultsEmailModal({ leagueId, leagueName, matchups, line
                   }}
                   rows={4}
                   placeholder="coach1@club.com, coach2@club.com"
+                  style={{ color: '#111827', backgroundColor: '#fff' }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono bg-white text-gray-900 placeholder-gray-400"
                 />
                 <p className="text-[11px] text-gray-400 mt-1">
@@ -174,6 +176,7 @@ export default function ResultsEmailModal({ leagueId, leagueName, matchups, line
                   onChange={e => setNote(e.target.value)}
                   rows={3}
                   placeholder="Great matches today, everyone!"
+                  style={{ color: '#111827', backgroundColor: '#fff' }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white text-gray-900 placeholder-gray-400"
                 />
               </div>
