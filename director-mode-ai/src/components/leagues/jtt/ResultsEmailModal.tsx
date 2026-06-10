@@ -33,6 +33,8 @@ export default function ResultsEmailModal({ leagueId, leagueName, matchups, line
 
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<string | null>(null);
+  const [savingDefaults, setSavingDefaults] = useState(false);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
 
   // (Re)load the preview whenever the date or note changes.
   useEffect(() => {
@@ -83,6 +85,30 @@ export default function ResultsEmailModal({ leagueId, leagueName, matchups, line
         .filter(Boolean),
     [recipientsText]
   );
+
+  const saveDefaults = async () => {
+    setSavingDefaults(true);
+    setSavedNote(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/leagues/${leagueId}/jtt/results-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'saveRecipients', recipients: parsedRecipients }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Could not save the default list.');
+        return;
+      }
+      setSavedNote(`Saved ${data.saved} recipient${data.saved === 1 ? '' : 's'} as the default for this league.`);
+      setRecipientsTouched(false);
+    } catch (e: any) {
+      setError(e?.message || 'Could not save the default list.');
+    } finally {
+      setSavingDefaults(false);
+    }
+  };
 
   const send = async () => {
     if (!date || parsedRecipients.length === 0) return;
@@ -162,9 +188,21 @@ export default function ResultsEmailModal({ leagueId, leagueName, matchups, line
                   style={{ color: '#111827', backgroundColor: '#fff' }}
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono bg-white text-gray-900 placeholder-gray-400"
                 />
-                <p className="text-[11px] text-gray-400 mt-1">
-                  Prefilled from each club&apos;s contact email (Settings tab). Comma or line separated.
-                </p>
+                <div className="flex items-center justify-between mt-1">
+                  <p className="text-[11px] text-gray-400">
+                    Comma or line separated. Saved per league + remembered on send.
+                  </p>
+                  <button
+                    onClick={saveDefaults}
+                    disabled={savingDefaults || parsedRecipients.length === 0}
+                    className="text-[11px] font-medium text-orange-600 hover:text-orange-700 disabled:opacity-40 whitespace-nowrap"
+                  >
+                    {savingDefaults ? 'Saving…' : 'Save as default'}
+                  </button>
+                </div>
+                {savedNote && (
+                  <p className="text-[11px] text-green-600 mt-1">{savedNote}</p>
+                )}
               </div>
 
               <div>

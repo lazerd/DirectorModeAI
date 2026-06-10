@@ -40,10 +40,12 @@ export async function POST(
     const { id: leagueId } = await params;
     const body = await request.json().catch(() => ({}));
     const date: string = String(body.date || '').slice(0, 10);
-    const mode: 'preview' | 'send' = body.mode === 'send' ? 'send' : 'preview';
+    const mode: 'preview' | 'send' | 'saveRecipients' =
+      body.mode === 'send' ? 'send' : body.mode === 'saveRecipients' ? 'saveRecipients' : 'preview';
     const note: string | null = typeof body.note === 'string' ? body.note.slice(0, 1000) : null;
 
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    // saveRecipients doesn't build an email, so it doesn't need a date.
+    if (mode !== 'saveRecipients' && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
       return NextResponse.json({ error: 'A valid date (YYYY-MM-DD) is required.' }, { status: 400 });
     }
 
@@ -63,6 +65,46 @@ export async function POST(
     }
     if ((league as any).format !== 'team') {
       return NextResponse.json({ error: 'Not a JTT (team-format) league.' }, { status: 400 });
+    }
+
+    const cleanEmails = (list: unknown): string[] =>
+      (Array.isArray(list) ? list : [])
+        .map(e => String(e).trim().toLowerCase())
+        .filter((e, i, arr) => EMAIL_RE.test(e) && arr.indexOf(e) === i);
+
+    // Persist the league's default recipient list. Degrades gracefully if the
+    // jtt_email_recipients column hasn't been added yet (pre-migration).
+    const persistRecipients = async (list: string[]) => {
+      const { error } = await admin
+        .from('leagues')
+        .update({ jtt_email_recipients: list })
+        .eq('id', leagueId);
+      return !error;
+    };
+
+    if (mode === 'saveRecipients') {
+      const list = cleanEmails(body.recipients);
+      const ok = await persistRecipients(list);
+      if (!ok) {
+        return NextResponse.json(
+          { error: 'Could not save — the saved-recipients column may not be set up yet.' },
+          { status: 500 }
+        );
+      }
+      return NextResponse.json({ saved: list.length });
+    }
+
+    // Read previously-saved recipients (graceful if column absent).
+    let savedRecipients: string[] = [];
+    {
+      const { data: lr, error: lrErr } = await admin
+        .from('leagues')
+        .select('jtt_email_recipients')
+        .eq('id', leagueId)
+        .maybeSingle();
+      if (!lrErr && lr && Array.isArray((lr as any).jtt_email_recipients)) {
+        savedRecipients = (lr as any).jtt_email_recipients as string[];
+      }
     }
 
     // --- Pull league data ---
@@ -103,9 +145,12 @@ export async function POST(
       note,
     });
 
-    const defaultRecipients = clubsRaw
-      .filter(c => c.contact_email && EMAIL_RE.test(c.contact_email))
-      .map(c => ({ email: c.contact_email as string, name: c.contact_name || c.name }));
+    // Prefer the saved list; fall back to each club's contact email.
+    const defaultRecipients = savedRecipients.length
+      ? savedRecipients.map(e => ({ email: e, name: e }))
+      : clubsRaw
+          .filter(c => c.contact_email && EMAIL_RE.test(c.contact_email))
+          .map(c => ({ email: c.contact_email as string, name: c.contact_name || c.name }));
 
     if (mode === 'preview') {
       return NextResponse.json({
@@ -118,13 +163,16 @@ export async function POST(
 
     // --- Send ---
     const requested: string[] = Array.isArray(body.recipients) ? body.recipients : [];
-    const recipients = (requested.length ? requested : defaultRecipients.map(r => r.email))
-      .map(e => String(e).trim().toLowerCase())
-      .filter((e, i, arr) => EMAIL_RE.test(e) && arr.indexOf(e) === i);
+    const recipients = requested.length
+      ? cleanEmails(requested)
+      : cleanEmails(defaultRecipients.map(r => r.email));
 
     if (recipients.length === 0) {
-      return NextResponse.json({ error: 'No valid recipient emails. Add coach emails on the Settings tab or enter them manually.' }, { status: 400 });
+      return NextResponse.json({ error: 'No valid recipient emails. Enter coach emails or save a default list.' }, { status: 400 });
     }
+
+    // Remember this list as the league default so it prefills next time.
+    await persistRecipients(recipients);
 
     const replyTo = user.email || undefined;
     let sent = 0, skipped = 0, failed = 0;
