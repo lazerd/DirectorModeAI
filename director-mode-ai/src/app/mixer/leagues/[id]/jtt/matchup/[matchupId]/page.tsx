@@ -18,9 +18,11 @@ import {
   Plus,
   Minus,
   Sparkles,
+  Mail,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { autoAssignRoundBalanced, optimizeLines } from '@/lib/jtt';
+import MatchConfirmEmailModal from '@/components/leagues/jtt/MatchConfirmEmailModal';
 
 type Club = {
   id: string;
@@ -98,6 +100,7 @@ export default function MatchupFacilitatorPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [confirmEmailOpen, setConfirmEmailOpen] = useState(false);
 
   const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
     // Silent refresh keeps the page mounted (no spinner) so entering a score
@@ -681,6 +684,13 @@ export default function MatchupFacilitatorPage() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+      {confirmEmailOpen && (
+        <MatchConfirmEmailModal
+          leagueId={id}
+          matchupId={matchupId}
+          onClose={() => setConfirmEmailOpen(false)}
+        />
+      )}
       <div className="flex items-center gap-3 mb-4">
         <Link href={`/mixer/leagues/${id}/jtt`} className="p-2 hover:bg-gray-100 rounded-lg">
           <ArrowLeft size={20} />
@@ -710,11 +720,22 @@ export default function MatchupFacilitatorPage() {
             <UserCheck size={16} className="text-orange-500" />
             Today&apos;s attendance
           </h2>
-          <span className="text-xs text-gray-500">
-            {hasCheckins
-              ? `${checkedInIds.size} checked in`
-              : 'No check-ins yet (using full active roster)'}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-gray-500">
+              {hasCheckins
+                ? `${checkedInIds.size} checked in`
+                : 'No check-ins yet (using full active roster)'}
+            </span>
+            <button
+              onClick={() => setConfirmEmailOpen(true)}
+              disabled={!hasCheckins}
+              title={hasCheckins ? 'Email all confirmed players' : 'Check in players first'}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium bg-orange-600 text-white hover:bg-orange-700 disabled:opacity-40"
+            >
+              <Mail size={13} />
+              Email confirmed players
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

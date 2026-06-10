@@ -11,12 +11,14 @@ import {
   ListChecks,
   AlertCircle,
   Loader2,
+  Mail,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import RostersTab from '@/components/leagues/jtt/RostersTab';
 import MatchupsTab from '@/components/leagues/jtt/MatchupsTab';
 import StandingsTab from '@/components/leagues/jtt/StandingsTab';
 import SettingsTab from '@/components/leagues/jtt/SettingsTab';
+import ResultsEmailModal from '@/components/leagues/jtt/ResultsEmailModal';
 
 type League = {
   id: string;
@@ -120,6 +122,7 @@ export default function JTTLeaguePage() {
   const [tab, setTab] = useState<Tab>('matchups');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [emailOpen, setEmailOpen] = useState(false);
 
   const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
@@ -237,7 +240,24 @@ export default function JTTLeaguePage() {
             {clubs.length} clubs · {divisions.length} divisions · {matchups.length} matchups
           </p>
         </div>
+        <button
+          onClick={() => setEmailOpen(true)}
+          className="shrink-0 inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg px-3 py-2 text-sm"
+        >
+          <Mail size={16} />
+          <span className="hidden sm:inline">Email results</span>
+        </button>
       </div>
+
+      {emailOpen && (
+        <ResultsEmailModal
+          leagueId={id}
+          leagueName={league.name}
+          matchups={matchups}
+          lines={lines}
+          onClose={() => setEmailOpen(false)}
+        />
+      )}
 
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6 flex gap-1 overflow-x-auto">
