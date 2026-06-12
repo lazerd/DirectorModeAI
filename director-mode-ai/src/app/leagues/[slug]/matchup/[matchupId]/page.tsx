@@ -158,7 +158,8 @@ export default async function PublicMatchupPage({
                   >
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-medium text-white/50 uppercase">
-                        Line {line.line_number} · {line.line_type}
+                        {(line.court_label || '').trim() || `Line ${line.line_number}`} ·{' '}
+                        {line.line_type}
                       </span>
                       {line.status === 'completed' && (
                         <span className="text-xs font-medium text-[#D3FB52]">

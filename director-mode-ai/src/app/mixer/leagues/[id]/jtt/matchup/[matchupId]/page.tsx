@@ -19,6 +19,7 @@ import {
   Minus,
   Sparkles,
   Mail,
+  Pencil,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { autoAssignRoundBalanced, optimizeLines } from '@/lib/jtt';
@@ -74,6 +75,7 @@ type Line = {
   winner: 'home' | 'away' | null;
   status: string;
   score_token: string | null;
+  court_label?: string | null;
 };
 
 type SlotField =
@@ -581,6 +583,31 @@ export default function MatchupFacilitatorPage() {
     fetchAll({ silent: true });
   };
 
+  // Rename a court's scorecard. null clears back to the default "Court N".
+  const saveCourtLabel = async (lineId: string, label: string | null) => {
+    const supabase = createClient();
+    const { data, error: updErr } = await supabase
+      .from('league_matchup_lines')
+      .update({ court_label: label })
+      .eq('id', lineId)
+      .select('id');
+    if (updErr) {
+      alert(
+        updErr.message.includes('court_label')
+          ? 'Court names aren’t enabled on the database yet — run the leagues_jtt_court_labels.sql migration in Supabase, then try again.'
+          : `Couldn’t rename court: ${updErr.message}`
+      );
+      return;
+    }
+    if (!data || data.length === 0) {
+      alert(
+        'Couldn’t rename court — you may not have edit permission on this league (run the coach-access SQL) or you’re signed out.'
+      );
+      return;
+    }
+    fetchAll({ silent: true });
+  };
+
   // Let the optimizer pick the split for this round given courts + attendance.
   const aiOptimizeRound = async (round: number) => {
     const roundLines = lines.filter(l => l.round_number === round);
@@ -821,6 +848,7 @@ export default function MatchupFacilitatorPage() {
             onAssign={assignPlayer}
             onSaveScore={saveScore}
             onSetLineType={setLineType}
+            onSaveCourtLabel={saveCourtLabel}
             onRemoveLine={removeLine}
             onAddCourt={() => addCourtToRound(round)}
             onApplySplit={n => applyRoundSplit(round, n)}
@@ -856,6 +884,7 @@ function RoundCard({
   onAssign,
   onSaveScore,
   onSetLineType,
+  onSaveCourtLabel,
   onRemoveLine,
   onAddCourt,
   onApplySplit,
@@ -877,6 +906,7 @@ function RoundCard({
     payload: { score: string | null; winner: 'home' | 'away' | null }
   ) => void;
   onSetLineType: (line: Line, type: 'singles' | 'doubles') => void;
+  onSaveCourtLabel: (lineId: string, label: string | null) => void;
   onRemoveLine: (lineId: string) => void;
   onAddCourt: () => void;
   onApplySplit: (singlesCount: number) => void;
@@ -982,6 +1012,7 @@ function RoundCard({
             onAssign={(field, playerId) => onAssign(line, field, playerId)}
             onSaveScore={payload => onSaveScore(line, payload)}
             onSetType={type => onSetLineType(line, type)}
+            onSaveCourtLabel={label => onSaveCourtLabel(line.id, label)}
             onRemove={() => onRemoveLine(line.id)}
             saving={saving === line.id}
           />
@@ -1030,6 +1061,7 @@ function LineEditor({
   onAssign,
   onSaveScore,
   onSetType,
+  onSaveCourtLabel,
   onRemove,
   saving,
 }: {
@@ -1042,12 +1074,26 @@ function LineEditor({
   onAssign: (field: SlotField, playerId: string | null) => void;
   onSaveScore: (payload: { score: string | null; winner: 'home' | 'away' | null }) => void;
   onSetType: (type: 'singles' | 'doubles') => void;
+  onSaveCourtLabel: (label: string | null) => void;
   onRemove: () => void;
   saving: boolean;
 }) {
   const [score, setScore] = useState(line.score || '');
   const [winner, setWinner] = useState<'home' | 'away' | null>(line.winner);
   const [editing, setEditing] = useState(false);
+
+  const defaultCourtName = `Court ${courtNumber}`;
+  const courtName = (line.court_label || '').trim() || defaultCourtName;
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(courtName);
+
+  const commitName = () => {
+    setEditingName(false);
+    const next = nameDraft.trim();
+    if (next === courtName) return; // unchanged
+    // Typing the default (or blank) clears the override so numbering stays dynamic.
+    onSaveCourtLabel(next === '' || next === defaultCourtName ? null : next);
+  };
 
   const isDoubles = line.line_type === 'doubles';
 
@@ -1081,7 +1127,36 @@ function LineEditor({
     <div className="bg-white border border-gray-200 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-3">
-          <h3 className="font-semibold text-gray-900">Court {courtNumber}</h3>
+          {editingName ? (
+            <input
+              autoFocus
+              value={nameDraft}
+              onChange={e => setNameDraft(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={e => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                if (e.key === 'Escape') {
+                  setNameDraft(courtName);
+                  setEditingName(false);
+                }
+              }}
+              maxLength={30}
+              className="font-semibold text-sm border border-orange-400 rounded-md px-2 py-1 w-32 focus:outline-none"
+              style={{ color: '#111827' }}
+            />
+          ) : (
+            <button
+              onClick={() => {
+                setNameDraft(courtName);
+                setEditingName(true);
+              }}
+              className="group inline-flex items-center gap-1.5"
+              title="Rename this court (e.g. Court 5, Stadium)"
+            >
+              <h3 className="font-semibold text-gray-900">{courtName}</h3>
+              <Pencil size={12} className="text-gray-300 group-hover:text-gray-600" />
+            </button>
+          )}
           {/* Singles / Doubles toggle */}
           <div className="inline-flex rounded-md border border-gray-300 overflow-hidden text-xs">
             <button

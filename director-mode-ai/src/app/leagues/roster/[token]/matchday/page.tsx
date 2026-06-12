@@ -21,7 +21,7 @@ type Club = { id: string; name: string; short_code: string; courts_available: nu
 type Division = { id: string; name: string; short_code: string; start_time: string | null; end_time: string | null; sort_order: number };
 type Matchup = { id: string; division_id: string; match_date: string; home_club_id: string; away_club_id: string; home_lines_won: number; away_lines_won: number; winner: string | null; status: string; courts_override: number | null };
 type Roster = { id: string; division_id: string; club_id: string; player_name: string; ladder_position: number | null; status: string };
-type Line = { id: string; matchup_id: string; line_type: 'singles' | 'doubles'; line_number: number; home_player1_id: string | null; home_player2_id: string | null; away_player1_id: string | null; away_player2_id: string | null; score: string | null; winner: 'home' | 'away' | null; status: string };
+type Line = { id: string; matchup_id: string; line_type: 'singles' | 'doubles'; line_number: number; home_player1_id: string | null; home_player2_id: string | null; away_player1_id: string | null; away_player2_id: string | null; score: string | null; winner: 'home' | 'away' | null; status: string; court_label?: string | null };
 type Checkin = { roster_id: string; matchup_id: string };
 
 type FetchResult = {
@@ -572,7 +572,8 @@ function LineCard({
     <div className={`p-4 ${completed ? 'bg-green-50' : ''}`}>
       <div className="flex items-center justify-between mb-2">
         <h4 className="font-medium text-gray-900">
-          Line {line.line_number} · {isDoubles ? 'Doubles' : 'Singles'}
+          {(line.court_label || '').trim() || `Line ${line.line_number}`} ·{' '}
+          {isDoubles ? 'Doubles' : 'Singles'}
         </h4>
         <div className="flex items-center gap-2">
           {completed && (
