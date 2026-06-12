@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, GripVertical, X, Trophy, Users, Sparkles, Settings2 } from "lucide-react";
+import { Plus, GripVertical, X, Trophy, Users, Sparkles, Settings2, UserCheck, Zap, CalendarPlus, ListOrdered } from "lucide-react";
+import { snakeSplit, globalStrengthOrder, nextWeekCode, plusSevenDays } from "@/lib/teamBattle";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -26,12 +27,20 @@ interface Player {
   strength_order: number;
   wins: number;
   losses: number;
+  active: boolean;
 }
 
 interface TeamBattleTabProps {
   event: {
     id: string;
+    name: string;
+    event_date: string;
+    event_code?: string | null;
     num_courts: number;
+    scoring_format?: string | null;
+    round_length_minutes?: number | null;
+    target_games?: number | null;
+    start_time?: string | null;
     team_battle_singles_courts?: number;
     team_battle_doubles_courts?: number;
   };
@@ -88,6 +97,23 @@ function SortablePlayer({ player, teamColor, onRemove }: { player: Player; teamC
   );
 }
 
+function StrengthRow({ player }: { player: Player }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: player.event_player_id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
+      className="flex items-center gap-2 px-3 py-2 bg-white border rounded-lg"
+    >
+      <button type="button" {...listeners} {...attributes} className="cursor-grab active:cursor-grabbing touch-none p-0.5">
+        <GripVertical className="h-4 w-4 text-gray-400" />
+      </button>
+      <span className="font-medium text-sm" style={{ color: "#111827" }}>{player.name}</span>
+      {!player.active && <span className="text-xs text-gray-400">(not here)</span>}
+    </div>
+  );
+}
+
 export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTabProps) {
   const { toast } = useToast();
   const [teams, setTeams] = useState<Team[]>([]);
@@ -96,6 +122,11 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
   const [newPlayerName, setNewPlayerName] = useState("");
   const [addingToTeam, setAddingToTeam] = useState<string | null>(null);
   const [teamScores, setTeamScores] = useState<Record<string, number>>({});
+  const [newPoolName, setNewPoolName] = useState("");
+  const [addingToPool, setAddingToPool] = useState(false);
+  const [splitting, setSplitting] = useState(false);
+  const [creatingNextWeek, setCreatingNextWeek] = useState(false);
+  const [showStrength, setShowStrength] = useState(false);
   
   // Court configuration - initialize from database
   const [courtConfig, setCourtConfig] = useState<CourtConfig>({
@@ -183,6 +214,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
         strength_order,
         wins,
         losses,
+        active,
         players(name)
       `)
       .eq("event_id", event.id)
@@ -200,6 +232,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
         strength_order: ep.strength_order,
         wins: ep.wins || 0,
         losses: ep.losses || 0,
+        active: ep.active !== false,
       }));
       setPlayers(formattedPlayers);
     }
@@ -338,27 +371,46 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
       return;
     }
 
-    const { data: player, error: playerError } = await supabase
+    // Reuse an existing player record with this exact name (avoids the pool
+    // filling up with duplicates of weekly regulars); create only if new.
+    const { data: existing } = await supabase
       .from("players")
-      .insert([{ user_id: user.id, name: newPlayerName.trim() }])
-      .select()
-      .single();
+      .select("id")
+      .eq("user_id", user.id)
+      .ilike("name", newPlayerName.trim())
+      .limit(1);
 
-    if (playerError) {
-      toast({ variant: "destructive", title: "Error adding player", description: playerError.message });
+    let playerId = existing?.[0]?.id as string | undefined;
+    if (!playerId) {
+      const { data: player, error: playerError } = await supabase
+        .from("players")
+        .insert([{ user_id: user.id, name: newPlayerName.trim() }])
+        .select()
+        .single();
+      if (playerError) {
+        toast({ variant: "destructive", title: "Error adding player", description: playerError.message });
+        setAddingToTeam(null);
+        return;
+      }
+      playerId = player.id;
+    }
+
+    if (players.some(p => p.player_id === playerId)) {
+      toast({ variant: "destructive", title: "Already in this event", description: `${newPlayerName.trim()} is already on the roster — use the check-in list.` });
       setAddingToTeam(null);
       return;
     }
 
     const teamPlayers = players.filter(p => p.team_id === teamId);
-    
+
     const { error: eventPlayerError } = await supabase
       .from("event_players")
-      .insert([{ 
-        event_id: event.id, 
-        player_id: player.id, 
+      .insert([{
+        event_id: event.id,
+        player_id: playerId,
         team_id: teamId,
-        strength_order: teamPlayers.length 
+        active: true,
+        strength_order: teamPlayers.length
       }]);
 
     if (eventPlayerError) {
@@ -408,11 +460,203 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
 
   const getTeamPlayers = (teamId: string) => {
     return players
-      .filter(p => p.team_id === teamId)
+      .filter(p => p.team_id === teamId && p.active)
       .sort((a, b) => a.strength_order - b.strength_order);
   };
 
-  const totalPlayers = players.length;
+  // ---------- Weekly check-in / split / next-week ----------
+
+  const checkedIn = players.filter(p => p.active);
+
+  // Tap a roster chip: check in (active=true) or out (active=false + off team).
+  const toggleCheckin = async (p: Player) => {
+    const next = !p.active;
+    const patch = next ? { active: true } : { active: false, team_id: null };
+    setPlayers(prev => prev.map(x =>
+      x.event_player_id === p.event_player_id ? { ...x, ...patch } : x
+    ));
+    const { error } = await supabase
+      .from("event_players")
+      .update(patch)
+      .eq("id", p.event_player_id);
+    if (error) {
+      toast({ variant: "destructive", title: "Check-in failed", description: error.message });
+      fetchPlayers();
+    }
+  };
+
+  // Quick-add to the roster pool (checked in, no team yet).
+  const handleAddToPool = async () => {
+    if (!newPoolName.trim()) return;
+    setAddingToPool(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setAddingToPool(false); return; }
+
+    const { data: existing } = await supabase
+      .from("players")
+      .select("id")
+      .eq("user_id", user.id)
+      .ilike("name", newPoolName.trim())
+      .limit(1);
+
+    let playerId = existing?.[0]?.id as string | undefined;
+    if (!playerId) {
+      const { data: created, error } = await supabase
+        .from("players")
+        .insert([{ user_id: user.id, name: newPoolName.trim() }])
+        .select("id")
+        .single();
+      if (error) {
+        toast({ variant: "destructive", title: "Error adding player", description: error.message });
+        setAddingToPool(false);
+        return;
+      }
+      playerId = created.id;
+    }
+
+    const already = players.find(p => p.player_id === playerId);
+    if (already) {
+      // On the roster from a past week — just check them in.
+      if (!already.active) await toggleCheckin(already);
+      else toast({ title: "Already checked in", description: newPoolName.trim() });
+    } else {
+      const maxOrder = players.reduce((m, p) => Math.max(m, p.strength_order ?? 0), 0);
+      const { error } = await supabase.from("event_players").insert([{
+        event_id: event.id,
+        player_id: playerId,
+        team_id: null,
+        active: true,
+        strength_order: maxOrder + 1, // new players start at the bottom; drag to adjust
+      }]);
+      if (error) toast({ variant: "destructive", title: "Error adding player", description: error.message });
+      else fetchPlayers();
+    }
+    setNewPoolName("");
+    setAddingToPool(false);
+  };
+
+  // Snake-split the checked-in pool by strength order (1,4,5,8.. vs 2,3,6,7..).
+  const splitTeams = async () => {
+    if (teams.length !== 2) return;
+    if (checkedIn.length < 2) {
+      toast({ variant: "destructive", title: "Not enough players", description: "Check in at least 2 players first." });
+      return;
+    }
+    setSplitting(true);
+    const ordered = globalStrengthOrder(checkedIn).map(x => x.player);
+    const { a, b } = snakeSplit(ordered);
+    const updates: Array<{ id: string; team_id: string | null }> = [
+      ...a.map(p => ({ id: p.event_player_id, team_id: teams[0].id })),
+      ...b.map(p => ({ id: p.event_player_id, team_id: teams[1].id })),
+      // anyone not checked in loses any stale team assignment
+      ...players.filter(p => !p.active && p.team_id).map(p => ({ id: p.event_player_id, team_id: null })),
+    ];
+    const results = await Promise.all(
+      updates.map(u => supabase.from("event_players").update({ team_id: u.team_id }).eq("id", u.id))
+    );
+    setSplitting(false);
+    const failed = results.filter(r => r.error);
+    if (failed.length) {
+      toast({ variant: "destructive", title: "Split failed", description: failed[0].error!.message });
+    } else {
+      toast({ title: "⚡ Teams split!", description: `${a.length} vs ${b.length} by strength snake — drag players to fine-tune.` });
+    }
+    fetchPlayers();
+  };
+
+  // Reorder the global strength list (pre-split ranking used by the snake).
+  const handleStrengthDragEnd = async (dragEvent: DragEndEvent) => {
+    const { active, over } = dragEvent;
+    if (!over || active.id === over.id) return;
+    const ordered = globalStrengthOrder(players).map(x => x.player);
+    const oldIndex = ordered.findIndex(p => p.event_player_id === active.id);
+    const newIndex = ordered.findIndex(p => p.event_player_id === over.id);
+    const reordered = arrayMove(ordered, oldIndex, newIndex);
+    setPlayers(reordered.map((p, i) => ({ ...p, strength_order: i + 1 })));
+    await Promise.all(
+      reordered.map((p, i) =>
+        supabase.from("event_players").update({ strength_order: i + 1 }).eq("id", p.event_player_id)
+      )
+    );
+  };
+
+  // Clone this event one week out: same settings + teams, full roster copied
+  // over unchecked, strength order renumbered globally.
+  const startNextWeek = async () => {
+    if (!confirm(`Create next week's event (${plusSevenDays(event.event_date)}) with this roster?`)) return;
+    setCreatingNextWeek(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setCreatingNextWeek(false); return; }
+
+    const nextDate = plusSevenDays(event.event_date);
+    const baseCode = nextWeekCode("SLAM", new Date(nextDate + "T12:00:00"));
+
+    let newEvent: any = null;
+    for (const code of [baseCode, null]) {
+      const { data, error } = await supabase
+        .from("events")
+        .insert([{
+          user_id: user.id,
+          name: event.name,
+          event_date: nextDate,
+          end_date: nextDate,
+          start_time: event.start_time ?? null,
+          event_code: code ?? Math.random().toString(36).slice(2, 8).toUpperCase(),
+          num_courts: event.num_courts,
+          scoring_format: event.scoring_format ?? "timed",
+          round_length_minutes: event.round_length_minutes ?? null,
+          target_games: event.target_games ?? null,
+          match_format: "team-battle",
+          team_battle_singles_courts: event.team_battle_singles_courts ?? 0,
+          team_battle_doubles_courts: event.team_battle_doubles_courts ?? 0,
+        }])
+        .select("id, event_code")
+        .single();
+      if (!error) { newEvent = data; break; }
+      if (!/duplicate|unique/i.test(error.message)) {
+        toast({ variant: "destructive", title: "Couldn't create next week", description: error.message });
+        setCreatingNextWeek(false);
+        return;
+      }
+    }
+    if (!newEvent) { setCreatingNextWeek(false); return; }
+
+    const { error: teamErr } = await supabase.from("event_teams").insert(
+      teams.map(t => ({ event_id: newEvent.id, name: t.name, color: t.color }))
+    );
+    if (teamErr) {
+      toast({ variant: "destructive", title: "Couldn't copy teams", description: teamErr.message });
+      setCreatingNextWeek(false);
+      return;
+    }
+
+    const roster = globalStrengthOrder(players);
+    if (roster.length) {
+      const { error: rosterErr } = await supabase.from("event_players").insert(
+        roster.map(({ player, order }) => ({
+          event_id: newEvent.id,
+          player_id: player.player_id,
+          team_id: null,
+          active: false, // everyone starts unchecked next week
+          strength_order: order,
+        }))
+      );
+      if (rosterErr) {
+        toast({ variant: "destructive", title: "Couldn't copy roster", description: rosterErr.message });
+        setCreatingNextWeek(false);
+        return;
+      }
+    }
+
+    setCreatingNextWeek(false);
+    toast({
+      title: "📅 Next week is ready!",
+      description: `${event.name} on ${nextDate} (code ${newEvent.event_code}) — roster carried over, check players in as they arrive.`,
+    });
+    window.location.href = `/mixer/events/${newEvent.id}`;
+  };
+
+  const totalPlayers = checkedIn.length;
   const team1Count = teams[0] ? getTeamPlayers(teams[0].id).length : 0;
   const team2Count = teams[1] ? getTeamPlayers(teams[1].id).length : 0;
   const canGenerateRounds = teams.length === 2 && team1Count >= 1 && team2Count >= 1;
@@ -478,6 +722,102 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           </CardContent>
         </Card>
       )}
+
+      {/* Weekly check-in */}
+      <Card className="border-2 border-green-200 bg-green-50/40">
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <UserCheck className="h-5 w-5 text-green-600" />
+              <span>Check-in</span>
+              <span className="text-sm font-normal text-gray-500">
+                {checkedIn.length} of {players.length} here
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="bg-white" onClick={() => setShowStrength(s => !s)}>
+                <ListOrdered className="h-4 w-4 mr-1.5" />
+                {showStrength ? "Done ordering" : "Strength order"}
+              </Button>
+              <Button variant="outline" size="sm" className="bg-white" onClick={startNextWeek} disabled={creatingNextWeek}>
+                <CalendarPlus className="h-4 w-4 mr-1.5" />
+                {creatingNextWeek ? "Creating..." : "Start next week"}
+              </Button>
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {showStrength ? (
+            /* Global strength ranking — drag once, the snake split uses it. */
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleStrengthDragEnd}>
+              <p className="text-xs text-gray-500">
+                Drag strongest to the top. This ranking persists week to week and powers the team split.
+              </p>
+              <SortableContext
+                items={globalStrengthOrder(players).map(x => x.player.event_player_id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="space-y-1.5">
+                  {globalStrengthOrder(players).map(({ player, order }) => (
+                    <div key={player.event_player_id} className="flex items-center gap-2">
+                      <span className="w-6 text-right text-xs font-bold text-gray-400">{order}</span>
+                      <div className="flex-1">
+                        <StrengthRow player={player} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </SortableContext>
+            </DndContext>
+          ) : (
+            <>
+              {/* Roster chips — tap to check in/out */}
+              {players.length === 0 ? (
+                <p className="text-sm text-gray-500">No roster yet — add players below or on a team.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {globalStrengthOrder(players).map(({ player }) => (
+                    <button
+                      key={player.event_player_id}
+                      onClick={() => toggleCheckin(player)}
+                      className={`px-3 py-1.5 rounded-full border-2 text-sm font-medium transition-all ${
+                        player.active
+                          ? "bg-green-600 border-green-600 text-white shadow-sm"
+                          : "bg-white border-gray-300 text-gray-500 hover:border-green-400"
+                      }`}
+                    >
+                      {player.active ? "✓ " : ""}{player.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Quick add + split */}
+              <div className="flex gap-2 flex-wrap">
+                <Input
+                  placeholder="Add new player..."
+                  value={newPoolName}
+                  onChange={e => setNewPoolName(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleAddToPool(); } }}
+                  className="flex-1 min-w-[180px] bg-white"
+                  style={{ color: "#111827" }}
+                />
+                <Button onClick={handleAddToPool} disabled={addingToPool || !newPoolName.trim()} variant="outline" className="bg-white">
+                  <Plus className="h-4 w-4 mr-1" /> Add
+                </Button>
+                <Button
+                  onClick={splitTeams}
+                  disabled={splitting || checkedIn.length < 2 || teams.length !== 2}
+                  className="bg-gradient-to-r from-blue-600 to-red-600 hover:from-blue-700 hover:to-red-700 text-white"
+                >
+                  <Zap className="h-4 w-4 mr-1.5" />
+                  {splitting ? "Splitting..." : `Split ${checkedIn.length} into teams`}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Court Configuration */}
       <Card className="border-2 border-purple-200 bg-purple-50/50">
