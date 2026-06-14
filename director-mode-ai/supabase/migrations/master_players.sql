@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS player_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   master_player_id UUID NOT NULL REFERENCES master_players(id) ON DELETE CASCADE,
   club_id UUID,
-  source TEXT NOT NULL, -- 'mixer' | 'jtt' | 'tournament' | 'lesson' | 'stringing' | 'exam' | 'satisfaction' | 'court' | 'swim'
+  source TEXT NOT NULL, -- mixer, jtt, tournament, lesson, stringing, exam, satisfaction, court, swim
   event_type TEXT NOT NULL,
   payload JSONB NOT NULL DEFAULT '{}'::jsonb,
   source_table TEXT, -- e.g. 'league_matchup_lines'
