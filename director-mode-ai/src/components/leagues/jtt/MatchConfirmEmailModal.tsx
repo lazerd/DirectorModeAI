@@ -135,7 +135,7 @@ export default function MatchConfirmEmailModal({ leagueId, matchupId, onClose }:
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono bg-white text-gray-900 placeholder-gray-400"
               />
               <p className="text-[11px] text-gray-400 mt-1">
-                Prefilled from the parent emails of players who marked Available in the RSVP form. Comma or line separated.
+                Prefilled from the parent emails of players who marked Available or Maybe in the RSVP form. Comma or line separated.
               </p>
             </div>
 

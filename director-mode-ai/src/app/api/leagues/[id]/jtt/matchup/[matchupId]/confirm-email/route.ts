@@ -109,10 +109,23 @@ export async function POST(
       note,
     });
 
-    // Recipients: parent emails of AVAILABLE players (maybes are listed, not emailed).
-    const defaultRecipients = yes
-      .map(e => (e.parent_email && EMAIL_RE.test(e.parent_email.trim()) ? { email: e.parent_email.trim(), name: e.parent_name || e.player_name } : null))
-      .filter((x): x is { email: string; name: string } => !!x);
+    // Recipients: parent emails of AVAILABLE players plus MAYBE players (so the
+    // day-before confirmation also nudges the tentative ones). Deduped by email,
+    // Available first. The email body still lists maybes as tentative.
+    const toRecipient = (e: (typeof yes)[number]) =>
+      e.parent_email && EMAIL_RE.test(e.parent_email.trim())
+        ? { email: e.parent_email.trim(), name: e.parent_name || e.player_name }
+        : null;
+    const seenDefault = new Set<string>();
+    const defaultRecipients = [...yes, ...maybe]
+      .map(toRecipient)
+      .filter((x): x is { email: string; name: string } => !!x)
+      .filter(r => {
+        const key = r.email.toLowerCase();
+        if (seenDefault.has(key)) return false;
+        seenDefault.add(key);
+        return true;
+      });
 
     if (mode === 'preview') {
       return NextResponse.json({
