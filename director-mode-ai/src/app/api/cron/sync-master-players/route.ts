@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
-// Service-role client (bypasses RLS — this job is the system of record for master_players).
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Service-role client (bypasses RLS — this job is the system of record for
+// master_players). Resolved lazily through a proxy so merely importing this
+// module (e.g. during `next build` page-data collection) doesn't require the
+// Supabase env vars to be present.
+const supabase = new Proxy({} as ReturnType<typeof getSupabaseAdmin>, {
+  get(_target, prop) {
+    const client = getSupabaseAdmin() as any;
+    const value = client[prop];
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 const BATCH_SIZE = 200; // per-table per-run cap
 
