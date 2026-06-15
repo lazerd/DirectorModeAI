@@ -7,10 +7,6 @@
     {
       "path": "/api/courtconnect/event-reminders",
       "schedule": "0 18 * * *"
-    },
-    {
-      "path": "/api/cron/sync-master-players",
-      "schedule": "*/10 * * * *"
     }
   ]
 }
