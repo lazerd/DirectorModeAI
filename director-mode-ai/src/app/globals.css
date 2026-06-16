@@ -834,3 +834,70 @@ textarea {
     animation: none !important;
   }
 }
+
+/* ============================================================
+   Marketing / landing-page motion (home page)
+   ============================================================ */
+
+/* Slow drifting aurora blobs behind the hero. */
+@keyframes hm-aurora {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(4%, -6%, 0) scale(1.12); }
+  66%      { transform: translate3d(-5%, 5%, 0) scale(0.94); }
+}
+.hm-aurora { animation: hm-aurora 18s ease-in-out infinite; will-change: transform; }
+.hm-aurora-slow { animation: hm-aurora 26s ease-in-out infinite; }
+
+/* Gentle floating for the hero mockup card. */
+@keyframes hm-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-14px); }
+}
+.hm-float { animation: hm-float 6s ease-in-out infinite; will-change: transform; }
+
+/* Infinite logo / capability marquee. */
+@keyframes hm-marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.hm-marquee { animation: hm-marquee 38s linear infinite; }
+
+/* Scroll-reveal-ish entrance (applied on mount). */
+@keyframes hm-fade-up {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hm-fade-up { animation: hm-fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* Animated gradient text sweep. */
+@keyframes hm-text-shimmer {
+  to { background-position: 200% center; }
+}
+.hm-gradient-text {
+  background: linear-gradient(100deg, #D3FB52 0%, #7ce0c0 35%, #D3FB52 70%, #7ce0c0 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: hm-text-shimmer 5s linear infinite;
+}
+
+/* Soft live pulse for the "live" status dot. */
+@keyframes hm-pulse-ring {
+  0%   { transform: scale(0.9); opacity: 0.7; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.hm-pulse-ring { animation: hm-pulse-ring 2.4s ease-out infinite; }
+
+/* Conic glow rotation for the CTA halo. */
+@keyframes hm-spin-slow { to { transform: rotate(360deg); } }
+.hm-spin-slow { animation: hm-spin-slow 14s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hm-aurora, .hm-aurora-slow, .hm-float, .hm-marquee,
+  .hm-fade-up, .hm-gradient-text, .hm-pulse-ring, .hm-spin-slow {
+    animation: none !important;
+  }
+  .hm-gradient-text { background-position: 0 center; }
+}

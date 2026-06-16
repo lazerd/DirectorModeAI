@@ -4,8 +4,8 @@ import AnalyticsTracker from "@/components/shared/AnalyticsTracker";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "ClubMode AI - The Complete Racquet Sports Platform",
-  description: "Six powerful tools for racquet sports clubs: Events, Lessons, Stringing, Player Matching, Roster Management, and AI Coaching.",
+  title: "ClubMode AI — Run Your Entire Racquet Sports Club",
+  description: "One platform to run your club: live court sheets, team leagues & junior team tennis, mixers & tournaments, lessons, stringing, player matching, roster CRM, and AI coaching.",
 };
 
 export default function RootLayout({

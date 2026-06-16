@@ -2,11 +2,45 @@
 
 import { useState, useEffect } from 'react';
 import {
-  Database, Users, Shuffle, Clock, Wrench, Globe,
-  ArrowRight, Check, Upload, Search, Mail, Zap, BarChart3
+  Database, Users, Shuffle, Clock, Wrench,
+  Check, LayoutGrid, Trophy
 } from 'lucide-react';
 
 const FEATURES = [
+  {
+    id: 'courtsheet',
+    tag: 'CourtSheet AI',
+    tagColor: 'bg-cyan-400/10 text-cyan-400',
+    title: 'Every court, live, on one grid',
+    description: 'See the whole club at a glance. Type or speak a command — book, move, or block a court and it updates everywhere instantly.',
+    icon: LayoutGrid,
+    iconColor: 'text-cyan-400',
+    iconBg: 'bg-cyan-400/10',
+    mockup: [
+      { type: 'court', court: 'Court 1', label: 'Cardio Tennis', status: 'In use', tone: 'lime' },
+      { type: 'court', court: 'Court 3', label: 'JTT 12U match', status: 'League', tone: 'amber' },
+      { type: 'court', court: 'Court 4', label: 'Open', status: 'Open', tone: 'muted' },
+      { type: 'court', court: 'Court 11a', label: 'Pickleball clinic', status: 'In use', tone: 'pink' },
+    ],
+    stats: ['Voice + text commands', 'Live across devices', 'Pickleball sub-courts'],
+  },
+  {
+    id: 'leagues',
+    tag: 'Leagues & JTT',
+    tagColor: 'bg-[#D3FB52]/10 text-[#D3FB52]',
+    title: 'Run the whole league season',
+    description: 'Team leagues and Junior Team Tennis with strength-ordered rosters, auto-laddering, multi-site match days, and magic-link coach scoring.',
+    icon: Trophy,
+    iconColor: 'text-[#D3FB52]',
+    iconBg: 'bg-[#D3FB52]/10',
+    mockup: [
+      { type: 'line', court: '1', line: 'Emmett d. Will', score: '8–2', done: true },
+      { type: 'line', court: '2', line: 'Anand d. Luke', score: '8–4', done: true },
+      { type: 'line', court: '3', line: 'Niam vs Ryan', score: 'live', done: false },
+      { type: 'line', court: '4', line: 'Dean/Lucas d. Bennett/Van', score: '7–6', done: true },
+    ],
+    stats: ['Strength ladders', 'Magic-link scoring', 'Multi-site match days'],
+  },
   {
     id: 'vault',
     tag: 'PlayerVault',
@@ -183,6 +217,31 @@ export default function ProductShowcase() {
 
               {/* Content */}
               <div className="p-5 space-y-2.5">
+                {active.id === 'courtsheet' && active.mockup.map((c: any, i: number) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <span className="text-xs text-white/30 w-16 shrink-0">{c.court}</span>
+                    <div className="flex-1 h-9 rounded-lg bg-white/[0.03] border border-white/[0.06] flex items-center justify-between px-3">
+                      <span className={`text-sm ${c.tone === 'muted' ? 'text-white/25' : 'text-white/80'}`}>{c.label}</span>
+                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                        c.tone === 'lime' ? 'bg-[#D3FB52]/10 text-[#D3FB52]'
+                          : c.tone === 'amber' ? 'bg-amber-400/10 text-amber-400'
+                          : c.tone === 'pink' ? 'bg-pink-400/10 text-pink-400'
+                          : 'bg-white/5 text-white/30'
+                      }`}>{c.status}</span>
+                    </div>
+                  </div>
+                ))}
+
+                {active.id === 'leagues' && active.mockup.map((m: any, i: number) => (
+                  <div key={i} className="flex items-center justify-between p-3 bg-white/[0.03] rounded-lg border border-white/[0.06]">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-xs text-white/30 w-12 shrink-0">Court {m.court}</span>
+                      <span className="text-white text-sm truncate">{m.line}</span>
+                    </div>
+                    <span className={`text-sm font-bold font-mono shrink-0 ml-2 ${m.done ? 'text-[#D3FB52]' : 'text-white/30'}`}>{m.score}</span>
+                  </div>
+                ))}
+
                 {active.id === 'vault' && active.mockup.map((row: any, i: number) => (
                   <div key={i} className="flex items-center justify-between p-3 bg-white/[0.03] rounded-lg border border-white/[0.06]" style={{ animationDelay: `${i * 100}ms` }}>
                     <div className="flex items-center gap-3">
