@@ -112,20 +112,23 @@ export async function POST(
     // Recipients: parent emails of AVAILABLE players plus MAYBE players (so the
     // day-before confirmation also nudges the tentative ones). Deduped by email,
     // Available first. The email body still lists maybes as tentative.
-    const toRecipient = (e: (typeof yes)[number]) =>
-      e.parent_email && EMAIL_RE.test(e.parent_email.trim())
-        ? { email: e.parent_email.trim(), name: e.parent_name || e.player_name }
-        : null;
+    // A single "parent email" cell may hold MULTIPLE addresses (comma/semicolon/
+    // slash separated) — e.g. both guardians — so split and include each.
+    const splitEmails = (raw: string | null | undefined): string[] =>
+      (raw || '')
+        .split(/[,;/\s]+/)
+        .map(s => s.trim())
+        .filter(s => EMAIL_RE.test(s));
     const seenDefault = new Set<string>();
-    const defaultRecipients = [...yes, ...maybe]
-      .map(toRecipient)
-      .filter((x): x is { email: string; name: string } => !!x)
-      .filter(r => {
-        const key = r.email.toLowerCase();
-        if (seenDefault.has(key)) return false;
+    const defaultRecipients: { email: string; name: string }[] = [];
+    for (const e of [...yes, ...maybe]) {
+      for (const addr of splitEmails(e.parent_email)) {
+        const key = addr.toLowerCase();
+        if (seenDefault.has(key)) continue;
         seenDefault.add(key);
-        return true;
-      });
+        defaultRecipients.push({ email: addr, name: e.parent_name || e.player_name });
+      }
+    }
 
     if (mode === 'preview') {
       return NextResponse.json({
