@@ -87,12 +87,25 @@ export default async function FlexPage() {
     };
 
     if (cfg.type === 'compass') {
-      const ms = cfg.r1.map(([a, b]) => lookup(a, b));
-      divisions.push({
-        id: cfg.id, name: cfg.name, num: cfg.num, color: cfg.color, accent: cfg.accent, type: 'compass',
-        compassR1: cfg.r1,
-        groups: [{ title: 'Round 1', matches: ms, standings: null }],
-      });
+      const STAGE_LABEL: Record<string, string> = {
+        'main:1': 'Round 1 — everyone starts here', 'main:2': 'East · Round 2', 'main:3': 'East · Semifinals', 'main:4': 'East · Championship Final',
+        'consolation:1': 'West · Round 1', 'consolation:2': 'West · Round 2', 'consolation:3': 'West · Final',
+        'consolation:4': 'North · Round 1', 'consolation:5': 'North · Final',
+        'consolation:6': 'South · Round 1', 'consolation:7': 'South · Final',
+        'consolation:8': 'Northeast', 'consolation:9': 'Southwest', 'consolation:10': 'Northwest', 'consolation:11': 'Southeast',
+      };
+      const ORDER = ['main:1', 'main:2', 'main:3', 'main:4', 'consolation:1', 'consolation:2', 'consolation:3', 'consolation:4', 'consolation:5', 'consolation:6', 'consolation:7', 'consolation:8', 'consolation:9', 'consolation:10', 'consolation:11'];
+      const byStage: Record<string, { slot: number; m: MatchT }[]> = {};
+      for (const mm of (matches as Array<Record<string, unknown>>) || []) {
+        const key = `${mm.bracket}:${mm.round}`;
+        const a = (nameById.get(mm.player1_id as string) as string) || 'TBD';
+        const b = (nameById.get(mm.player3_id as string) as string) || 'TBD';
+        (byStage[key] ??= []).push({ slot: mm.slot as number, m: { token: mm.score_token as string, a, b, score: (mm.score as string) || '', winner_side: (mm.winner_side as 'a' | 'b' | null) || null, status: mm.status as string } });
+      }
+      const groups = ORDER.filter((k) => byStage[k]).map((k) => ({
+        title: STAGE_LABEL[k], standings: null, matches: byStage[k].sort((x, y) => x.slot - y.slot).map((r) => r.m),
+      }));
+      divisions.push({ id: cfg.id, name: cfg.name, num: cfg.num, color: cfg.color, accent: cfg.accent, type: 'compass', compassR1: cfg.r1, groups });
       continue;
     }
 

@@ -102,6 +102,7 @@ function MatchRow({ m }: { m: MatchT }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const done = m.status === 'completed';
+  const ready = m.a !== 'TBD' && m.b !== 'TBD';
   const [editing, setEditing] = useState(false);
 
   async function submit() {
@@ -116,6 +117,14 @@ function MatchRow({ m }: { m: MatchT }) {
     setBusy(false);
     if (res.ok) { setEditing(false); router.refresh(); }
     else { const j = await res.json().catch(() => ({})); setErr(j.error || 'Could not save.'); }
+  }
+
+  if (!done && !ready) {
+    return (
+      <div style={{ border: '1px dashed #DCE1EA', borderRadius: 10, padding: '10px 13px', marginBottom: 8, color: '#9AA5B8', fontSize: 14 }}>
+        {m.a} <span style={{ color: '#cbd5e1' }}>vs</span> {m.b} &mdash; <em>awaiting earlier-round results</em>
+      </div>
+    );
   }
 
   if (done && !editing) {
