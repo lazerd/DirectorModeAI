@@ -55,7 +55,7 @@ function DivisionCard({ d }: { d: Division }) {
         <h2 style={{ position: 'relative', fontFamily: "'Barlow Condensed'", fontWeight: 900, textTransform: 'uppercase', fontSize: 32, margin: 0 }}>{d.name}</h2>
       </div>
       <div style={{ padding: '20px 22px 24px' }}>
-        {d.type === 'compass' && d.compassR1 && <CompassDraw r1={d.compassR1} accent={d.accent} />}
+        {d.type === 'compass' && d.compassR1 && <CompassDraw r1={d.compassR1} />}
         {d.groups.map((g) => <Group key={g.title} g={g} accent={d.accent} />)}
       </div>
     </section>
@@ -102,7 +102,6 @@ function MatchRow({ m }: { m: MatchT }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const done = m.status === 'completed';
-  const open = !done;
   const [editing, setEditing] = useState(false);
 
   async function submit() {
@@ -153,7 +152,7 @@ function MatchRow({ m }: { m: MatchT }) {
   );
 }
 
-function CompassDraw({ r1, accent }: { r1: [string, string][]; accent: string }) {
+function CompassDraw({ r1 }: { r1: [string, string][] }) {
   const names = r1.flat();
   const cols = [16, 8, 4, 2, 1], heads = ['Round 1', 'Round 2', 'Round 3', 'Semis', 'Champion'];
   const X = [10, 168, 326, 484, 626], BW = 150, BH = 23, top = 52, H = 760;

@@ -1,5 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import FlexHub, { type Division } from './FlexHub';
+import FlexHub, { type Division, type MatchT } from './FlexHub';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,9 +79,9 @@ export default async function FlexPage() {
         score: (m.score as string) || '', winner_side: (m.winner_side as 'a' | 'b' | null) || null, status: m.status as string,
       });
     }
-    const lookup = (a: string, b: string) => {
+    const lookup = (a: string, b: string): MatchT => {
       const m = byPair.get(pairKey(a, b));
-      if (!m) return { token: '', a, b, score: '', winner_side: null as 'a' | 'b' | null, status: 'pending' };
+      if (!m) return { token: '', a, b, score: '', winner_side: null, status: 'pending' };
       if (m.a.toLowerCase() === a.toLowerCase()) return m;
       return { ...m, a: m.b, b: m.a, winner_side: m.winner_side === 'a' ? 'b' : m.winner_side === 'b' ? 'a' : null };
     };
