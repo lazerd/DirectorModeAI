@@ -69,7 +69,7 @@ export default async function FlexPage() {
     );
     const { data: matches } = await admin
       .from('tournament_matches')
-      .select('score_token, player1_id, player3_id, score, winner_side, status').eq('event_id', eid);
+      .select('score_token, bracket, round, slot, player1_id, player3_id, score, winner_side, status').eq('event_id', eid);
     const byPair = new Map<string, { token: string; a: string; b: string; score: string; winner_side: 'a' | 'b' | null; status: string }>();
     for (const m of (matches as Array<Record<string, unknown>>) || []) {
       const a = (nameById.get(m.player1_id as string) as string) || 'TBD';
