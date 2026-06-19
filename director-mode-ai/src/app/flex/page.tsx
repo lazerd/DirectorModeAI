@@ -23,7 +23,7 @@ const CONFIG = [
   {
     id: 'mens-singles', slug: 'mens-singles-flex-2026', name: "Men's Singles", num: '01',
     color: '#1B448C', accent: '#2052A8', type: 'compass' as const,
-    r1: [['Harman Batra', 'Craig Sato'], ['Blair Schmicker', 'Walden Browne'], ['Darryl Rains', 'Simon Chan'], ['Justin White', 'Decio Shimura'], ['Abhijeet Kumar', 'Gabe Fett'], ['Tony Helvey', 'Dimitry Lerner'], ['Powell Jose', 'Oliver Gibbons'], ['Alex Rogin', 'Adam Branson']] as [string, string][],
+    r1: [['Harman Batra', 'Craig Sato'], ['Blair Schmicker', 'Walden Browne'], ['Darryl Rains', 'Simon Chan'], ['Justin White', 'Decio Shimura'], ['Abhijeet Kumar', 'Gabe Fett'], ['Alex Rogin', 'Dimitry Lerner'], ['Powell Jose', 'Oliver Gibbons'], ['Tony Helvey', 'Adam Branson']] as [string, string][],
   },
   {
     id: 'womens-singles', slug: 'womens-singles-flex-2026', name: "Women's Singles", num: '02',

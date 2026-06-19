@@ -30,7 +30,7 @@ const S = {
   NW:  { bracket: 'consolation', round: 10, n: 1, w: null, l: null  },
   SE:  { bracket: 'consolation', round: 11, n: 1, w: null, l: null  },
 };
-const R1 = [['Harman Batra', 'Craig Sato'], ['Blair Schmicker', 'Walden Browne'], ['Darryl Rains', 'Simon Chan'], ['Justin White', 'Decio Shimura'], ['Abhijeet Kumar', 'Gabe Fett'], ['Tony Helvey', 'Dimitry Lerner'], ['Powell Jose', 'Oliver Gibbons'], ['Alex Rogin', 'Adam Branson']];
+const R1 = [['Harman Batra', 'Craig Sato'], ['Blair Schmicker', 'Walden Browne'], ['Darryl Rains', 'Simon Chan'], ['Justin White', 'Decio Shimura'], ['Abhijeet Kumar', 'Gabe Fett'], ['Alex Rogin', 'Dimitry Lerner'], ['Powell Jose', 'Oliver Gibbons'], ['Tony Helvey', 'Adam Branson']];
 
 // feeders pair (1,2)->slot1, (3,4)->slot2; odd source -> side a, even -> side b
 const ref = (destKey, s) => { const d = S[destKey]; return `${d.bracket}:${d.round}:${Math.ceil(s / 2)}:${s % 2 === 1 ? 'a' : 'b'}`; };
