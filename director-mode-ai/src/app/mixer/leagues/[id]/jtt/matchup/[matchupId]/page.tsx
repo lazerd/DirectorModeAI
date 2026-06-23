@@ -260,7 +260,9 @@ export default function MatchupFacilitatorPage() {
       return;
     }
     const supabase = createClient();
-    await Promise.all(
+    // .select() back so a blocked write (RLS / signed out) surfaces as an alert
+    // instead of silently doing nothing — the bug we hit during a live match.
+    const results = await Promise.all(
       patches.map(p =>
         supabase
           .from('league_matchup_lines')
@@ -271,9 +273,20 @@ export default function MatchupFacilitatorPage() {
             away_player2_id: p.away_player2_id,
           })
           .eq('id', p.id)
+          .select('id')
       )
     );
-    fetchAll({ silent: true });
+    if (results.some(r => r.error)) {
+      alert(`Couldn’t assign players: ${results.find(r => r.error)?.error?.message}`);
+      return;
+    }
+    if (results.some(r => !r.data || r.data.length === 0)) {
+      alert(
+        'Couldn’t assign players — you may be signed out or lack edit permission on this league. Refresh and make sure you’re signed in, then try again.'
+      );
+      return;
+    }
+    await fetchAll({ silent: true });
   };
 
   const clearRoundAssignments = async (round: number) => {
@@ -1341,9 +1354,17 @@ function LineEditor({
       {locked ? (
         // Saved result — read-only summary with an Edit link to redo it.
         <div className="flex items-center justify-between gap-2">
-          <div className="text-sm">
+          <div className="text-sm flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900">{winnerLabel}</span>
-            {line.score && <span className="text-gray-600 ml-2">{line.score}</span>}
+            {line.score && <span className="text-gray-600">{line.score}</span>}
+            {isMixed && (
+              <span
+                className="text-[11px] font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5"
+                title="Mixed court — counts for individual records, not the team score"
+              >
+                Mixed · not in team score
+              </span>
+            )}
           </div>
           <button
             onClick={() => setEditing(true)}
