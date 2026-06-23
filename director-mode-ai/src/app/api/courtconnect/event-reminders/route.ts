@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendBilledEmail, CreditLimitError } from '@/lib/email';
+import { sendDueRsvpConfirmations } from '@/lib/jttRsvpConfirmations';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +24,9 @@ export async function GET(request: NextRequest) {
       .in('status', ['open', 'closed']);
 
     if (!events || events.length === 0) {
-      return NextResponse.json({ message: 'No events tomorrow', sent: 0 });
+      let rsvp: unknown = null;
+      try { rsvp = await sendDueRsvpConfirmations(); } catch (e) { console.error('rsvp confirmations error:', e); }
+      return NextResponse.json({ message: 'No events tomorrow', sent: 0, rsvp });
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
@@ -118,10 +121,18 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ success: true, sent: totalSent, events: events.length });
+    // Piggyback the daily JTT match-RSVP confirmation emails (no separate cron
+    // entry, so we stay within Vercel Hobby's once-a-day cron limit).
+    let rsvp: Awaited<ReturnType<typeof sendDueRsvpConfirmations>> | { error: string } | null = null;
+    try { rsvp = await sendDueRsvpConfirmations(); }
+    catch (e) { rsvp = { error: (e as Error)?.message || 'rsvp confirmations failed' }; console.error('rsvp confirmations error:', e); }
+
+    return NextResponse.json({ success: true, sent: totalSent, events: events.length, rsvp });
 
   } catch (error) {
     console.error('Event reminder error:', error);
-    return NextResponse.json({ error: 'Failed to send reminders' }, { status: 500 });
+    // Even if courtconnect reminders fail, still try RSVP confirmations.
+    try { const rsvp = await sendDueRsvpConfirmations(); return NextResponse.json({ success: false, rsvp }); }
+    catch { return NextResponse.json({ error: 'Failed to send reminders' }, { status: 500 }); }
   }
 }
