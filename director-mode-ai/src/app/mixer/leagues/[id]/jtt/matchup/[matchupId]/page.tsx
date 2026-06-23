@@ -73,6 +73,7 @@ type Line = {
   away_player2_id: string | null;
   score: string | null;
   winner: 'home' | 'away' | null;
+  counts_for_team?: boolean;
   status: string;
   score_token: string | null;
   court_label?: string | null;
@@ -682,8 +683,18 @@ export default function MatchupFacilitatorPage() {
   // director, which is why non-director coaches saw "didn't save".
   const saveScore = async (
     line: Line,
-    payload: { score: string | null; winner: 'home' | 'away' | null }
+    payload: { score: string | null; winner: 'home' | 'away' | null; counts_for_team?: boolean }
   ) => {
+    // Mixed-club lines record a winning side for individual records but must not
+    // count toward the team score — persist that flag alongside the result.
+    const persistCountsFlag = async () => {
+      if (payload.counts_for_team === undefined) return;
+      const supabase = createClient();
+      await supabase
+        .from('league_matchup_lines')
+        .update({ counts_for_team: payload.counts_for_team })
+        .eq('id', line.id);
+    };
     if (!line.score_token) {
       // No token (shouldn't happen) — fall back to a direct write.
       await updateLine(line.id, {
@@ -691,6 +702,8 @@ export default function MatchupFacilitatorPage() {
         winner: payload.winner,
         status: payload.winner ? 'completed' : payload.score ? 'in_progress' : 'pending',
       });
+      await persistCountsFlag();
+      fetchAll({ silent: true });
       return;
     }
     setSaving(line.id);
@@ -709,6 +722,7 @@ export default function MatchupFacilitatorPage() {
         alert(`Couldn’t save: ${resBody.error || `HTTP ${res.status}`}`);
         return;
       }
+      await persistCountsFlag();
       fetchAll({ silent: true });
     } catch (e) {
       setSaving(null);
@@ -938,7 +952,7 @@ function RoundCard({
   onAssign: (line: Line, field: SlotField, playerId: string | null) => void;
   onSaveScore: (
     line: Line,
-    payload: { score: string | null; winner: 'home' | 'away' | null }
+    payload: { score: string | null; winner: 'home' | 'away' | null; counts_for_team?: boolean }
   ) => void;
   onSetLineType: (line: Line, type: 'singles' | 'doubles') => void;
   onSaveCourtLabel: (lineId: string, label: string | null) => void;
@@ -1120,7 +1134,7 @@ function LineEditor({
   homeClub: Club;
   awayClub: Club;
   onAssign: (field: SlotField, playerId: string | null) => void;
-  onSaveScore: (payload: { score: string | null; winner: 'home' | 'away' | null }) => void;
+  onSaveScore: (payload: { score: string | null; winner: 'home' | 'away' | null; counts_for_team?: boolean }) => void;
   onSetType: (type: 'singles' | 'doubles') => void;
   onSaveCourtLabel: (label: string | null) => void;
   onRemove: () => void;
@@ -1151,6 +1165,19 @@ function LineEditor({
   const optionsFor = (current: string | null) =>
     allLinePlayers.filter(p => p.id === current || !usedInRound.has(p.id));
 
+  // Mixed court: a player on the home side isn't from the home club, or a
+  // player on the away side isn't from the away club. Such a line records a
+  // winning SIDE (for individual records) but must NOT count for the team.
+  const nameOf = (pid: string | null) => (pid ? allLinePlayers.find(p => p.id === pid)?.player_name || '' : '');
+  const clubOf = (pid: string | null) => (pid ? allLinePlayers.find(p => p.id === pid)?.club_id : undefined);
+  const homeSideIds = [line.home_player1_id, line.home_player2_id].filter(Boolean) as string[];
+  const awaySideIds = [line.away_player1_id, line.away_player2_id].filter(Boolean) as string[];
+  const isMixed =
+    homeSideIds.some(pid => { const c = clubOf(pid); return c && c !== homeClub.id; }) ||
+    awaySideIds.some(pid => { const c = clubOf(pid); return c && c !== awayClub.id; });
+  const sideAName = homeSideIds.map(nameOf).filter(Boolean).join(' / ') || `${homeClub.short_code} side`;
+  const sideBName = awaySideIds.map(nameOf).filter(Boolean).join(' / ') || `${awayClub.short_code} side`;
+
   // Unsaved if the local score or winner differs from what's stored.
   const dirty =
     (score.trim() || null) !== (line.score || null) || winner !== line.winner;
@@ -1160,7 +1187,10 @@ function LineEditor({
   const locked = hasResult && !editing && !dirty;
 
   const save = () => {
-    onSaveScore({ score: score.trim() || null, winner });
+    // Mixed line -> false; a line that was mixed but is now clean -> reset true;
+    // an already-clean line -> leave the flag untouched (undefined).
+    const counts_for_team = isMixed ? false : line.counts_for_team === false ? true : undefined;
+    onSaveScore({ score: score.trim() || null, winner, counts_for_team });
     setEditing(false);
   };
 
@@ -1172,9 +1202,9 @@ function LineEditor({
 
   const winnerLabel =
     line.winner === 'home'
-      ? `${homeClub.short_code} won`
+      ? `${isMixed ? sideAName : homeClub.short_code} won`
       : line.winner === 'away'
-      ? `${awayClub.short_code} won`
+      ? `${isMixed ? sideBName : awayClub.short_code} won`
       : 'Scored';
 
   return (
@@ -1324,6 +1354,11 @@ function LineEditor({
         </div>
       ) : (
         <>
+          {isMixed && (
+            <div className="mb-2 text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-md px-2.5 py-1.5">
+              Mixed court — pick the winning side. Counts for each player&apos;s record, <strong>not</strong> the team score.
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <input
               value={score}
@@ -1340,7 +1375,7 @@ function LineEditor({
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {awayClub.short_code} won
+                {isMixed ? `${sideBName} won` : `${awayClub.short_code} won`}
               </button>
               <button
                 onClick={() => setWinner(winner === 'home' ? null : 'home')}
@@ -1350,7 +1385,7 @@ function LineEditor({
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {homeClub.short_code} won
+                {isMixed ? `${sideAName} won` : `${homeClub.short_code} won`}
               </button>
             </div>
             {/* Per-court Save: writes score + winner together. */}
