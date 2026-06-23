@@ -164,6 +164,24 @@ export default function MatchupFacilitatorPage() {
     setLoading(false);
   }, [matchupId]);
 
+  // Add a brand-new player to a club's roster right from the scorecard.
+  const addPlayer = async (clubId: string, name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed || !matchup) return;
+    const supabase = createClient();
+    const existing = clubId === homeClub?.id ? homeRosters : awayRosters;
+    const nextPos = existing.reduce((mx, r) => Math.max(mx, r.ladder_position ?? 0), 0) + 1;
+    const { error: insErr } = await supabase.from('league_team_rosters').insert({
+      division_id: matchup.division_id,
+      club_id: clubId,
+      player_name: trimmed,
+      ladder_position: nextPos,
+      status: 'active',
+    });
+    if (insErr) { setError(insErr.message); return; }
+    await fetchAll({ silent: true });
+  };
+
   // Which rosters count as "available" for today:
   // - If any check-ins exist for this matchup, use only checked-in active players
   // - If none, fall back to all active roster players
@@ -773,6 +791,7 @@ export default function MatchupFacilitatorPage() {
             onCheckAll={() => checkInAllActive(awayClub.id)}
             onClearAll={() => clearCheckins(awayClub.id)}
             onMove={(rosterId, dir) => moveInClub(awayClub.id, rosterId, dir)}
+            onAddPlayer={(name) => addPlayer(awayClub.id, name)}
           />
           <AttendanceColumn
             label={`Home · ${homeClub.name}`}
@@ -782,6 +801,7 @@ export default function MatchupFacilitatorPage() {
             onCheckAll={() => checkInAllActive(homeClub.id)}
             onClearAll={() => clearCheckins(homeClub.id)}
             onMove={(rosterId, dir) => moveInClub(homeClub.id, rosterId, dir)}
+            onAddPlayer={(name) => addPlayer(homeClub.id, name)}
           />
         </div>
       </section>
@@ -1335,6 +1355,7 @@ function AttendanceColumn({
   onCheckAll,
   onClearAll,
   onMove,
+  onAddPlayer,
 }: {
   label: string;
   rosters: Roster[];
@@ -1343,7 +1364,17 @@ function AttendanceColumn({
   onCheckAll: () => void;
   onClearAll: () => void;
   onMove?: (rosterId: string, dir: -1 | 1) => void;
+  onAddPlayer?: (name: string) => void | Promise<void>;
 }) {
+  const [newName, setNewName] = useState('');
+  const [adding, setAdding] = useState(false);
+  const submitNew = async () => {
+    if (!newName.trim() || !onAddPlayer) return;
+    setAdding(true);
+    await onAddPlayer(newName);
+    setNewName('');
+    setAdding(false);
+  };
   const here = rosters.filter(r => checkedInIds.has(r.id)).length;
   const sorted = [...rosters].sort(
     (a, b) =>
@@ -1424,6 +1455,24 @@ function AttendanceColumn({
             </button>
           </div>
         </>
+      )}
+      {onAddPlayer && (
+        <div className="flex gap-1.5 mt-2">
+          <input
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') submitNew(); }}
+            placeholder="Add a player…"
+            className="flex-1 min-w-0 px-2 py-1 border border-gray-300 rounded text-sm text-gray-900"
+          />
+          <button
+            onClick={submitNew}
+            disabled={!newName.trim() || adding}
+            className="px-2.5 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700 disabled:opacity-40 shrink-0"
+          >
+            {adding ? 'Adding…' : '+ Add'}
+          </button>
+        </div>
       )}
     </div>
   );

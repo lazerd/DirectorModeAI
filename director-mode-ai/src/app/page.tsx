@@ -20,10 +20,13 @@ export default function HomePage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user);
-      setLoading(false);
-    });
+    // .catch + .finally so a rejected/expired session can't leave the header
+    // stuck on the loading skeleton with no Sign In button.
+    supabase.auth
+      .getUser()
+      .then(({ data: { user } }) => setUser(user))
+      .catch(() => setUser(null))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -208,7 +211,11 @@ export default function HomePage() {
               <div className="w-24 h-9 bg-white/10 animate-pulse rounded-lg" />
             ) : user ? (
               <>
-                <Link href="/client/dashboard" className="hidden sm:flex items-center gap-2 px-4 py-2 text-[#D3FB52] hover:bg-white/5 rounded-lg font-medium text-sm transition-colors">
+                <Link href="/mixer/home" className="flex items-center gap-2 px-4 py-2.5 bg-[#D3FB52] text-[#002838] rounded-lg font-semibold text-sm hover:bg-[#c5f035] transition-colors">
+                  <LayoutGrid size={16} />
+                  MixerMode
+                </Link>
+                <Link href="/client/dashboard" className="hidden sm:flex items-center gap-2 px-3 py-2 text-[#D3FB52] hover:bg-white/5 rounded-lg font-medium text-sm transition-colors">
                   <Calendar size={16} />
                   My Account
                 </Link>
@@ -222,7 +229,7 @@ export default function HomePage() {
               </>
             ) : (
               <>
-                <Link href="/login" className="hidden sm:block text-white/70 hover:text-white text-sm font-medium transition-colors px-2">
+                <Link href="/login" className="block text-white/80 hover:text-white text-sm font-semibold transition-colors px-2 sm:px-3 py-2.5">
                   Sign In
                 </Link>
                 <Link href="/login" className="px-4 sm:px-5 py-2.5 bg-[#D3FB52] text-[#002838] rounded-lg font-semibold text-sm hover:bg-[#c5f035] hover:shadow-lg hover:shadow-[#D3FB52]/25 transition-all">
