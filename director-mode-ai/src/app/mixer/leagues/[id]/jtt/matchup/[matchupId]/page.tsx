@@ -1262,6 +1262,7 @@ function LineEditor({
           <PlayerPicker
             rosters={optionsFor(line.away_player1_id)}
             clubShortById={clubShortById}
+            ownClubId={awayClub.id}
             value={line.away_player1_id}
             onChange={v => onAssign('away_player1_id', v)}
             placeholder={isDoubles ? 'Player 1' : 'Player'}
@@ -1271,6 +1272,7 @@ function LineEditor({
               <PlayerPicker
                 rosters={optionsFor(line.away_player2_id)}
                 clubShortById={clubShortById}
+                ownClubId={awayClub.id}
                 value={line.away_player2_id}
                 onChange={v => onAssign('away_player2_id', v)}
                 placeholder="Player 2"
@@ -1286,6 +1288,7 @@ function LineEditor({
           <PlayerPicker
             rosters={optionsFor(line.home_player1_id)}
             clubShortById={clubShortById}
+            ownClubId={homeClub.id}
             value={line.home_player1_id}
             onChange={v => onAssign('home_player1_id', v)}
             placeholder={isDoubles ? 'Player 1' : 'Player'}
@@ -1295,6 +1298,7 @@ function LineEditor({
               <PlayerPicker
                 rosters={optionsFor(line.home_player2_id)}
                 clubShortById={clubShortById}
+                ownClubId={homeClub.id}
                 value={line.home_player2_id}
                 onChange={v => onAssign('home_player2_id', v)}
                 placeholder="Player 2"
@@ -1594,29 +1598,58 @@ function PlayerPicker({
   onChange,
   placeholder,
   clubShortById,
+  ownClubId,
 }: {
   rosters: Roster[];
   value: string | null;
   onChange: (v: string | null) => void;
   placeholder: string;
   clubShortById?: Map<string, string>;
+  ownClubId?: string;
 }) {
+  const [borrow, setBorrow] = useState(false);
+  // Default: only this side's own team. The current pick is always kept visible,
+  // so if it's already an opposing-team player we show the full pool.
+  const valueClub = rosters.find(r => r.id === value)?.club_id;
+  const showAll = !ownClubId || borrow || (!!value && valueClub !== ownClubId);
+  const opts = showAll ? rosters : rosters.filter(r => r.club_id === ownClubId || r.id === value);
+  const ownShort = ownClubId ? clubShortById?.get(ownClubId) : undefined;
+
   return (
-    <select
-      value={value || ''}
-      onChange={e => onChange(e.target.value || null)}
-      className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900"
-    >
-      <option value="">{placeholder} — choose —</option>
-      {rosters.map(r => {
-        const club = clubShortById?.get(r.club_id);
-        return (
-          <option key={r.id} value={r.id}>
-            {r.player_name}
-            {club ? ` · ${club}` : ''}
-          </option>
-        );
-      })}
-    </select>
+    <div>
+      <select
+        value={value || ''}
+        onChange={e => onChange(e.target.value || null)}
+        className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900"
+      >
+        <option value="">{placeholder} — choose —</option>
+        {opts.map(r => {
+          const club = clubShortById?.get(r.club_id);
+          const label = showAll && club ? `${r.player_name} · ${club}` : r.player_name;
+          return (
+            <option key={r.id} value={r.id}>{label}</option>
+          );
+        })}
+      </select>
+      {ownClubId && (
+        showAll ? (
+          <button
+            type="button"
+            onClick={() => setBorrow(false)}
+            className="mt-1 text-[11px] text-gray-400 hover:text-gray-700"
+          >
+            ↩ Show only {ownShort || 'my team'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setBorrow(true)}
+            className="mt-1 text-[11px] text-orange-600 hover:text-orange-700"
+          >
+            + Use player from opposing team
+          </button>
+        )
+      )}
+    </div>
   );
 }
