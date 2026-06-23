@@ -201,6 +201,21 @@ export default function MatchupFacilitatorPage() {
     ? activeAway.filter(r => checkedInIds.has(r.id))
     : activeAway;
 
+  // Manual line dropdowns can pick ANY active player from EITHER club, so a
+  // lineup can be mixed (e.g. an SH player paired with an OCC player against
+  // two SH players) when the numbers don't line up. Auto-assign still uses the
+  // per-club available lists above; this pool is only for the manual pickers.
+  const allLinePlayers = useMemo(
+    () => [...activeHome, ...activeAway],
+    [activeHome, activeAway]
+  );
+  const clubShortById = useMemo(() => {
+    const m = new Map<string, string>();
+    if (homeClub) m.set(homeClub.id, homeClub.short_code);
+    if (awayClub) m.set(awayClub.id, awayClub.short_code);
+    return m;
+  }, [homeClub, awayClub]);
+
   const courtsForThisMatchup =
     matchup?.courts_override ?? homeClub?.courts_available ?? 0;
 
@@ -860,8 +875,8 @@ export default function MatchupFacilitatorPage() {
             key={round}
             round={round}
             roundLines={roundLines}
-            homeRosters={availableHome}
-            awayRosters={availableAway}
+            allLinePlayers={allLinePlayers}
+            clubShortById={clubShortById}
             homeClub={homeClub}
             awayClub={awayClub}
             saving={saving}
@@ -896,8 +911,8 @@ export default function MatchupFacilitatorPage() {
 function RoundCard({
   round,
   roundLines,
-  homeRosters,
-  awayRosters,
+  allLinePlayers,
+  clubShortById,
   homeClub,
   awayClub,
   saving,
@@ -915,8 +930,8 @@ function RoundCard({
 }: {
   round: number;
   roundLines: Line[];
-  homeRosters: Roster[];
-  awayRosters: Roster[];
+  allLinePlayers: Roster[];
+  clubShortById: Map<string, string>;
   homeClub: Club;
   awayClub: Club;
   saving: string | null;
@@ -939,6 +954,16 @@ function RoundCard({
   const doublesCount = roundLines.length - singlesCount;
   const scored = roundLines.filter(l => l.status === 'completed').length;
   const allScored = roundLines.length > 0 && scored === roundLines.length;
+
+  // Players already placed somewhere in THIS round — hidden from the other
+  // slots' dropdowns so you can't pick the same kid twice in one round.
+  // (Resets per round: everyone is selectable again in a new round.)
+  const usedInRound = new Set<string>();
+  for (const l of roundLines) {
+    for (const pid of [l.home_player1_id, l.home_player2_id, l.away_player1_id, l.away_player2_id]) {
+      if (pid) usedInRound.add(pid);
+    }
+  }
 
   return (
     <section className="border border-gray-200 rounded-xl overflow-hidden">
@@ -1025,8 +1050,9 @@ function RoundCard({
             key={line.id}
             line={line}
             courtNumber={i + 1}
-            homeRosters={homeRosters}
-            awayRosters={awayRosters}
+            allLinePlayers={allLinePlayers}
+            usedInRound={usedInRound}
+            clubShortById={clubShortById}
             homeClub={homeClub}
             awayClub={awayClub}
             onAssign={(field, playerId) => onAssign(line, field, playerId)}
@@ -1074,8 +1100,9 @@ function TeamScore({
 function LineEditor({
   line,
   courtNumber,
-  homeRosters,
-  awayRosters,
+  allLinePlayers,
+  usedInRound,
+  clubShortById,
   homeClub,
   awayClub,
   onAssign,
@@ -1087,8 +1114,9 @@ function LineEditor({
 }: {
   line: Line;
   courtNumber: number;
-  homeRosters: Roster[];
-  awayRosters: Roster[];
+  allLinePlayers: Roster[];
+  usedInRound: Set<string>;
+  clubShortById: Map<string, string>;
   homeClub: Club;
   awayClub: Club;
   onAssign: (field: SlotField, playerId: string | null) => void;
@@ -1116,6 +1144,12 @@ function LineEditor({
   };
 
   const isDoubles = line.line_type === 'doubles';
+
+  // Each dropdown offers every active player from BOTH clubs (so a court can be
+  // mixed when numbers are uneven), minus anyone already placed elsewhere in
+  // this round — except this slot's own current pick, which stays selectable.
+  const optionsFor = (current: string | null) =>
+    allLinePlayers.filter(p => p.id === current || !usedInRound.has(p.id));
 
   // Unsaved if the local score or winner differs from what's stored.
   const dirty =
@@ -1226,7 +1260,8 @@ function LineEditor({
             Away · {awayClub.name}
           </div>
           <PlayerPicker
-            rosters={awayRosters}
+            rosters={optionsFor(line.away_player1_id)}
+            clubShortById={clubShortById}
             value={line.away_player1_id}
             onChange={v => onAssign('away_player1_id', v)}
             placeholder={isDoubles ? 'Player 1' : 'Player'}
@@ -1234,7 +1269,8 @@ function LineEditor({
           {isDoubles && (
             <div className="mt-2">
               <PlayerPicker
-                rosters={awayRosters}
+                rosters={optionsFor(line.away_player2_id)}
+                clubShortById={clubShortById}
                 value={line.away_player2_id}
                 onChange={v => onAssign('away_player2_id', v)}
                 placeholder="Player 2"
@@ -1248,7 +1284,8 @@ function LineEditor({
             Home · {homeClub.name}
           </div>
           <PlayerPicker
-            rosters={homeRosters}
+            rosters={optionsFor(line.home_player1_id)}
+            clubShortById={clubShortById}
             value={line.home_player1_id}
             onChange={v => onAssign('home_player1_id', v)}
             placeholder={isDoubles ? 'Player 1' : 'Player'}
@@ -1256,7 +1293,8 @@ function LineEditor({
           {isDoubles && (
             <div className="mt-2">
               <PlayerPicker
-                rosters={homeRosters}
+                rosters={optionsFor(line.home_player2_id)}
+                clubShortById={clubShortById}
                 value={line.home_player2_id}
                 onChange={v => onAssign('home_player2_id', v)}
                 placeholder="Player 2"
@@ -1555,11 +1593,13 @@ function PlayerPicker({
   value,
   onChange,
   placeholder,
+  clubShortById,
 }: {
   rosters: Roster[];
   value: string | null;
   onChange: (v: string | null) => void;
   placeholder: string;
+  clubShortById?: Map<string, string>;
 }) {
   return (
     <select
@@ -1568,12 +1608,15 @@ function PlayerPicker({
       className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm text-gray-900"
     >
       <option value="">{placeholder} — choose —</option>
-      {rosters.map(r => (
-        <option key={r.id} value={r.id}>
-          {r.ladder_position ? `#${r.ladder_position} ` : ''}
-          {r.player_name}
-        </option>
-      ))}
+      {rosters.map(r => {
+        const club = clubShortById?.get(r.club_id);
+        return (
+          <option key={r.id} value={r.id}>
+            {r.player_name}
+            {club ? ` · ${club}` : ''}
+          </option>
+        );
+      })}
     </select>
   );
 }
