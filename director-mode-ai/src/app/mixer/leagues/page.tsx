@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus, Trophy, Calendar, Users, AlertCircle } from 'lucide-react';
+import { Plus, Trophy, Calendar, Users, AlertCircle, ArrowRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 
@@ -64,6 +64,26 @@ export default function LeaguesListPage() {
           Create League
         </Link>
       </div>
+
+      <Link
+        href="/flex"
+        className="group flex items-center justify-between gap-4 mb-6 rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 p-4 hover:shadow-md transition-all"
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-500 text-white">
+            <Trophy size={20} />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">Summer Flex League 2026</h3>
+            <p className="text-sm text-gray-500">
+              Live hub — Men&apos;s/Women&apos;s Singles &amp; Doubles, compass draw, pool standings &amp; scoring
+            </p>
+          </div>
+        </div>
+        <span className="inline-flex items-center gap-1 text-sm font-medium text-orange-600 group-hover:gap-2 transition-all whitespace-nowrap">
+          Open <ArrowRight size={16} />
+        </span>
+      </Link>
 
       {error && (
         <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2">
