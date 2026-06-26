@@ -80,10 +80,12 @@ export default async function FlexPage() {
       });
     }
     const lookup = (a: string, b: string): MatchT => {
-      const m = byPair.get(pairKey(a, b));
-      if (!m) return { token: '', a, b, score: '', winner_side: null, status: 'pending' };
-      if (m.a.toLowerCase() === a.toLowerCase()) return m;
-      return { ...m, a: m.b, b: m.a, winner_side: m.winner_side === 'a' ? 'b' : m.winner_side === 'b' ? 'a' : null };
+      // ALWAYS present in DB order (a = player1, b = player3) so the winner
+      // buttons' 'a'/'b' match exactly what the score API writes. Previously this
+      // swapped display order + flipped winner_side when the stored order differed
+      // from the pool's config order — but the buttons still posted raw 'a'/'b',
+      // so a swapped match recorded (and showed) the OPPOSITE winner.
+      return byPair.get(pairKey(a, b)) || { token: '', a, b, score: '', winner_side: null, status: 'pending' };
     };
 
     if (cfg.type === 'compass') {
