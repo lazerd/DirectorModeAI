@@ -128,13 +128,16 @@ function MatchRow({ m }: { m: MatchT }) {
   }
 
   if (done && !editing) {
+    // Always name the WINNER first ("winner def. loser") — previously it printed
+    // "{m.a} def. {m.b}" regardless of who won, so a side-B win read backwards.
+    const winnerName = m.winner_side === 'b' ? m.b : m.a;
+    const loserName = m.winner_side === 'b' ? m.a : m.b;
     return (
       <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: '9px 13px', marginBottom: 8, background: '#f6fefb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 14.5 }}>
-          <span style={{ fontWeight: m.winner_side === 'a' ? 700 : 500, color: m.winner_side === 'a' ? '#15803d' : '#1B2536' }}>{m.a}</span>
+          <span style={{ fontWeight: 700, color: '#15803d' }}>{winnerName}</span>
           <span style={{ color: '#9AA5B8' }}> def. </span>
-          <span style={{ fontWeight: m.winner_side === 'b' ? 700 : 500, color: m.winner_side === 'b' ? '#15803d' : '#1B2536' }}>{m.b}</span>
-          {m.winner_side === 'a' ? '' : ''}
+          <span style={{ fontWeight: 500, color: '#1B2536' }}>{loserName}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontWeight: 700, color: '#0f172a' }}>{m.score}</span>
