@@ -1,50 +1,23 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Check, Sparkles, ArrowRight, Gauge } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
-
-type Billing = 'monthly' | 'annual';
+import {
+  Sparkles,
+  ArrowRight,
+  Gauge,
+  Bot,
+  MessageSquare,
+  Mail,
+  MonitorSmartphone,
+  ShieldCheck,
+  Check,
+} from 'lucide-react';
 
 export default function PricingPage() {
-  const router = useRouter();
-  const [billing, setBilling] = useState<Billing>('monthly');
-  const [loading, setLoading] = useState<string | null>(null);
-
-  async function startCheckout(priceKey: string) {
-    setLoading(priceKey);
-    const supabase = createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) {
-      router.push(`/login?redirect=${encodeURIComponent('/pricing')}`);
-      return;
-    }
-    const res = await fetch('/api/stripe/create-checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ priceKey, mode: 'subscription' }),
-    });
-    const data = await res.json();
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
-      setLoading(null);
-      alert(data.message || 'Could not start checkout. Please try again.');
-    }
-  }
-
-  const proKey = billing === 'monthly' ? 'pro_monthly' : 'pro_annual';
-  const proPrice = billing === 'monthly' ? '$29' : '$290';
-  const proSuffix = billing === 'monthly' ? '/mo' : '/yr';
-
   return (
     <div className="min-h-screen bg-[#001820] text-white">
       <header className="border-b border-white/[0.06] sticky top-0 z-30 bg-[#001820]/95 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-yellow-300/20 flex items-center justify-center">
               <Sparkles size={16} className="text-yellow-300" />
@@ -55,124 +28,155 @@ export default function PricingPage() {
         </div>
       </header>
 
-      <section className="max-w-5xl mx-auto px-6 pt-16 pb-8 text-center">
-        <h1 className="font-display text-4xl md:text-5xl tracking-tight">
-          Free for the basics. <span className="text-yellow-300">Pro</span> when it's go time.
+      {/* Hero */}
+      <section className="max-w-3xl mx-auto px-6 pt-16 pb-8 text-center">
+        <div className="inline-flex items-center gap-2 text-xs font-medium text-yellow-300/90 bg-yellow-300/10 border border-yellow-300/20 rounded-full px-3 py-1">
+          <Gauge size={13} /> Pay only for what you use
+        </div>
+        <h1 className="mt-5 font-display text-4xl md:text-5xl tracking-tight">
+          No subscription. <span className="text-yellow-300">Just a meter.</span>
         </h1>
         <p className="mt-4 text-white/60 max-w-xl mx-auto">
-          Start free. Upgrade to Pro when you want the DJ Console for every event, SMS notifications, AI recommendations, custom branding, and unlimited everything.
+          Run your whole club by talking to ClubMode in plain English. Most of what you send is free —
+          you only pay, pennies at a time, for the AI doing the work. A quiet winter costs almost nothing.
+          No monthly fee for a tool you didn&apos;t touch.
         </p>
-
-        <div className="mt-6">
-          <Link href="/pricing/estimate" className="inline-flex items-center gap-1.5 text-sm text-yellow-300 hover:text-yellow-200">
-            <Gauge size={14} /> Estimate your club&apos;s monthly cost
+        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/pricing/estimate"
+            className="px-5 py-3 rounded-xl font-medium bg-yellow-300 text-[#001820] hover:bg-yellow-200 flex items-center justify-center gap-2"
+          >
+            <Gauge size={16} /> Estimate your monthly cost
           </Link>
-        </div>
-
-        <div className="mt-8 inline-flex items-center gap-1 p-1 rounded-xl border border-white/10 bg-white/5">
-          <button
-            onClick={() => setBilling('monthly')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${billing === 'monthly' ? 'bg-white text-[#001820]' : 'text-white/60 hover:text-white'}`}
+          <Link
+            href="/register"
+            className="px-5 py-3 rounded-xl font-medium bg-white/10 hover:bg-white/15 text-white flex items-center justify-center gap-2"
           >
-            Monthly
-          </button>
-          <button
-            onClick={() => setBilling('annual')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${billing === 'annual' ? 'bg-white text-[#001820]' : 'text-white/60 hover:text-white'}`}
-          >
-            Annual <span className="text-emerald-400 ml-1">−17%</span>
-          </button>
+            Get started <ArrowRight size={16} />
+          </Link>
         </div>
       </section>
 
-      <section className="max-w-5xl mx-auto px-6 pb-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Free */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-8 flex flex-col">
-            <div className="text-2xl font-display">Free</div>
-            <div className="mt-1 text-sm text-white/50">Perfect for trying things out and small events.</div>
-            <div className="mt-6 flex items-baseline gap-2">
-              <div className="text-5xl font-display">$0</div>
-            </div>
-            <ul className="mt-6 space-y-2.5 flex-1">
-              <Bullet>Unlimited events &amp; players</Bullet>
-              <Bullet>Round robin and basic brackets</Bullet>
-              <Bullet>Public leaderboards, QR codes, results cards</Bullet>
-              <Bullet>Coach booking page</Bullet>
-              <Bullet>25 emails per month</Bullet>
-              <Bullet>5 photos per event, 25 player vault</Bullet>
-              <Bullet><span className="text-yellow-300">DJ Console for 1 event, lifetime</span> — full feature, try it free</Bullet>
-              <Bullet muted>SMS not included</Bullet>
-              <Bullet muted>AI string recs use standard fallback</Bullet>
-            </ul>
-            <button
-              onClick={() => router.push('/register')}
-              className="mt-8 w-full py-3 rounded-xl font-medium bg-white/10 hover:bg-white/15 text-white flex items-center justify-center gap-2"
-            >
-              Sign up free <ArrowRight size={16} />
-            </button>
-          </div>
-
-          {/* Pro */}
-          <div className="relative rounded-2xl border border-yellow-300/40 bg-yellow-300/5 p-8 flex flex-col ring-2 ring-yellow-300/30">
-            <div className="absolute -top-3 left-6 text-[10px] font-semibold tracking-wider uppercase bg-yellow-300 text-[#001820] px-3 py-1 rounded-full">
-              Recommended
-            </div>
-            <div className="text-2xl font-display text-yellow-300">Pro</div>
-            <div className="mt-1 text-sm text-white/50">Everything you need to run real events at a real club.</div>
-            <div className="mt-6 flex items-baseline gap-2">
-              <div className="text-5xl font-display">{proPrice}</div>
-              <div className="text-white/40 text-sm">{proSuffix}</div>
-            </div>
-            {billing === 'annual' && (
-              <div className="mt-1 text-emerald-400 text-xs font-medium">Save $58/year</div>
-            )}
-            <ul className="mt-6 space-y-2.5 flex-1">
-              <Bullet>Everything in Free, plus:</Bullet>
-              <Bullet><span className="text-yellow-300">DJ Console for unlimited events</span></Bullet>
-              <Bullet>200 SMS per month included <span className="text-white/40 text-xs">($0.05 each overage)</span></Bullet>
-              <Bullet>1,000 emails per month</Bullet>
-              <Bullet>AI string recommendations (real, not fallback)</Bullet>
-              <Bullet>Custom event branding (your club logo)</Bullet>
-              <Bullet>Tournament bracket optimizer</Bullet>
-              <Bullet>Multi-coach club management</Bullet>
-              <Bullet>Custom subdomain (whitelabel)</Bullet>
-              <Bullet>Multi-day tournaments &amp; advanced analytics</Bullet>
-              <Bullet>Unlimited photos &amp; player vault</Bullet>
-              <Bullet>Lesson reminder cron + CSV vault import</Bullet>
-            </ul>
-            <button
-              onClick={() => startCheckout(proKey)}
-              disabled={loading === proKey}
-              className="mt-8 w-full py-3 rounded-xl font-medium bg-yellow-300 text-[#001820] hover:bg-yellow-200 flex items-center justify-center gap-2 disabled:opacity-50"
-            >
-              {loading === proKey ? 'Redirecting…' : 'Upgrade to Pro'}
-              {loading !== proKey && <ArrowRight size={16} />}
-            </button>
-          </div>
+      {/* Free */}
+      <section className="max-w-5xl mx-auto px-6 pt-4 pb-2">
+        <div className="text-center mb-5">
+          <h2 className="font-display text-2xl">Free, always</h2>
+          <p className="mt-1 text-white/50 text-sm">The everyday way you reach players costs you nothing.</p>
         </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <FreeCard
+            icon={<MonitorSmartphone size={18} className="text-emerald-400" />}
+            title="The live event screen"
+            desc="Court assignments, who's up next, live scores and standings — players watch it on their phone or the big screen at the club. No texting needed when everyone's right there."
+          />
+          <FreeCard
+            icon={<Mail size={18} className="text-emerald-400" />}
+            title="Email"
+            desc="Announcements, event invites, lesson reminders, newsletters. Sent free, with fair-use limits — no per-email charge, ever."
+          />
+        </div>
+      </section>
 
-        {/* Day Pass */}
-        <div className="mt-8 rounded-2xl border border-white/10 bg-[#002838] p-6 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex-1 min-w-[260px]">
-            <div className="font-display text-xl">Day Pass — $9 per event</div>
-            <div className="text-white/60 text-sm mt-1">
-              Running just one event and don't want a subscription? Unlock Pro features (DJ Console, SMS, custom branding, AI) for one specific event.
-            </div>
+      {/* Metered */}
+      <section className="max-w-5xl mx-auto px-6 pt-8 pb-2">
+        <div className="text-center mb-5">
+          <h2 className="font-display text-2xl">You only pay for these</h2>
+          <p className="mt-1 text-white/50 text-sm">Pennies at a time, and only when they actually happen.</p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <MeterCard
+            icon={<Bot size={18} className="text-yellow-300" />}
+            title="AI actions"
+            price="pennies each"
+            desc="Every time you ask ClubMode to do something — log scores, schedule a mixer, book a lesson, pull a board report — that's one action. This is the engine you're paying for."
+          />
+          <MeterCard
+            icon={<MessageSquare size={18} className="text-yellow-300" />}
+            title="Text messages"
+            price="$0.05 each — only when you need them"
+            desc="Just for reaching someone who isn't at the club: a lesson reminder for tomorrow, a 'your racket's ready' note, a reservation change. Most clubs send only a handful a month."
+          />
+        </div>
+      </section>
+
+      {/* Monthly maximum */}
+      <section className="max-w-5xl mx-auto px-6 py-8">
+        <div className="rounded-2xl border border-white/10 bg-[#002838] p-7">
+          <div className="flex items-center gap-2 text-yellow-300">
+            <ShieldCheck size={18} />
+            <span className="font-display text-xl">You set your own monthly maximum</span>
           </div>
-          <div className="text-white/50 text-xs">
-            Available from inside any event when you click a Pro feature.
-          </div>
+          <p className="mt-3 text-white/60 text-sm max-w-2xl">
+            Pick a ceiling you&apos;re comfortable with. We&apos;ll warn you as you approach it, and you&apos;ll
+            never be charged a penny more without your say-so. Hit your max mid-month and want to keep going?
+            One tap raises it. It&apos;s a safety belt, not a wall — no surprise bills, ever.
+          </p>
+          <ul className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <Bullet>A live meter of exactly what you&apos;ve used and what you owe</Bullet>
+            <Bullet>A heads-up at 80% of your monthly maximum</Bullet>
+            <Bullet>No charge for AI work you didn&apos;t use</Bullet>
+            <Bullet>Raise or lower your ceiling any time</Bullet>
+          </ul>
+        </div>
+      </section>
+
+      {/* Why not a subscription */}
+      <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
+        <h2 className="font-display text-2xl">Why a meter instead of a monthly fee?</h2>
+        <p className="mt-3 text-white/60 text-sm">
+          A flat subscription makes you pay the same whether you ran ten events or none. With ClubMode you
+          pay in your busy season and pay almost nothing when the courts are quiet. It&apos;s priced like a
+          utility — fair when you&apos;re busy, nearly free when you&apos;re not.
+        </p>
+        <div className="mt-6">
+          <Link
+            href="/pricing/estimate"
+            className="inline-flex items-center gap-1.5 text-sm text-yellow-300 hover:text-yellow-200"
+          >
+            <Gauge size={14} /> See what it would cost your club
+          </Link>
         </div>
       </section>
     </div>
   );
 }
 
-function Bullet({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
+function FreeCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
-    <li className={`flex items-start gap-2 text-sm ${muted ? 'text-white/40' : 'text-white/80'}`}>
-      <Check size={16} className={`mt-0.5 flex-shrink-0 ${muted ? 'text-white/20' : 'text-emerald-400'}`} />
+    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.04] p-6 flex flex-col">
+      <div className="w-9 h-9 rounded-lg bg-emerald-400/10 flex items-center justify-center">{icon}</div>
+      <div className="mt-4 font-display text-lg">{title}</div>
+      <div className="mt-0.5 text-emerald-400 text-sm font-medium">Free</div>
+      <p className="mt-3 text-white/50 text-sm leading-relaxed">{desc}</p>
+    </div>
+  );
+}
+
+function MeterCard({
+  icon,
+  title,
+  price,
+  desc,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  price: string;
+  desc: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-6 flex flex-col">
+      <div className="w-9 h-9 rounded-lg bg-yellow-300/10 flex items-center justify-center">{icon}</div>
+      <div className="mt-4 font-display text-lg">{title}</div>
+      <div className="mt-0.5 text-yellow-300 text-sm font-medium">{price}</div>
+      <p className="mt-3 text-white/50 text-sm leading-relaxed">{desc}</p>
+    </div>
+  );
+}
+
+function Bullet({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex items-start gap-2 text-sm text-white/80">
+      <Check size={16} className="mt-0.5 flex-shrink-0 text-emerald-400" />
       <span>{children}</span>
     </li>
   );
