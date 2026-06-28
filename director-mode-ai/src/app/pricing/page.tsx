@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Check, Sparkles, ArrowRight } from 'lucide-react';
+import { Check, Sparkles, ArrowRight, Gauge } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 type Billing = 'monthly' | 'annual';
@@ -62,6 +62,12 @@ export default function PricingPage() {
         <p className="mt-4 text-white/60 max-w-xl mx-auto">
           Start free. Upgrade to Pro when you want the DJ Console for every event, SMS notifications, AI recommendations, custom branding, and unlimited everything.
         </p>
+
+        <div className="mt-6">
+          <Link href="/pricing/estimate" className="inline-flex items-center gap-1.5 text-sm text-yellow-300 hover:text-yellow-200">
+            <Gauge size={14} /> Estimate your club&apos;s monthly cost
+          </Link>
+        </div>
 
         <div className="mt-8 inline-flex items-center gap-1 p-1 rounded-xl border border-white/10 bg-white/5">
           <button
