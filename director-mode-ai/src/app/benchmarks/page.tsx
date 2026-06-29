@@ -445,14 +445,14 @@ export default function BenchmarksPage() {
                   <TableCell>
                     <input type="checkbox" checked={!!shortlist[id]} onChange={() => toggle(r)} className="h-4 w-4 cursor-pointer" />
                   </TableCell>
-                  <TableCell className="font-medium max-w-[220px] truncate" title={r.club}>{r.club}</TableCell>
+                  <TableCell className="font-medium max-w-[260px] whitespace-normal break-words align-top" title={r.club}>{r.club}</TableCell>
                   <TableCell><Badge variant="secondary">{r.state}</Badge></TableCell>
                   {radiusActive && (
                     <TableCell className="text-right tabular-nums text-muted-foreground">
                       {r._dist != null ? Math.round(r._dist) : '—'}
                     </TableCell>
                   )}
-                  <TableCell className="max-w-[200px] truncate" title={r.title}>{r.title}</TableCell>
+                  <TableCell className="max-w-[220px] whitespace-normal break-words align-top" title={r.title}>{r.title}</TableCell>
                   <TableCell>{r.name}</TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">{usd(r.total)}</TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">{usd(r.revenue)}</TableCell>
