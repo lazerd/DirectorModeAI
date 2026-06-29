@@ -298,6 +298,39 @@ export async function consumeAiCall(userId: string): Promise<void> {
     .eq('user_id', userId);
 }
 
+/**
+ * Record one Assistant chat message as a billable AI action, plus the real
+ * Claude token usage so the metered ("taxi meter") pricing is accurate.
+ *
+ * Unlike consumeAiCall, this does NOT hard-block any tier — the per-page chat is
+ * metered, not gated. It never throws: a metering hiccup must not break the chat.
+ */
+export async function recordAiUsage(
+  userId: string,
+  inputTokens: number,
+  outputTokens: number
+): Promise<void> {
+  try {
+    const supabase = await ensureUsageRow(userId);
+    const { data: usage } = await supabase
+      .from('usage_credits')
+      .select('ai_calls_used, ai_input_tokens, ai_output_tokens')
+      .eq('user_id', userId)
+      .single();
+    await supabase
+      .from('usage_credits')
+      .update({
+        ai_calls_used: (usage?.ai_calls_used ?? 0) + 1,
+        ai_input_tokens: (usage?.ai_input_tokens ?? 0) + Math.max(0, inputTokens),
+        ai_output_tokens: (usage?.ai_output_tokens ?? 0) + Math.max(0, outputTokens),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId);
+  } catch (err) {
+    console.error('recordAiUsage failed (non-fatal):', err);
+  }
+}
+
 export async function consumeTtsChars(userId: string, chars: number): Promise<void> {
   if (chars <= 0) return;
   const supabase = await ensureUsageRow(userId);

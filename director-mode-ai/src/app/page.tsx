@@ -391,7 +391,7 @@ export default function HomePage() {
                 "Live Court Sheets", "Team Leagues", "Junior Team Tennis", "Round Robins",
                 "Tournaments", "Quads", "Strength Ladders", "Magic-Link Scoring",
                 "Lesson Booking", "Racquet Stringing", "Player Matching", "UTR Lookup",
-                "Swim Volunteer Points", "AI Coaching",
+                "Swim Volunteer Points", "AI Coaching", "AI Assistant on Every Page",
               ].map((cap) => (
                 <span key={`${dup}-${cap}`} className="flex items-center gap-3 px-6 text-sm font-medium text-white/35 uppercase tracking-wider">
                   {cap}
@@ -544,6 +544,77 @@ export default function HomePage() {
                 </CardTag>
               );
             })}
+          </div>
+        </div>
+      </section>
+
+      {/* ===================== AI ASSISTANT ADVERT ===================== */}
+      <section className="relative py-20 sm:py-28 px-5 sm:px-6 overflow-hidden bg-[#002838]">
+        <div aria-hidden className="absolute -top-20 left-1/4 w-96 h-96 bg-[#D3FB52]/8 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative max-w-6xl mx-auto grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {/* copy */}
+          <div>
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#D3FB52]/10 text-[#D3FB52] text-xs font-bold tracking-widest uppercase mb-5">
+              <Sparkles size={13} /> Built In
+            </span>
+            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight mb-5 leading-tight">
+              An AI assistant on<br /><span className="text-[#D3FB52]">every single page.</span>
+            </h2>
+            <p className="text-white/60 text-lg leading-relaxed mb-8">
+              Never hunt through menus again. Ask ClubMode how to do anything — set up a
+              mixer, score a JTT line, read your Board Report, send a blast — and get a
+              plain-English answer right where you are. It knows the whole platform.
+            </p>
+            <div className="space-y-3.5 mb-9">
+              {[
+                "Answers in plain language — no manuals, no support tickets",
+                "Knows which page you're on and points you to the right spot",
+                "Always one tap away, on every tool in the platform",
+              ].map((t) => (
+                <div key={t} className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-[#D3FB52]/10 flex items-center justify-center shrink-0 mt-0.5">
+                    <Check size={16} className="text-[#D3FB52]" />
+                  </div>
+                  <p className="text-white/75 text-[15px] leading-relaxed pt-1">{t}</p>
+                </div>
+              ))}
+            </div>
+            <Link
+              href="/login"
+              className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#D3FB52] text-[#002838] rounded-xl font-semibold hover:bg-[#c5f035] hover:-translate-y-0.5 transition-all shadow-lg shadow-[#D3FB52]/20"
+            >
+              Try it free <ArrowRight size={17} />
+            </Link>
+          </div>
+
+          {/* mock chat panel — mirrors the real in-app widget */}
+          <div className="relative">
+            <div className="rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-black/40 bg-[#001016]">
+              <div className="flex items-center gap-2 px-4 py-3 bg-[#0a1822] border-b border-white/[0.06]">
+                <div className="w-7 h-7 rounded-lg bg-[#D3FB52]/15 flex items-center justify-center">
+                  <Sparkles size={15} className="text-[#D3FB52]" />
+                </div>
+                <span className="text-sm font-semibold">ClubMode Assistant</span>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="flex justify-end">
+                  <div className="max-w-[85%] rounded-2xl px-3.5 py-2 text-sm bg-[#D3FB52] text-[#002838]">
+                    How do I split my mixer into a winners and consolation round?
+                  </div>
+                </div>
+                <div className="flex justify-start">
+                  <div className="max-w-[85%] rounded-2xl px-3.5 py-2 text-sm bg-white/[0.06] text-white/90 border border-white/[0.06] leading-relaxed">
+                    Open the event in MixerMode, go to the Format tab, and turn on
+                    “Winners + Consolation.” Set how many advance, and the bracket
+                    builds itself after the round-robin. Want the steps for seeding?
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 mt-1">
+                  <span className="flex-1 text-sm text-white/30">Ask anything about running your club…</span>
+                  <Sparkles size={16} className="text-[#D3FB52]" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
