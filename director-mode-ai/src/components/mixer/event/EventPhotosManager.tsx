@@ -20,6 +20,7 @@ interface EventPhoto {
 export function EventPhotosManager({ eventId, onPhotosChange }: EventPhotosManagerProps) {
   const [photos, setPhotos] = useState<EventPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
     fetchPhotos();
@@ -37,13 +38,10 @@ export function EventPhotosManager({ eventId, onPhotosChange }: EventPhotosManag
     }
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  const uploadFiles = async (fileList: FileList | File[]) => {
+    const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+    if (files.length === 0) return;
 
-    console.log("[PhotoUpload] Starting upload, files:", files.length, "current photos:", photos.length);
-
-    // Check limit
     if (photos.length + files.length > 5) {
       toast({
         variant: "destructive",
@@ -54,104 +52,47 @@ export function EventPhotosManager({ eventId, onPhotosChange }: EventPhotosManag
     }
 
     setUploading(true);
-
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.error("[PhotoUpload] No user logged in");
-        throw new Error("Not authenticated");
-      }
-
-      console.log("[PhotoUpload] User ID:", user.id, "Event ID:", eventId);
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        console.log(`[PhotoUpload] Processing file ${i + 1}/${files.length}:`, file.name, "size:", file.size);
-        
-        // Validate file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
-          toast({
-            variant: "destructive",
-            title: "File too large",
-            description: `${file.name} exceeds 5MB limit.`,
-          });
+      for (const file of files) {
+        if (file.size > 15 * 1024 * 1024) {
+          toast({ variant: "destructive", title: "File too large", description: `${file.name} is too large.` });
           continue;
         }
 
-        // Compress and resize image
-        const compressedFile = await compressImage(file);
-        console.log("[PhotoUpload] Image compressed, new size:", compressedFile.size);
-        
-        // Upload to storage
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${user.id}/${eventId}/${crypto.randomUUID()}.${fileExt}`;
-        const filePath = `${fileName}`;
-        console.log("[PhotoUpload] Generated file path:", filePath);
+        // Compress/resize client-side, then upload via the service-role route
+        // (bypasses storage RLS — direct client uploads were being rejected).
+        const compressed = await compressImage(file);
+        const fd = new FormData();
+        fd.append("file", new File([compressed], "photo.jpg", { type: "image/jpeg" }));
 
-        const { error: uploadError } = await supabase.storage
-          .from("event-photos")
-          .upload(filePath, compressedFile);
-
-        if (uploadError) {
-          console.error("[PhotoUpload] Storage upload error:", uploadError);
-          console.error("[PhotoUpload] Error details:", {
-            message: uploadError.message,
-            name: uploadError.name
-          });
-          throw uploadError;
-        }
-
-        console.log("[PhotoUpload] Storage upload successful");
-
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from("event-photos")
-          .getPublicUrl(filePath);
-
-        console.log("[PhotoUpload] Public URL:", publicUrl);
-
-        // Save to database
-        const { error: dbError } = await supabase
-          .from("event_photos")
-          .insert({
-            event_id: eventId,
-            photo_url: publicUrl,
-            storage_path: filePath,
-            display_order: photos.length + i,
-            uploaded_by: user.id,
-          });
-
-        if (dbError) {
-          console.error("[PhotoUpload] Database insert error:", dbError);
-          console.error("[PhotoUpload] Error details:", {
-            message: dbError.message,
-            code: dbError.code,
-            details: dbError.details,
-            hint: dbError.hint
-          });
-          throw dbError;
-        }
-
-        console.log("[PhotoUpload] Database insert successful");
+        const res = await fetch(`/api/events/${eventId}/upload-photo`, { method: "POST", body: fd });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || "Upload failed");
       }
 
-      toast({
-        title: "Photos uploaded!",
-        description: "Your event photos have been added.",
-      });
-
+      toast({ title: "Photos uploaded!", description: "Your event photos have been added." });
       fetchPhotos();
       onPhotosChange?.();
-    } catch (error) {
-      console.error("[PhotoUpload] Unexpected error:", error);
+    } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Upload failed",
-        description: "Could not upload photos. Please try again.",
+        description: error?.message || "Could not upload photos. Please try again.",
       });
     } finally {
       setUploading(false);
     }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) uploadFiles(e.target.files);
+    e.target.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files?.length) uploadFiles(e.dataTransfer.files);
   };
 
   const compressImage = async (file: File): Promise<Blob> => {
@@ -196,42 +137,41 @@ export function EventPhotosManager({ eventId, onPhotosChange }: EventPhotosManag
     });
   };
 
-  const deletePhoto = async (photoId: string, storagePath: string) => {
+  const deletePhoto = async (photoId: string) => {
     try {
-      // Delete from storage
-      const { error: storageError } = await supabase.storage
-        .from("event-photos")
-        .remove([storagePath]);
-
-      if (storageError) throw storageError;
-
-      // Delete from database
-      const { error: dbError } = await supabase
-        .from("event_photos")
-        .delete()
-        .eq("id", photoId);
-
-      if (dbError) throw dbError;
-
-      toast({
-        title: "Photo deleted",
-        description: "The photo has been removed.",
+      const res = await fetch(`/api/events/${eventId}/delete-photo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoId }),
       });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Delete failed");
 
+      toast({ title: "Photo deleted", description: "The photo has been removed." });
       fetchPhotos();
       onPhotosChange?.();
-    } catch (error) {
-      console.error("Delete error:", error);
+    } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Delete failed",
-        description: "Could not delete photo. Please try again.",
+        description: error?.message || "Could not delete photo. Please try again.",
       });
     }
   };
 
   return (
-    <Card className="p-6">
+    <Card
+      className={`p-6 transition-colors ${isDragging ? "ring-2 ring-primary border-primary bg-primary/5" : ""}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!isDragging) setIsDragging(true);
+      }}
+      onDragLeave={(e) => {
+        e.preventDefault();
+        setIsDragging(false);
+      }}
+      onDrop={handleDrop}
+    >
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -274,7 +214,7 @@ export function EventPhotosManager({ eventId, onPhotosChange }: EventPhotosManag
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => deletePhoto(photo.id, photo.storage_path)}
+                    onClick={() => deletePhoto(photo.id)}
                   >
                     <X className="h-4 w-4" />
                   </Button>
@@ -285,13 +225,20 @@ export function EventPhotosManager({ eventId, onPhotosChange }: EventPhotosManag
         )}
 
         {photos.length === 0 && (
-          <div className="text-center py-8 border-2 border-dashed rounded-lg">
+          <button
+            type="button"
+            onClick={() => document.getElementById("photo-upload")?.click()}
+            disabled={uploading}
+            className="w-full text-center py-8 border-2 border-dashed rounded-lg hover:border-primary hover:bg-primary/5 transition-colors cursor-pointer"
+          >
             <Upload className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-            <p className="text-muted-foreground">No photos added yet</p>
+            <p className="text-muted-foreground">
+              {uploading ? "Uploading…" : "Drag photos here, or click to browse"}
+            </p>
             <p className="text-sm text-muted-foreground">
               Add photos to create a beautiful results card to share
             </p>
-          </div>
+          </button>
         )}
       </div>
     </Card>
