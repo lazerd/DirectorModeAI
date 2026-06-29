@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Search, Download, ExternalLink, TrendingUp, Users, DollarSign, Percent } from 'lucide-react';
+import { Search, Download, ExternalLink, TrendingUp, Users, DollarSign, Percent, MapPin } from 'lucide-react';
 import rawData from './_data/benchmarks.json';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,6 +20,7 @@ type Row = {
   club: string; ein: string; state: string; region: string; dept: string;
   title: string; name: string; reported: number; other: number; total: number;
   revenue: number; pct: number | null; year: string; url: string; recent: boolean;
+  zip?: string | null; lat?: number | null; lng?: number | null; _dist?: number;
 };
 
 const DATA = rawData as Row[];
@@ -50,6 +51,18 @@ function percentile(sorted: number[], p: number) {
   return sorted[i];
 }
 
+// Great-circle distance in miles (haversine).
+function milesBetween(aLat: number, aLng: number, bLat: number, bLng: number) {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 3958.8;
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
 export default function BenchmarksPage() {
   const [dept, setDept] = useState('Tennis/Racquets');
   const [state, setState] = useState('all');
@@ -59,12 +72,18 @@ export default function BenchmarksPage() {
   const [shortlist, setShortlist] = useState<Record<string, Row>>({});
   const [minComp, setMinComp] = useState('');
   const [maxComp, setMaxComp] = useState('');
+  const [originZip, setOriginZip] = useState('');
+  const [origin, setOrigin] = useState<{ lat: number; lng: number; zip: string } | null>(null);
+  const [radius, setRadius] = useState(''); // miles; '' = off
+  const [geoErr, setGeoErr] = useState('');
+  const [geoBusy, setGeoBusy] = useState(false);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     const min = minComp ? Number(minComp) : null;
     const max = maxComp ? Number(maxComp) : null;
-    return DATA.filter((r) => {
+    const rad = origin && radius ? Number(radius) : null;
+    const base = DATA.filter((r) => {
       if (dept !== 'all' && r.dept !== dept) return false;
       if (state !== 'all' && r.state !== state) return false;
       if (region !== 'all' && r.region !== region) return false;
@@ -73,8 +92,54 @@ export default function BenchmarksPage() {
       if (max != null && r.total > max) return false;
       if (q && !(`${r.club} ${r.name} ${r.title}`.toLowerCase().includes(q))) return false;
       return true;
-    }).sort((a, b) => b.total - a.total);
-  }, [dept, state, region, query, recentOnly, minComp, maxComp]);
+    });
+    if (rad != null && origin) {
+      const out: Row[] = [];
+      for (const r of base) {
+        if (r.lat == null || r.lng == null) continue;
+        const d = milesBetween(origin.lat, origin.lng, r.lat, r.lng);
+        if (d <= rad) out.push({ ...r, _dist: d });
+      }
+      return out.sort((a, b) => (a._dist ?? 0) - (b._dist ?? 0));
+    }
+    return base.sort((a, b) => b.total - a.total);
+  }, [dept, state, region, query, recentOnly, minComp, maxComp, origin, radius]);
+
+  const radiusActive = !!(origin && radius);
+
+  async function applyOrigin() {
+    const z = originZip.replace(/\D/g, '').slice(0, 5);
+    if (z.length !== 5) {
+      setGeoErr('Enter a 5-digit ZIP');
+      setOrigin(null);
+      return;
+    }
+    setGeoBusy(true);
+    setGeoErr('');
+    try {
+      const res = await fetch(`/api/benchmarks/geocode?zip=${z}`);
+      if (!res.ok) {
+        setOrigin(null);
+        setGeoErr('ZIP not found');
+      } else {
+        const d = await res.json();
+        setOrigin({ lat: d.lat, lng: d.lng, zip: z });
+        if (!radius) setRadius('100');
+      }
+    } catch {
+      setOrigin(null);
+      setGeoErr('Lookup failed');
+    } finally {
+      setGeoBusy(false);
+    }
+  }
+
+  function clearOrigin() {
+    setOrigin(null);
+    setOriginZip('');
+    setRadius('');
+    setGeoErr('');
+  }
 
   const stats = useMemo(() => {
     const totals = filtered.map((r) => r.total).sort((a, b) => a - b);
@@ -104,8 +169,8 @@ export default function BenchmarksPage() {
 
   function exportCsv() {
     const rows = shortlistArr.length ? shortlistArr : filtered;
-    const cols = ['club', 'state', 'region', 'dept', 'title', 'name', 'total', 'revenue', 'pct', 'year', 'url'];
-    const header = ['Club', 'State', 'Region', 'Department', 'Title', 'Name', 'Total Comp', 'Club Revenue', 'Comp % of Rev', 'Tax Year', 'ProPublica URL'];
+    const cols = ['club', 'state', 'zip', 'region', 'dept', 'title', 'name', 'total', 'revenue', 'pct', 'year', 'url'];
+    const header = ['Club', 'State', 'ZIP', 'Region', 'Department', 'Title', 'Name', 'Total Comp', 'Club Revenue', 'Comp % of Rev', 'Tax Year', 'ProPublica URL'];
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
     const lines = [header.map(esc).join(',')];
     for (const r of rows) lines.push(cols.map((c) => esc((r as Record<string, unknown>)[c])).join(','));
@@ -121,7 +186,7 @@ export default function BenchmarksPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Compensation Benchmarks &amp; Recruiting</h1>
         <p className="mt-1 text-muted-foreground">
-          Real comp data from IRS Form 990 filings — source candidates by position, region, and pay range, then build a shortlist and export your outreach list.
+          Real comp data from IRS Form 990 filings — source candidates by position, pay range, and distance from any ZIP, then build a shortlist and export your outreach list.
         </p>
       </div>
 
@@ -156,6 +221,39 @@ export default function BenchmarksPage() {
                 {REGIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> Within radius</Label>
+            <div className="flex items-center gap-1.5">
+              <Input
+                inputMode="numeric"
+                placeholder="ZIP"
+                className="w-[88px]"
+                value={originZip}
+                onChange={(e) => setOriginZip(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') applyOrigin(); }}
+              />
+              <Select value={radius || 'off'} onValueChange={(v) => setRadius(v === 'off' ? '' : v)}>
+                <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="off">Any distance</SelectItem>
+                  <SelectItem value="25">25 miles</SelectItem>
+                  <SelectItem value="50">50 miles</SelectItem>
+                  <SelectItem value="100">100 miles</SelectItem>
+                  <SelectItem value="250">250 miles</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button type="button" size="sm" variant="outline" onClick={applyOrigin} disabled={geoBusy}>
+                {geoBusy ? '…' : 'Go'}
+              </Button>
+              {origin && (
+                <Button type="button" size="sm" variant="ghost" onClick={clearOrigin}>Clear</Button>
+              )}
+            </div>
+            {geoErr && <span className="text-xs text-destructive">{geoErr}</span>}
+            {origin && !geoErr && (
+              <span className="text-xs text-muted-foreground">Near {origin.zip}</span>
+            )}
           </div>
           <div className="grid gap-1.5">
             <Label>Total comp range</Label>
@@ -227,7 +325,9 @@ export default function BenchmarksPage() {
       <div className="mb-3 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
           {filtered.length} results
+          {radiusActive && <> within {radius} mi of {origin!.zip}</>}
           {shortlistArr.length > 0 && <> · <span className="font-medium text-foreground">{shortlistArr.length} on shortlist</span></>}
+          {radiusActive && <span className="ml-1 text-xs">(clubs without a mapped ZIP are excluded)</span>}
         </p>
         <Button onClick={exportCsv} variant="outline" size="sm">
           <Download className="mr-2 h-4 w-4" />
@@ -243,6 +343,7 @@ export default function BenchmarksPage() {
               <TableHead className="w-8"></TableHead>
               <TableHead>Club</TableHead>
               <TableHead>State</TableHead>
+              {radiusActive && <TableHead className="text-right">Miles</TableHead>}
               <TableHead>Title</TableHead>
               <TableHead>Name</TableHead>
               <TableHead className="text-right">Total comp</TableHead>
@@ -262,6 +363,11 @@ export default function BenchmarksPage() {
                   </TableCell>
                   <TableCell className="font-medium max-w-[220px] truncate" title={r.club}>{r.club}</TableCell>
                   <TableCell><Badge variant="secondary">{r.state}</Badge></TableCell>
+                  {radiusActive && (
+                    <TableCell className="text-right tabular-nums text-muted-foreground">
+                      {r._dist != null ? Math.round(r._dist) : '—'}
+                    </TableCell>
+                  )}
                   <TableCell className="max-w-[200px] truncate" title={r.title}>{r.title}</TableCell>
                   <TableCell>{r.name}</TableCell>
                   <TableCell className="text-right font-semibold tabular-nums">{usd(r.total)}</TableCell>
