@@ -71,6 +71,19 @@ export default function BenchmarksPage() {
   const [radius, setRadius] = useState(''); // miles; '' = off
   const [geoErr, setGeoErr] = useState('');
   const [geoBusy, setGeoBusy] = useState(false);
+  // null sortKey = the default ordering (nearest first when a radius is set,
+  // otherwise highest total comp first).
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  function sortBy(col: SortKey) {
+    if (sortKey === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(col);
+      setSortDir(NUMERIC_COLS.has(col) ? 'desc' : 'asc');
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -94,12 +107,44 @@ export default function BenchmarksPage() {
         const d = milesBetween(origin.lat, origin.lng, r.lat, r.lng);
         if (d <= rad) out.push({ ...r, _dist: d });
       }
-      return out.sort((a, b) => (a._dist ?? 0) - (b._dist ?? 0));
+      return out;
     }
-    return base.sort((a, b) => b.total - a.total);
+    return base;
   }, [dept, state, region, query, recentOnly, minComp, maxComp, origin, radius]);
 
   const radiusActive = !!(origin && radius);
+
+  // Apply the chosen column sort (or the sensible default) without re-filtering.
+  const sorted = useMemo(() => {
+    const rows = filtered.slice();
+    if (!sortKey) {
+      return rows.sort((a, b) =>
+        radiusActive ? (a._dist ?? 0) - (b._dist ?? 0) : b.total - a.total
+      );
+    }
+    const dir = sortDir === 'asc' ? 1 : -1;
+    const val = (r: Row): string | number => {
+      switch (sortKey) {
+        case 'club': return r.club?.toLowerCase() ?? '';
+        case 'state': return r.state?.toLowerCase() ?? '';
+        case 'title': return r.title?.toLowerCase() ?? '';
+        case 'name': return r.name?.toLowerCase() ?? '';
+        case 'miles': return r._dist ?? Number.POSITIVE_INFINITY;
+        case 'total': return r.total;
+        case 'revenue': return r.revenue;
+        case 'pct': return r.pct ?? Number.NEGATIVE_INFINITY;
+        case 'year': return r.year ?? '';
+      }
+    };
+    return rows.sort((a, b) => {
+      const av = val(a);
+      const bv = val(b);
+      if (av < bv) return -1 * dir;
+      if (av > bv) return 1 * dir;
+      // Stable-ish tiebreak so equal rows keep a predictable order.
+      return b.total - a.total;
+    });
+  }, [filtered, sortKey, sortDir, radiusActive]);
 
   async function applyOrigin() {
     const z = originZip.replace(/\D/g, '').slice(0, 5);
@@ -162,7 +207,7 @@ export default function BenchmarksPage() {
   }
 
   function exportCsv() {
-    const rows = shortlistArr.length ? shortlistArr : filtered;
+    const rows = shortlistArr.length ? shortlistArr : sorted;
     const cols = ['club', 'state', 'zip', 'region', 'dept', 'title', 'name', 'total', 'revenue', 'pct', 'year', 'url'];
     const header = ['Club', 'State', 'ZIP', 'Region', 'Department', 'Title', 'Name', 'Total Comp', 'Club Revenue', 'Comp % of Rev', 'Tax Year', 'ProPublica URL'];
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -346,20 +391,22 @@ export default function BenchmarksPage() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-8"></TableHead>
-              <TableHead>Club</TableHead>
-              <TableHead>State</TableHead>
-              {radiusActive && <TableHead className="text-right">Miles</TableHead>}
-              <TableHead>Title</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead className="text-right">Total comp</TableHead>
-              <TableHead className="text-right">Club revenue</TableHead>
-              <TableHead className="text-right">% rev</TableHead>
-              <TableHead>Year</TableHead>
+              <SortHeader label="Club" col="club" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+              <SortHeader label="State" col="state" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+              {radiusActive && (
+                <SortHeader label="Miles" col="miles" numeric sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+              )}
+              <SortHeader label="Title" col="title" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+              <SortHeader label="Name" col="name" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+              <SortHeader label="Total comp" col="total" numeric sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+              <SortHeader label="Club revenue" col="revenue" numeric sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+              <SortHeader label="% rev" col="pct" numeric sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
+              <SortHeader label="Year" col="year" numeric sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.slice(0, 300).map((r) => {
+            {sorted.slice(0, 300).map((r) => {
               const id = r.ein + r.name;
               return (
                 <TableRow key={id} className={shortlist[id] ? 'bg-muted/50' : ''}>
@@ -403,6 +450,38 @@ export default function BenchmarksPage() {
         Source: IRS Form 990 Part VII (public filings). Comp = reportable + estimated other compensation. Figures lag 1–2 years and capture only officers/key employees and a club&apos;s five highest-paid staff.
       </p>
     </div>
+  );
+}
+
+function SortHeader({
+  label, col, numeric, sortKey, sortDir, onSort,
+}: {
+  label: string;
+  col: SortKey;
+  numeric?: boolean;
+  sortKey: SortKey | null;
+  sortDir: 'asc' | 'desc';
+  onSort: (col: SortKey) => void;
+}) {
+  const active = sortKey === col;
+  return (
+    <TableHead className={numeric ? 'text-right' : ''}>
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        className={`inline-flex items-center gap-1 select-none transition-colors hover:text-foreground ${
+          numeric ? 'flex-row-reverse' : ''
+        } ${active ? 'text-foreground font-medium' : ''}`}
+      >
+        {label}
+        {active ? (
+          sortDir === 'asc' ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
+        )}
+      </button>
+    </TableHead>
   );
 }
 
