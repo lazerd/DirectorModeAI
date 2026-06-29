@@ -928,3 +928,144 @@ export function autoAssignRoundBalanced(
   }
   return patches;
 }
+
+/** A roster entry that carries its club so the mashup assigner can pair across clubs. */
+export type MashupRoster = {
+  id: string;
+  club_id: string;
+  ladder_position: number | null;
+  status: string;
+};
+
+export type MashupPatch = {
+  id: string;
+  home_player1_id: string | null;
+  home_player2_id: string | null;
+  away_player1_id: string | null;
+  away_player2_id: string | null;
+  counts_for_team: boolean;
+};
+
+/**
+ * Mish-mash auto-assign for a 3-team (or 2-team) gathering where every present
+ * player is pooled regardless of club. Unlike autoAssignRoundBalanced (which
+ * pairs one club's "home" side against another's "away" side), this ignores the
+ * home/away split and instead mixes clubs on every court:
+ *
+ *   - SINGLES: the two players on a court come from DIFFERENT clubs whenever the
+ *     remaining pool allows it (pairs nearest in strength so matches stay close).
+ *   - DOUBLES: tries to make it club-A pair vs club-B pair (2 from one club
+ *     against 2 from another). If two distinct clubs can't each field a pair, it
+ *     falls back to mixing the four strongest remaining players across the two
+ *     sides.
+ *
+ * Side A is stored in the home_* slots and side B in the away_* slots purely as
+ * containers — there is no team meaning, so every line is flagged
+ * counts_for_team=false (records individual results, never a team score).
+ *
+ * Only EMPTY courts are filled; any court that already has a player is left
+ * alone (so manual pairings are respected). Players already placed anywhere in
+ * the round are never reused. `available` should already be filtered to the
+ * players who are present (checked in) for this round.
+ */
+export function autoAssignMashupRound(
+  roundLines: AssignLine[],
+  available: MashupRoster[]
+): MashupPatch[] {
+  const lad = (r: MashupRoster) => r.ladder_position ?? 9999;
+
+  // Players already slotted somewhere in this round are off the table.
+  const used = new Set<string>();
+  for (const l of roundLines) {
+    for (const pid of [
+      l.home_player1_id,
+      l.home_player2_id,
+      l.away_player1_id,
+      l.away_player2_id,
+    ]) {
+      if (pid) used.add(pid);
+    }
+  }
+
+  // Remaining pool, strongest first. `take` removes a player once placed.
+  let pool = available
+    .filter(r => r.status === 'active' && !used.has(r.id))
+    .sort((a, b) => lad(a) - lad(b) || a.id.localeCompare(b.id));
+  const take = (id: string) => {
+    pool = pool.filter(p => p.id !== id);
+  };
+
+  const isEmpty = (l: AssignLine) =>
+    !l.home_player1_id && !l.home_player2_id && !l.away_player1_id && !l.away_player2_id;
+
+  const byLine = (a: AssignLine, b: AssignLine) => a.line_number - b.line_number;
+  const doublesLines = roundLines.filter(l => l.line_type === 'doubles' && isEmpty(l)).sort(byLine);
+  const singlesLines = roundLines.filter(l => l.line_type === 'singles' && isEmpty(l)).sort(byLine);
+
+  const patches: MashupPatch[] = [];
+  const emit = (
+    id: string,
+    a: [MashupRoster | undefined, MashupRoster | undefined],
+    b: [MashupRoster | undefined, MashupRoster | undefined]
+  ) =>
+    patches.push({
+      id,
+      home_player1_id: a[0]?.id ?? null,
+      home_player2_id: a[1]?.id ?? null,
+      away_player1_id: b[0]?.id ?? null,
+      away_player2_id: b[1]?.id ?? null,
+      counts_for_team: false,
+    });
+
+  // --- DOUBLES first (the same-club-pair constraint is harder to satisfy, so
+  // claim those players before singles consumes them). ---
+  for (const l of doublesLines) {
+    // Group the current remaining pool by club, each strongest-first.
+    const byClub = new Map<string, MashupRoster[]>();
+    for (const r of pool) {
+      const arr = byClub.get(r.club_id) || [];
+      arr.push(r);
+      byClub.set(r.club_id, arr);
+    }
+    const clubsWithPair = [...byClub.entries()]
+      .filter(([, arr]) => arr.length >= 2)
+      // most-stocked club first, then by strength, so big rosters spread out
+      .sort((x, y) => y[1].length - x[1].length || lad(x[1][0]) - lad(y[1][0]));
+
+    let sideA: MashupRoster[];
+    let sideB: MashupRoster[];
+    if (clubsWithPair.length >= 2) {
+      sideA = clubsWithPair[0][1].slice(0, 2);
+      sideB = clubsWithPair[1][1].slice(0, 2);
+    } else {
+      // Can't make a clean club-vs-club court — mix the four strongest left.
+      const four = pool.slice(0, 4);
+      if (four.length < 4) continue; // not enough for a doubles court; leave empty
+      // strong+weak on each side keeps the pairing balanced and tends to split clubs
+      sideA = [four[0], four[3]];
+      sideB = [four[1], four[2]];
+    }
+    for (const r of [...sideA, ...sideB]) take(r.id);
+    emit(l.id, [sideA[0], sideA[1]], [sideB[0], sideB[1]]);
+  }
+
+  // --- SINGLES: pair each player against the nearest-strength player from a
+  // DIFFERENT club. ---
+  for (const l of singlesLines) {
+    if (pool.length === 0) break;
+    const a = pool[0];
+    take(a.id);
+    if (pool.length === 0) {
+      // Odd one out — sits alone on the court (still better than dropping them).
+      emit(l.id, [a, undefined], [undefined, undefined]);
+      break;
+    }
+    // Nearest-strength opponent from another club; if everyone left shares a's
+    // club, just take the next strongest (mix it up).
+    const b = pool.find(r => r.club_id !== a.club_id) || pool[0];
+    take(b.id);
+    emit(l.id, [a, undefined], [b, undefined]);
+  }
+
+  return patches;
+}

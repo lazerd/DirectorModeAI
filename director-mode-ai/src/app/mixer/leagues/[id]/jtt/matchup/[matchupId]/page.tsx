@@ -22,7 +22,18 @@ import {
   Pencil,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { autoAssignRoundBalanced, optimizeLines } from '@/lib/jtt';
+import { autoAssignRoundBalanced, autoAssignMashupRound, optimizeLines } from '@/lib/jtt';
+
+// A 3-team (or 2-team) "mish-mash" gathering is flagged in the matchup's notes
+// as MASHUP[SH|MCC|MDW]. Every listed club's players are pooled into one
+// scorecard and the auto-assigner mixes clubs on every court. Returns the club
+// short_codes, or null for a normal head-to-head matchup.
+function parseMashupShorts(notes: string | null | undefined): string[] | null {
+  const m = notes?.match(/MASHUP\[([^\]]+)\]/i);
+  if (!m) return null;
+  const shorts = m[1].split('|').map(s => s.trim()).filter(Boolean);
+  return shorts.length ? shorts : null;
+}
 import MatchConfirmEmailModal from '@/components/leagues/jtt/MatchConfirmEmailModal';
 
 type Club = {
@@ -98,6 +109,9 @@ export default function MatchupFacilitatorPage() {
   const [awayClub, setAwayClub] = useState<Club | null>(null);
   const [homeRosters, setHomeRosters] = useState<Roster[]>([]);
   const [awayRosters, setAwayRosters] = useState<Roster[]>([]);
+  // Mashup mode: every participating club, plus all of their rosters pooled.
+  const [mashupClubs, setMashupClubs] = useState<Club[]>([]);
+  const [allRosters, setAllRosters] = useState<Roster[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
   const [checkedInIds, setCheckedInIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -123,17 +137,32 @@ export default function MatchupFacilitatorPage() {
     const matchupRow = m as Matchup;
     setMatchup(matchupRow);
 
+    // In mashup mode the roster/club pool is every participating club, not just
+    // home + away. Resolve those club ids up front so the rosters query below
+    // pulls all of them.
+    const mShorts = parseMashupShorts(matchupRow.notes);
+    let participatingClubIds = [matchupRow.home_club_id, matchupRow.away_club_id];
+    if (mShorts) {
+      const { data: mc } = await supabase
+        .from('league_clubs')
+        .select('id')
+        .eq('league_id', id)
+        .in('short_code', mShorts);
+      const ids = ((mc as { id: string }[]) || []).map(c => c.id);
+      if (ids.length) participatingClubIds = ids;
+    }
+
     const [dRes, cRes, rRes, lRes, ciRes] = await Promise.all([
       supabase.from('league_divisions').select('*').eq('id', matchupRow.division_id).single(),
       supabase
         .from('league_clubs')
         .select('*')
-        .in('id', [matchupRow.home_club_id, matchupRow.away_club_id]),
+        .in('id', participatingClubIds),
       supabase
         .from('league_team_rosters')
         .select('id, division_id, club_id, player_name, ladder_position, status')
         .eq('division_id', matchupRow.division_id)
-        .in('club_id', [matchupRow.home_club_id, matchupRow.away_club_id])
+        .in('club_id', participatingClubIds)
         .order('ladder_position', { nullsFirst: false }),
       supabase
         .from('league_matchup_lines')
@@ -150,8 +179,21 @@ export default function MatchupFacilitatorPage() {
     const clubsList = (cRes.data as Club[]) || [];
     setHomeClub(clubsList.find(c => c.id === matchupRow.home_club_id) || null);
     setAwayClub(clubsList.find(c => c.id === matchupRow.away_club_id) || null);
+    // Host club first, then the rest by name, so the attendance columns read
+    // host → visitors.
+    setMashupClubs(
+      mShorts
+        ? [...clubsList].sort(
+            (a, b) =>
+              (a.id === matchupRow.home_club_id ? 0 : 1) -
+                (b.id === matchupRow.home_club_id ? 0 : 1) ||
+              a.name.localeCompare(b.name)
+          )
+        : []
+    );
 
     const rostersList = (rRes.data as Roster[]) || [];
+    setAllRosters(rostersList);
     setHomeRosters(rostersList.filter(r => r.club_id === matchupRow.home_club_id));
     setAwayRosters(rostersList.filter(r => r.club_id === matchupRow.away_club_id));
     // round_number defaults to 1 so the page works before the rounds migration runs.
@@ -163,14 +205,28 @@ export default function MatchupFacilitatorPage() {
     setCheckedInIds(new Set(ciList));
 
     setLoading(false);
-  }, [matchupId]);
+  }, [matchupId, id]);
+
+  const isMashup = mashupClubs.length > 0;
+
+  // Every active roster row in play (the full pool in mashup mode, else just
+  // home + away). Used by per-club helpers below so they work for any club.
+  const allRostersCombined = useMemo(
+    () => (isMashup ? allRosters : [...homeRosters, ...awayRosters]),
+    [isMashup, allRosters, homeRosters, awayRosters]
+  );
+  const activeForClub = useCallback(
+    (clubId: string) =>
+      allRostersCombined.filter(r => r.club_id === clubId && r.status === 'active'),
+    [allRostersCombined]
+  );
 
   // Add a brand-new player to a club's roster right from the scorecard.
   const addPlayer = async (clubId: string, name: string) => {
     const trimmed = name.trim();
     if (!trimmed || !matchup) return;
     const supabase = createClient();
-    const existing = clubId === homeClub?.id ? homeRosters : awayRosters;
+    const existing = activeForClub(clubId);
     const nextPos = existing.reduce((mx, r) => Math.max(mx, r.ladder_position ?? 0), 0) + 1;
     const { error: insErr } = await supabase.from('league_team_rosters').insert({
       division_id: matchup.division_id,
@@ -202,20 +258,32 @@ export default function MatchupFacilitatorPage() {
     ? activeAway.filter(r => checkedInIds.has(r.id))
     : activeAway;
 
-  // Manual line dropdowns can pick ANY active player from EITHER club, so a
-  // lineup can be mixed (e.g. an SH player paired with an OCC player against
-  // two SH players) when the numbers don't line up. Auto-assign still uses the
-  // per-club available lists above; this pool is only for the manual pickers.
+  // Mashup pool: every active player across all participating clubs, narrowed
+  // to whoever's checked in (once anyone is). This is what the mish-mash
+  // auto-assigner draws from.
+  const activePool = useMemo(
+    () => allRosters.filter(r => r.status === 'active'),
+    [allRosters]
+  );
+  const availablePool = hasCheckins
+    ? activePool.filter(r => checkedInIds.has(r.id))
+    : activePool;
+
+  // Manual line dropdowns can pick ANY active player from EITHER club (or, in
+  // mashup mode, any participating club), so a lineup can be mixed when the
+  // numbers don't line up. Auto-assign uses the per-club lists (head-to-head)
+  // or the full pool (mashup); this pool is for the manual pickers.
   const allLinePlayers = useMemo(
-    () => [...activeHome, ...activeAway],
-    [activeHome, activeAway]
+    () => (isMashup ? activePool : [...activeHome, ...activeAway]),
+    [isMashup, activePool, activeHome, activeAway]
   );
   const clubShortById = useMemo(() => {
     const m = new Map<string, string>();
     if (homeClub) m.set(homeClub.id, homeClub.short_code);
     if (awayClub) m.set(awayClub.id, awayClub.short_code);
+    for (const c of mashupClubs) m.set(c.id, c.short_code);
     return m;
-  }, [homeClub, awayClub]);
+  }, [homeClub, awayClub, mashupClubs]);
 
   const courtsForThisMatchup =
     matchup?.courts_override ?? homeClub?.courts_available ?? 0;
@@ -247,14 +315,11 @@ export default function MatchupFacilitatorPage() {
   const autoAssignRound = async (round: number) => {
     const roundLines = lines.filter(l => l.round_number === round);
     const otherLines = lines.filter(l => l.round_number !== round);
-    // Balances singles vs doubles across rounds (e.g. who played doubles in
-    // round 1 gets singles in round 2), seeded by strength within each round.
-    const patches = autoAssignRoundBalanced(
-      roundLines,
-      otherLines,
-      availableHome,
-      availableAway
-    );
+    // Mashup: pool everyone and mix clubs per court. Head-to-head: balance
+    // singles/doubles across rounds, seeded by strength, away vs home.
+    const patches = isMashup
+      ? autoAssignMashupRound(roundLines, availablePool)
+      : autoAssignRoundBalanced(roundLines, otherLines, availableHome, availableAway);
     if (patches.length === 0) {
       alert('Every court in this round already has players — clear them first to re-assign.');
       return;
@@ -262,6 +327,8 @@ export default function MatchupFacilitatorPage() {
     const supabase = createClient();
     // .select() back so a blocked write (RLS / signed out) surfaces as an alert
     // instead of silently doing nothing — the bug we hit during a live match.
+    // Mashup patches also carry counts_for_team=false (mixed play never scores
+    // for a team); head-to-head patches leave the flag untouched.
     const results = await Promise.all(
       patches.map(p =>
         supabase
@@ -271,6 +338,7 @@ export default function MatchupFacilitatorPage() {
             home_player2_id: p.home_player2_id,
             away_player1_id: p.away_player1_id,
             away_player2_id: p.away_player2_id,
+            ...('counts_for_team' in p ? { counts_for_team: p.counts_for_team } : {}),
           })
           .eq('id', p.id)
           .select('id')
@@ -347,7 +415,7 @@ export default function MatchupFacilitatorPage() {
   };
 
   const checkInAllActive = async (clubId: string) => {
-    const roster = clubId === matchup?.home_club_id ? activeHome : activeAway;
+    const roster = activeForClub(clubId);
     const missing = roster.filter(r => !checkedInIds.has(r.id));
     if (missing.length === 0) return;
     const supabase = createClient();
@@ -362,7 +430,7 @@ export default function MatchupFacilitatorPage() {
   };
 
   const clearCheckins = async (clubId: string) => {
-    const roster = clubId === matchup?.home_club_id ? activeHome : activeAway;
+    const roster = activeForClub(clubId);
     const toClear = roster.filter(r => checkedInIds.has(r.id));
     if (toClear.length === 0) return;
     const supabase = createClient();
@@ -385,7 +453,7 @@ export default function MatchupFacilitatorPage() {
   // displayed list densely (1..N) on each move so it works even if some players
   // still have a null ladder_position (swapping null↔null would be a no-op).
   const moveInClub = async (clubId: string, rosterId: string, dir: -1 | 1) => {
-    const list = (clubId === matchup?.home_club_id ? activeHome : activeAway)
+    const list = activeForClub(clubId)
       .slice()
       .sort(
         (a, b) =>
@@ -425,8 +493,11 @@ export default function MatchupFacilitatorPage() {
     }
     const rounds = lines.map(l => l.round_number);
     const nextRound = (rounds.length ? Math.max(...rounds) : 0) + 1;
-    const singles = Math.min(courts, optimizer.singles);
-    const doubles = Math.min(courts - singles, optimizer.doubles);
+    // Mashup rounds default to all singles (the director then bumps the
+    // singles/doubles split with the per-round control); head-to-head rounds use
+    // the optimizer's recommendation.
+    const singles = isMashup ? courts : Math.min(courts, optimizer.singles);
+    const doubles = isMashup ? 0 : Math.min(courts - singles, optimizer.doubles);
     let n = nextLineNumber();
     const newLines = Array.from({ length: courts }, (_, i) => ({
       matchup_id: matchupId,
@@ -435,6 +506,8 @@ export default function MatchupFacilitatorPage() {
       line_type: (i < singles ? 'singles' : i < singles + doubles ? 'doubles' : 'singles') as
         | 'singles'
         | 'doubles',
+      // Mashup lines never count toward a team score (mixed-club play).
+      ...(isMashup ? { counts_for_team: false } : {}),
     }));
     const supabase = createClient();
     const { error: insErr } = await supabase.from('league_matchup_lines').insert(newLines);
@@ -447,7 +520,10 @@ export default function MatchupFacilitatorPage() {
       return;
     }
     await fetchAll({ silent: true });
-    if (availableHome.length && availableAway.length) await autoAssignRound(nextRound);
+    const canAutoAssign = isMashup
+      ? availablePool.length >= 2
+      : availableHome.length > 0 && availableAway.length > 0;
+    if (canAutoAssign) await autoAssignRound(nextRound);
   };
 
   const deleteRound = async (round: number) => {
@@ -476,6 +552,7 @@ export default function MatchupFacilitatorPage() {
       round_number: round,
       line_number: nextLineNumber(),
       line_type: 'singles',
+      ...(isMashup ? { counts_for_team: false } : {}),
     });
     if (insErr) {
       alert(`Couldn’t add court: ${insErr.message}`);
@@ -504,6 +581,7 @@ export default function MatchupFacilitatorPage() {
       round_number: number;
       line_number: number;
       line_type: 'singles';
+      counts_for_team?: boolean;
     }> = [];
     const deleteIds: string[] = [];
     let counter = nextLineNumber();
@@ -519,6 +597,7 @@ export default function MatchupFacilitatorPage() {
             round_number: r,
             line_number: counter++,
             line_type: 'singles',
+            ...(isMashup ? { counts_for_team: false } : {}),
           });
       } else if (n < rl.length) {
         rl.slice(n).forEach(l => deleteIds.push(l.id));
@@ -784,7 +863,18 @@ export default function MatchupFacilitatorPage() {
         </Link>
         <div>
           <h1 className="font-semibold text-2xl text-gray-900">
-            {awayClub.name} <span className="text-gray-400">@</span> {homeClub.name}
+            {isMashup ? (
+              <>
+                {division.name} Mashup{' '}
+                <span className="text-gray-400 text-base font-normal">
+                  · {mashupClubs.map(c => c.short_code).join(' · ')}
+                </span>
+              </>
+            ) : (
+              <>
+                {awayClub.name} <span className="text-gray-400">@</span> {homeClub.name}
+              </>
+            )}
           </h1>
           <p className="text-gray-500 text-sm">
             {division.name} · {dateLabel}
@@ -793,12 +883,23 @@ export default function MatchupFacilitatorPage() {
         </div>
       </div>
 
-      {/* Aggregate score */}
-      <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex items-center justify-center gap-8">
-        <TeamScore clubName={awayClub.name} side="Away" score={matchup.away_lines_won} isWinner={matchup.winner === 'away'} />
-        <span className="text-gray-300 text-2xl">—</span>
-        <TeamScore clubName={homeClub.name} side="Home" score={matchup.home_lines_won} isWinner={matchup.winner === 'home'} />
-      </div>
+      {isMashup ? (
+        /* Mixed play banner — no team score; results are individual only. */
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-6 text-sm text-purple-800">
+          <span className="font-semibold">Mish-mash day</span> — {mashupClubs.length}{' '}
+          clubs mixed together at {homeClub.name}. Auto-assign pairs players from
+          different clubs (and makes doubles club-vs-club when it can). Every court
+          counts for each player&apos;s individual record but <strong>not</strong> a
+          team score.
+        </div>
+      ) : (
+        /* Aggregate score */
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-6 flex items-center justify-center gap-8">
+          <TeamScore clubName={awayClub.name} side="Away" score={matchup.away_lines_won} isWinner={matchup.winner === 'away'} />
+          <span className="text-gray-300 text-2xl">—</span>
+          <TeamScore clubName={homeClub.name} side="Home" score={matchup.home_lines_won} isWinner={matchup.winner === 'home'} />
+        </div>
+      )}
 
       {/* Attendance / check-in */}
       <section className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
@@ -824,28 +925,50 @@ export default function MatchupFacilitatorPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <AttendanceColumn
-            label={`Away · ${awayClub.name}`}
-            rosters={activeAway}
-            checkedInIds={checkedInIds}
-            onToggle={toggleCheckin}
-            onCheckAll={() => checkInAllActive(awayClub.id)}
-            onClearAll={() => clearCheckins(awayClub.id)}
-            onMove={(rosterId, dir) => moveInClub(awayClub.id, rosterId, dir)}
-            onAddPlayer={(name) => addPlayer(awayClub.id, name)}
-          />
-          <AttendanceColumn
-            label={`Home · ${homeClub.name}`}
-            rosters={activeHome}
-            checkedInIds={checkedInIds}
-            onToggle={toggleCheckin}
-            onCheckAll={() => checkInAllActive(homeClub.id)}
-            onClearAll={() => clearCheckins(homeClub.id)}
-            onMove={(rosterId, dir) => moveInClub(homeClub.id, rosterId, dir)}
-            onAddPlayer={(name) => addPlayer(homeClub.id, name)}
-          />
-        </div>
+        {isMashup ? (
+          <div
+            className={`grid grid-cols-1 gap-4 ${
+              mashupClubs.length >= 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'
+            }`}
+          >
+            {mashupClubs.map(club => (
+              <AttendanceColumn
+                key={club.id}
+                label={club.name}
+                rosters={activeForClub(club.id)}
+                checkedInIds={checkedInIds}
+                onToggle={toggleCheckin}
+                onCheckAll={() => checkInAllActive(club.id)}
+                onClearAll={() => clearCheckins(club.id)}
+                onMove={(rosterId, dir) => moveInClub(club.id, rosterId, dir)}
+                onAddPlayer={(name) => addPlayer(club.id, name)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <AttendanceColumn
+              label={`Away · ${awayClub.name}`}
+              rosters={activeAway}
+              checkedInIds={checkedInIds}
+              onToggle={toggleCheckin}
+              onCheckAll={() => checkInAllActive(awayClub.id)}
+              onClearAll={() => clearCheckins(awayClub.id)}
+              onMove={(rosterId, dir) => moveInClub(awayClub.id, rosterId, dir)}
+              onAddPlayer={(name) => addPlayer(awayClub.id, name)}
+            />
+            <AttendanceColumn
+              label={`Home · ${homeClub.name}`}
+              rosters={activeHome}
+              checkedInIds={checkedInIds}
+              onToggle={toggleCheckin}
+              onCheckAll={() => checkInAllActive(homeClub.id)}
+              onClearAll={() => clearCheckins(homeClub.id)}
+              onMove={(rosterId, dir) => moveInClub(homeClub.id, rosterId, dir)}
+              onAddPlayer={(name) => addPlayer(homeClub.id, name)}
+            />
+          </div>
+        )}
       </section>
 
       {/* Courts + line optimizer summary */}
@@ -860,25 +983,44 @@ export default function MatchupFacilitatorPage() {
                   <span className="text-xs text-orange-600 ml-2">(override for today)</span>
                 )}
             </div>
-            <div className="text-sm text-gray-600">
-              Playing today:{' '}
-              <span className="font-medium text-gray-900">{availableAway.length}</span> away
-              vs{' '}
-              <span className="font-medium text-gray-900">{availableHome.length}</span> home
-            </div>
-            <div className="mt-2 text-sm">
-              Recommended:{' '}
-              <span className="font-semibold text-gray-900">
-                {optimizer.singles} singles + {optimizer.doubles} doubles
-              </span>
-              {optimizer.benchedHome + optimizer.benchedAway > 0 && (
-                <span className="text-xs text-gray-500 ml-2">
-                  ({optimizer.benchedHome + optimizer.benchedAway} sitting)
-                </span>
-              )}
-            </div>
-            {optimizer.warning && (
-              <p className="mt-1 text-xs text-orange-700">{optimizer.warning}</p>
+            {isMashup ? (
+              <>
+                <div className="text-sm text-gray-600">
+                  Playing today:{' '}
+                  <span className="font-medium text-gray-900">{availablePool.length}</span>{' '}
+                  players across {mashupClubs.length} clubs
+                </div>
+                <div className="mt-2 text-xs text-gray-500">
+                  Each round seats {courtsForThisMatchup} court
+                  {courtsForThisMatchup === 1 ? '' : 's'} (≈
+                  {Math.min(availablePool.length, courtsForThisMatchup * 2)} players).
+                  Use the per-round Singles/Doubles control to add doubles courts,
+                  then Auto-assign.
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-sm text-gray-600">
+                  Playing today:{' '}
+                  <span className="font-medium text-gray-900">{availableAway.length}</span> away
+                  vs{' '}
+                  <span className="font-medium text-gray-900">{availableHome.length}</span> home
+                </div>
+                <div className="mt-2 text-sm">
+                  Recommended:{' '}
+                  <span className="font-semibold text-gray-900">
+                    {optimizer.singles} singles + {optimizer.doubles} doubles
+                  </span>
+                  {optimizer.benchedHome + optimizer.benchedAway > 0 && (
+                    <span className="text-xs text-gray-500 ml-2">
+                      ({optimizer.benchedHome + optimizer.benchedAway} sitting)
+                    </span>
+                  )}
+                </div>
+                {optimizer.warning && (
+                  <p className="mt-1 text-xs text-orange-700">{optimizer.warning}</p>
+                )}
+              </>
             )}
           </div>
           <div className="flex flex-col gap-2">
@@ -906,6 +1048,7 @@ export default function MatchupFacilitatorPage() {
             clubShortById={clubShortById}
             homeClub={homeClub}
             awayClub={awayClub}
+            isMashup={isMashup}
             saving={saving}
             onAssign={assignPlayer}
             onSaveScore={saveScore}
@@ -942,6 +1085,7 @@ function RoundCard({
   clubShortById,
   homeClub,
   awayClub,
+  isMashup,
   saving,
   onAssign,
   onSaveScore,
@@ -961,6 +1105,7 @@ function RoundCard({
   clubShortById: Map<string, string>;
   homeClub: Club;
   awayClub: Club;
+  isMashup: boolean;
   saving: string | null;
   onAssign: (line: Line, field: SlotField, playerId: string | null) => void;
   onSaveScore: (
@@ -1082,6 +1227,7 @@ function RoundCard({
             clubShortById={clubShortById}
             homeClub={homeClub}
             awayClub={awayClub}
+            isMashup={isMashup}
             onAssign={(field, playerId) => onAssign(line, field, playerId)}
             onSaveScore={payload => onSaveScore(line, payload)}
             onSetType={type => onSetLineType(line, type)}
@@ -1132,6 +1278,7 @@ function LineEditor({
   clubShortById,
   homeClub,
   awayClub,
+  isMashup,
   onAssign,
   onSaveScore,
   onSetType,
@@ -1146,6 +1293,7 @@ function LineEditor({
   clubShortById: Map<string, string>;
   homeClub: Club;
   awayClub: Club;
+  isMashup: boolean;
   onAssign: (field: SlotField, playerId: string | null) => void;
   onSaveScore: (payload: { score: string | null; winner: 'home' | 'away' | null; counts_for_team?: boolean }) => void;
   onSetType: (type: 'singles' | 'doubles') => void;
@@ -1188,8 +1336,17 @@ function LineEditor({
   const isMixed =
     homeSideIds.some(pid => { const c = clubOf(pid); return c && c !== homeClub.id; }) ||
     awaySideIds.some(pid => { const c = clubOf(pid); return c && c !== awayClub.id; });
-  const sideAName = homeSideIds.map(nameOf).filter(Boolean).join(' / ') || `${homeClub.short_code} side`;
-  const sideBName = awaySideIds.map(nameOf).filter(Boolean).join(' / ') || `${awayClub.short_code} side`;
+  // In a mashup every court is mixed play by definition (no team meaning), so we
+  // always label by player name and never count it for a team. Outside a mashup
+  // only a genuinely cross-club court is "individual".
+  const individual = isMashup || isMixed;
+  // Mashup pickers show a club tag, so a bare short_code placeholder reads better.
+  const sideAName =
+    homeSideIds.map(nameOf).filter(Boolean).join(' / ') ||
+    (isMashup ? 'Side A' : `${homeClub.short_code} side`);
+  const sideBName =
+    awaySideIds.map(nameOf).filter(Boolean).join(' / ') ||
+    (isMashup ? 'Side B' : `${awayClub.short_code} side`);
 
   // Unsaved if the local score or winner differs from what's stored.
   const dirty =
@@ -1200,9 +1357,16 @@ function LineEditor({
   const locked = hasResult && !editing && !dirty;
 
   const save = () => {
-    // Mixed line -> false; a line that was mixed but is now clean -> reset true;
-    // an already-clean line -> leave the flag untouched (undefined).
-    const counts_for_team = isMixed ? false : line.counts_for_team === false ? true : undefined;
+    // Mashup -> always false. Otherwise: mixed line -> false; a line that was
+    // mixed but is now clean -> reset true; an already-clean line -> leave the
+    // flag untouched (undefined).
+    const counts_for_team = isMashup
+      ? false
+      : isMixed
+      ? false
+      : line.counts_for_team === false
+      ? true
+      : undefined;
     onSaveScore({ score: score.trim() || null, winner, counts_for_team });
     setEditing(false);
   };
@@ -1215,9 +1379,9 @@ function LineEditor({
 
   const winnerLabel =
     line.winner === 'home'
-      ? `${isMixed ? sideAName : homeClub.short_code} won`
+      ? `${individual ? sideAName : homeClub.short_code} won`
       : line.winner === 'away'
-      ? `${isMixed ? sideBName : awayClub.short_code} won`
+      ? `${individual ? sideBName : awayClub.short_code} won`
       : 'Scored';
 
   return (
@@ -1300,12 +1464,12 @@ function LineEditor({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
         <div>
           <div className="text-xs font-medium text-gray-500 uppercase mb-1">
-            Away · {awayClub.name}
+            {isMashup ? 'Side B' : `Away · ${awayClub.name}`}
           </div>
           <PlayerPicker
             rosters={optionsFor(line.away_player1_id)}
             clubShortById={clubShortById}
-            ownClubId={awayClub.id}
+            ownClubId={isMashup ? undefined : awayClub.id}
             value={line.away_player1_id}
             onChange={v => onAssign('away_player1_id', v)}
             placeholder={isDoubles ? 'Player 1' : 'Player'}
@@ -1315,7 +1479,7 @@ function LineEditor({
               <PlayerPicker
                 rosters={optionsFor(line.away_player2_id)}
                 clubShortById={clubShortById}
-                ownClubId={awayClub.id}
+                ownClubId={isMashup ? undefined : awayClub.id}
                 value={line.away_player2_id}
                 onChange={v => onAssign('away_player2_id', v)}
                 placeholder="Player 2"
@@ -1326,12 +1490,12 @@ function LineEditor({
 
         <div>
           <div className="text-xs font-medium text-gray-500 uppercase mb-1">
-            Home · {homeClub.name}
+            {isMashup ? 'Side A' : `Home · ${homeClub.name}`}
           </div>
           <PlayerPicker
             rosters={optionsFor(line.home_player1_id)}
             clubShortById={clubShortById}
-            ownClubId={homeClub.id}
+            ownClubId={isMashup ? undefined : homeClub.id}
             value={line.home_player1_id}
             onChange={v => onAssign('home_player1_id', v)}
             placeholder={isDoubles ? 'Player 1' : 'Player'}
@@ -1341,7 +1505,7 @@ function LineEditor({
               <PlayerPicker
                 rosters={optionsFor(line.home_player2_id)}
                 clubShortById={clubShortById}
-                ownClubId={homeClub.id}
+                ownClubId={isMashup ? undefined : homeClub.id}
                 value={line.home_player2_id}
                 onChange={v => onAssign('home_player2_id', v)}
                 placeholder="Player 2"
@@ -1357,12 +1521,12 @@ function LineEditor({
           <div className="text-sm flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900">{winnerLabel}</span>
             {line.score && <span className="text-gray-600">{line.score}</span>}
-            {isMixed && (
+            {individual && (
               <span
                 className="text-[11px] font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5"
                 title="Mixed court — counts for individual records, not the team score"
               >
-                Mixed · not in team score
+                {isMashup ? 'Individual result' : 'Mixed · not in team score'}
               </span>
             )}
           </div>
@@ -1375,9 +1539,10 @@ function LineEditor({
         </div>
       ) : (
         <>
-          {isMixed && (
+          {individual && (
             <div className="mb-2 text-xs text-purple-700 bg-purple-50 border border-purple-200 rounded-md px-2.5 py-1.5">
-              Mixed court — pick the winning side. Counts for each player&apos;s record, <strong>not</strong> the team score.
+              {isMashup ? 'Mish-mash court' : 'Mixed court'} — pick the winning side.
+              Counts for each player&apos;s record, <strong>not</strong> the team score.
             </div>
           )}
           <div className="flex flex-wrap items-center gap-2">
@@ -1396,7 +1561,7 @@ function LineEditor({
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {isMixed ? `${sideBName} won` : `${awayClub.short_code} won`}
+                {individual ? `${sideBName} won` : `${awayClub.short_code} won`}
               </button>
               <button
                 onClick={() => setWinner(winner === 'home' ? null : 'home')}
@@ -1406,7 +1571,7 @@ function LineEditor({
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
-                {isMixed ? `${sideAName} won` : `${homeClub.short_code} won`}
+                {individual ? `${sideAName} won` : `${homeClub.short_code} won`}
               </button>
             </div>
             {/* Per-court Save: writes score + winner together. */}

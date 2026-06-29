@@ -24,6 +24,14 @@ type DateGroup = {
   byDivision: Map<string, JTTMatchup[]>;
 };
 
+// Mashup matchups tag their participating clubs in notes as MASHUP[SH|MCC|MDW].
+function parseMashupShorts(notes: string | null | undefined): string[] | null {
+  const m = notes?.match(/MASHUP\[([^\]]+)\]/i);
+  if (!m) return null;
+  const shorts = m[1].split('|').map(s => s.trim()).filter(Boolean);
+  return shorts.length ? shorts : null;
+}
+
 export default function MatchupsTab({
   leagueId,
   clubs,
@@ -115,6 +123,7 @@ export default function MatchupsTab({
                       {list.map(m => {
                         const home = clubsById.get(m.home_club_id);
                         const away = clubsById.get(m.away_club_id);
+                        const mashupShorts = parseMashupShorts(m.notes);
                         const matchLines = linesByMatchup.get(m.id) || [];
                         const completedLines = matchLines.filter(l => l.status === 'completed').length;
                         const statusClass =
@@ -131,16 +140,27 @@ export default function MatchupsTab({
                               className="flex items-center gap-3 p-3 rounded-md border border-gray-200 hover:border-orange-300 hover:bg-orange-50/40 transition-colors"
                             >
                               <div className="flex-1 min-w-0">
-                                <div className="font-medium text-gray-900">
-                                  {away?.name ?? '???'}{' '}
-                                  <span className="text-gray-400">@</span>{' '}
-                                  {home?.name ?? '???'}
+                                <div className="font-medium text-gray-900 flex items-center gap-2 flex-wrap">
+                                  {mashupShorts ? (
+                                    <>
+                                      <span>{mashupShorts.join(' · ')} Mashup</span>
+                                      <span className="text-[11px] font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-full px-2 py-0.5">
+                                        Mish-mash · {home?.name ?? 'host'}
+                                      </span>
+                                    </>
+                                  ) : (
+                                    <span>
+                                      {away?.name ?? '???'}{' '}
+                                      <span className="text-gray-400">@</span>{' '}
+                                      {home?.name ?? '???'}
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-xs text-gray-500">
                                   {completedLines}/{matchLines.length} lines scored
                                 </div>
                               </div>
-                              {m.status === 'completed' && (
+                              {m.status === 'completed' && !mashupShorts && (
                                 <div className="text-sm font-semibold text-gray-900">
                                   {m.away_lines_won}–{m.home_lines_won}
                                 </div>
