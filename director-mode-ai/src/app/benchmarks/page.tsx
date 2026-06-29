@@ -34,6 +34,13 @@ const DEPTS = [
 const STATES = Array.from(new Set(DATA.map((r) => r.state).filter(Boolean))).sort();
 const REGIONS = ['Northeast', 'South', 'Midwest', 'West'];
 
+const COMP_PRESETS: { label: string; min: string; max: string }[] = [
+  { label: '< $100k', min: '', max: '100000' },
+  { label: '$100–150k', min: '100000', max: '150000' },
+  { label: '$150–250k', min: '150000', max: '250000' },
+  { label: '$250k+', min: '250000', max: '' },
+];
+
 const usd = (n: number) =>
   n >= 0 ? `$${Math.round(n).toLocaleString()}` : '—';
 
@@ -50,18 +57,24 @@ export default function BenchmarksPage() {
   const [query, setQuery] = useState('');
   const [recentOnly, setRecentOnly] = useState(true);
   const [shortlist, setShortlist] = useState<Record<string, Row>>({});
+  const [minComp, setMinComp] = useState('');
+  const [maxComp, setMaxComp] = useState('');
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
+    const min = minComp ? Number(minComp) : null;
+    const max = maxComp ? Number(maxComp) : null;
     return DATA.filter((r) => {
       if (dept !== 'all' && r.dept !== dept) return false;
       if (state !== 'all' && r.state !== state) return false;
       if (region !== 'all' && r.region !== region) return false;
       if (recentOnly && !r.recent) return false;
+      if (min != null && r.total < min) return false;
+      if (max != null && r.total > max) return false;
       if (q && !(`${r.club} ${r.name} ${r.title}`.toLowerCase().includes(q))) return false;
       return true;
     }).sort((a, b) => b.total - a.total);
-  }, [dept, state, region, query, recentOnly]);
+  }, [dept, state, region, query, recentOnly, minComp, maxComp]);
 
   const stats = useMemo(() => {
     const totals = filtered.map((r) => r.total).sort((a, b) => a - b);
@@ -108,7 +121,7 @@ export default function BenchmarksPage() {
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Compensation Benchmarks &amp; Recruiting</h1>
         <p className="mt-1 text-muted-foreground">
-          Real comp data from IRS Form 990 filings — benchmark a position in your state, or build a shortlist of candidates to recruit.
+          Real comp data from IRS Form 990 filings — source candidates by position, region, and pay range, then build a shortlist and export your outreach list.
         </p>
       </div>
 
@@ -143,6 +156,50 @@ export default function BenchmarksPage() {
                 {REGIONS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
               </SelectContent>
             </Select>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Total comp range</Label>
+            <div className="flex items-center gap-1.5">
+              <Input
+                type="number"
+                inputMode="numeric"
+                placeholder="Min $"
+                className="w-[110px]"
+                value={minComp}
+                onChange={(e) => setMinComp(e.target.value)}
+              />
+              <span className="text-muted-foreground">–</span>
+              <Input
+                type="number"
+                inputMode="numeric"
+                placeholder="Max $"
+                className="w-[110px]"
+                value={maxComp}
+                onChange={(e) => setMaxComp(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label>Quick ranges</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {COMP_PRESETS.map((p) => {
+                const active = minComp === p.min && maxComp === p.max;
+                return (
+                  <Button
+                    key={p.label}
+                    type="button"
+                    size="sm"
+                    variant={active ? 'default' : 'outline'}
+                    onClick={() => {
+                      setMinComp(p.min);
+                      setMaxComp(p.max);
+                    }}
+                  >
+                    {p.label}
+                  </Button>
+                );
+              })}
+            </div>
           </div>
           <div className="grid gap-1.5 flex-1 min-w-[200px]">
             <Label>Search</Label>
