@@ -186,6 +186,7 @@ export default function BenchmarksPage() {
     return {
       n: filtered.length,
       median: percentile(totals, 50),
+      avg: totals.length ? Math.round(totals.reduce((a, b) => a + b, 0) / totals.length) : 0,
       p25: percentile(totals, 25),
       p75: percentile(totals, 75),
       p90: percentile(totals, 90),
@@ -368,9 +369,10 @@ export default function BenchmarksPage() {
       </Card>
 
       {/* Benchmark stat cards */}
-      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 md:grid-cols-5">
         <StatCard icon={<Users className="h-4 w-4" />} label="People" value={stats.n.toString()} />
         <StatCard icon={<DollarSign className="h-4 w-4" />} label="Median total comp" value={usd(stats.median)} />
+        <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Average total comp" value={usd(stats.avg)} />
         <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Middle 50% range" value={`${usd(stats.p25)} – ${usd(stats.p75)}`} />
         <StatCard icon={<Percent className="h-4 w-4" />} label="Median % of revenue" value={stats.medPct != null ? `${(stats.medPct * 100).toFixed(1)}%` : '—'} />
       </div>
