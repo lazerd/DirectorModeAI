@@ -20,7 +20,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { generateScript, totalDurationSec, cueSpokenText, defaultOpeningText, defaultClosingText, type Cue, type ScriptOptions, type ScoringInfo, type ScriptMatch } from '@/lib/dj-script';
-import { VOICE_PRESETS } from '@/lib/elevenlabs';
+import { speakText, cancelSpeech } from '@/lib/browserSpeech';
 
 interface Player {
   id: string;
@@ -329,16 +329,6 @@ function ShowTab({
   useEffect(() => {
     autoAdvanceRef.current = autoAdvance;
   }, [autoAdvance]);
-  const [voicePresetId, setVoicePresetId] = useState('hype');
-  const voicePresetIdRef = useRef(voicePresetId);
-  useEffect(() => {
-    voicePresetIdRef.current = voicePresetId;
-  }, [voicePresetId]);
-  const [customVoiceId, setCustomVoiceId] = useState('');
-  const customVoiceIdRef = useRef(customVoiceId);
-  useEffect(() => {
-    customVoiceIdRef.current = customVoiceId;
-  }, [customVoiceId]);
   const [musicMode, setMusicMode] = useState<'per_player' | 'background'>('per_player');
   const musicModeRef = useRef(musicMode);
   useEffect(() => {
@@ -348,10 +338,8 @@ function ShowTab({
   const [bgUploading, setBgUploading] = useState(false);
   const backgroundRef = useRef<HTMLAudioElement | null>(null);
 
-  const announcerRef = useRef<HTMLAudioElement | null>(null);
   const songRef = useRef<HTMLAudioElement | null>(null);
   const fadeTimerRef = useRef<any>(null);
-  const customAudioUrlRef = useRef<string | null>(null);
 
   const BG_NORMAL_VOL = 0.35;
   const BG_DUCKED_VOL = 0.12;
@@ -471,79 +459,32 @@ function ShowTab({
     });
   }, [round, matches, players, eventName, walkoutSec, includeCourtIntros, includeScoringInfo, includeHype, openingText, closingText, scoring, priorMatches, textOverrides]);
 
-  // Volume sync
+  // Volume sync (announcer volume is set per-utterance at speak time)
   useEffect(() => {
-    if (announcerRef.current) announcerRef.current.volume = volume;
     if (songRef.current) songRef.current.volume = volume;
   }, [volume]);
 
   function stopAll() {
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
-    if (announcerRef.current) {
-      announcerRef.current.pause();
-      announcerRef.current.currentTime = 0;
-    }
+    cancelSpeech();
     if (songRef.current) {
       songRef.current.pause();
       songRef.current.currentTime = 0;
-    }
-    if (customAudioUrlRef.current) {
-      URL.revokeObjectURL(customAudioUrlRef.current);
-      customAudioUrlRef.current = null;
     }
     stopBackgroundMusic();
     setRunState({ kind: 'idle' });
   }
 
-  async function fetchAnnouncerForCue(cue: Cue): Promise<string> {
-    // All cues route through /api/dj/speak so the rendered announcer text (which
-    // can be a team name like "Sarah and Mike", an overridden line from rehearsal,
-    // or any custom opening/closing/court-intro/hype text) gets spoken verbatim.
-    const text = cueSpokenText(cue);
-    const res = await fetch('/api/dj/speak', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text,
-        eventId,
-        voicePresetId: voicePresetIdRef.current,
-        customVoiceId: customVoiceIdRef.current,
-      }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || 'speak_failed');
-    }
-    const blob = await res.blob();
-    if (customAudioUrlRef.current) URL.revokeObjectURL(customAudioUrlRef.current);
-    const url = URL.createObjectURL(blob);
-    customAudioUrlRef.current = url;
-    return url;
-  }
-
-  async function playCueAt(index: number) {
+  function playCueAt(index: number) {
     if (index < 0 || index >= cues.length) {
       stopAll();
       return;
     }
     const cue = cues[index];
-    setRunState({ kind: 'preparing', cueId: cue.id, index });
 
-    let announcerUrl: string;
-    try {
-      announcerUrl = await fetchAnnouncerForCue(cue);
-    } catch (err: any) {
-      alert(err?.message || 'Could not generate announcer audio.');
-      stopAll();
-      return;
-    }
-
-    const announcer = announcerRef.current!;
-    announcer.src = announcerUrl;
-    announcer.volume = volume;
-
-    // Wire up onended *before* playing
+    // When the announcer finishes: either play this player's walkout song,
+    // then advance — or just advance to the next cue.
     const advanceOrPause = () => {
       // Read the latest autoAdvance from the ref so toggling mid-show works
       const shouldAdvance = autoAdvanceRef.current;
@@ -558,7 +499,7 @@ function ShowTab({
       }
     };
 
-    announcer.onended = () => {
+    const onAnnouncerEnd = () => {
       // In background-music mode: skip per-player walkout song; bg music keeps playing
       const playWalkoutSong =
         musicModeRef.current !== 'background' &&
@@ -592,13 +533,9 @@ function ShowTab({
     duckBackground();
 
     setRunState({ kind: 'playing', index, phase: 'announcer' });
-    // Don't await — play() returns when audio STARTS, but a rejection (e.g., browser
-    // autoplay policy) would leave us stuck in 'paused' even though onended will still
-    // fire later. Just fire-and-forget; if the browser blocks playback the audio element
-    // emits an error event which we'd see in console but onended won't fire (correctly).
-    announcer.play().catch((err) => {
-      console.error('[DJ] announcer.play() failed', err);
-    });
+    // Speak the cue text with the browser's free built-in voice. The walkout +
+    // advance logic runs from the utterance's onend callback.
+    speakText(cueSpokenText(cue), { onend: onAnnouncerEnd, volume });
   }
 
   function next() {
@@ -607,10 +544,7 @@ function ShowTab({
     } else {
       const cur = (runState as any).index ?? 0;
       // Stop current playback first
-      if (announcerRef.current) {
-        announcerRef.current.pause();
-        announcerRef.current.onended = null;
-      }
+      cancelSpeech();
       if (songRef.current) songRef.current.pause();
       if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
       if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
@@ -622,10 +556,7 @@ function ShowTab({
     if (runState.kind === 'idle') return;
     const cur = (runState as any).index ?? 0;
     if (cur === 0) return;
-    if (announcerRef.current) {
-      announcerRef.current.pause();
-      announcerRef.current.onended = null;
-    }
+    cancelSpeech();
     if (songRef.current) songRef.current.pause();
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
@@ -633,7 +564,9 @@ function ShowTab({
   }
 
   function pause() {
-    if (announcerRef.current && !announcerRef.current.paused) announcerRef.current.pause();
+    if (typeof window !== 'undefined' && window.speechSynthesis?.speaking && !window.speechSynthesis.paused) {
+      window.speechSynthesis.pause();
+    }
     if (songRef.current && !songRef.current.paused) songRef.current.pause();
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     if (autoAdvanceTimerRef.current) clearTimeout(autoAdvanceTimerRef.current);
@@ -644,8 +577,8 @@ function ShowTab({
 
   function resume() {
     if (runState.kind !== 'paused') return;
-    if (announcerRef.current && announcerRef.current.src && announcerRef.current.currentTime < (announcerRef.current.duration || 0)) {
-      announcerRef.current.play();
+    if (typeof window !== 'undefined' && window.speechSynthesis?.paused) {
+      window.speechSynthesis.resume();
       setRunState({ kind: 'playing', index: runState.index, phase: 'announcer' });
       return;
     }
@@ -685,7 +618,6 @@ function ShowTab({
 
   return (
     <div>
-      <audio ref={announcerRef} />
       <audio ref={songRef} />
       <audio ref={backgroundRef} />
 
@@ -790,55 +722,10 @@ function ShowTab({
               </label>
             </div>
             <div className="md:col-span-2">
-              <label className="text-xs text-white/60 block mb-2">Announcer voice</label>
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                {VOICE_PRESETS.map((v) => (
-                  <button
-                    type="button"
-                    key={v.id}
-                    onClick={() => setVoicePresetId(v.id)}
-                    className={`text-left p-2.5 rounded-lg border transition-colors ${
-                      voicePresetId === v.id
-                        ? 'border-yellow-300 bg-yellow-300/10'
-                        : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
-                    }`}
-                  >
-                    <div className={`text-xs font-medium ${voicePresetId === v.id ? 'text-yellow-300' : 'text-white'}`}>
-                      {v.label}
-                    </div>
-                    <div className="text-[10px] text-white/40 mt-0.5">{v.description}</div>
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setVoicePresetId('custom')}
-                  className={`text-left p-2.5 rounded-lg border transition-colors ${
-                    voicePresetId === 'custom'
-                      ? 'border-yellow-300 bg-yellow-300/10'
-                      : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.05]'
-                  }`}
-                >
-                  <div className={`text-xs font-medium ${voicePresetId === 'custom' ? 'text-yellow-300' : 'text-white'}`}>
-                    Custom
-                  </div>
-                  <div className="text-[10px] text-white/40 mt-0.5">Paste any voice ID</div>
-                </button>
+              <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs text-white/50">
+                <Volume2 size={14} className="inline mr-1 text-yellow-300" />
+                Announcements use your device&apos;s built-in voice and play through its speakers. Plug this device into your PA system.
               </div>
-              {voicePresetId === 'custom' && (
-                <div className="mt-2">
-                  <input
-                    value={customVoiceId}
-                    onChange={(e) => setCustomVoiceId(e.target.value.trim())}
-                    placeholder="Paste ElevenLabs voice ID (e.g., 29vD33N1CtxCmqQRPOHJ)"
-                    className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs font-mono placeholder:text-white/30"
-                  />
-                  <div className="text-[10px] text-white/40 mt-1.5">
-                    Browse <a href="https://elevenlabs.io/app/voice-library" target="_blank" rel="noopener" className="text-yellow-300 hover:underline">ElevenLabs Voice Library</a>
-                    , find a "boxing announcer" / "ring announcer" / "WWE" voice, click "Add to my voices", then paste the voice ID here.
-                  </div>
-                </div>
-              )}
-              <VoicePreviewButton voicePresetId={voicePresetId} customVoiceId={customVoiceId} eventId={eventId} volume={volume} />
             </div>
             <div className="md:col-span-2">
               <label className="text-xs text-white/60 block mb-2">Music style</label>
@@ -1764,63 +1651,6 @@ function LibraryPanel({
         })}
       </div>
     </div>
-  );
-}
-
-function VoicePreviewButton({
-  voicePresetId,
-  customVoiceId,
-  eventId,
-  volume,
-}: {
-  voicePresetId: string;
-  customVoiceId?: string;
-  eventId: string;
-  volume: number;
-}) {
-  const [loading, setLoading] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const objUrlRef = useRef<string | null>(null);
-
-  async function play() {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/dj/speak', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: 'Now arriving on Court 3… Sarah Johnson! Let\'s give it up!',
-          eventId,
-          voicePresetId,
-          customVoiceId,
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert(err.message || 'Voice preview failed');
-        return;
-      }
-      const blob = await res.blob();
-      if (objUrlRef.current) URL.revokeObjectURL(objUrlRef.current);
-      objUrlRef.current = URL.createObjectURL(blob);
-      if (!audioRef.current) audioRef.current = new Audio();
-      audioRef.current.src = objUrlRef.current;
-      audioRef.current.volume = volume;
-      audioRef.current.play();
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <button
-      type="button"
-      onClick={play}
-      disabled={loading}
-      className="mt-3 text-xs text-yellow-300 hover:text-yellow-200 disabled:opacity-50 flex items-center gap-1"
-    >
-      <Play size={11} /> {loading ? 'Generating preview…' : 'Preview this voice'}
-    </button>
   );
 }
 

@@ -26,9 +26,9 @@ interface Props {
 const FEATURE_COPY: Record<Feature, { title: string; blurb: string; bullets: string[] }> = {
   dj_console: {
     title: 'Unlock the DJ Console',
-    blurb: "Walk-on songs and a hype announcer voice for every player. Like Ballpark DJ — but for tennis.",
+    blurb: "Walk-on songs and spoken player intros for every match. Like Ballpark DJ — but for tennis.",
     bullets: [
-      'Pre-recorded ElevenLabs hype announcer',
+      'Spoken player announcements (free, built-in voice)',
       'Pixabay royalty-free music library',
       'Operator-controlled per-player playback',
       'Works through any laptop / Bluetooth speaker',
