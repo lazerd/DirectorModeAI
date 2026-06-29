@@ -107,7 +107,14 @@ export default async function FlexPage() {
       const groups = ORDER.filter((k) => byStage[k]).map((k) => ({
         title: STAGE_LABEL[k], standings: null, matches: byStage[k].sort((x, y) => x.slot - y.slot).map((r) => r.m),
       }));
-      divisions.push({ id: cfg.id, name: cfg.name, num: cfg.num, color: cfg.color, accent: cfg.accent, type: 'compass', compassR1: cfg.r1, groups });
+      // Structured stage → match map so the visual draw can render every
+      // direction (East main + West/North/South/corner consolations) and fill
+      // in winners live as results come in.
+      const compassStages: Record<string, MatchT[]> = {};
+      for (const k of ORDER) {
+        if (byStage[k]) compassStages[k] = byStage[k].slice().sort((x, y) => x.slot - y.slot).map((r) => r.m);
+      }
+      divisions.push({ id: cfg.id, name: cfg.name, num: cfg.num, color: cfg.color, accent: cfg.accent, type: 'compass', compassR1: cfg.r1, compassStages, groups });
       continue;
     }
 
