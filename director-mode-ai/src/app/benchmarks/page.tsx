@@ -207,7 +207,11 @@ export default function BenchmarksPage() {
   }
 
   function exportCsv() {
-    const rows = shortlistArr.length ? shortlistArr : sorted;
+    // Shortlist-only by design: we never offer a one-click dump of the whole
+    // dataset (it took a long time to assemble). Users export just the rows
+    // they hand-picked for outreach.
+    const rows = shortlistArr;
+    if (!rows.length) return;
     const cols = ['club', 'state', 'zip', 'region', 'dept', 'title', 'name', 'total', 'revenue', 'pct', 'year', 'url'];
     const header = ['Club', 'State', 'ZIP', 'Region', 'Department', 'Title', 'Name', 'Total Comp', 'Club Revenue', 'Comp % of Rev', 'Tax Year', 'ProPublica URL'];
     const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -379,10 +383,12 @@ export default function BenchmarksPage() {
           {shortlistArr.length > 0 && <> · <span className="font-medium text-foreground">{shortlistArr.length} on shortlist</span></>}
           {radiusActive && <span className="ml-1 text-xs">(clubs without a mapped ZIP are excluded)</span>}
         </p>
-        <Button onClick={exportCsv} variant="outline" size="sm">
-          <Download className="mr-2 h-4 w-4" />
-          Export {shortlistArr.length > 0 ? 'shortlist' : 'all'} (CSV)
-        </Button>
+        {shortlistArr.length > 0 && (
+          <Button onClick={exportCsv} variant="outline" size="sm">
+            <Download className="mr-2 h-4 w-4" />
+            Export shortlist ({shortlistArr.length}) CSV
+          </Button>
+        )}
       </div>
 
       {/* Results table */}
@@ -438,7 +444,7 @@ export default function BenchmarksPage() {
         </Table>
         {filtered.length > 300 && (
           <div className="border-t p-3 text-center text-sm text-muted-foreground">
-            Showing top 300 of {filtered.length}. Narrow the filters or export to see all.
+            Showing top 300 of {filtered.length}. Narrow the filters to see more.
           </div>
         )}
         {filtered.length === 0 && (
