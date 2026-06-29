@@ -57,28 +57,13 @@ const LogoUploader = ({ eventId, onLogoChange }: LogoUploaderProps) => {
     setUploading(true);
 
     try {
-      const fileExt = file.name.split(".").pop();
-      const filePath = `logos/${eventId}/logo.${fileExt}`;
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/events/${eventId}/upload-logo`, { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Upload failed");
 
-      const { error: uploadError } = await supabase.storage
-        .from("event-assets")
-        .upload(filePath, file, { upsert: true });
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from("event-assets")
-        .getPublicUrl(filePath);
-
-      const publicUrl = urlData.publicUrl + "?t=" + Date.now();
-
-      const { error: updateError } = await supabase
-        .from("events")
-        .update({ logo_url: publicUrl })
-        .eq("id", eventId);
-
-      if (updateError) throw updateError;
-
+      const publicUrl = json.url + "?t=" + Date.now();
       setLogoUrl(publicUrl);
       onLogoChange?.(publicUrl);
 
