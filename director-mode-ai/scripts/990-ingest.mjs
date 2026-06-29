@@ -62,6 +62,8 @@ async function ensureIndex(year) {
 
 // ---- Stage 1: discovery -> Map<ein, {ein,name,taxPeriod,oid,batch,year}> ----
 async function discover() {
+  let blocked = new Set();
+  try { blocked = new Set(JSON.parse(fs.readFileSync(path.join(__dirname, '990-blocklist.json'), 'utf8')).eins.map((e) => String(e).replace(/\D/g, ''))); } catch {}
   const existingEins = new Set();
   try {
     const data = JSON.parse(fs.readFileSync(BENCH, 'utf8'));
@@ -86,6 +88,7 @@ async function discover() {
       const batch = (c[c.length - 1] || '').trim();
       const name = c.slice(5, c.length - 4).join(',');
       if (rtype !== '990') continue;                 // need full Part VII
+      if (blocked.has(ein)) continue;                 // known non-club orgs
       const wanted = existingEins.has(ein) || (INCLUDE.test(name) && !EXCLUDE.test(name));
       if (!wanted) continue;
       matched++;

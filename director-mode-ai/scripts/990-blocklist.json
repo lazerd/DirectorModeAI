@@ -1,0 +1,22 @@
+{
+  "_comment": "EINs (digits only) to exclude from the benchmarks dataset — orgs that match a club-ish name/EIN but aren't racquet/golf/country clubs. Honored by 990-ingest.mjs (discovery), 990-merge.mjs (merge), and benchmarks-remove-blocklist.mjs (strip from current data).",
+  "eins": [
+    "133813813",
+    "134923060",
+    "221537688",
+    "474913206",
+    "474931969",
+    "581447686",
+    "363308567",
+    "810778972",
+    "841367913",
+    "363370216",
+    "411646516",
+    "480908355",
+    "550675666",
+    "753240683",
+    "561734970",
+    "461164975",
+    "363133254"
+  ]
+}

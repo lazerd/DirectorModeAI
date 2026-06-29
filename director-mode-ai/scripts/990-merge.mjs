@@ -55,6 +55,8 @@ function main() {
   if (!fs.existsSync(ROWS)) { console.error('no rows.jsonl yet — run 990-ingest.mjs first'); process.exit(1); }
   const data = JSON.parse(fs.readFileSync(BENCH, 'utf8'));
   const zips = JSON.parse(fs.readFileSync(ZIPS, 'utf8'));
+  let blocked = new Set();
+  try { blocked = new Set(JSON.parse(fs.readFileSync(path.join(__dirname, '990-blocklist.json'), 'utf8')).eins.map((e) => String(e).replace(/\D/g, ''))); } catch {}
 
   const key = (ein, name, year) => `${fmtEin(ein)}|${(name || '').toUpperCase().trim()}|${year}`;
   const have = new Set(data.map((r) => key(r.ein, r.name, r.year)));
@@ -68,6 +70,7 @@ function main() {
 
   for (const f of filings) {
     if (!f.taxYr || !f.people) continue;
+    if (blocked.has(String(f.ein).replace(/\D/g, ''))) continue;
     const ein = fmtEin(f.ein);
     const state = f.state || '';
     const centroid = f.zip && zips[f.zip] ? zips[f.zip] : [null, null];
