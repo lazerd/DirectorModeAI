@@ -12,6 +12,8 @@ interface Event {
   target_games: number | null;
   num_courts: number;
   court_names?: string[] | null;
+  num_winners?: number | null;
+  winners_split_gender?: boolean | null;
 }
 
 interface EditEventFormatDialogProps {
@@ -30,6 +32,8 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
   const [targetGames, setTargetGames] = useState(event.target_games || 11);
   const [numCourts, setNumCourts] = useState(event.num_courts);
   const [courtSlots, setCourtSlots] = useState<string[]>([]);
+  const [numWinners, setNumWinners] = useState(event.num_winners ?? 1);
+  const [splitGender, setSplitGender] = useState(!!event.winners_split_gender);
 
   useEffect(() => {
     if (open) {
@@ -39,6 +43,8 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
       setNumCourts(event.num_courts);
       const existing = event.court_names ?? [];
       setCourtSlots(Array.from({ length: Math.max(1, event.num_courts) }, (_, i) => existing[i] ?? String(i + 1)));
+      setNumWinners(event.num_winners ?? 1);
+      setSplitGender(!!event.winners_split_gender);
     }
   }, [open, event]);
 
@@ -72,6 +78,12 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
         description: error.message,
       });
     } else {
+      // Winner config columns may not exist on older databases — write them
+      // separately and ignore a missing-column error so the format save sticks.
+      await supabase
+        .from("events")
+        .update({ num_winners: splitGender ? 2 : Math.max(1, numWinners), winners_split_gender: splitGender })
+        .eq("id", event.id);
       toast({
         title: "Format updated",
         description: "Event format has been updated successfully.",
@@ -169,6 +181,38 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
               </div>
             </div>
           )}
+
+          <div>
+            <Label className="text-sm font-medium">Winners</Label>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-sm text-gray-600">How many?</span>
+              <input
+                type="number"
+                value={splitGender ? 2 : (numWinners || '')}
+                onChange={(e) => handleNumberChange(setNumWinners, e.target.value)}
+                onBlur={() => handleNumberBlur(setNumWinners, numWinners, 1)}
+                disabled={splitGender}
+                style={{ color: "#111827" }}
+                className="w-20 px-2 py-1.5 border border-gray-300 rounded-lg bg-white disabled:bg-gray-100 disabled:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary"
+                min={1}
+                max={20}
+              />
+            </div>
+            <label className="mt-2 flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={splitGender}
+                onChange={(e) => setSplitGender(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <span className="text-sm text-gray-700">Separate women&apos;s &amp; men&apos;s winner (1 each)</span>
+            </label>
+            <p className="mt-1 text-xs text-gray-500">
+              {splitGender
+                ? "Results show a top woman and a top man."
+                : `Results highlight the top ${Math.max(1, numWinners)} overall.`}
+            </p>
+          </div>
 
           {scoringFormat === "timed" && (
             <div>

@@ -24,6 +24,7 @@ interface Standing {
   games_lost: number;
   games_differential: number;
   win_percentage: number;
+  gender?: string | null;
 }
 
 interface Team {
@@ -51,6 +52,8 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
   const [teams, setTeams] = useState<Team[]>([]);
   const [winningTeam, setWinningTeam] = useState<Team | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [numWinners, setNumWinners] = useState(1);
+  const [winnersSplitGender, setWinnersSplitGender] = useState(false);
 
   useEffect(() => {
     fetchSummary();
@@ -106,6 +109,18 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
       }
     }
 
+    // Winner config lives in optional columns; fetch defensively so the summary
+    // still works on databases where the migration hasn't been applied yet.
+    const { data: cfg } = await supabase
+      .from("events")
+      .select("num_winners, winners_split_gender")
+      .eq("id", eventId)
+      .single();
+    if (cfg) {
+      setNumWinners((cfg as any).num_winners ?? 1);
+      setWinnersSplitGender(!!(cfg as any).winners_split_gender);
+    }
+
     const { data: eventPlayers } = await supabase
       .from("event_players")
       .select(`
@@ -114,7 +129,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         losses,
         games_won,
         games_lost,
-        players (name)
+        players (name, gender)
       `)
       .eq("event_id", eventId);
 
@@ -150,6 +165,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
             games_lost: ep.games_lost,
             games_differential: gamesDiff,
             win_percentage: totalMatches > 0 ? (ep.wins / totalMatches) * 100 : 0,
+            gender: ep.players.gender ?? null,
           };
         })
         .sort((a, b) => {
@@ -350,6 +366,14 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
   const bestUpset = getBestUpset();
   const mostConsistent = getMostConsistent();
 
+  // Winners per the event config: split by gender (top woman + top man) or the
+  // top N overall. Standings are already sorted best-first.
+  const champions: Standing[] = isTeamBattle
+    ? []
+    : winnersSplitGender
+      ? ([standings.find((s) => s.gender === "female"), standings.find((s) => s.gender === "male")].filter(Boolean) as Standing[])
+      : standings.slice(0, Math.max(1, numWinners));
+
   return (
     <div className="space-y-6">
       <EventPhotosManager eventId={eventId} />
@@ -411,6 +435,41 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
           </div>
         </CardContent>
       </Card>
+
+      {!isTeamBattle && champions.length > 0 && (
+        <Card className="border-2 border-yellow-300 bg-gradient-to-br from-yellow-50 to-amber-50">
+          <CardHeader>
+            <CardTitle className="text-xl flex items-center gap-2">
+              <Trophy className="h-6 w-6 text-yellow-500" />
+              {champions.length > 1 ? "Winners" : "Winner"}
+            </CardTitle>
+            <CardDescription>
+              {winnersSplitGender ? "Top woman & top man" : `Top ${champions.length}`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {champions.map((c) => (
+                <div key={c.player_id} className="flex items-center justify-between p-3 bg-white rounded-xl border-2">
+                  <div>
+                    <p className="font-bold text-lg">{c.player_name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {c.wins}W - {c.losses}L · {c.win_percentage.toFixed(0)}%
+                      {winnersSplitGender && c.gender ? ` · ${c.gender === "female" ? "Women's" : "Men's"}` : ""}
+                    </p>
+                  </div>
+                  <Trophy className="h-6 w-6 text-yellow-500" />
+                </div>
+              ))}
+            </div>
+            {winnersSplitGender && champions.length < 2 && (
+              <p className="mt-3 text-xs text-amber-700">
+                Only one gender is represented in the results. Set each player&apos;s gender (in the player list) to show both a women&apos;s and men&apos;s winner.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {isTeamBattle && teams.length === 2 && (
         <Card className="border-4 border-purple-500 bg-gradient-to-br from-blue-50 via-purple-50 to-red-50">
