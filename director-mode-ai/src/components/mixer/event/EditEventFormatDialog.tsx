@@ -11,6 +11,7 @@ interface Event {
   round_length_minutes: number | null;
   target_games: number | null;
   num_courts: number;
+  court_names?: string[] | null;
 }
 
 interface EditEventFormatDialogProps {
@@ -28,6 +29,7 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
   const [roundLengthMinutes, setRoundLengthMinutes] = useState(event.round_length_minutes || 30);
   const [targetGames, setTargetGames] = useState(event.target_games || 11);
   const [numCourts, setNumCourts] = useState(event.num_courts);
+  const [courtNames, setCourtNames] = useState((event.court_names ?? []).join(", "));
 
   useEffect(() => {
     if (open) {
@@ -35,17 +37,26 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
       setRoundLengthMinutes(event.round_length_minutes || 30);
       setTargetGames(event.target_games || 11);
       setNumCourts(event.num_courts);
+      setCourtNames((event.court_names ?? []).join(", "));
     }
   }, [open, event]);
 
   const handleSave = async () => {
     setSaving(true);
     
+    // Parse the optional "courts in use" list (e.g. "2, 3, 4, 5"). When set, it
+    // drives the court count so generated rounds land on those exact courts.
+    const parsedCourts = courtNames
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean);
+
     const updates: any = {
       scoring_format: scoringFormat,
       round_length_minutes: scoringFormat === "timed" ? roundLengthMinutes : null,
       target_games: scoringFormat !== "timed" ? targetGames : null,
-      num_courts: numCourts,
+      num_courts: parsedCourts.length > 0 ? parsedCourts.length : numCourts,
+      court_names: parsedCourts.length > 0 ? parsedCourts : null,
     };
 
     const { error } = await supabase
@@ -117,10 +128,26 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
               value={numCourts || ''}
               onChange={(e) => handleNumberChange(setNumCourts, e.target.value)}
               onBlur={() => handleNumberBlur(setNumCourts, numCourts, 1)}
-              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+              disabled={courtNames.trim() !== ''}
+              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100 disabled:text-gray-400"
               min={1}
               max={50}
             />
+          </div>
+
+          <div>
+            <Label className="text-sm font-medium">Courts in use (optional)</Label>
+            <input
+              type="text"
+              value={courtNames}
+              onChange={(e) => setCourtNames(e.target.value)}
+              placeholder="e.g. 2, 3, 4, 5"
+              style={{ color: "#111827" }}
+              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Comma-separated court numbers if you&apos;re not on courts 1–{numCourts}. Sets the court count and stamps these numbers on each match. Leave blank to use 1–{numCourts}.
+            </p>
           </div>
 
           {scoringFormat === "timed" && (

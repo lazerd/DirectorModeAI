@@ -15,11 +15,13 @@ import { CSS } from "@dnd-kit/utilities";
 import FormatSelector from "@/components/mixer/event/FormatSelector";
 import EditPlayerDialog from "@/components/mixer/event/EditPlayerDialog";
 import { RoundGenerator } from "@/lib/advancedMatchGeneration";
+import { resolveCourtList } from "@/lib/quads";
 
 interface Event {
   id: string;
   num_courts: number;
   match_format?: string | null;
+  court_names?: string[] | null;
 }
 
 interface EventPlayer {
@@ -346,10 +348,15 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
       return;
     }
 
-    // Create matches
+    // Create matches — stamp the actual court number for each court slot.
+    const courtList = resolveCourtList({ courtNames: event.court_names, numCourts: event.num_courts });
+    const courtFor = (idx: number) => {
+      const n = parseInt(courtList[idx], 10);
+      return Number.isFinite(n) ? n : idx + 1;
+    };
     const matchInserts = pairings.map((pairing, idx) => ({
       round_id: round.id,
-      court_number: idx + 1,
+      court_number: courtFor(idx),
       ...pairing,
     }));
 

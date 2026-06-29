@@ -13,6 +13,7 @@ import RoundGenerationDialog from "@/components/mixer/event/RoundGenerationDialo
 import ManualMatchEditor from "@/components/mixer/event/ManualMatchEditor";
 import ManagePlayersDialog from "@/components/mixer/event/ManagePlayersDialog";
 import { RoundGenerator, type GenerationMode } from "@/lib/advancedMatchGeneration";
+import { resolveCourtList } from "@/lib/quads";
 
 interface Event {
   id: string;
@@ -23,6 +24,7 @@ interface Event {
   target_games: number | null;
   team_battle_singles_courts?: number;
   team_battle_doubles_courts?: number;
+  court_names?: string[] | null;
 }
 
 interface Round {
@@ -71,6 +73,15 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
   const [showManagePlayers, setShowManagePlayers] = useState(false);
 
   const isTeamBattle = event.match_format === 'team-battle';
+
+  // The actual court numbers in use, in court order. Uses the event's custom
+  // court_names (e.g. ["2","3","4","5"]) when set, else 1..num_courts.
+  const courtList = resolveCourtList({ courtNames: event.court_names, numCourts: event.num_courts });
+  // The court number to stamp on the match in the idx-th court slot.
+  const courtFor = (idx: number) => {
+    const n = parseInt(courtList[idx], 10);
+    return Number.isFinite(n) ? n : idx + 1;
+  };
 
   useEffect(() => {
     fetchRounds();
@@ -352,7 +363,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
       const matchInserts = pairings.map((pairing, idx) => ({
         round_id: round.id,
-        court_number: idx + 1,
+        court_number: courtFor(idx),
         ...pairing,
       }));
 
@@ -525,7 +536,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
     const matchInserts = pairings.map((pairing, idx) => ({
       round_id: roundId,
-      court_number: idx + 1,
+      court_number: courtFor(idx),
       ...pairing,
     }));
 
