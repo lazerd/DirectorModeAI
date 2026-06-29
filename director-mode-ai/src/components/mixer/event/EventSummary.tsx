@@ -296,6 +296,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         eventDate,
         totalRounds,
         numCourts,
+        numPlayers: standings.length,
         topThree: standings.slice(0, 3),
         giantSlayer: getBestUpset(),
         mostConsistent: getMostConsistent(),
