@@ -29,7 +29,7 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
   const [roundLengthMinutes, setRoundLengthMinutes] = useState(event.round_length_minutes || 30);
   const [targetGames, setTargetGames] = useState(event.target_games || 11);
   const [numCourts, setNumCourts] = useState(event.num_courts);
-  const [courtNames, setCourtNames] = useState((event.court_names ?? []).join(", "));
+  const [courtSlots, setCourtSlots] = useState<string[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -37,26 +37,27 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
       setRoundLengthMinutes(event.round_length_minutes || 30);
       setTargetGames(event.target_games || 11);
       setNumCourts(event.num_courts);
-      setCourtNames((event.court_names ?? []).join(", "));
+      const existing = event.court_names ?? [];
+      setCourtSlots(Array.from({ length: Math.max(1, event.num_courts) }, (_, i) => existing[i] ?? String(i + 1)));
     }
   }, [open, event]);
 
   const handleSave = async () => {
     setSaving(true);
     
-    // Parse the optional "courts in use" list (e.g. "2, 3, 4, 5"). When set, it
-    // drives the court count so generated rounds land on those exact courts.
-    const parsedCourts = courtNames
-      .split(",")
-      .map((c) => c.trim())
-      .filter(Boolean);
+    // The actual court number for each court slot. When they're just 1..N we
+    // store null (legacy default); otherwise the explicit list drives both the
+    // court count and the number stamped on each generated match.
+    const courtCount = Math.max(1, numCourts);
+    const finalCourts = Array.from({ length: courtCount }, (_, i) => (courtSlots[i]?.trim() || String(i + 1)));
+    const isDefault = finalCourts.every((c, i) => c === String(i + 1));
 
     const updates: any = {
       scoring_format: scoringFormat,
       round_length_minutes: scoringFormat === "timed" ? roundLengthMinutes : null,
       target_games: scoringFormat !== "timed" ? targetGames : null,
-      num_courts: parsedCourts.length > 0 ? parsedCourts.length : numCourts,
-      court_names: parsedCourts.length > 0 ? parsedCourts : null,
+      num_courts: courtCount,
+      court_names: isDefault ? null : finalCourts,
     };
 
     const { error } = await supabase
@@ -95,6 +96,18 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
     }
   };
 
+  // Changing the court count resizes the per-court inputs, preserving any
+  // numbers already entered and defaulting new slots to their slot number.
+  const handleCourtCountChange = (value: string) => {
+    const n = value === '' ? 0 : (parseInt(value) || 0);
+    setNumCourts(n);
+    setCourtSlots((prev) => Array.from({ length: Math.max(0, n) }, (_, i) => prev[i] ?? String(i + 1)));
+  };
+
+  const setCourtSlot = (idx: number, value: string) => {
+    setCourtSlots((prev) => prev.map((c, i) => (i === idx ? value : c)));
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg bg-white">
@@ -126,29 +139,36 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
             <input
               type="number"
               value={numCourts || ''}
-              onChange={(e) => handleNumberChange(setNumCourts, e.target.value)}
-              onBlur={() => handleNumberBlur(setNumCourts, numCourts, 1)}
-              disabled={courtNames.trim() !== ''}
-              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100 disabled:text-gray-400"
+              onChange={(e) => handleCourtCountChange(e.target.value)}
+              onBlur={() => { if (numCourts < 1) handleCourtCountChange('1'); }}
+              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary"
               min={1}
               max={50}
             />
           </div>
 
-          <div>
-            <Label className="text-sm font-medium">Courts in use (optional)</Label>
-            <input
-              type="text"
-              value={courtNames}
-              onChange={(e) => setCourtNames(e.target.value)}
-              placeholder="e.g. 2, 3, 4, 5"
-              style={{ color: "#111827" }}
-              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Comma-separated court numbers if you&apos;re not on courts 1–{numCourts}. Sets the court count and stamps these numbers on each match. Leave blank to use 1–{numCourts}.
-            </p>
-          </div>
+          {numCourts >= 1 && (
+            <div>
+              <Label className="text-sm font-medium">Court numbers</Label>
+              <p className="mt-0.5 mb-2 text-xs text-gray-500">
+                The actual number of each court you&apos;re using. Defaults to 1–{numCourts}; change them if you&apos;re on, say, courts 2–5. These show on every match and result.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {courtSlots.map((val, i) => (
+                  <div key={i} className="flex flex-col items-center">
+                    <span className="text-[10px] text-gray-400 mb-0.5">Court {i + 1}</span>
+                    <input
+                      type="text"
+                      value={val}
+                      onChange={(e) => setCourtSlot(i, e.target.value)}
+                      style={{ color: "#111827" }}
+                      className="w-16 px-2 py-1.5 text-center border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {scoringFormat === "timed" && (
             <div>

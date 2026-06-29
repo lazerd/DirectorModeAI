@@ -118,27 +118,8 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
   const handleSave = async () => {
     setSaving(true);
 
-    // Validate court numbers: must be positive integers, unique within this round.
-    const parsedCourts: Record<string, number> = {};
-    const seen = new Set<number>();
-    for (const m of matches) {
-      const raw = courtNumbers[m.id]?.trim() ?? '';
-      const n = Number(raw);
-      if (!Number.isInteger(n) || n <= 0) {
-        toast({ variant: 'destructive', title: 'Invalid court number', description: `"${raw}" isn't a positive whole number.` });
-        setSaving(false);
-        return;
-      }
-      if (seen.has(n)) {
-        toast({ variant: 'destructive', title: 'Duplicate court number', description: `Court ${n} is assigned to more than one match.` });
-        setSaving(false);
-        return;
-      }
-      seen.add(n);
-      parsedCourts[m.id] = n;
-    }
-
-    // Build match updates
+    // Build match updates — start everyone unassigned; courts are validated
+    // after placement (below) so we know which matches actually host a game.
     const matchUpdates: Record<string, { player1_id: string | null; player2_id: string | null; player3_id: string | null; player4_id: string | null; court_number: number }> = {};
 
     matches.forEach((match) => {
@@ -147,7 +128,7 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
         player2_id: null,
         player3_id: null,
         player4_id: null,
-        court_number: parsedCourts[match.id],
+        court_number: 0,
       };
     });
 
@@ -182,6 +163,32 @@ const ManualMatchEditor = ({ matches, open, onOpenChange, onSaved }: ManualMatch
         }
       }
     });
+
+    // Validate courts only for real matches (>=2 players). Byes don't need a
+    // court and are saved as 0, so they never silently block the save.
+    const seen = new Set<number>();
+    for (const m of matches) {
+      const update = matchUpdates[m.id];
+      const playerCount = [update.player1_id, update.player2_id, update.player3_id, update.player4_id].filter(Boolean).length;
+      if (playerCount < 2) {
+        update.court_number = 0;
+        continue;
+      }
+      const raw = courtNumbers[m.id]?.trim() ?? '';
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n <= 0) {
+        toast({ variant: 'destructive', title: 'Invalid court number', description: `"${raw}" isn't a positive whole number.` });
+        setSaving(false);
+        return;
+      }
+      if (seen.has(n)) {
+        toast({ variant: 'destructive', title: 'Duplicate court number', description: `Court ${n} is on two matches — give each court a different number.` });
+        setSaving(false);
+        return;
+      }
+      seen.add(n);
+      update.court_number = n;
+    }
 
     try {
       for (const [matchId, updates] of Object.entries(matchUpdates)) {
