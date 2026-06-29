@@ -65,7 +65,7 @@ function percentile(sorted: number[], p: number) {
 }
 
 export default function BenchmarksPage() {
-  const [dept, setDept] = useState('Tennis/Racquets');
+  const [dept, setDept] = useState('all');
   const [state, setState] = useState('all');
   const [region, setRegion] = useState('all');
   const [query, setQuery] = useState('');
