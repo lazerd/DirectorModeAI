@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Search, Download, ExternalLink, TrendingUp, Users, DollarSign, Percent, MapPin } from 'lucide-react';
+import { Search, Download, ExternalLink, TrendingUp, Users, DollarSign, Percent, MapPin, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import rawData from './_data/benchmarks.json';
+import { milesBetween } from '@/lib/geo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -45,22 +46,15 @@ const COMP_PRESETS: { label: string; min: string; max: string }[] = [
 const usd = (n: number) =>
   n >= 0 ? `$${Math.round(n).toLocaleString()}` : '—';
 
+// Sortable columns. `numeric` columns default to high→low on first click (you
+// usually want the biggest comp / revenue first); text columns default A→Z.
+type SortKey = 'club' | 'state' | 'miles' | 'title' | 'name' | 'total' | 'revenue' | 'pct' | 'year';
+const NUMERIC_COLS = new Set<SortKey>(['miles', 'total', 'revenue', 'pct', 'year']);
+
 function percentile(sorted: number[], p: number) {
   if (sorted.length === 0) return 0;
   const i = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
   return sorted[i];
-}
-
-// Great-circle distance in miles (haversine).
-function milesBetween(aLat: number, aLng: number, bLat: number, bLng: number) {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const R = 3958.8;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const s =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 export default function BenchmarksPage() {
@@ -189,6 +183,17 @@ export default function BenchmarksPage() {
           Real comp data from IRS Form 990 filings — source candidates by position, pay range, and distance from any ZIP, then build a shortlist and export your outreach list.
         </p>
       </div>
+
+      {/* ClubMode Connect CTA */}
+      <a href="/connect" className="block mb-6">
+        <div className="rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 to-emerald-50 px-5 py-4 flex items-center justify-between gap-4 transition hover:border-teal-300">
+          <div>
+            <div className="font-semibold text-slate-900">New: ClubMode Connect — get matched, not just benchmarked</div>
+            <div className="text-sm text-slate-600">Directors open to the right move stay anonymous until a club with a better offer wants to talk. Clubs post an opening and we surface qualified, nearby talent.</div>
+          </div>
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white">Explore →</span>
+        </div>
+      </a>
 
       {/* Filters */}
       <Card className="mb-6">
