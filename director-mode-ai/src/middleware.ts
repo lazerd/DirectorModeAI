@@ -45,6 +45,8 @@ export async function middleware(request: NextRequest) {
     // auth. The /connect landing itself is public (anonymous market stats).
     '/connect/candidate',
     '/connect/clubs',
+    // Total-comp profile (the proprietary dataset) is per-user.
+    '/benchmarks/profile',
     // CourtSheet staff view requires auth. Public /courtsheet/[clubSlug]
     // does NOT — handled by the route, not the matcher (auth check inside
     // the route distinguishes staff vs public surface).

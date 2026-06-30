@@ -201,6 +201,11 @@ function ResultCard({ r, onShare, shared, dept, comp, zip }: { r: Result; onShar
         </CardContent>
       </Card>
 
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 flex items-center justify-between gap-3">
+        <span>This is base 990 comp. Add your <strong>full package</strong> — bonus, housing, dues — for your true number.</span>
+        <Link href="/benchmarks/profile" className="shrink-0 text-teal-700 font-medium underline">Add my package →</Link>
+      </div>
+
       <p className="text-xs text-slate-400">
         Based on IRS Form 990 filings (officers + highest-paid staff, most recent year per club). Figures are base reportable comp and lag 1–2 years; your full package (bonus, housing, dues) may differ.
       </p>
