@@ -1136,5 +1136,27 @@ export function autoAssignMashupRound(
     emit(l.id, [a, undefined], [b, undefined]);
   }
 
+  // 2-opt repair: greedy pairing can corner the last two leftovers into a
+  // rematch. Break any singles rematch by swapping two courts' opponents, as
+  // long as the swap doesn't create a new one — gets us to zero when possible.
+  const singlesPatches = patches.filter(
+    p => p.home_player1_id && p.away_player1_id && !p.home_player2_id && !p.away_player2_id
+  );
+  for (const p of singlesPatches) {
+    if (!hasFaced(p.home_player1_id as string, p.away_player1_id as string)) continue;
+    for (const q of singlesPatches) {
+      if (q === p) continue;
+      if (
+        !hasFaced(p.home_player1_id as string, q.away_player1_id as string) &&
+        !hasFaced(q.home_player1_id as string, p.away_player1_id as string)
+      ) {
+        const tmp = p.away_player1_id;
+        p.away_player1_id = q.away_player1_id;
+        q.away_player1_id = tmp;
+        break;
+      }
+    }
+  }
+
   return patches;
 }
