@@ -1018,9 +1018,21 @@ export type MashupPatch = {
  */
 export function autoAssignMashupRound(
   roundLines: AssignLine[],
-  available: MashupRoster[]
+  available: MashupRoster[],
+  priorLines: AssignLine[] = []
 ): MashupPatch[] {
   const lad = (r: MashupRoster) => r.ladder_position ?? 9999;
+
+  // Who has already faced whom in earlier rounds, so we never reproduce the same
+  // matchup. Only cross-side pairings count as "faced" (teammates don't).
+  const pairKey = (x: string, y: string) => (x < y ? `${x}|${y}` : `${y}|${x}`);
+  const faced = new Set<string>();
+  for (const l of priorLines) {
+    const homeSide = [l.home_player1_id, l.home_player2_id].filter(Boolean) as string[];
+    const awaySide = [l.away_player1_id, l.away_player2_id].filter(Boolean) as string[];
+    for (const h of homeSide) for (const aw of awaySide) faced.add(pairKey(h, aw));
+  }
+  const hasFaced = (x: string, y: string) => faced.has(pairKey(x, y));
 
   // Players already slotted somewhere in this round are off the table.
   const used = new Set<string>();
@@ -1084,7 +1096,12 @@ export function autoAssignMashupRound(
     let sideB: MashupRoster[];
     if (clubsWithPair.length >= 2) {
       sideA = clubsWithPair[0][1].slice(0, 2);
-      sideB = clubsWithPair[1][1].slice(0, 2);
+      // Prefer an opposing club whose pair hasn't already faced sideA; else next.
+      const others = clubsWithPair.slice(1);
+      const fresh = others.find(([, arr]) =>
+        !arr.slice(0, 2).some(p => sideA.some(s => hasFaced(s.id, p.id)))
+      );
+      sideB = (fresh || others[0])[1].slice(0, 2);
     } else {
       // Can't make a clean club-vs-club court — mix the four strongest left.
       const four = pool.slice(0, 4);
@@ -1108,9 +1125,13 @@ export function autoAssignMashupRound(
       emit(l.id, [a, undefined], [undefined, undefined]);
       break;
     }
-    // Nearest-strength opponent from another club; if everyone left shares a's
-    // club, just take the next strongest (mix it up).
-    const b = pool.find(r => r.club_id !== a.club_id) || pool[0];
+    // Nearest-strength opponent, preferring a DIFFERENT club AND someone `a`
+    // hasn't already played. Fall back gracefully so a court is never left empty.
+    const b =
+      pool.find(r => r.club_id !== a.club_id && !hasFaced(a.id, r.id)) ||
+      pool.find(r => !hasFaced(a.id, r.id)) ||
+      pool.find(r => r.club_id !== a.club_id) ||
+      pool[0];
     take(b.id);
     emit(l.id, [a, undefined], [b, undefined]);
   }

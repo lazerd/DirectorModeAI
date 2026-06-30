@@ -340,7 +340,7 @@ export default function MatchupFacilitatorPage() {
     // singles/doubles across rounds, seeded by strength, away vs home.
     const compute = (rl: Line[]) =>
       isMashup
-        ? autoAssignMashupRound(rl, availablePool)
+        ? autoAssignMashupRound(rl, availablePool, otherLines)
         : autoAssignRoundBalanced(rl, otherLines, availableHome, availableAway);
     // First pass fills any EMPTY courts (keeps manual picks).
     let patches = compute(roundLines);
