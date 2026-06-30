@@ -22,7 +22,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { autoAssignRoundBalanced, autoAssignMashupRound, optimizeLines } from '@/lib/jtt';
+import { autoAssignRoundBalanced, autoAssignMashupRound, optimizeLines, optimizeMashupLines } from '@/lib/jtt';
 
 // A 3-team (or 2-team) "mish-mash" gathering is flagged in the matchup's notes
 // as MASHUP[SH|MCC|MDW]. Every listed club's players are pooled into one
@@ -291,8 +291,10 @@ export default function MatchupFacilitatorPage() {
 
   const optimizer = useMemo(
     () =>
-      optimizeLines(courtsForThisMatchup, availableHome.length, availableAway.length),
-    [courtsForThisMatchup, availableHome.length, availableAway.length]
+      isMashup
+        ? optimizeMashupLines(courtsForThisMatchup, availablePool.length)
+        : optimizeLines(courtsForThisMatchup, availableHome.length, availableAway.length),
+    [isMashup, courtsForThisMatchup, availablePool.length, availableHome.length, availableAway.length]
   );
 
   // Group lines into rounds, each round's courts sorted by line_number.
@@ -511,8 +513,10 @@ export default function MatchupFacilitatorPage() {
     // Mashup rounds default to all singles (the director then bumps the
     // singles/doubles split with the per-round control); head-to-head rounds use
     // the optimizer's recommendation.
-    const singles = isMashup ? courts : Math.min(courts, optimizer.singles);
-    const doubles = isMashup ? 0 : Math.min(courts - singles, optimizer.doubles);
+    // optimizer is mashup-aware, so it already returns the best singles/doubles
+    // split for the shared pool (mashup) or the two-team balance (head-to-head).
+    const singles = Math.min(courts, optimizer.singles);
+    const doubles = Math.min(courts - singles, optimizer.doubles);
     let n = nextLineNumber();
     const newLines = Array.from({ length: courts }, (_, i) => ({
       matchup_id: matchupId,
@@ -752,7 +756,11 @@ export default function MatchupFacilitatorPage() {
   // Let the optimizer pick the split for this round given courts + attendance.
   const aiOptimizeRound = async (round: number) => {
     const roundLines = lines.filter(l => l.round_number === round);
-    const opt = optimizeLines(roundLines.length, availableHome.length, availableAway.length);
+    // Mashup draws from one shared pool (2 per singles court, 4 per doubles);
+    // head-to-head balances the two teams per side.
+    const opt = isMashup
+      ? optimizeMashupLines(roundLines.length, availablePool.length)
+      : optimizeLines(roundLines.length, availableHome.length, availableAway.length);
     await applyRoundSplit(round, Math.min(roundLines.length, opt.singles));
   };
 

@@ -165,6 +165,54 @@ export function optimizeLines(
 }
 
 /**
+ * Mashup (mish-mash) split: every court is mixed-club and draws from ONE shared
+ * pool, so a singles court seats 2 players and a doubles court seats 4. Choose
+ * the split that seats the MOST of the checked-in players across the courts —
+ * upgrade singles → doubles until the pool is used up.
+ *
+ *   e.g. 20 players, 7 courts → 4 singles + 3 doubles = seats all 20.
+ *
+ * Returns the same shape as optimizeLines so callers/UI are interchangeable
+ * (benchedHome carries the total sitting out; benchedAway stays 0).
+ */
+export function optimizeMashupLines(
+  courts: number,
+  players: number
+): {
+  singles: number;
+  doubles: number;
+  usable: number;
+  benchedHome: number;
+  benchedAway: number;
+  warning: string | null;
+} {
+  const c = Math.max(0, Math.floor(courts));
+  const n = Math.max(0, Math.floor(players));
+  if (c === 0 || n < 2) {
+    return {
+      singles: 0, doubles: 0, usable: 0, benchedHome: n, benchedAway: 0,
+      warning: c === 0 ? 'No courts available for this matchup.' : n < 2 ? 'Need at least 2 players checked in.' : null,
+    };
+  }
+  // Most courts we can even fill (each needs ≥2 players).
+  const courtsUsable = Math.min(c, Math.floor(n / 2));
+  // Upgrade singles→doubles (each upgrade seats +2) until players run out.
+  const doubles = Math.max(0, Math.min(courtsUsable, Math.floor((n - 2 * courtsUsable) / 2)));
+  const singles = courtsUsable - doubles;
+  const seated = singles * 2 + doubles * 4;
+  const benched = n - seated;
+
+  const warnings: string[] = [];
+  if (courtsUsable < c) {
+    const idle = c - courtsUsable;
+    warnings.push(`Only ${courtsUsable} of ${c} courts fill — not enough players for ${idle} more.`);
+  }
+  if (benched > 0) warnings.push(`${benched} player${benched === 1 ? '' : 's'} sitting out.`);
+
+  return { singles, doubles, usable: seated, benchedHome: benched, benchedAway: 0, warning: warnings.length ? warnings.join(' ') : null };
+}
+
+/**
  * Build the line skeleton (line_type + line_number) for N singles + M doubles,
  * with singles first, then doubles. 1-indexed, contiguous.
  */
