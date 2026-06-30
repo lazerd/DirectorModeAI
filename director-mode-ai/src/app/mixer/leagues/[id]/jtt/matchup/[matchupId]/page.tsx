@@ -314,8 +314,18 @@ export default function MatchupFacilitatorPage() {
   // Auto-assign players by strength within ONE round (so a later round can
   // reuse the same players from a fresh pool).
   const autoAssignRound = async (round: number) => {
-    const roundLines = lines.filter(l => l.round_number === round);
-    const otherLines = lines.filter(l => l.round_number !== round);
+    const supabase = createClient();
+    // Read lines FRESH from the DB, not React state. When this runs right after
+    // createRound() inserts the new round, the `lines` closure is still the
+    // pre-insert value, so the new round looks empty and we'd wrongly alert
+    // "every court already has players." Fresh data avoids that stale-closure trap.
+    const { data: freshRaw } = await supabase
+      .from('league_matchup_lines')
+      .select('*')
+      .eq('matchup_id', matchupId);
+    const freshLines = ((freshRaw as Line[]) || []).map(l => ({ ...l, round_number: l.round_number ?? 1 }));
+    const roundLines = freshLines.filter(l => l.round_number === round);
+    const otherLines = freshLines.filter(l => l.round_number !== round);
     // Mashup: pool everyone and mix clubs per court. Head-to-head: balance
     // singles/doubles across rounds, seeded by strength, away vs home.
     const patches = isMashup
@@ -325,7 +335,6 @@ export default function MatchupFacilitatorPage() {
       alert('Every court in this round already has players — clear them first to re-assign.');
       return;
     }
-    const supabase = createClient();
     // .select() back so a blocked write (RLS / signed out) surfaces as an alert
     // instead of silently doing nothing — the bug we hit during a live match.
     // Mashup patches also carry counts_for_team=false (mixed play never scores
