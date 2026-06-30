@@ -269,13 +269,14 @@ export default function MatchupFacilitatorPage() {
     ? activePool.filter(r => checkedInIds.has(r.id))
     : activePool;
 
-  // Manual line dropdowns can pick ANY active player from EITHER club (or, in
-  // mashup mode, any participating club), so a lineup can be mixed when the
-  // numbers don't line up. Auto-assign uses the per-club lists (head-to-head)
-  // or the full pool (mashup); this pool is for the manual pickers.
+  // Manual line dropdowns draw from whoever is CHECKED IN (across both clubs, or
+  // every participating club in a mashup) — so you can't accidentally slot a kid
+  // who isn't here. Before anyone's checked in, fall back to the full active
+  // roster so the pickers aren't empty. (Need someone who's not checked in? Check
+  // them in first — that's the source of truth for who's present today.)
   const allLinePlayers = useMemo(
-    () => (isMashup ? activePool : [...activeHome, ...activeAway]),
-    [isMashup, activePool, activeHome, activeAway]
+    () => (isMashup ? availablePool : [...availableHome, ...availableAway]),
+    [isMashup, availablePool, availableHome, availableAway]
   );
   const clubShortById = useMemo(() => {
     const m = new Map<string, string>();
