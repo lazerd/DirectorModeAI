@@ -1,7 +1,6 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import ClubSidebar from '@/components/shared/ClubSidebar';
 
 export type MatchT = { token: string; a: string; b: string; score: string; winner_side: 'a' | 'b' | null; status: string };
 export type StandingT = { name: string; w: number; l: number; gf: number; ga: number };
@@ -13,7 +12,6 @@ const FONT = "https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;7
 export default function FlexHub({ divisions }: { divisions: Division[] }) {
   return (
     <main style={{ fontFamily: "'Barlow', system-ui, sans-serif", background: '#ECEFF4', minHeight: '100vh', padding: '28px 14px 80px' }}>
-      <ClubSidebar />
       <link rel="stylesheet" href={FONT} />
       <div style={{ maxWidth: 920, margin: '0 auto' }}>
         {/* HERO */}

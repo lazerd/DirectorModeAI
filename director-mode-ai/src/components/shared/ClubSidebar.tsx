@@ -3,8 +3,8 @@
 /**
  * ClubSidebar — a QuickBooks-style collapsible left navigation rail.
  *
- * Drop <ClubSidebar /> at the top of any tool page that otherwise has no way
- * back to the home page or across to the other tools (e.g. /flex, /benchmarks).
+ * Mounted ONCE globally in the root layout (src/app/layout.tsx), so it appears
+ * on every page. Do not also mount it per-page (you'd get two overlapping rails).
  * It's a fixed, brand-styled (dark teal + lime) app shell that:
  *   - shows every tool with an icon + label, highlighting the active one
  *   - collapses to a thin icon rail (toggle persisted to localStorage)
@@ -76,8 +76,10 @@ export default function ClubSidebar() {
   const active = activeHref(pathname);
 
   // Restore the pinned/collapsed preference before first paint of the rail.
+  // Default is COLLAPSED (a thin icon rail) so the nav stays out of the way and
+  // reveals every tool on hover; users who pin it open are remembered.
   useEffect(() => {
-    setCollapsed(localStorage.getItem('clubnav-collapsed') === '1');
+    setCollapsed(localStorage.getItem('clubnav-collapsed') !== '0');
     setMounted(true);
   }, []);
 

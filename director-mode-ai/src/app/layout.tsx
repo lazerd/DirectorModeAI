@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import AnalyticsTracker from "@/components/shared/AnalyticsTracker";
 import AssistantWidget from "@/components/assistant/AssistantWidget";
+import ClubSidebar from "@/components/shared/ClubSidebar";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
@@ -27,6 +28,7 @@ export default function RootLayout({
       </head>
       <body>
         <AnalyticsTracker />
+        <ClubSidebar />
         {children}
         <AssistantWidget />
         <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#002838', color: '#fff', border: '1px solid rgba(255,255,255,0.08)' } }} />
