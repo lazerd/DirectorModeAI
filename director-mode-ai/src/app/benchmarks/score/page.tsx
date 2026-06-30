@@ -22,7 +22,7 @@ const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
 type Result = {
   dept: string; currentComp: number; n: number; percentile: number;
   median: number; avg: number; p25: number; p75: number; p90: number; max: number;
-  gapToMedian: number; gapToP75: number; medianPct: number | null; expectedByRevenue: number | null;
+  gapToMedian: number; gapToP75: number; medianPct: number | null; expectedByRevenue: number | null; sizeBandN: number;
   local: { n: number; median: number; radiusMiles: number } | null;
   comparables: { club: string; title: string; total: number; year: string; pct: number | null; distanceMiles: number | null }[];
   verdict: 'underpaid' | 'market' | 'above';
@@ -161,8 +161,9 @@ function ResultCard({ r, onShare, shared, dept, comp, zip }: { r: Result; onShar
         <Card>
           <CardContent className="py-4 text-sm text-slate-700">
             <TrendingUp className="h-4 w-4 inline text-teal-600 mr-1" />
-            {deptLabel(r.dept)} typically cost <strong>{((r.medianPct || 0) * 100).toFixed(1)}%</strong> of club revenue.
-            At your club, that points to an expected <strong>{usd(r.expectedByRevenue)}</strong>.
+            At clubs of a <strong>similar size</strong> to yours ({r.sizeBandN} clubs near your revenue), {deptLabel(r.dept)} earn a median of <strong>{usd(r.expectedByRevenue)}</strong>
+            {r.expectedByRevenue > r.currentComp ? <> — about {usd(r.expectedByRevenue - r.currentComp)} above your pay.</> : '.'}
+            {r.medianPct != null && <span className="text-slate-400"> ({deptLabel(r.dept)} typically run ~{((r.medianPct) * 100).toFixed(1)}% of club revenue.)</span>}
           </CardContent>
         </Card>
       )}

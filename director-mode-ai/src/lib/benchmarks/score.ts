@@ -36,7 +36,8 @@ export type ScoreResult = {
   gapToMedian: number;           // median - currentComp (negative => above market)
   gapToP75: number;              // p75 - currentComp (an aspirational target)
   medianPct: number | null;      // dept's median comp as % of club revenue
-  expectedByRevenue: number | null; // revenue * medianPct, if revenue supplied
+  expectedByRevenue: number | null; // median comp at similarly-sized clubs, if revenue supplied
+  sizeBandN: number;             // # of similar-size clubs behind expectedByRevenue
   local: { n: number; median: number; radiusMiles: number } | null;
   comparables: Comparable[];
   verdict: 'underpaid' | 'market' | 'above';
@@ -69,7 +70,16 @@ export function computeScore(rows: ScoreRow[], input: ScoreInput): ScoreResult {
 
   const pcts = cohort.map((r) => r.pct).filter((x): x is number => x != null && x > 0);
   const medianPct = pcts.length ? median(pcts) : null;
-  const expectedByRevenue = input.revenue && medianPct ? Math.round(input.revenue * medianPct) : null;
+
+  // Revenue-adjusted expectation: the median comp at clubs of a SIMILAR SIZE
+  // (revenue within 0.5x–2x of theirs). Far more defensible than median-pct ×
+  // revenue, because % of revenue is bimodal across club types.
+  let expectedByRevenue: number | null = null;
+  let sizeBandN = 0;
+  if (input.revenue && input.revenue > 0) {
+    const band = cohort.filter((r) => r.revenue >= input.revenue! * 0.5 && r.revenue <= input.revenue! * 2);
+    if (band.length >= 5) { expectedByRevenue = median(band.map((r) => r.total)); sizeBandN = band.length; }
+  }
 
   // Local cohort + comparables when a ZIP origin is supplied.
   let local: ScoreResult['local'] = null;
@@ -105,6 +115,6 @@ export function computeScore(rows: ScoreRow[], input: ScoreInput): ScoreResult {
     dept, currentComp, n, percentile,
     median: med, avg, p25, p75, p90, max,
     gapToMedian, gapToP75: p75 - currentComp,
-    medianPct, expectedByRevenue, local, comparables, verdict,
+    medianPct, expectedByRevenue, sizeBandN, local, comparables, verdict,
   };
 }
