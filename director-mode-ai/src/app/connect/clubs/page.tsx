@@ -51,6 +51,14 @@ export default function ClubsPage() {
   }
   useEffect(() => { load(); }, []);
 
+  // Prefill from the Comp Advisor ("Post this opening" -> /connect/clubs?dept&comp_max&zip).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const d = q.get('dept'); if (d && DEPTS.some((x) => x.key === d)) setDept(d);
+    const c = q.get('comp_max'); if (c) setCompMax(c);
+    const z = q.get('zip'); if (z) setZip(z);
+  }, []);
+
   async function post() {
     setSaving(true);
     setMsg('');
