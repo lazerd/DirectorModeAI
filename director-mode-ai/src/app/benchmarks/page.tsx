@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { Search, ExternalLink, TrendingUp, Users, DollarSign, Percent, MapPin, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import rawData from './_data/benchmarks.json';
 import { milesBetween } from '@/lib/geo';
+import ClubSidebar from '@/components/shared/ClubSidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -196,6 +197,7 @@ export default function BenchmarksPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
+      <ClubSidebar />
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Compensation Benchmarks &amp; Recruiting</h1>
         <p className="mt-1 text-muted-foreground">

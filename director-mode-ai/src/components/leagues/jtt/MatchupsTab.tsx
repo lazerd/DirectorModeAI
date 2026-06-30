@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Calendar, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronRight, ChevronDown } from 'lucide-react';
 import type {
   JTTClub,
   JTTDivision,
@@ -76,6 +76,44 @@ export default function MatchupsTab({
     return Array.from(byDate.values()).sort((a, b) => a.date.localeCompare(b.date));
   }, [matchups]);
 
+  // Local "today" as YYYY-MM-DD so we can land on the right match on refresh
+  // instead of dumping the user at the first match of the season.
+  const todayStr = useMemo(() => {
+    const n = new Date();
+    return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  // The date to focus: today's match if there is one, else the next upcoming
+  // date, else (whole season is in the past) the most recent date.
+  const focusDate = useMemo(() => {
+    if (!groups.length) return null;
+    const upcoming = groups.find(g => g.date >= todayStr);
+    return (upcoming ?? groups[groups.length - 1]).date;
+  }, [groups, todayStr]);
+
+  // Accordion: every date collapses; only the focus date opens by default.
+  const [openDates, setOpenDates] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (focusDate) setOpenDates(new Set([focusDate]));
+  }, [focusDate]);
+
+  const toggleDate = (date: string) =>
+    setOpenDates(prev => {
+      const next = new Set(prev);
+      next.has(date) ? next.delete(date) : next.add(date);
+      return next;
+    });
+
+  // Scroll the focus date into view on load so a refresh lands on it.
+  const focusRef = useRef<HTMLElement | null>(null);
+  const didScroll = useRef(false);
+  useEffect(() => {
+    if (focusDate && focusRef.current && !didScroll.current) {
+      didScroll.current = true;
+      focusRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [focusDate]);
+
   if (matchups.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-6 text-gray-500 text-sm">
@@ -95,15 +133,45 @@ export default function MatchupsTab({
           month: 'short',
           day: 'numeric',
         });
+        const isOpen = openDates.has(g.date);
+        const isFocus = g.date === focusDate;
+        const allM = Array.from(g.byDivision.values()).flat();
+        const doneCount = allM.filter(m => m.status === 'completed').length;
+        const pill =
+          g.date === todayStr ? { text: 'Today', cls: 'bg-orange-100 text-orange-700' }
+          : isFocus ? { text: 'Up next', cls: 'bg-blue-100 text-blue-700' }
+          : null;
         return (
-          <section key={g.date} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <header className="px-4 py-3 border-b border-gray-200 bg-gray-50 flex items-center gap-2">
-              <Calendar size={16} className="text-gray-400" />
+          <section
+            key={g.date}
+            ref={isFocus ? focusRef : undefined}
+            className={`bg-white rounded-xl border overflow-hidden scroll-mt-4 ${isFocus ? 'border-orange-300 ring-1 ring-orange-200' : 'border-gray-200'}`}
+          >
+            <button
+              type="button"
+              onClick={() => toggleDate(g.date)}
+              aria-expanded={isOpen}
+              className="w-full px-4 py-3 border-b border-gray-200 bg-gray-50 hover:bg-gray-100 flex items-center gap-2 text-left transition-colors"
+            >
+              <Calendar size={16} className="text-gray-400 shrink-0" />
               <h3 className="font-semibold text-gray-900">{label}</h3>
-              <span className="text-xs text-gray-500">({g.date})</span>
-            </header>
+              <span className="hidden sm:inline text-xs text-gray-500">({g.date})</span>
+              {pill && (
+                <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${pill.cls}`}>{pill.text}</span>
+              )}
+              <span className="ml-auto flex items-center gap-3">
+                <span className="text-xs text-gray-500">
+                  {allM.length} {allM.length === 1 ? 'match' : 'matches'}
+                  {doneCount > 0 && <span className="text-green-600"> · {doneCount} done</span>}
+                </span>
+                <ChevronDown
+                  size={18}
+                  className={`text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                />
+              </span>
+            </button>
 
-            <div className="divide-y divide-gray-100">
+            <div className={`divide-y divide-gray-100 ${isOpen ? '' : 'hidden'}`}>
               {Array.from(g.byDivision.entries())
                 .map(([divId, list]) => ({ divId, division: divisionsById.get(divId), list }))
                 .filter((x): x is { divId: string; division: JTTDivision; list: JTTMatchup[] } => !!x.division)
