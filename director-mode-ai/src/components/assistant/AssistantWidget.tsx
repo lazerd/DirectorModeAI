@@ -16,7 +16,7 @@ interface Msg {
 }
 
 const GREETING =
-  "Hi! I'm your ClubMode Assistant. Ask me how to do anything — run a mixer, read the Board Report, score a JTT line, set up lessons.";
+  "Hi! I'm your ClubMode Assistant. On a JTT matchup I can actually do it for you — e.g. \"check in the MCC 13s\" or \"add Brooke McGuire to MCC 12s.\" Or ask me how to do anything in ClubMode.";
 
 // Public marketing surfaces — the live assistant is for directors inside the app,
 // not for prospects. The homepage advertises it instead. Add prefixes here to
