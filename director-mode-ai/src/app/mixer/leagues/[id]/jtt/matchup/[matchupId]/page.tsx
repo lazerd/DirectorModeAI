@@ -20,7 +20,15 @@ import {
   Sparkles,
   Mail,
   Pencil,
+  GripVertical,
 } from 'lucide-react';
+import {
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { createClient } from '@/lib/supabase/client';
 import { autoAssignRoundBalanced, autoAssignMashupRound, optimizeLines, optimizeMashupLines } from '@/lib/jtt';
 
@@ -466,25 +474,16 @@ export default function MatchupFacilitatorPage() {
     });
   };
 
-  // Reorder a club's strength ladder right from the match page. Renumbers the
-  // displayed list densely (1..N) on each move so it works even if some players
-  // still have a null ladder_position (swapping null↔null would be a no-op).
-  const moveInClub = async (clubId: string, rosterId: string, dir: -1 | 1) => {
-    const list = activeForClub(clubId)
-      .slice()
-      .sort(
-        (a, b) =>
-          (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999) ||
-          a.player_name.localeCompare(b.player_name)
-      );
-    const idx = list.findIndex(r => r.id === rosterId);
-    const j = idx + dir;
-    if (idx === -1 || j < 0 || j >= list.length) return;
-    [list[idx], list[j]] = [list[j], list[idx]];
+  // Persist a club's strength ladder after a drag-and-drop reorder. `orderedIds`
+  // is the new top→bottom order; we renumber ladder_position densely (1..N) and
+  // only write the rows whose number actually changed.
+  const reorderInClub = async (clubId: string, orderedIds: string[]) => {
+    const current = new Map(activeForClub(clubId).map(r => [r.id, r.ladder_position]));
+    const changed = orderedIds
+      .map((id, i) => ({ id, pos: i + 1 }))
+      .filter(u => current.get(u.id) !== u.pos);
+    if (changed.length === 0) return;
     const supabase = createClient();
-    const changed = list
-      .map((r, i) => ({ id: r.id, pos: i + 1, current: r.ladder_position }))
-      .filter(u => u.current !== u.pos);
     await Promise.all(
       changed.map(u =>
         supabase
@@ -963,7 +962,7 @@ export default function MatchupFacilitatorPage() {
                 onToggle={toggleCheckin}
                 onCheckAll={() => checkInAllActive(club.id)}
                 onClearAll={() => clearCheckins(club.id)}
-                onMove={(rosterId, dir) => moveInClub(club.id, rosterId, dir)}
+                onReorder={(ids) => reorderInClub(club.id, ids)}
                 onAddPlayer={(name) => addPlayer(club.id, name)}
               />
             ))}
@@ -977,7 +976,7 @@ export default function MatchupFacilitatorPage() {
               onToggle={toggleCheckin}
               onCheckAll={() => checkInAllActive(awayClub.id)}
               onClearAll={() => clearCheckins(awayClub.id)}
-              onMove={(rosterId, dir) => moveInClub(awayClub.id, rosterId, dir)}
+              onReorder={(ids) => reorderInClub(awayClub.id, ids)}
               onAddPlayer={(name) => addPlayer(awayClub.id, name)}
             />
             <AttendanceColumn
@@ -987,7 +986,7 @@ export default function MatchupFacilitatorPage() {
               onToggle={toggleCheckin}
               onCheckAll={() => checkInAllActive(homeClub.id)}
               onClearAll={() => clearCheckins(homeClub.id)}
-              onMove={(rosterId, dir) => moveInClub(homeClub.id, rosterId, dir)}
+              onReorder={(ids) => reorderInClub(homeClub.id, ids)}
               onAddPlayer={(name) => addPlayer(homeClub.id, name)}
             />
           </div>
@@ -1633,6 +1632,43 @@ function LineEditor({
   );
 }
 
+// One draggable attendance row: grip handle + check-in box + strength rank.
+function SortableAttendee({
+  id, name, rank, checked, onToggle,
+}: {
+  id: string;
+  name: string;
+  rank: number;
+  checked: boolean;
+  onToggle: (rosterId: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center gap-2 px-3 py-1.5 text-sm bg-white ${checked ? 'bg-green-50' : ''} ${isDragging ? 'shadow-lg ring-1 ring-orange-300 rounded' : ''}`}
+    >
+      <button
+        type="button"
+        {...listeners}
+        {...attributes}
+        className="cursor-grab active:cursor-grabbing touch-none text-gray-300 hover:text-gray-600 shrink-0"
+        title="Drag to set strength order"
+        aria-label="Drag to reorder"
+      >
+        <GripVertical size={15} />
+      </button>
+      <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+        <input type="checkbox" checked={checked} onChange={() => onToggle(id)} className="w-4 h-4" />
+        <span className="w-5 text-right text-gray-400 text-xs">{`#${rank}`}</span>
+        <span className="flex-1 truncate text-gray-900">{name}</span>
+      </label>
+    </div>
+  );
+}
+
 function AttendanceColumn({
   label,
   rosters,
@@ -1640,7 +1676,7 @@ function AttendanceColumn({
   onToggle,
   onCheckAll,
   onClearAll,
-  onMove,
+  onReorder,
   onAddPlayer,
 }: {
   label: string;
@@ -1649,7 +1685,7 @@ function AttendanceColumn({
   onToggle: (rosterId: string) => void;
   onCheckAll: () => void;
   onClearAll: () => void;
-  onMove?: (rosterId: string, dir: -1 | 1) => void;
+  onReorder?: (orderedIds: string[]) => void;
   onAddPlayer?: (name: string) => void | Promise<void>;
 }) {
   const [newName, setNewName] = useState('');
@@ -1662,11 +1698,36 @@ function AttendanceColumn({
     setAdding(false);
   };
   const here = rosters.filter(r => checkedInIds.has(r.id)).length;
-  const sorted = [...rosters].sort(
-    (a, b) =>
-      (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999) ||
-      a.player_name.localeCompare(b.player_name)
+  const byId = useMemo(() => new Map(rosters.map(r => [r.id, r])), [rosters]);
+  const sortedIds = useMemo(
+    () =>
+      [...rosters]
+        .sort(
+          (a, b) =>
+            (a.ladder_position ?? 9999) - (b.ladder_position ?? 9999) ||
+            a.player_name.localeCompare(b.player_name)
+        )
+        .map(r => r.id),
+    [rosters]
   );
+  // Local drag order, kept in sync with the server-sorted list. Drag updates it
+  // optimistically; the parent persists ladder_position and refetches.
+  const [order, setOrder] = useState<string[]>(sortedIds);
+  useEffect(() => { setOrder(sortedIds); }, [sortedIds.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldI = order.indexOf(String(active.id));
+    const newI = order.indexOf(String(over.id));
+    if (oldI === -1 || newI === -1) return;
+    const next = arrayMove(order, oldI, newI);
+    setOrder(next);
+    onReorder?.(next);
+  };
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
@@ -1679,52 +1740,26 @@ function AttendanceColumn({
         <p className="text-xs text-gray-400 italic">No active roster.</p>
       ) : (
         <>
-          <div className="border border-gray-200 rounded-md divide-y divide-gray-100 mb-2">
-            {sorted.map((r, i) => {
-                const checked = checkedInIds.has(r.id);
-                return (
-                  <div
-                    key={r.id}
-                    className={`flex items-center gap-2 px-3 py-1.5 text-sm ${
-                      checked ? 'bg-green-50' : ''
-                    }`}
-                  >
-                    <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => onToggle(r.id)}
-                        className="w-4 h-4"
-                      />
-                      <span className="w-5 text-right text-gray-400 text-xs">
-                        {`#${i + 1}`}
-                      </span>
-                      <span className="flex-1 truncate text-gray-900">{r.player_name}</span>
-                    </label>
-                    {onMove && (
-                      <span className="flex items-center gap-0.5 shrink-0">
-                        <button
-                          onClick={() => onMove(r.id, -1)}
-                          disabled={i === 0}
-                          className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
-                          title="Move up (stronger)"
-                        >
-                          <ArrowUp size={14} />
-                        </button>
-                        <button
-                          onClick={() => onMove(r.id, 1)}
-                          disabled={i === sorted.length - 1}
-                          className="text-gray-400 hover:text-gray-700 disabled:opacity-30"
-                          title="Move down (weaker)"
-                        >
-                          <ArrowDown size={14} />
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-          </div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={order} strategy={verticalListSortingStrategy}>
+              <div className="border border-gray-200 rounded-md divide-y divide-gray-100 mb-2">
+                {order.map((id, i) => {
+                  const r = byId.get(id);
+                  if (!r) return null;
+                  return (
+                    <SortableAttendee
+                      key={id}
+                      id={id}
+                      name={r.player_name}
+                      rank={i + 1}
+                      checked={checkedInIds.has(id)}
+                      onToggle={onToggle}
+                    />
+                  );
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
           <div className="flex gap-2">
             <button
               onClick={onCheckAll}
