@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import ClubSidebar from '@/components/shared/ClubSidebar';
 import { Search, CheckCircle2, Loader2, Lock, ArrowRight } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -108,6 +109,7 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
+      <ClubSidebar />
       <Link href="/benchmarks" className="text-sm text-teal-700 underline">← Compensation Benchmarks</Link>
       <h1 className="text-3xl font-bold tracking-tight text-slate-900 mt-2 mb-1">Your full package</h1>
       <p className="text-slate-600 mb-6">

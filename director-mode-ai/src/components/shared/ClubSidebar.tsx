@@ -71,6 +71,7 @@ export default function ClubSidebar() {
   const pathname = usePathname() || '/';
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [hovering, setHovering] = useState(false); // hover-to-peek when collapsed
   const [mounted, setMounted] = useState(false);
   const active = activeHref(pathname);
 
@@ -107,8 +108,11 @@ export default function ClubSidebar() {
     });
   };
 
-  const showLabels = !collapsed || mobileOpen;
-  const width = mobileOpen ? EXPANDED : collapsed ? COLLAPSED : EXPANDED;
+  // When collapsed, hovering the rail temporarily expands it (overlaying page
+  // content) so you can see/click every tool without un-pinning.
+  const peeking = collapsed && hovering && !mobileOpen;
+  const showLabels = !collapsed || mobileOpen || peeking;
+  const width = mobileOpen ? EXPANDED : (collapsed && !peeking) ? COLLAPSED : EXPANDED;
 
   return (
     <>
@@ -130,6 +134,8 @@ export default function ClubSidebar() {
       )}
 
       <aside
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
         style={{ width, fontFamily: "'Inter', system-ui, sans-serif" }}
         className={[
           'fixed top-0 left-0 h-screen z-[70] flex flex-col',
@@ -186,16 +192,16 @@ export default function ClubSidebar() {
             const cls = [
               'group relative flex items-center gap-2.5 rounded-xl px-1.5 py-1.5 transition-colors',
               isActive ? 'bg-white/[0.06]' : 'hover:bg-white/[0.05]',
-              collapsed && !mobileOpen ? 'justify-center' : '',
+              collapsed && !mobileOpen && !peeking ? 'justify-center' : '',
             ].join(' ');
 
             return it.external ? (
-              <a key={it.name} href={it.href} target="_blank" rel="noopener noreferrer" className={cls} title={collapsed && !mobileOpen ? it.name : undefined}>
+              <a key={it.name} href={it.href} target="_blank" rel="noopener noreferrer" className={cls} title={collapsed && !mobileOpen && !peeking ? it.name : undefined}>
                 {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full bg-[#D3FB52]" />}
                 {inner}
               </a>
             ) : (
-              <Link key={it.name} href={it.href} className={cls} title={collapsed && !mobileOpen ? it.name : undefined}>
+              <Link key={it.name} href={it.href} className={cls} title={collapsed && !mobileOpen && !peeking ? it.name : undefined}>
                 {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full bg-[#D3FB52]" />}
                 {inner}
               </Link>

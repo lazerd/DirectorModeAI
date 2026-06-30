@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import ClubSidebar from '@/components/shared/ClubSidebar';
 import { Loader2, Gauge, ArrowRight, Building2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -50,6 +51,7 @@ export default function AdvisorPage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
+      <ClubSidebar />
       <Link href="/benchmarks" className="text-sm text-teal-700 underline">← Compensation Benchmarks</Link>
       <div className="mt-2 mb-6">
         <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-2">

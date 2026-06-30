@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import ClubSidebar from '@/components/shared/ClubSidebar';
 import { Briefcase, UserSearch, MapPin, ArrowRight, TrendingUp } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -42,6 +43,7 @@ export default function ConnectLanding() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
+      <ClubSidebar />
       <div className="text-center mb-10">
         <h1 className="text-4xl font-bold tracking-tight text-slate-900">ClubMode Connect</h1>
         <p className="mt-3 text-lg text-slate-600 max-w-2xl mx-auto">
