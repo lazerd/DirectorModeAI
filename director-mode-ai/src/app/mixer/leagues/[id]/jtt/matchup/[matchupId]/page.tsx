@@ -329,21 +329,26 @@ export default function MatchupFacilitatorPage() {
     // instead of silently doing nothing — the bug we hit during a live match.
     // Mashup patches also carry counts_for_team=false (mixed play never scores
     // for a team); head-to-head patches leave the flag untouched.
-    const results = await Promise.all(
-      patches.map(p =>
-        supabase
-          .from('league_matchup_lines')
-          .update({
-            home_player1_id: p.home_player1_id,
-            home_player2_id: p.home_player2_id,
-            away_player1_id: p.away_player1_id,
-            away_player2_id: p.away_player2_id,
-            ...('counts_for_team' in p ? { counts_for_team: p.counts_for_team } : {}),
-          })
-          .eq('id', p.id)
-          .select('id')
-      )
-    );
+    //
+    // SEQUENTIAL, not Promise.all: every line update fires the recompute trigger,
+    // which UPDATEs the shared parent matchup row. Firing all line updates at
+    // once made them contend on that one row's lock until a statement timed out
+    // ("canceling statement due to statement timeout"). One at a time, no fight.
+    const results = [];
+    for (const p of patches) {
+      const r = await supabase
+        .from('league_matchup_lines')
+        .update({
+          home_player1_id: p.home_player1_id,
+          home_player2_id: p.home_player2_id,
+          away_player1_id: p.away_player1_id,
+          away_player2_id: p.away_player2_id,
+          ...('counts_for_team' in p ? { counts_for_team: p.counts_for_team } : {}),
+        })
+        .eq('id', p.id)
+        .select('id');
+      results.push(r);
+    }
     if (results.some(r => r.error)) {
       alert(`Couldn’t assign players: ${results.find(r => r.error)?.error?.message}`);
       return;
