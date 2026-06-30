@@ -334,16 +334,35 @@ export default function MatchupFacilitatorPage() {
       .select('*')
       .eq('matchup_id', matchupId);
     const freshLines = ((freshRaw as Line[]) || []).map(l => ({ ...l, round_number: l.round_number ?? 1 }));
-    const roundLines = freshLines.filter(l => l.round_number === round);
+    let roundLines = freshLines.filter(l => l.round_number === round);
     const otherLines = freshLines.filter(l => l.round_number !== round);
     // Mashup: pool everyone and mix clubs per court. Head-to-head: balance
     // singles/doubles across rounds, seeded by strength, away vs home.
-    const patches = isMashup
-      ? autoAssignMashupRound(roundLines, availablePool)
-      : autoAssignRoundBalanced(roundLines, otherLines, availableHome, availableAway);
+    const compute = (rl: Line[]) =>
+      isMashup
+        ? autoAssignMashupRound(rl, availablePool)
+        : autoAssignRoundBalanced(rl, otherLines, availableHome, availableAway);
+    // First pass fills any EMPTY courts (keeps manual picks).
+    let patches = compute(roundLines);
     if (patches.length === 0) {
-      alert('Every court in this round already has players — clear them first to re-assign.');
-      return;
+      // Nothing to fill. If the courts are already full, just RE-ASSIGN — wipe the
+      // round's slots and reshuffle by strength, instead of nagging "clear first."
+      const hasPlayers = roundLines.some(
+        l => l.home_player1_id || l.home_player2_id || l.away_player1_id || l.away_player2_id
+      );
+      const hasPool = isMashup
+        ? availablePool.length >= 2
+        : availableHome.length > 0 && availableAway.length > 0;
+      if (!hasPlayers || !hasPool) return; // genuinely nothing to do — no popup
+      await supabase
+        .from('league_matchup_lines')
+        .update({ home_player1_id: null, home_player2_id: null, away_player1_id: null, away_player2_id: null })
+        .in('id', roundLines.map(l => l.id));
+      roundLines = roundLines.map(l => ({
+        ...l, home_player1_id: null, home_player2_id: null, away_player1_id: null, away_player2_id: null,
+      }));
+      patches = compute(roundLines);
+      if (patches.length === 0) { await fetchAll({ silent: true }); return; }
     }
     // .select() back so a blocked write (RLS / signed out) surfaces as an alert
     // instead of silently doing nothing — the bug we hit during a live match.
