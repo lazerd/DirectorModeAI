@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Search, Download, ExternalLink, TrendingUp, Users, DollarSign, Percent, MapPin, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
+import { Search, ExternalLink, TrendingUp, Users, DollarSign, Percent, MapPin, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
 import rawData from './_data/benchmarks.json';
 import { milesBetween } from '@/lib/geo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,13 +51,6 @@ const usd = (n: number) =>
 type SortKey = 'club' | 'state' | 'miles' | 'title' | 'name' | 'total' | 'revenue' | 'pct' | 'year';
 const NUMERIC_COLS = new Set<SortKey>(['miles', 'total', 'revenue', 'pct', 'year']);
 
-// Deliberately small. The aggregate stat cards give the benchmark value to
-// everyone; the raw table only ever surfaces the 10 most relevant matches for
-// the current filters/sort, so nobody can subscribe for a day, scrape the whole
-// dataset, and bail. The shortlist (and therefore the export) is capped to the
-// same number.
-const RESULT_LIMIT = 10;
-
 function percentile(sorted: number[], p: number) {
   if (sorted.length === 0) return 0;
   const i = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
@@ -70,7 +63,6 @@ export default function BenchmarksPage() {
   const [region, setRegion] = useState('all');
   const [query, setQuery] = useState('');
   const [recentOnly, setRecentOnly] = useState(true);
-  const [shortlist, setShortlist] = useState<Record<string, Row>>({});
   const [minComp, setMinComp] = useState('');
   const [maxComp, setMaxComp] = useState('');
   const [originZip, setOriginZip] = useState('');
@@ -202,53 +194,12 @@ export default function BenchmarksPage() {
     };
   }, [filtered]);
 
-  const shortlistArr = Object.values(shortlist);
-
-  const [shortlistFull, setShortlistFull] = useState(false);
-
-  function toggle(r: Row) {
-    const id = r.ein + r.name;
-    setShortlist((s) => {
-      const next = { ...s };
-      if (next[id]) {
-        delete next[id];
-        setShortlistFull(false);
-      } else {
-        // Hard cap: never let a shortlist (and its export) exceed the limit.
-        if (Object.keys(next).length >= RESULT_LIMIT) {
-          setShortlistFull(true);
-          return s;
-        }
-        next[id] = r;
-      }
-      return next;
-    });
-  }
-
-  function exportCsv() {
-    // Shortlist-only by design: we never offer a one-click dump of the whole
-    // dataset (it took a long time to assemble). Users export just the rows
-    // they hand-picked for outreach.
-    const rows = shortlistArr;
-    if (!rows.length) return;
-    const cols = ['club', 'state', 'zip', 'region', 'dept', 'title', 'name', 'total', 'revenue', 'pct', 'year', 'url'];
-    const header = ['Club', 'State', 'ZIP', 'Region', 'Department', 'Title', 'Name', 'Total Comp', 'Club Revenue', 'Comp % of Rev', 'Tax Year', 'ProPublica URL'];
-    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-    const lines = [header.map(esc).join(',')];
-    for (const r of rows) lines.push(cols.map((c) => esc((r as Record<string, unknown>)[c])).join(','));
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `club-comp-${dept.replace(/\W+/g, '-')}.csv`;
-    a.click();
-  }
-
   return (
     <div className="mx-auto max-w-7xl px-4 py-8">
       <div className="mb-6">
         <h1 className="text-3xl font-bold tracking-tight">Compensation Benchmarks &amp; Recruiting</h1>
         <p className="mt-1 text-muted-foreground">
-          Real comp data from IRS Form 990 filings — source candidates by position, pay range, and distance from any ZIP, then build a shortlist and export your outreach list.
+          Real comp data from IRS Form 990 filings — explore candidates by position, pay range, and distance from any ZIP, and benchmark against the live medians for your filters.
         </p>
       </div>
 
@@ -398,23 +349,10 @@ export default function BenchmarksPage() {
       {/* Action bar */}
       <div className="mb-3 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {filtered.length} matches
+          {filtered.length} results
           {radiusActive && <> within {radius} mi of {origin!.zip}</>}
-          {' '}· showing top {Math.min(RESULT_LIMIT, filtered.length)}
-          {shortlistArr.length > 0 && <> · <span className="font-medium text-foreground">{shortlistArr.length} on shortlist</span></>}
           {radiusActive && <span className="ml-1 text-xs">(clubs without a mapped ZIP are excluded)</span>}
-          {shortlistFull && (
-            <span className="ml-1 text-xs text-amber-600">
-              Shortlist is capped at {RESULT_LIMIT} — remove one to add another.
-            </span>
-          )}
         </p>
-        {shortlistArr.length > 0 && (
-          <Button onClick={exportCsv} variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            Export shortlist ({shortlistArr.length}) CSV
-          </Button>
-        )}
       </div>
 
       {/* Results table */}
@@ -422,7 +360,6 @@ export default function BenchmarksPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-8"></TableHead>
               <SortHeader label="Club" col="club" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
               <SortHeader label="State" col="state" sortKey={sortKey} sortDir={sortDir} onSort={sortBy} />
               {radiusActive && (
@@ -438,13 +375,10 @@ export default function BenchmarksPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sorted.slice(0, RESULT_LIMIT).map((r) => {
+            {sorted.map((r) => {
               const id = r.ein + r.name;
               return (
-                <TableRow key={id} className={shortlist[id] ? 'bg-muted/50' : ''}>
-                  <TableCell>
-                    <input type="checkbox" checked={!!shortlist[id]} onChange={() => toggle(r)} className="h-4 w-4 cursor-pointer" />
-                  </TableCell>
+                <TableRow key={id}>
                   <TableCell className="font-medium max-w-[260px] whitespace-normal break-words align-top" title={r.club}>{r.club}</TableCell>
                   <TableCell><Badge variant="secondary">{r.state}</Badge></TableCell>
                   {radiusActive && (
@@ -468,13 +402,6 @@ export default function BenchmarksPage() {
             })}
           </TableBody>
         </Table>
-        {filtered.length > RESULT_LIMIT && (
-          <div className="border-t p-3 text-center text-sm text-muted-foreground">
-            Showing the top {RESULT_LIMIT} of {filtered.length} matches. The stats
-            above reflect all {filtered.length} — use the filters, search, or
-            sort to surface the specific people you need.
-          </div>
-        )}
         {filtered.length === 0 && (
           <div className="p-10 text-center text-muted-foreground">No matches for these filters.</div>
         )}
