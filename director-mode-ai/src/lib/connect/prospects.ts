@@ -16,6 +16,7 @@ const DATA = rawData as Raw[];
 
 export type Prospect = {
   name: string;
+  ein: string;
   club: string;
   state: string;
   title: string;
@@ -120,6 +121,7 @@ export function findProspects(opts: {
 
     out.push({
       name: r.name,
+      ein: r.ein,
       club: r.club,
       state: r.state,
       title: r.title,

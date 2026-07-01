@@ -25,6 +25,31 @@ export async function POST(req: Request) {
   const { data: profile } = await svc.from('profiles').select('email').eq('id', user.id).maybeSingle();
   const clubEmail: string | null = profile?.email ?? null;
   const clubName = o.club_name || 'A ClubMode club';
+
+  // Persist the interest so it can surface for the director if they later opt in
+  // and claim this 990 record. Best-effort: if the table isn't there yet, we
+  // still send the concierge emails below.
+  if (p.ein) {
+    try {
+      await svc.from('connect_prospect_interests').upsert({
+        owner_id: user.id,
+        opening_id: o.opening_id || null,
+        club_name: o.club_name || null,
+        role: o.title || o.dept || null,
+        comp_min: Number.isFinite(Number(o.comp_min)) ? Number(o.comp_min) : null,
+        comp_max: Number.isFinite(Number(o.comp_max)) ? Number(o.comp_max) : null,
+        prospect_ein: String(p.ein),
+        prospect_name: String(p.name),
+        prospect_name_norm: String(p.name).toLowerCase().replace(/\s+/g, ' ').trim(),
+        prospect_club: p.club || null,
+        prospect_title: p.title || null,
+        prospect_comp: Number.isFinite(Number(p.comp)) ? Number(p.comp) : null,
+        prospect_year: p.year || null,
+        prospect_url: p.url || null,
+        status: 'open',
+      }, { onConflict: 'owner_id,prospect_ein,prospect_name_norm', ignoreDuplicates: false });
+    } catch { /* table not applied yet — emails below still fire */ }
+  }
   const role = o.title || o.dept || 'a leadership role';
   const band = o.comp_max
     ? (o.comp_min ? `${usd(Number(o.comp_min))}–${usd(Number(o.comp_max))}` : `up to ${usd(Number(o.comp_max))}`)

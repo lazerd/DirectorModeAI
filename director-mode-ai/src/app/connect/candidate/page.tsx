@@ -31,6 +31,11 @@ type ClubOpp = {
   sizeExpected: number; upside: number; currentTopComp: number; year: string; url: string | null;
 };
 
+type Interest = {
+  id: string; club_name: string | null; role: string | null;
+  comp_min: number | null; comp_max: number | null; prospect_title: string | null; created_at: string;
+};
+
 type Match = {
   id: string; status: string; comp_delta: number; distance_miles: number;
   opening: { club_name: string | null; title: string | null; dept: string; comp_max: number; status: string } | null;
@@ -60,6 +65,21 @@ export default function CandidatePage() {
   const [claimResults, setClaimResults] = useState<any[]>([]);
   const [claimBusy, setClaimBusy] = useState(false);
   const [claimSearched, setClaimSearched] = useState(false);
+
+  // Clubs that flagged interest in this director as a public prospect.
+  const [interests, setInterests] = useState<Interest[]>([]);
+  async function loadInterests() {
+    try {
+      const res = await fetch('/api/connect/prospect-interests');
+      if (res.ok) setInterests((await res.json()).interests || []);
+    } catch { /* ignore */ }
+  }
+  async function actInterest(id: string, action: 'accept' | 'dismiss') {
+    setInterests((s) => s.filter((x) => x.id !== id)); // optimistic
+    await fetch(`/api/connect/prospect-interests/${id}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }),
+    }).catch(() => {});
+  }
 
   // "Clubs near you that can pay more" — the reason to opt in.
   const [clubOpps, setClubOpps] = useState<ClubOpp[]>([]);
@@ -110,6 +130,7 @@ export default function CandidatePage() {
         }
         setMatches(matches || []);
       }
+      loadInterests();
       setLoading(false);
     })();
   }, []);
@@ -162,6 +183,7 @@ export default function CandidatePage() {
       setSavedMsg(newMatches > 0 ? `Saved — and you matched ${newMatches} new opening${newMatches === 1 ? '' : 's'}!` : 'Saved.');
       const re = await fetch('/api/connect/candidate');
       if (re.ok) setMatches((await re.json()).matches || []);
+      loadInterests(); // claiming a 990 record can reveal clubs that asked for you
     } else {
       const e = await res.json().catch(() => ({}));
       setSavedMsg(e.error || 'Save failed.');
@@ -175,11 +197,37 @@ export default function CandidatePage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
-      <Link href="/connect" className="text-sm text-teal-700 underline">← ClubMode Recruiting</Link>
+      <Link href="/connect" className="text-sm text-teal-400 underline">← ClubMode Recruiting</Link>
       <h1 className="text-3xl font-bold tracking-tight text-white mt-2 mb-1">Your candidate profile</h1>
       <p className="text-slate-300 mb-8">
         You stay anonymous. A club only gets your contact info when they post an opening that beats your current comp and is within your range.
       </p>
+
+      {/* Clubs that asked to talk to you (matched to your claimed 990 record) */}
+      {interests.length > 0 && (
+        <div className="mb-6 rounded-xl border border-emerald-300 bg-emerald-50 p-4">
+          <div className="font-semibold text-emerald-900">
+            {interests.length} club{interests.length === 1 ? '' : 's'} asked to talk to you 🎉
+          </div>
+          <p className="text-sm text-emerald-800 mt-0.5 mb-3">
+            They found you in the comp data and want to connect. Accept to share your contact, or pass — you stay anonymous until you accept.
+          </p>
+          <div className="space-y-2">
+            {interests.map((it) => (
+              <div key={it.id} className="flex items-center justify-between gap-3 bg-white rounded-lg px-3 py-2">
+                <div className="min-w-0 text-sm">
+                  <span className="font-medium text-slate-900">{it.club_name || 'A club'}</span>
+                  <span className="text-slate-500"> · {it.role || 'a leadership role'}{it.comp_max ? ` · ${it.comp_min ? `${usd(it.comp_min)}–${usd(it.comp_max)}` : `up to ${usd(it.comp_max)}`}` : ''}</span>
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button size="sm" onClick={() => actInterest(it.id, 'accept')}>Accept</Button>
+                  <Button size="sm" variant="ghost" onClick={() => actInterest(it.id, 'dismiss')}>Pass</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Claim your 990 record */}
       <Card className="mb-6">

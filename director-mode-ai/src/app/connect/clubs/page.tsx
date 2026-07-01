@@ -36,7 +36,7 @@ type Match = {
   candidate: { headline: string | null; dept: string | null; years_experience: number | null; current_comp: number | null; home_zip: string | null; full_name: string | null; email: string | null; phone: string | null };
 };
 type Prospect = {
-  name: string; club: string; state: string; title: string; dept: string;
+  name: string; ein: string; club: string; state: string; title: string; dept: string;
   comp: number; year: string; url: string | null; distanceMiles: number | null;
   fit: 'raise' | 'in_band' | 'stretch';
   likelyToMove: boolean; sizeExpected: number | null;
@@ -87,7 +87,7 @@ export default function ClubsPage() {
       await fetch('/api/connect/request-intro', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          prospect: { name: p.name, club: p.club, state: p.state, title: p.title, comp: p.comp, year: p.year, url: p.url },
+          prospect: { name: p.name, ein: p.ein, club: p.club, state: p.state, title: p.title, comp: p.comp, year: p.year, url: p.url },
           opening: { club_name: clubName, dept, title, comp_min: minNum || null, comp_max: maxNum || null },
         }),
       });
