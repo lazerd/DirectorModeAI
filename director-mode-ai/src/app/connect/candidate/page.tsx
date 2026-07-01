@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Search, CheckCircle2, Loader2 } from 'lucide-react';
+import { Search, CheckCircle2, Loader2, TrendingUp, MapPin } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,17 @@ const DEPTS = [
 ];
 const inputStyle = { color: '#0f172a' };
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
+function parseMoney(s: string): number {
+  const raw = s.trim().toLowerCase().replace(/[$,\s]/g, '');
+  const mult = raw.endsWith('m') ? 1_000_000 : raw.endsWith('k') ? 1_000 : 1;
+  const n = Number(raw.replace(/[mk]$/, ''));
+  return Number.isFinite(n) ? n * mult : 0;
+}
+
+type ClubOpp = {
+  club: string; state: string; revenue: number; distanceMiles: number | null;
+  sizeExpected: number; upside: number; currentTopComp: number; year: string; url: string | null;
+};
 
 type Match = {
   id: string; status: string; comp_delta: number; distance_miles: number;
@@ -49,6 +60,34 @@ export default function CandidatePage() {
   const [claimResults, setClaimResults] = useState<any[]>([]);
   const [claimBusy, setClaimBusy] = useState(false);
   const [claimSearched, setClaimSearched] = useState(false);
+
+  // "Clubs near you that can pay more" — the reason to opt in.
+  const [clubOpps, setClubOpps] = useState<ClubOpp[]>([]);
+  const [oppsBusy, setOppsBusy] = useState(false);
+  const oppReq = useRef(0);
+  const compNum = parseMoney(currentComp);
+  const homeZip5 = homeZip.replace(/\D/g, '').slice(0, 5);
+
+  useEffect(() => {
+    if (!compNum || homeZip5.length !== 5) { setClubOpps([]); setOppsBusy(false); return; }
+    setOppsBusy(true);
+    const id = ++oppReq.current;
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch('/api/benchmarks/club-openings', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dept, current_comp: compNum, zip: homeZip5, radius: 150 }),
+        });
+        const data = res.ok ? await res.json() : { clubs: [] };
+        if (id === oppReq.current) setClubOpps(data.clubs || []);
+      } catch {
+        if (id === oppReq.current) setClubOpps([]);
+      } finally {
+        if (id === oppReq.current) setOppsBusy(false);
+      }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [dept, compNum, homeZip5]);
 
   useEffect(() => {
     (async () => {
@@ -137,8 +176,8 @@ export default function CandidatePage() {
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
       <Link href="/connect" className="text-sm text-teal-700 underline">← ClubMode Recruiting</Link>
-      <h1 className="text-3xl font-bold tracking-tight text-slate-900 mt-2 mb-1">Your candidate profile</h1>
-      <p className="text-slate-600 mb-8">
+      <h1 className="text-3xl font-bold tracking-tight text-white mt-2 mb-1">Your candidate profile</h1>
+      <p className="text-slate-300 mb-8">
         You stay anonymous. A club only gets your contact info when they post an opening that beats your current comp and is within your range.
       </p>
 
@@ -154,7 +193,7 @@ export default function CandidatePage() {
             {claimBusy && <Loader2 className="h-4 w-4 animate-spin text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />}
           </div>
           {claimResults.length > 0 && (
-            <div className="mt-2 border rounded-lg divide-y">
+            <div className="mt-2 border rounded-lg divide-y bg-white">
               {claimResults.map((r, i) => (
                 <button key={i} onClick={() => claim(r)} className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm">
                   <span className="font-medium text-slate-900">{r.name}</span>
@@ -193,7 +232,7 @@ export default function CandidatePage() {
 
           <div className="flex items-center justify-between border-t pt-4">
             <div>
-              <Label className="text-slate-900">Open to work</Label>
+              <Label className="text-slate-100">Open to work</Label>
               <p className="text-xs text-slate-500">Turn off to pause all matching without deleting your profile.</p>
             </div>
             <Switch checked={openToWork} onCheckedChange={setOpenToWork} />
@@ -201,7 +240,7 @@ export default function CandidatePage() {
 
           <div className="flex items-center justify-between">
             <div>
-              <Label className="text-slate-900">Reveal mode</Label>
+              <Label className="text-slate-100">Reveal mode</Label>
               <p className="text-xs text-slate-500">{revealMode === 'auto' ? 'Auto: clubs get your contact the moment you match.' : 'Approve-first: you confirm before any club sees your contact.'}</p>
             </div>
             <Select value={revealMode} onValueChange={(v) => setRevealMode(v as any)}>
@@ -220,14 +259,55 @@ export default function CandidatePage() {
         </CardContent>
       </Card>
 
+      {/* Clubs near you that can pay more — the magnet */}
+      {(oppsBusy || clubOpps.length > 0) && (
+        <Card className="mt-8 bg-white">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2 text-slate-900">
+              <TrendingUp className="h-4 w-4 text-teal-600" /> Clubs near you that can pay more
+              {oppsBusy && <Loader2 className="h-4 w-4 animate-spin text-slate-400" />}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-xs text-slate-500 mb-3">
+              Clubs within ~150 mi whose size supports paying above your {compNum ? usd(compNum) : 'current comp'} for a {DEPTS.find((d) => d.key === dept)?.label || 'director'}. Flip on <strong>Open to work</strong> and we’ll quietly put you in front of them when they hire.
+            </p>
+            {clubOpps.length === 0 && !oppsBusy ? (
+              <p className="text-sm text-slate-500">No nearby clubs show clear upside over your current comp — you’re well paid for your market.</p>
+            ) : (
+              <div className="divide-y">
+                {clubOpps.map((c, i) => (
+                  <div key={`${c.club}-${i}`} className="py-2.5 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-medium text-slate-900 truncate">
+                        {c.url ? <a href={c.url} target="_blank" rel="noreferrer" className="hover:underline">{c.club}</a> : c.club}
+                        <span className="text-slate-400 font-normal"> · {c.state}</span>
+                      </div>
+                      <div className="text-xs text-slate-500 flex flex-wrap gap-x-2">
+                        {c.distanceMiles != null && <span><MapPin className="h-3 w-3 inline" /> {c.distanceMiles} mi</span>}
+                        <span>{usd(c.revenue)} club</span>
+                        <span>typically pays ~{usd(c.sizeExpected)}</span>
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-[11px] font-medium rounded-full px-2 py-0.5 bg-emerald-100 text-emerald-700">
+                      +{usd(c.upside)} upside
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Matches / interested clubs */}
-      <h2 className="text-xl font-semibold text-slate-900 mt-10 mb-3">Clubs interested in you</h2>
+      <h2 className="text-xl font-semibold text-white mt-10 mb-3">Clubs interested in you</h2>
       {matches.length === 0 ? (
-        <p className="text-slate-500 text-sm">No matches yet. When a club posts an opening that fits, it shows up here.</p>
+        <p className="text-slate-400 text-sm">No matches yet. When a club posts an opening that fits, it shows up here.</p>
       ) : (
         <div className="space-y-3">
           {matches.map((m) => (
-            <Card key={m.id}>
+            <Card key={m.id} className="bg-white">
               <CardContent className="py-4 flex items-center justify-between gap-4">
                 <div>
                   <div className="font-medium text-slate-900">{m.opening?.club_name || 'A club'} — {m.opening?.title || m.opening?.dept}</div>
@@ -265,7 +345,7 @@ function statusLabel(s: string) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <Label className="text-xs text-slate-500 mb-1 block">{label}</Label>
+      <Label className="text-xs text-slate-300 mb-1 block">{label}</Label>
       {children}
     </div>
   );

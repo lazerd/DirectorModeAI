@@ -29,6 +29,10 @@ export type Prospect = {
   //   in_band  — their pay sits inside the band (a lateral)
   //   stretch  — slightly above the band top (would take a small cut)
   fit: 'raise' | 'in_band' | 'stretch';
+  // Underpaid for their own club's size (comp well below the median at
+  // similarly-sized clubs in their role) → the most recruitable prospects.
+  likelyToMove: boolean;
+  sizeExpected: number | null; // median comp at similar-size clubs for this role
 };
 
 export type BandInsight = {
@@ -83,6 +87,18 @@ export function findProspects(opts: {
   const hasOrigin = lat != null && lng != null;
   const floor = compMin ?? compMax; // at/below the floor is a clear raise
 
+  // Same-role recent filings with a revenue figure — used to judge whether a
+  // prospect is underpaid for the size of club they run.
+  const deptRevRows = DATA.filter(
+    (r) => r.dept === dept && r.recent && r.total > 0 && (r.revenue ?? 0) > 0
+  );
+  const sizeExpectedFor = (revenue: number): number | null => {
+    const band = deptRevRows.filter((r) => r.revenue! >= revenue * 0.5 && r.revenue! <= revenue * 2);
+    if (band.length < 5) return null;
+    const totals = band.map((r) => r.total).sort((a, b) => a - b);
+    return totals[Math.floor(totals.length / 2)];
+  };
+
   const out: Prospect[] = [];
   for (const r of latestPerPerson(dept)) {
     let distance: number | null = null;
@@ -99,6 +115,9 @@ export function findProspects(opts: {
     else if (comp <= compMax * 1.15) fit = 'stretch';
     else continue; // out of budget
 
+    const sizeExpected = (r.revenue ?? 0) > 0 ? sizeExpectedFor(r.revenue!) : null;
+    const likelyToMove = sizeExpected != null && comp < sizeExpected * 0.85;
+
     out.push({
       name: r.name,
       club: r.club,
@@ -110,6 +129,8 @@ export function findProspects(opts: {
       url: r.url ?? null,
       distanceMiles: distance != null ? Math.round(distance) : null,
       fit,
+      likelyToMove,
+      sizeExpected,
     });
   }
 

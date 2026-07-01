@@ -39,6 +39,7 @@ type Prospect = {
   name: string; club: string; state: string; title: string; dept: string;
   comp: number; year: string; url: string | null; distanceMiles: number | null;
   fit: 'raise' | 'in_band' | 'stretch';
+  likelyToMove: boolean; sizeExpected: number | null;
 };
 type Insight = {
   bandMax: number; median: number | null; p25: number | null; p75: number | null;
@@ -77,6 +78,23 @@ export default function ClubsPage() {
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [prospectsBusy, setProspectsBusy] = useState(false);
   const reqId = useRef(0);
+  const [introReqs, setIntroReqs] = useState<Record<string, 'sending' | 'done'>>({});
+
+  async function requestIntro(p: Prospect) {
+    const key = `${p.name}|${p.club}`;
+    setIntroReqs((s) => ({ ...s, [key]: 'sending' }));
+    try {
+      await fetch('/api/connect/request-intro', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prospect: { name: p.name, club: p.club, state: p.state, title: p.title, comp: p.comp, year: p.year, url: p.url },
+          opening: { club_name: clubName, dept, title, comp_min: minNum || null, comp_max: maxNum || null },
+        }),
+      });
+    } finally {
+      setIntroReqs((s) => ({ ...s, [key]: 'done' }));
+    }
+  }
 
   async function load() {
     const res = await fetch('/api/connect/openings');
@@ -227,28 +245,47 @@ export default function ClubsPage() {
           </CardHeader>
           <CardContent>
             <p className="text-xs text-slate-500 mb-3">
-              Public IRS-990 leaders in this role within ~150 mi whose current pay fits your band. These are prospects to consider — save the opening and we’ll alert you if any of them opt into ClubMode to be contacted.
+              Public IRS-990 leaders in this role within ~150 mi whose current pay fits your band.
+              <strong> ⚡ = underpaid for their club’s size</strong> (most likely to move). Tap <strong>Request intro</strong> and we’ll broker a warm introduction; save the opening and we’ll also alert you if they opt in.
             </p>
             {prospects.length === 0 && !prospectsBusy ? (
               <p className="text-sm text-slate-500">No directors in the benchmark data fit this band + area yet. Widening the top of your band or the location will surface more.</p>
             ) : (
               <div className="divide-y">
-                {prospects.map((p, i) => (
-                  <div key={`${p.name}-${p.club}-${i}`} className="py-2.5 flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-medium text-slate-900 truncate">
-                        {p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="hover:underline">{p.name}</a> : p.name}
-                        <span className="text-slate-400 font-normal"> · {p.title}</span>
+                {prospects.map((p, i) => {
+                  const key = `${p.name}|${p.club}`;
+                  const req = introReqs[key];
+                  return (
+                    <div key={`${p.name}-${p.club}-${i}`} className="py-2.5 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-900 truncate flex items-center gap-1.5 flex-wrap">
+                          {p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="hover:underline">{p.name}</a> : <span>{p.name}</span>}
+                          <span className="text-slate-400 font-normal">· {p.title}</span>
+                          {p.likelyToMove && (
+                            <span className="text-[11px] font-medium rounded-full px-2 py-0.5 bg-orange-100 text-orange-700" title={p.sizeExpected ? `Underpaid for their club's size — similar clubs pay ~${usd(p.sizeExpected)}` : 'Underpaid for their club’s size'}>
+                              ⚡ Likely to move
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 truncate flex flex-wrap gap-x-2">
+                          <span>{p.club} ({p.state})</span>
+                          {p.distanceMiles != null && <span><MapPin className="h-3 w-3 inline" /> {p.distanceMiles} mi</span>}
+                          <span>earns {usd(p.comp)} ({p.year})</span>
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-500 truncate flex flex-wrap gap-x-2">
-                        <span>{p.club} ({p.state})</span>
-                        {p.distanceMiles != null && <span><MapPin className="h-3 w-3 inline" /> {p.distanceMiles} mi</span>}
-                        <span>earns {usd(p.comp)} ({p.year})</span>
+                      <div className="shrink-0 flex flex-col items-end gap-1.5">
+                        <span className={`text-[11px] font-medium rounded-full px-2 py-0.5 ${FIT[p.fit].cls}`}>{FIT[p.fit].label}</span>
+                        <button
+                          onClick={() => requestIntro(p)}
+                          disabled={!!req}
+                          className="text-xs font-medium text-teal-700 hover:text-teal-900 disabled:text-emerald-600 disabled:cursor-default"
+                        >
+                          {req === 'done' ? '✓ Intro requested' : req === 'sending' ? 'Requesting…' : 'Request intro'}
+                        </button>
                       </div>
                     </div>
-                    <span className={`shrink-0 text-[11px] font-medium rounded-full px-2 py-0.5 ${FIT[p.fit].cls}`}>{FIT[p.fit].label}</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>
