@@ -176,8 +176,8 @@ function ResultCard({ r, dept, zip }: { r: Result; dept: string; zip: string }) 
       </div>
 
       {/* Comparables */}
-      <Card>
-        <CardHeader><CardTitle className="text-base flex items-center gap-2"><Gauge className="h-4 w-4 text-teal-600" /> Comparable clubs your size</CardTitle></CardHeader>
+      <Card className="bg-white">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2 text-slate-900"><Gauge className="h-4 w-4 text-teal-600" /> Comparable clubs your size</CardTitle></CardHeader>
         <CardContent>
           <div className="divide-y">
             {r.comparables.map((c, i) => (
