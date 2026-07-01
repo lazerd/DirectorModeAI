@@ -170,7 +170,7 @@ function ResultCard({ r, dept, zip }: { r: Result; dept: string; zip: string }) 
       <div className="rounded-xl border border-teal-200 bg-teal-50 p-5">
         <div className="font-semibold text-slate-900">Ready to fill it?</div>
         <p className="text-sm text-slate-600 mt-1">
-          Take this opening to ClubMode HR and we'll surface qualified directors nearby who'd move for it.
+          Take this opening to ClubMode Recruiting and we'll surface qualified directors nearby who'd move for it.
         </p>
         <Link href={connectHref}><Button className="mt-3 gap-1">Post this opening <ArrowRight className="h-4 w-4" /></Button></Link>
       </div>

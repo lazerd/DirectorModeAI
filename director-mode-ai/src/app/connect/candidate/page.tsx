@@ -136,7 +136,7 @@ export default function CandidatePage() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
-      <Link href="/connect" className="text-sm text-teal-700 underline">← ClubMode HR</Link>
+      <Link href="/connect" className="text-sm text-teal-700 underline">← ClubMode Recruiting</Link>
       <h1 className="text-3xl font-bold tracking-tight text-slate-900 mt-2 mb-1">Your candidate profile</h1>
       <p className="text-slate-600 mb-8">
         You stay anonymous. A club only gets your contact info when they post an opening that beats your current comp and is within your range.

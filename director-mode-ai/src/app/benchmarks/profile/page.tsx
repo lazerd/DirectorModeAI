@@ -194,7 +194,7 @@ export default function ProfilePage() {
 
       <div className="mt-6 rounded-xl border border-teal-200 bg-teal-50 p-5">
         <div className="font-semibold text-slate-900">Want better offers, not just a better number?</div>
-        <p className="text-sm text-slate-600 mt-1">Opt into ClubMode HR and clubs that can beat your package will quietly reach out.</p>
+        <p className="text-sm text-slate-600 mt-1">Opt into ClubMode Recruiting and clubs that can beat your package will quietly reach out.</p>
         <Link href="/connect/candidate"><Button className="mt-3 gap-1" variant="outline">Get found <ArrowRight className="h-4 w-4" /></Button></Link>
       </div>
     </div>
