@@ -19,6 +19,15 @@ const DEPTS = [
 const REGIONS = ['Northeast', 'South', 'Midwest', 'West'];
 const inputStyle = { color: '#0f172a' };
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
+// Parse a currency-ish input tolerantly: "16,000,000", "$16m", "160k" all work.
+// Without this a typed comma made Number() return NaN and the button silently
+// no-op'd.
+function parseMoney(s: string): number {
+  const raw = s.trim().toLowerCase().replace(/[$,\s]/g, '');
+  const mult = raw.endsWith('m') ? 1_000_000 : raw.endsWith('k') ? 1_000 : 1;
+  const n = Number(raw.replace(/[mk]$/, ''));
+  return Number.isFinite(n) ? n * mult : 0;
+}
 
 type Result = {
   dept: string; revenue: number; low: number; mid: number; high: number;
@@ -36,16 +45,38 @@ export default function AdvisorPage() {
   const [current, setCurrent] = useState('');
   const [result, setResult] = useState<Result | null>(null);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  const revenueNum = parseMoney(revenue);
 
   async function run() {
-    if (!revenue) return;
+    setErr('');
+    if (!revenueNum) { setErr('Enter your club’s annual revenue.'); return; }
     setBusy(true); setResult(null);
-    const res = await fetch('/api/benchmarks/advisor', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dept, revenue: Number(revenue), region: region || undefined, zip: zip || undefined, currentComp: current ? Number(current) : undefined }),
-    });
-    if (res.ok) setResult(await res.json());
-    setBusy(false);
+    try {
+      const res = await fetch('/api/benchmarks/advisor', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dept,
+          revenue: revenueNum,
+          region: region || undefined,
+          zip: zip || undefined,
+          currentComp: parseMoney(current) || undefined,
+        }),
+      });
+      if (res.ok) {
+        setResult(await res.json());
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setErr(body.error === 'revenue required'
+          ? 'That revenue didn’t read as a number — try digits only, e.g. 16000000.'
+          : (body.error || 'Something went wrong — please try again.'));
+      }
+    } catch {
+      setErr('Network error — please try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -88,9 +119,10 @@ export default function AdvisorPage() {
               <Input value={current} onChange={(e) => setCurrent(e.target.value)} placeholder="160000" style={inputStyle} />
             </div>
           </div>
-          <Button className="mt-4" onClick={run} disabled={busy || !revenue}>
+          <Button className="mt-4" onClick={run} disabled={busy || !revenueNum}>
             {busy ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Calculating…</> : 'Recommend a comp band'}
           </Button>
+          {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
         </CardContent>
       </Card>
 

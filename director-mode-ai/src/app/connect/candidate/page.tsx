@@ -47,6 +47,8 @@ export default function CandidatePage() {
   // Claim-990 typeahead
   const [claimQuery, setClaimQuery] = useState('');
   const [claimResults, setClaimResults] = useState<any[]>([]);
+  const [claimBusy, setClaimBusy] = useState(false);
+  const [claimSearched, setClaimSearched] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -74,10 +76,19 @@ export default function CandidatePage() {
   }, []);
 
   useEffect(() => {
-    if (claimQuery.trim().length < 2) { setClaimResults([]); return; }
+    const q = claimQuery.trim();
+    if (q.length < 2) { setClaimResults([]); setClaimSearched(false); setClaimBusy(false); return; }
+    setClaimBusy(true);
     const t = setTimeout(async () => {
-      const res = await fetch(`/api/connect/benchmarks-search?q=${encodeURIComponent(claimQuery)}`);
-      if (res.ok) setClaimResults((await res.json()).results || []);
+      try {
+        const res = await fetch(`/api/connect/benchmarks-search?q=${encodeURIComponent(q)}`);
+        setClaimResults(res.ok ? (await res.json()).results || [] : []);
+      } catch {
+        setClaimResults([]);
+      } finally {
+        setClaimBusy(false);
+        setClaimSearched(true);
+      }
     }, 250);
     return () => clearTimeout(t);
   }, [claimQuery]);
@@ -135,7 +146,13 @@ export default function CandidatePage() {
       <Card className="mb-6">
         <CardHeader><CardTitle className="text-base flex items-center gap-2"><Search className="h-4 w-4 text-teal-600" /> Claim your 990 record (optional prefill)</CardTitle></CardHeader>
         <CardContent>
-          <Input value={claimQuery} onChange={(e) => setClaimQuery(e.target.value)} placeholder="Search your name in the comp dataset…" style={inputStyle} />
+          <p className="text-xs text-slate-500 mb-2">
+            Optional shortcut: if your comp is in the public IRS filings, pick it to auto-fill your profile. If not, skip this and fill in the form below — then hit <strong>Save profile</strong>.
+          </p>
+          <div className="relative">
+            <Input value={claimQuery} onChange={(e) => setClaimQuery(e.target.value)} placeholder="Start typing your name…" style={inputStyle} />
+            {claimBusy && <Loader2 className="h-4 w-4 animate-spin text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />}
+          </div>
           {claimResults.length > 0 && (
             <div className="mt-2 border rounded-lg divide-y">
               {claimResults.map((r, i) => (
@@ -146,7 +163,12 @@ export default function CandidatePage() {
               ))}
             </div>
           )}
-          {claimedEin && <p className="mt-2 text-xs text-teal-700 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Prefilled from EIN {claimedEin}</p>}
+          {!claimBusy && claimSearched && claimResults.length === 0 && !claimedEin && (
+            <p className="mt-2 text-xs text-slate-500">
+              No public 990 record found for “{claimQuery.trim()}”. That’s normal — the filings only list each club’s few highest-paid people. Just fill in your details below.
+            </p>
+          )}
+          {claimedEin && <p className="mt-2 text-xs text-teal-700 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Prefilled from EIN {claimedEin}. Review the fields below, then Save.</p>}
         </CardContent>
       </Card>
 
