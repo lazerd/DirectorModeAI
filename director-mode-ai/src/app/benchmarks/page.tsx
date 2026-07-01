@@ -225,7 +225,7 @@ export default function BenchmarksPage() {
       <a href="/connect" className="block mb-6">
         <div className="rounded-xl border border-teal-200 bg-gradient-to-r from-teal-50 to-emerald-50 px-5 py-4 flex items-center justify-between gap-4 transition hover:border-teal-300">
           <div>
-            <div className="font-semibold text-slate-900">New: ClubMode Connect — get matched, not just benchmarked</div>
+            <div className="font-semibold text-slate-900">New: ClubMode HR — get matched, not just benchmarked</div>
             <div className="text-sm text-slate-600">Directors open to the right move stay anonymous until a club with a better offer wants to talk. Clubs post an opening and we surface qualified, nearby talent.</div>
           </div>
           <span className="shrink-0 inline-flex items-center gap-1 rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white">Explore →</span>

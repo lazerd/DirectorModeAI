@@ -94,7 +94,7 @@ export default function ClubsPage() {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
-      <Link href="/connect" className="text-sm text-teal-700 underline">← ClubMode Connect</Link>
+      <Link href="/connect" className="text-sm text-teal-700 underline">← ClubMode HR</Link>
       <h1 className="text-3xl font-bold tracking-tight text-slate-900 mt-2 mb-1">Find your next director</h1>
       <p className="text-slate-600 mb-8">Post what you can pay. We surface qualified, nearby directors who'd move for it — with their contact info, because they opted in.</p>
 

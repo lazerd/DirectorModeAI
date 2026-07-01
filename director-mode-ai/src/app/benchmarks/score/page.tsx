@@ -172,7 +172,7 @@ function ResultCard({ r, onShare, shared, dept, comp, zip }: { r: Result; onShar
       <div className="rounded-xl border border-teal-200 bg-teal-50 p-5">
         <div className="font-semibold text-slate-900">Want clubs that pay more to find you?</div>
         <p className="text-sm text-slate-600 mt-1">
-          Stay anonymous on ClubMode Connect. We'll quietly alert you when a club within your range posts an opening that beats {usd(r.currentComp)} — and only reveal you on a match.
+          Stay anonymous on ClubMode HR. We'll quietly alert you when a club within your range posts an opening that beats {usd(r.currentComp)} — and only reveal you on a match.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link href={connectHref}><Button className="gap-1">Get found <ArrowRight className="h-4 w-4" /></Button></Link>

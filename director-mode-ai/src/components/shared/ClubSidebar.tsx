@@ -48,7 +48,7 @@ const ITEMS: Item[] = [
   { name: 'PlayerVault', href: '/courtconnect/vault', match: '/courtconnect/vault', icon: Database, color: '#2dd4bf' },
   { name: 'SwimMode', href: '/swim', match: '/swim', icon: Waves, color: '#38bdf8' },
   { name: 'Benchmarks', href: '/benchmarks', match: '/benchmarks', icon: BarChart3, color: '#f59e0b' },
-  { name: 'Connect', href: '/connect', match: '/connect', icon: Sparkles, color: '#2dd4bf' },
+  { name: 'HR', href: '/connect', match: '/connect', icon: Sparkles, color: '#2dd4bf' },
   { name: 'CoachMode.ai', href: 'https://coachmode.ai', icon: GraduationCap, color: '#a78bfa', external: true },
 ];
 

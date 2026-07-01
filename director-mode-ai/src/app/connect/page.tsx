@@ -43,7 +43,7 @@ export default function ConnectLanding() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
       <div className="text-center mb-10">
-        <h1 className="text-4xl font-bold tracking-tight text-slate-900">ClubMode Connect</h1>
+        <h1 className="text-4xl font-bold tracking-tight text-slate-900">ClubMode HR</h1>
         <p className="mt-3 text-lg text-slate-600 max-w-2xl mx-auto">
           The quiet bridge between clubs hiring and directors open to the right move.
           Built on the largest comp dataset in racquet &amp; golf leadership.
