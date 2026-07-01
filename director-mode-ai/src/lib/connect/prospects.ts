@@ -61,7 +61,9 @@ function latestPerPerson(dept: string): Raw[] {
   const byPerson = new Map<string, Raw>();
   for (const r of DATA) {
     if (r.dept !== dept || !r.name || !(r.total > 0)) continue;
-    const key = `${r.ein}|${r.name}`;
+    // Normalize the name — the 990 data mixes casing across years
+    // ("Peter Benko" vs "PETER BENKO"), which otherwise leaks duplicate people.
+    const key = `${r.ein}|${r.name.toLowerCase().replace(/\s+/g, ' ').trim()}`;
     const prev = byPerson.get(key);
     if (!prev || Number(r.year) > Number(prev.year)) byPerson.set(key, r);
   }
