@@ -393,8 +393,11 @@ export default function BenchmarksPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sorted.map((r) => {
-              const id = r.ein + r.name;
+            {sorted.map((r, i) => {
+              // Unique per rendered row. ein+name alone collides for the ~559
+              // people who appear in more than one tax year, and duplicate React
+              // keys leave ghost/duplicated rows behind when the list re-filters.
+              const id = `${r.ein}-${r.year}-${r.name}-${i}`;
               return (
                 <TableRow key={id}>
                   <TableCell className="font-medium max-w-[260px] whitespace-normal break-words align-top" title={r.club}>{r.club}</TableCell>
