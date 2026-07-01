@@ -43,8 +43,8 @@ export default function ConnectLanding() {
   return (
     <div className="max-w-5xl mx-auto px-4 py-10">
       <div className="text-center mb-10">
-        <h1 className="text-4xl font-bold tracking-tight text-slate-900">ClubMode Recruiting</h1>
-        <p className="mt-3 text-lg text-slate-600 max-w-2xl mx-auto">
+        <h1 className="text-4xl font-bold tracking-tight text-white">ClubMode Recruiting</h1>
+        <p className="mt-3 text-lg text-slate-300 max-w-2xl mx-auto">
           The quiet bridge between clubs hiring and directors open to the right move.
           Built on the largest comp dataset in racquet &amp; golf leadership.
         </p>
@@ -71,11 +71,11 @@ export default function ConnectLanding() {
 
           <div className="mt-5 flex flex-wrap items-end gap-3">
             <div>
-              <label className="text-xs text-slate-500 flex items-center gap-1"><MapPin className="h-3 w-3" /> Your ZIP</label>
+              <label className="text-xs text-slate-400 flex items-center gap-1"><MapPin className="h-3 w-3" /> Your ZIP</label>
               <Input value={zip} onChange={(e) => setZip(e.target.value)} placeholder="10591" className="w-28" style={{ color: '#0f172a' }} />
             </div>
             <div>
-              <label className="text-xs text-slate-500">Radius (mi)</label>
+              <label className="text-xs text-slate-400">Radius (mi)</label>
               <Input value={radius} onChange={(e) => setRadius(e.target.value)} className="w-24" style={{ color: '#0f172a' }} />
             </div>
             <Button variant="outline" onClick={() => load(true)}>See my area</Button>
@@ -95,16 +95,16 @@ export default function ConnectLanding() {
         />
         <Door
           href="/connect/clubs"
-          icon={<Briefcase className="h-6 w-6 text-teal-600" />}
-          title="I'm a club — find talent"
-          body="Post your opening with the comp you can pay. We surface qualified directors nearby who'd jump for it — with contact info, because they opted in."
-          cta="Post an opening"
+          icon={<Briefcase className="h-6 w-6 text-teal-400" />}
+          title="I'm hiring — find directors"
+          body="Tell us the role and your pay band. We instantly show directors from the benchmark data who fit, tell you how competitive your band is, and alert you when a great fit opts in to be contacted."
+          cta="Find directors"
         />
       </div>
 
-      <p className="mt-8 text-center text-sm text-slate-500">
+      <p className="mt-8 text-center text-sm text-slate-400">
         Looking for the raw comp data?{' '}
-        <Link href="/benchmarks" className="text-teal-700 underline">Browse the benchmarks →</Link>
+        <Link href="/benchmarks" className="text-teal-400 underline">Browse the benchmarks →</Link>
       </p>
     </div>
   );
@@ -113,8 +113,8 @@ export default function ConnectLanding() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-2xl font-bold text-slate-900">{value}</div>
-      <div className="text-xs text-slate-500">{label}</div>
+      <div className="text-2xl font-bold text-white">{value}</div>
+      <div className="text-xs text-slate-400">{label}</div>
     </div>
   );
 }
@@ -125,11 +125,11 @@ function Door({ href, icon, title, body, cta }: { href: string; icon: React.Reac
       <Card className="h-full transition hover:shadow-md hover:border-teal-300">
         <CardHeader>
           <div className="mb-2">{icon}</div>
-          <CardTitle className="text-xl text-slate-900">{title}</CardTitle>
+          <CardTitle className="text-xl text-white">{title}</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-slate-600 mb-4">{body}</p>
-          <span className="inline-flex items-center gap-1 text-teal-700 font-medium text-sm">
+          <p className="text-sm text-slate-300 mb-4">{body}</p>
+          <span className="inline-flex items-center gap-1 text-teal-400 font-medium text-sm">
             {cta} <ArrowRight className="h-4 w-4" />
           </span>
         </CardContent>
