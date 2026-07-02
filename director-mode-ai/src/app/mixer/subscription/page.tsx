@@ -4,6 +4,7 @@ import { CreditCard, ArrowRight, Sparkles, Calendar, Mail, MessageSquare } from 
 import { createClient } from '@/lib/supabase/server';
 import { getPlanContext, getUsage, TIER_LIMITS } from '@/lib/billing';
 import ManagePlanButton from '@/components/billing/ManagePlanButton';
+import UpgradeButton from '@/components/billing/UpgradeButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,9 +45,9 @@ export default async function MixerSubscriptionPage() {
               <div className="text-white/70 text-sm mt-1">
                 {ctx.grandfatheredDaysRemaining} day{ctx.grandfatheredDaysRemaining === 1 ? '' : 's'} remaining. Pick a plan before the trial ends to keep DJ Console, SMS, and unlimited features.
               </div>
-              <Link href="/pricing" className="mt-3 inline-flex items-center gap-1 text-sm text-yellow-300 hover:text-yellow-200">
-                See plans <ArrowRight size={14} />
-              </Link>
+              <div className="mt-3">
+                <UpgradeButton />
+              </div>
             </div>
           </div>
         </div>
@@ -66,14 +67,14 @@ export default async function MixerSubscriptionPage() {
               </div>
             )}
           </div>
-          <div className="flex gap-3">
-            {ctx.stripeCustomerId ? <ManagePlanButton /> : null}
-            <Link
-              href="/pricing"
-              className="px-4 py-2 rounded-lg bg-yellow-300 text-[#001820] hover:bg-yellow-200 font-medium text-sm flex items-center gap-2"
-            >
-              {ctx.effectiveTier === 'free' ? 'Upgrade' : 'Change plan'}
-              <ArrowRight size={14} />
+          <div className="flex flex-col items-stretch sm:items-end gap-3">
+            {ctx.subscriptionStatus === 'active' || ctx.subscriptionStatus === 'trialing' ? (
+              <ManagePlanButton />
+            ) : (
+              <UpgradeButton />
+            )}
+            <Link href="/pricing" className="text-xs text-white/40 hover:text-white/70 text-right">
+              Compare plans
             </Link>
           </div>
         </div>

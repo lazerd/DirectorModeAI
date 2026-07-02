@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Sparkles, Check, ArrowRight } from 'lucide-react';
+import { Sparkles, Check, ArrowRight, Loader2 } from 'lucide-react';
 
 type Feature =
   | 'dj_console'
@@ -78,23 +79,31 @@ const FEATURE_COPY: Record<Feature, { title: string; blurb: string; bullets: str
 
 export default function UpgradeDialog({ open, onOpenChange, feature, eventId }: Props) {
   const [loadingDayPass, setLoadingDayPass] = useState(false);
+  const [loadingPro, setLoadingPro] = useState(false);
   const copy = FEATURE_COPY[feature];
 
-  async function buyDayPass() {
-    if (!eventId) return;
-    setLoadingDayPass(true);
-    const res = await fetch('/api/stripe/create-checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ priceKey: 'day_pass', mode: 'one-time', eventId }),
-    });
-    const data = await res.json();
-    if (data.url) window.location.href = data.url;
-    else {
-      setLoadingDayPass(false);
-      alert(data.message || 'Could not start checkout.');
+  async function goToCheckout(body: Record<string, unknown>, setLoading: (v: boolean) => void) {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/stripe/create-checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.url) throw new Error(data.message || data.error || 'Could not start checkout');
+      window.location.href = data.url;
+    } catch (err: any) {
+      toast.error(err?.message || 'Could not start checkout.');
+      setLoading(false);
     }
   }
+
+  const startPro = () => goToCheckout({ priceKey: 'pro_monthly' }, setLoadingPro);
+  const buyDayPass = () => {
+    if (!eventId) return;
+    return goToCheckout({ priceKey: 'day_pass', mode: 'one-time', eventId }, setLoadingDayPass);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -118,12 +127,13 @@ export default function UpgradeDialog({ open, onOpenChange, feature, eventId }: 
         </ul>
 
         <div className="grid gap-2">
-          <Link
-            href="/pricing"
-            className="w-full py-3 rounded-xl bg-yellow-300 text-[#001820] font-medium text-sm flex items-center justify-center gap-2 hover:bg-yellow-200"
+          <button
+            onClick={startPro}
+            disabled={loadingPro}
+            className="w-full py-3 rounded-xl bg-yellow-300 text-[#001820] font-medium text-sm flex items-center justify-center gap-2 hover:bg-yellow-200 disabled:opacity-60"
           >
-            See plans <ArrowRight size={14} />
-          </Link>
+            {loadingPro ? <Loader2 size={16} className="animate-spin" /> : <>Go Pro — $29/mo <ArrowRight size={14} /></>}
+          </button>
           {eventId && feature !== 'multi_coach_org' && feature !== 'csv_vault_import' && (
             <button
               onClick={buyDayPass}
@@ -133,6 +143,12 @@ export default function UpgradeDialog({ open, onOpenChange, feature, eventId }: 
               {loadingDayPass ? 'Redirecting…' : 'Or unlock just this event for $9'}
             </button>
           )}
+          <Link
+            href="/pricing"
+            className="w-full text-center text-xs text-white/40 hover:text-white/70 pt-1"
+          >
+            Compare plans
+          </Link>
         </div>
       </DialogContent>
     </Dialog>
