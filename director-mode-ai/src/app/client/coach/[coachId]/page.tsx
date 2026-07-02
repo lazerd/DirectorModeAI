@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Calendar, Clock, MapPin, ChevronLeft, ChevronRight, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { toast } from 'sonner';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay, parseISO } from 'date-fns';
 
 type Slot = {
@@ -79,7 +80,7 @@ export default function CoachCalendarPage() {
       .single();
 
     if (!relationship || relationship.status !== 'approved') {
-      alert('You are not authorized to view this coach\'s calendar.');
+      toast.error('You are not approved to view this coach\'s calendar yet.');
       router.push('/client/dashboard');
       return;
     }

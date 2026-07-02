@@ -4,14 +4,33 @@ import Link from 'next/link';
 import {
   Sparkles,
   ArrowRight,
-  Gauge,
-  Bot,
   MessageSquare,
-  Mail,
-  MonitorSmartphone,
   ShieldCheck,
   Check,
 } from 'lucide-react';
+
+const FREE_FEATURES = [
+  'Unlimited events, round robins, leagues & JTT',
+  'Live event screen — court assignments, scores & standings on any phone',
+  'Lesson booking & Coach Mode development tracking',
+  'CourtSheet — view today’s court grid',
+  'PlayerVault roster CRM (up to 25 players)',
+  'StringingMode pro-shop job tracking',
+  '25 emails / month',
+  '1 free DJ Console event',
+];
+
+const PRO_FEATURES = [
+  'Everything in Free, uncapped',
+  'CourtSheet editing + AI command bar',
+  'AI lesson summaries after every lesson',
+  'DJ Console on every event',
+  'AI string recommendations',
+  '200 texts / month, then 5¢ each (you set the cap)',
+  '1,000 emails / month',
+  'Unlimited PlayerVault + CSV import',
+  'Unlimited event photos & custom club branding',
+];
 
 export default function PricingPage() {
   return (
@@ -31,152 +50,112 @@ export default function PricingPage() {
       {/* Hero */}
       <section className="max-w-3xl mx-auto px-6 pt-16 pb-8 text-center">
         <div className="inline-flex items-center gap-2 text-xs font-medium text-yellow-300/90 bg-yellow-300/10 border border-yellow-300/20 rounded-full px-3 py-1">
-          <Gauge size={13} /> Pay only for what you use
+          <Sparkles size={13} /> Founder pricing — locked for life
         </div>
         <h1 className="mt-5 font-display text-4xl md:text-5xl tracking-tight">
-          No subscription. <span className="text-yellow-300">Just a meter.</span>
+          Free to run your club.{' '}
+          <span className="text-yellow-300">$29/mo to run it like a pro.</span>
         </h1>
         <p className="mt-4 text-white/60 max-w-xl mx-auto">
-          Run your whole club by talking to ClubMode in plain English. Most of what you send is free —
-          you only pay, pennies at a time, for the AI doing the work. A quiet winter costs almost nothing.
-          No monthly fee for a tool you didn&apos;t touch.
+          Every tool to run your racquet-sports club in one login. Start free, invite your
+          members, and upgrade when you want the premium, AI-powered features. No card to start.
         </p>
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-          <Link
-            href="/pricing/estimate"
-            className="px-5 py-3 rounded-xl font-medium bg-yellow-300 text-[#001820] hover:bg-yellow-200 flex items-center justify-center gap-2"
-          >
-            <Gauge size={16} /> Estimate your monthly cost
-          </Link>
-          <Link
-            href="/register"
-            className="px-5 py-3 rounded-xl font-medium bg-white/10 hover:bg-white/15 text-white flex items-center justify-center gap-2"
-          >
-            Get started <ArrowRight size={16} />
-          </Link>
-        </div>
       </section>
 
-      {/* Free */}
-      <section className="max-w-5xl mx-auto px-6 pt-4 pb-2">
-        <div className="text-center mb-5">
-          <h2 className="font-display text-2xl">Free, always</h2>
-          <p className="mt-1 text-white/50 text-sm">The everyday way you reach players costs you nothing.</p>
-        </div>
+      {/* Plans */}
+      <section className="max-w-4xl mx-auto px-6 pb-4">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <FreeCard
-            icon={<MonitorSmartphone size={18} className="text-emerald-400" />}
-            title="The live event screen"
-            desc="Court assignments, who's up next, live scores and standings — players watch it on their phone or the big screen at the club. No texting needed when everyone's right there."
-          />
-          <FreeCard
-            icon={<Mail size={18} className="text-emerald-400" />}
-            title="Email"
-            desc="Announcements, event invites, lesson reminders, newsletters. Sent free, with fair-use limits — no per-email charge, ever."
-          />
+          {/* Free */}
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 flex flex-col">
+            <div className="font-display text-xl">Free</div>
+            <div className="mt-2 flex items-baseline gap-1">
+              <span className="font-display text-4xl">$0</span>
+              <span className="text-white/40 text-sm">/ month</span>
+            </div>
+            <p className="mt-2 text-white/50 text-sm">Run real events and give every member a login — forever.</p>
+            <ul className="mt-5 space-y-2.5 flex-1">
+              {FREE_FEATURES.map((f) => (
+                <Bullet key={f}>{f}</Bullet>
+              ))}
+            </ul>
+            <Link
+              href="/register"
+              className="mt-6 px-5 py-3 rounded-xl font-medium bg-white/10 hover:bg-white/15 text-white flex items-center justify-center gap-2"
+            >
+              Start free <ArrowRight size={16} />
+            </Link>
+          </div>
+
+          {/* Pro */}
+          <div className="rounded-2xl border border-yellow-300/40 bg-yellow-300/[0.05] p-7 flex flex-col relative">
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-semibold uppercase tracking-wide bg-yellow-300 text-[#001820] rounded-full px-3 py-1">
+              Founder pricing
+            </div>
+            <div className="font-display text-xl">ClubMode Pro</div>
+            <div className="mt-2 flex items-baseline gap-1">
+              <span className="font-display text-4xl">$29</span>
+              <span className="text-white/40 text-sm">/ month</span>
+            </div>
+            <p className="mt-2 text-white/50 text-sm">
+              or $290/year (2 months free). Locked for life for founding clubs.
+            </p>
+            <ul className="mt-5 space-y-2.5 flex-1">
+              {PRO_FEATURES.map((f) => (
+                <Bullet key={f} gold>{f}</Bullet>
+              ))}
+            </ul>
+            <Link
+              href="/register"
+              className="mt-6 px-5 py-3 rounded-xl font-medium bg-yellow-300 text-[#001820] hover:bg-yellow-200 flex items-center justify-center gap-2"
+            >
+              Start 14-day Pro trial <ArrowRight size={16} />
+            </Link>
+            <p className="mt-2 text-center text-white/40 text-xs">No card required. Cancel anytime.</p>
+          </div>
         </div>
       </section>
 
-      {/* Metered */}
-      <section className="max-w-5xl mx-auto px-6 pt-8 pb-2">
-        <div className="text-center mb-5">
-          <h2 className="font-display text-2xl">You only pay for these</h2>
-          <p className="mt-1 text-white/50 text-sm">Pennies at a time, and only when they actually happen.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <MeterCard
-            icon={<Bot size={18} className="text-yellow-300" />}
-            title="AI actions"
-            price="pennies each"
-            desc="Every time you ask ClubMode to do something — log scores, schedule a mixer, book a lesson, pull a board report — that's one action. This is the engine you're paying for."
-          />
-          <MeterCard
-            icon={<MessageSquare size={18} className="text-yellow-300" />}
-            title="Text messages"
-            price="$0.05 each — only when you need them"
-            desc="Just for reaching someone who isn't at the club: a lesson reminder for tomorrow, a 'your racket's ready' note, a reservation change. Most clubs send only a handful a month."
-          />
-        </div>
-      </section>
-
-      {/* Monthly maximum */}
-      <section className="max-w-5xl mx-auto px-6 py-8">
+      {/* Texting meter / spend cap */}
+      <section className="max-w-4xl mx-auto px-6 py-8">
         <div className="rounded-2xl border border-white/10 bg-[#002838] p-7">
           <div className="flex items-center gap-2 text-yellow-300">
-            <ShieldCheck size={18} />
-            <span className="font-display text-xl">You set your own monthly maximum</span>
+            <MessageSquare size={18} />
+            <span className="font-display text-xl">The only meter is texting — and you set the cap</span>
           </div>
           <p className="mt-3 text-white/60 text-sm max-w-2xl">
-            Pick a ceiling you&apos;re comfortable with. We&apos;ll warn you as you approach it, and you&apos;ll
-            never be charged a penny more without your say-so. Hit your max mid-month and want to keep going?
-            One tap raises it. It&apos;s a safety belt, not a wall — no surprise bills, ever.
+            Pro includes 200 text messages a month. Past that it&apos;s 5&cent; per text, and you pick a
+            monthly ceiling you&apos;re comfortable with. We warn you as you approach it and never charge a
+            penny more without your say-so. Everything else — AI actions, the live event screen, email — is
+            included. No surprise bills, ever.
           </p>
           <ul className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            <Bullet>A live meter of exactly what you&apos;ve used and what you owe</Bullet>
-            <Bullet>A heads-up at 80% of your monthly maximum</Bullet>
-            <Bullet>No charge for AI work you didn&apos;t use</Bullet>
+            <Bullet>A live meter of texts used this month</Bullet>
+            <Bullet>A heads-up at 80% of your cap</Bullet>
             <Bullet>Raise or lower your ceiling any time</Bullet>
+            <Bullet>Unlimited AI actions included in Pro</Bullet>
           </ul>
         </div>
       </section>
 
-      {/* Why not a subscription */}
+      {/* Entry fees footnote */}
       <section className="max-w-3xl mx-auto px-6 pb-20 text-center">
-        <h2 className="font-display text-2xl">Why a meter instead of a monthly fee?</h2>
-        <p className="mt-3 text-white/60 text-sm">
-          A flat subscription makes you pay the same whether you ran ten events or none. With ClubMode you
-          pay in your busy season and pay almost nothing when the courts are quiet. It&apos;s priced like a
-          utility — fair when you&apos;re busy, nearly free when you&apos;re not.
-        </p>
-        <div className="mt-6">
-          <Link
-            href="/pricing/estimate"
-            className="inline-flex items-center gap-1.5 text-sm text-yellow-300 hover:text-yellow-200"
-          >
-            <Gauge size={14} /> See what it would cost your club
-          </Link>
+        <div className="inline-flex items-start gap-2 text-white/50 text-sm">
+          <ShieldCheck size={16} className="mt-0.5 flex-shrink-0 text-emerald-400" />
+          <p>
+            Collecting entry fees online? Players pay by card and the money goes straight to your account —
+            ClubMode keeps a 3% platform fee (plus standard card processing), paid out of player fees, never
+            from your subscription. We never hold your funds.
+          </p>
         </div>
       </section>
     </div>
   );
 }
 
-function FreeCard({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
-  return (
-    <div className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.04] p-6 flex flex-col">
-      <div className="w-9 h-9 rounded-lg bg-emerald-400/10 flex items-center justify-center">{icon}</div>
-      <div className="mt-4 font-display text-lg">{title}</div>
-      <div className="mt-0.5 text-emerald-400 text-sm font-medium">Free</div>
-      <p className="mt-3 text-white/50 text-sm leading-relaxed">{desc}</p>
-    </div>
-  );
-}
-
-function MeterCard({
-  icon,
-  title,
-  price,
-  desc,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  price: string;
-  desc: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-6 flex flex-col">
-      <div className="w-9 h-9 rounded-lg bg-yellow-300/10 flex items-center justify-center">{icon}</div>
-      <div className="mt-4 font-display text-lg">{title}</div>
-      <div className="mt-0.5 text-yellow-300 text-sm font-medium">{price}</div>
-      <p className="mt-3 text-white/50 text-sm leading-relaxed">{desc}</p>
-    </div>
-  );
-}
-
-function Bullet({ children }: { children: React.ReactNode }) {
+function Bullet({ children, gold }: { children: React.ReactNode; gold?: boolean }) {
   return (
     <li className="flex items-start gap-2 text-sm text-white/80">
-      <Check size={16} className="mt-0.5 flex-shrink-0 text-emerald-400" />
+      <Check size={16} className={`mt-0.5 flex-shrink-0 ${gold ? 'text-yellow-300' : 'text-emerald-400'}`} />
       <span>{children}</span>
     </li>
   );
