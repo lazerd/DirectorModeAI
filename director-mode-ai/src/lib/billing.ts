@@ -49,6 +49,10 @@ const FEATURES_BY_TIER: Record<PlanTier, ReadonlyArray<Feature>> = {
 
 export interface PlanContext {
   userId: string;
+  /** The club owner whose subscription + usage pool this user draws from. */
+  billingUserId: string;
+  /** True when this user IS the payer (club owner / solo). Only they see billing UI. */
+  isBillingOwner: boolean;
   rawTier: RawPlanTier;
   effectiveTier: PlanTier;
   grandfatheredTrialEndsAt: string | null;
@@ -58,6 +62,39 @@ export interface PlanContext {
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   freeDjEventId: string | null;
+}
+
+/**
+ * Billing is CLUB-LEVEL: the club owner pays one subscription, and every
+ * member / coach / admin inherits the club's tier and draws from the club's
+ * shared usage pool. The "billing user" for any user is therefore their club's
+ * owner. Owners (and solo/independent users) resolve to their own id, so this
+ * is a no-op for them — no regression to the existing per-owner Stripe flow.
+ *
+ * Falls back to the user's own id when they have no club membership yet (e.g.
+ * before the membership backfill runs), so it is always safe.
+ */
+export async function resolveBillingUserId(userId: string): Promise<string> {
+  try {
+    const supabase = await createServiceClient();
+    const { data: memberships } = await supabase
+      .from('cc_club_members')
+      .select('club_id, role')
+      .eq('user_id', userId);
+    if (!memberships || memberships.length === 0) return userId;
+    // Prefer a club the user OWNS (they're the payer), else their first club.
+    const owned = memberships.find((m) => m.role === 'owner');
+    const clubId = owned?.club_id ?? memberships[0].club_id;
+    const { data: club } = await supabase
+      .from('cc_clubs')
+      .select('owner_id')
+      .eq('id', clubId)
+      .single();
+    return club?.owner_id || userId;
+  } catch {
+    // cc_club_members not present / any error → bill as self (safe default).
+    return userId;
+  }
 }
 
 function resolveEffectiveTier(
@@ -79,13 +116,15 @@ function resolveEffectiveTier(
 }
 
 export async function getPlanContext(userId: string): Promise<PlanContext> {
+  // Resolve tier + subscription from the club owner's profile (club-level plan).
+  const billingUserId = await resolveBillingUserId(userId);
   const supabase = await createServiceClient();
   const { data: profile } = await supabase
     .from('profiles')
     .select(
       'plan_tier, stripe_customer_id, stripe_subscription_id, subscription_status, current_period_end, grandfathered_trial_ends_at, free_dj_event_id'
     )
-    .eq('id', userId)
+    .eq('id', billingUserId)
     .single();
 
   const rawTier = (profile?.plan_tier as RawPlanTier) || 'free';
@@ -100,6 +139,8 @@ export async function getPlanContext(userId: string): Promise<PlanContext> {
 
   return {
     userId,
+    billingUserId,
+    isBillingOwner: billingUserId === userId,
     rawTier,
     effectiveTier,
     grandfatheredTrialEndsAt: trialEnds,
@@ -172,11 +213,12 @@ export async function claimFreeDjIfNeeded(
   userId: string,
   eventId: string
 ): Promise<{ ok: boolean; alreadyClaimed: boolean }> {
+  const billId = await resolveBillingUserId(userId); // club-level free DJ event
   const supabase = await createServiceClient();
   const { data: profile } = await supabase
     .from('profiles')
     .select('free_dj_event_id')
-    .eq('id', userId)
+    .eq('id', billId)
     .single();
   const claimed = profile?.free_dj_event_id || null;
   if (claimed && claimed !== eventId) {
@@ -185,20 +227,21 @@ export async function claimFreeDjIfNeeded(
   if (claimed === eventId) {
     return { ok: true, alreadyClaimed: true };
   }
-  await supabase.from('profiles').update({ free_dj_event_id: eventId }).eq('id', userId);
+  await supabase.from('profiles').update({ free_dj_event_id: eventId }).eq('id', billId);
   return { ok: true, alreadyClaimed: false };
 }
 
 export async function getUsage(userId: string) {
+  const billingUserId = await resolveBillingUserId(userId);
   const supabase = await createServiceClient();
   const { data } = await supabase
     .from('usage_credits')
     .select('*')
-    .eq('user_id', userId)
+    .eq('user_id', billingUserId)
     .single();
   return (
     data || {
-      user_id: userId,
+      user_id: billingUserId,
       period_start: new Date().toISOString(),
       emails_used: 0,
       sms_used: 0,
@@ -227,12 +270,13 @@ export class CreditLimitError extends Error {
 export async function consumeEmailCredits(userId: string, count: number): Promise<void> {
   if (count <= 0) return;
   const ctx = await getPlanContext(userId);
+  const billId = ctx.billingUserId; // pool at the club owner
   const limit: number = TIER_LIMITS[ctx.effectiveTier].emails;
-  const supabase = await ensureUsageRow(userId);
+  const supabase = await ensureUsageRow(billId);
   const { data: usage } = await supabase
     .from('usage_credits')
     .select('emails_used')
-    .eq('user_id', userId)
+    .eq('user_id', billId)
     .single();
   const used = usage?.emails_used ?? 0;
   if (limit > 0 && used + count > limit) {
@@ -241,7 +285,7 @@ export async function consumeEmailCredits(userId: string, count: number): Promis
   await supabase
     .from('usage_credits')
     .update({ emails_used: used + count, updated_at: new Date().toISOString() })
-    .eq('user_id', userId);
+    .eq('user_id', billId);
 }
 
 export async function consumeSmsCredits(
@@ -253,13 +297,14 @@ export async function consumeSmsCredits(
   if (ctx.effectiveTier === 'free') {
     throw new CreditLimitError('sms', 'free', 0);
   }
-  const supabase = await ensureUsageRow(userId);
+  const billId = ctx.billingUserId; // pool at the club owner
+  const supabase = await ensureUsageRow(billId);
   const limit: number = TIER_LIMITS[ctx.effectiveTier].sms;
   const overagePerSmsCents = 5; // Pro overage = $0.05/SMS
   const { data: usage } = await supabase
     .from('usage_credits')
     .select('sms_used, sms_overage_cents')
-    .eq('user_id', userId)
+    .eq('user_id', billId)
     .single();
   const used = usage?.sms_used ?? 0;
   const newUsed = used + count;
@@ -274,7 +319,7 @@ export async function consumeSmsCredits(
       sms_overage_cents: (usage?.sms_overage_cents ?? 0) + overageCentsThisCall,
       updated_at: new Date().toISOString(),
     })
-    .eq('user_id', userId);
+    .eq('user_id', billId);
   return { overageCents: overageCentsThisCall };
 }
 
@@ -283,11 +328,12 @@ export async function consumeAiCall(userId: string): Promise<void> {
   if (ctx.effectiveTier === 'free') {
     throw new CreditLimitError('ai', 'free', 0);
   }
-  const supabase = await ensureUsageRow(userId);
+  const billId = ctx.billingUserId; // pool at the club owner
+  const supabase = await ensureUsageRow(billId);
   const { data: usage } = await supabase
     .from('usage_credits')
     .select('ai_calls_used')
-    .eq('user_id', userId)
+    .eq('user_id', billId)
     .single();
   await supabase
     .from('usage_credits')
@@ -295,7 +341,7 @@ export async function consumeAiCall(userId: string): Promise<void> {
       ai_calls_used: (usage?.ai_calls_used ?? 0) + 1,
       updated_at: new Date().toISOString(),
     })
-    .eq('user_id', userId);
+    .eq('user_id', billId);
 }
 
 /**
@@ -311,11 +357,12 @@ export async function recordAiUsage(
   outputTokens: number
 ): Promise<void> {
   try {
-    const supabase = await ensureUsageRow(userId);
+    const billId = await resolveBillingUserId(userId);
+    const supabase = await ensureUsageRow(billId);
     const { data: usage } = await supabase
       .from('usage_credits')
       .select('ai_calls_used, ai_input_tokens, ai_output_tokens')
-      .eq('user_id', userId)
+      .eq('user_id', billId)
       .single();
     await supabase
       .from('usage_credits')
@@ -325,7 +372,7 @@ export async function recordAiUsage(
         ai_output_tokens: (usage?.ai_output_tokens ?? 0) + Math.max(0, outputTokens),
         updated_at: new Date().toISOString(),
       })
-      .eq('user_id', userId);
+      .eq('user_id', billId);
   } catch (err) {
     console.error('recordAiUsage failed (non-fatal):', err);
   }
@@ -333,11 +380,12 @@ export async function recordAiUsage(
 
 export async function consumeTtsChars(userId: string, chars: number): Promise<void> {
   if (chars <= 0) return;
-  const supabase = await ensureUsageRow(userId);
+  const billId = await resolveBillingUserId(userId);
+  const supabase = await ensureUsageRow(billId);
   const { data: usage } = await supabase
     .from('usage_credits')
     .select('tts_chars_used')
-    .eq('user_id', userId)
+    .eq('user_id', billId)
     .single();
   await supabase
     .from('usage_credits')
@@ -345,7 +393,7 @@ export async function consumeTtsChars(userId: string, chars: number): Promise<vo
       tts_chars_used: (usage?.tts_chars_used ?? 0) + chars,
       updated_at: new Date().toISOString(),
     })
-    .eq('user_id', userId);
+    .eq('user_id', billId);
 }
 
 export async function getCurrentUserPlan() {

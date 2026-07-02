@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { stripe, PRICE_IDS, type StripePriceKey } from '@/lib/stripe';
+import { resolveBillingUserId } from '@/lib/billing';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,6 +23,20 @@ export async function POST(request: NextRequest) {
     if (!priceKey || !PRICE_IDS[priceKey]) {
       return NextResponse.json({ error: 'invalid_price' }, { status: 400 });
     }
+
+    // The club subscription is club-level: only the owner (payer) may buy it.
+    // A member/coach inherits their club's plan, so a personal subscription for
+    // them would do nothing — block it. (Day Pass / one-time is per-event, allowed.)
+    if (mode === 'subscription') {
+      const billingUserId = await resolveBillingUserId(user.id);
+      if (billingUserId !== user.id) {
+        return NextResponse.json(
+          { error: 'not_owner', message: 'Only the club owner can manage the subscription.' },
+          { status: 403 }
+        );
+      }
+    }
+
     const priceId = PRICE_IDS[priceKey];
     if (!priceId) {
       return NextResponse.json({ error: 'price_not_configured' }, { status: 500 });

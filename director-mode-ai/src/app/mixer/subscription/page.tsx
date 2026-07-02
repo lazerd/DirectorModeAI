@@ -45,9 +45,11 @@ export default async function MixerSubscriptionPage() {
               <div className="text-white/70 text-sm mt-1">
                 {ctx.grandfatheredDaysRemaining} day{ctx.grandfatheredDaysRemaining === 1 ? '' : 's'} remaining. Pick a plan before the trial ends to keep DJ Console, SMS, and unlimited features.
               </div>
-              <div className="mt-3">
-                <UpgradeButton />
-              </div>
+              {ctx.isBillingOwner && (
+                <div className="mt-3">
+                  <UpgradeButton />
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -68,14 +70,21 @@ export default async function MixerSubscriptionPage() {
             )}
           </div>
           <div className="flex flex-col items-stretch sm:items-end gap-3">
-            {ctx.subscriptionStatus === 'active' || ctx.subscriptionStatus === 'trialing' ? (
+            {!ctx.isBillingOwner ? (
+              <div className="text-sm text-white/50 max-w-xs sm:text-right">
+                Your club is on the <span className="text-white">{tierLabel}</span> plan.
+                Billing is managed by your club owner.
+              </div>
+            ) : ctx.subscriptionStatus === 'active' || ctx.subscriptionStatus === 'trialing' ? (
               <ManagePlanButton />
             ) : (
-              <UpgradeButton />
+              <>
+                <UpgradeButton />
+                <Link href="/pricing" className="text-xs text-white/40 hover:text-white/70 text-right">
+                  Compare plans
+                </Link>
+              </>
             )}
-            <Link href="/pricing" className="text-xs text-white/40 hover:text-white/70 text-right">
-              Compare plans
-            </Link>
           </div>
         </div>
       </div>
