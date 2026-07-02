@@ -1,10 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Plus, Search, Package, Trash2, Check, X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Plus, Search, Package, Trash2, Check, X, ScanLine, Loader2, Sparkles } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 type StringItem = { id: string; brand: string; name: string; string_type: string; gauge: string | null; price: number | null; in_stock: boolean; };
+type ReviewItem = { include: boolean; brand: string; name: string; string_type: string; gauge: string; price: string; quantity: number | null; };
+
+const GAUGE_OPTS = ['15', '15L', '16', '16L', '17', '18'];
 
 export default function CatalogPage() {
   const [strings, setStrings] = useState<StringItem[]>([]);
@@ -13,7 +16,78 @@ export default function CatalogPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [newString, setNewString] = useState({ brand: '', name: '', string_type: 'poly', gauge: '16', price: '', in_stock: true });
 
+  // Receipt import
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importErr, setImportErr] = useState('');
+  const [review, setReview] = useState<ReviewItem[] | null>(null);
+  const [savingImport, setSavingImport] = useState(false);
+
   useEffect(() => { fetchStrings(); }, []);
+
+  const onReceiptPicked = async (file: File | undefined) => {
+    if (!file) return;
+    setImportErr('');
+    setReview(null);
+    setImporting(true);
+    try {
+      const dataUrl: string = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(r.result as string);
+        r.onerror = () => rej(new Error('read failed'));
+        r.readAsDataURL(file);
+      });
+      const base64 = dataUrl.split(',')[1] || '';
+      const resp = await fetch('/api/stringing/import-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mediaType: file.type, data: base64 }),
+      });
+      const json = await resp.json().catch(() => ({}));
+      if (!resp.ok) { setImportErr(json.error || 'Could not read that file.'); return; }
+      const items: ReviewItem[] = (json.items || []).map((it: any) => ({
+        include: true,
+        brand: it.brand || '',
+        name: it.name || '',
+        string_type: it.string_type || 'poly',
+        gauge: GAUGE_OPTS.includes(it.gauge) ? it.gauge : '16',
+        price: it.price != null ? String(it.price) : '',
+        quantity: it.quantity ?? null,
+      }));
+      if (items.length === 0) { setImportErr('No string products found on that receipt. Try a clearer photo.'); return; }
+      setReview(items);
+    } catch {
+      setImportErr('Something went wrong reading the file.');
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const setReviewField = (i: number, patch: Partial<ReviewItem>) =>
+    setReview((cur) => cur ? cur.map((r, idx) => (idx === i ? { ...r, ...patch } : r)) : cur);
+
+  const saveImported = async () => {
+    if (!review) return;
+    const rows = review.filter((r) => r.include && (r.brand.trim() || r.name.trim()));
+    if (rows.length === 0) { setReview(null); return; }
+    setSavingImport(true);
+    const supabase = createClient();
+    const { error } = await supabase.from('stringing_catalog').insert(
+      rows.map((r) => ({
+        brand: r.brand.trim(),
+        name: r.name.trim(),
+        string_type: r.string_type,
+        gauge: r.gauge,
+        price: r.price ? parseFloat(r.price) : null,
+        in_stock: true,
+      }))
+    );
+    setSavingImport(false);
+    if (error) { setImportErr(error.message); return; }
+    setReview(null);
+    fetchStrings();
+  };
 
   const fetchStrings = async () => {
     const supabase = createClient();
@@ -51,10 +125,90 @@ export default function CatalogPage() {
     <div className="p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div><h1 className="font-semibold text-2xl">String Catalog</h1><p className="text-gray-500 text-sm">Manage your inventory</p></div>
-        {!showAdd && (
-          <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700"><Plus size={18} />Add String</button>
-        )}
+        <div className="flex items-center gap-2">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*,application/pdf"
+            className="hidden"
+            onChange={(e) => onReceiptPicked(e.target.files?.[0])}
+          />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={importing}
+            className="flex items-center gap-2 px-4 py-2 border border-purple-300 text-purple-700 rounded-lg font-medium hover:bg-purple-50 disabled:opacity-60"
+            title="Snap or upload a receipt/invoice and we'll load the strings for you"
+          >
+            {importing ? <Loader2 size={18} className="animate-spin" /> : <ScanLine size={18} />}
+            {importing ? 'Reading…' : 'Import from receipt'}
+          </button>
+          {!showAdd && (
+            <button onClick={() => setShowAdd(true)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700"><Plus size={18} />Add String</button>
+          )}
+        </div>
       </div>
+
+      {importErr && (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm px-4 py-2 flex items-center justify-between gap-3">
+          <span>{importErr}</span>
+          <button onClick={() => setImportErr('')} className="text-red-400 hover:text-red-600"><X size={16} /></button>
+        </div>
+      )}
+
+      {review && (
+        <div className="bg-white rounded-xl border border-purple-200 p-6 mb-6">
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkles size={18} className="text-purple-600" />
+            <h2 className="font-semibold text-lg">Review imported strings</h2>
+          </div>
+          <p className="text-gray-500 text-sm mb-4">
+            Pulled {review.length} item{review.length === 1 ? '' : 's'} from your receipt. Uncheck anything you don&apos;t want, fix any details, then add them to your catalog.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b text-left text-gray-500">
+                <th className="py-2 pr-2 w-8"></th>
+                <th className="py-2 pr-3">Brand</th>
+                <th className="py-2 pr-3">Name</th>
+                <th className="py-2 pr-3">Type</th>
+                <th className="py-2 pr-3">Gauge</th>
+                <th className="py-2 pr-3">Price</th>
+                <th className="py-2 pr-3">Qty</th>
+              </tr></thead>
+              <tbody className="divide-y">
+                {review.map((r, i) => (
+                  <tr key={i} className={r.include ? '' : 'opacity-40'}>
+                    <td className="py-2 pr-2">
+                      <input type="checkbox" checked={r.include} onChange={(e) => setReviewField(i, { include: e.target.checked })} className="w-4 h-4" />
+                    </td>
+                    <td className="py-2 pr-3"><input value={r.brand} onChange={(e) => setReviewField(i, { brand: e.target.value })} className="w-28 px-2 py-1 border rounded" style={{ color: '#111827' }} /></td>
+                    <td className="py-2 pr-3"><input value={r.name} onChange={(e) => setReviewField(i, { name: e.target.value })} className="w-40 px-2 py-1 border rounded" style={{ color: '#111827' }} /></td>
+                    <td className="py-2 pr-3">
+                      <select value={r.string_type} onChange={(e) => setReviewField(i, { string_type: e.target.value })} className="px-2 py-1 border rounded">
+                        <option value="poly">Polyester</option><option value="multi">Multifilament</option><option value="synthetic_gut">Synthetic Gut</option><option value="natural_gut">Natural Gut</option><option value="hybrid">Hybrid</option><option value="other">Other</option>
+                      </select>
+                    </td>
+                    <td className="py-2 pr-3">
+                      <select value={r.gauge} onChange={(e) => setReviewField(i, { gauge: e.target.value })} className="px-2 py-1 border rounded">
+                        {GAUGE_OPTS.map((g) => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    </td>
+                    <td className="py-2 pr-3"><input value={r.price} onChange={(e) => setReviewField(i, { price: e.target.value })} placeholder="—" className="w-20 px-2 py-1 border rounded" style={{ color: '#111827' }} /></td>
+                    <td className="py-2 pr-3 text-gray-400">{r.quantity ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="flex gap-3 mt-5">
+            <button onClick={() => setReview(null)} className="px-4 py-2 border rounded-lg">Cancel</button>
+            <button onClick={saveImported} disabled={savingImport} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 disabled:opacity-60">
+              {savingImport ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              Add {review.filter((r) => r.include).length} to catalog
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="relative mb-6">
         <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
