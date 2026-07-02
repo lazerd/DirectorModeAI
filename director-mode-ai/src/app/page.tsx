@@ -168,15 +168,14 @@ export default function HomePage() {
       onClick: () => goToTool("/swim"),
     },
     {
-      name: "CoachMode.ai",
-      tag: "COACHING AI",
-      description: "AI-powered video analysis, skill ratings, and player development — the coaching companion to your club.",
+      name: "Coach Mode",
+      tag: "DEVELOPMENT",
+      description: "Track each player's development over time and get an AI summary after every lesson.",
       icon: GraduationCap,
       color: "text-violet-400",
       bg: "bg-violet-400/10",
       tagColor: "bg-violet-400/10 text-violet-400",
-      href: "https://coachmode.ai",
-      external: true,
+      onClick: () => goToTool("/lessons/dashboard"),
     },
   ];
 
@@ -501,7 +500,7 @@ export default function HomePage() {
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-            {tools.map((tool) => {
+            {tools.map((tool: any) => {
               const Icon = tool.icon;
               const CardTag = tool.external ? 'a' : 'div';
               const cardProps = tool.external
@@ -730,7 +729,7 @@ export default function HomePage() {
                 { href: "/courtconnect/home", icon: Users, name: "CourtConnect", color: "bg-emerald-500 hover:bg-emerald-600" },
                 { href: "/courtconnect/vault", icon: Database, name: "PlayerVault", color: "bg-teal-500 hover:bg-teal-600" },
                 { href: "/swim", icon: Waves, name: "SwimMode", color: "bg-sky-500 hover:bg-sky-600" },
-                { href: "https://coachmode.ai", icon: GraduationCap, name: "CoachMode.ai", color: "bg-violet-500 hover:bg-violet-600", external: true },
+                { href: "/lessons/dashboard", icon: GraduationCap, name: "Coach Mode", color: "bg-violet-500 hover:bg-violet-600" },
               ].map((item) => {
                 const Icon = item.icon;
                 const isButton = 'onClick' in item && item.onClick;
@@ -835,7 +834,7 @@ export default function HomePage() {
                 <li><Link href="/courtconnect/vault" className="hover:text-white transition-colors">PlayerVault</Link></li>
                 <li><Link href="/swim" className="hover:text-white transition-colors">SwimMode</Link></li>
                 <li><Link href="/find-coach" className="hover:text-white transition-colors">Find a Coach</Link></li>
-                <li><a href="https://coachmode.ai" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">CoachMode.ai</a></li>
+                <li><Link href="/lessons/dashboard" className="hover:text-white transition-colors">Coach Mode</Link></li>
               </ul>
             </div>
             <div className="md:hidden col-span-2">
@@ -851,10 +850,6 @@ export default function HomePage() {
             <div className="flex items-center gap-4">
               <Link href="/pricing" className="hover:text-white/60 transition-colors">Pricing</Link>
               <Link href="/login" className="hover:text-white/60 transition-colors">Sign In</Link>
-              <span className="flex items-center gap-1">
-                Powered by
-                <a href="https://coachmode.ai" target="_blank" rel="noopener noreferrer" className="text-[#D3FB52] hover:underline ml-1">CoachMode.ai</a>
-              </span>
             </div>
           </div>
         </div>

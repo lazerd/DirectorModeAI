@@ -20,7 +20,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
-  Waves, GraduationCap, ListOrdered, BarChart3, Sparkles, ExternalLink,
+  Waves, ListOrdered, BarChart3, Sparkles, ExternalLink,
   ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
@@ -49,7 +49,6 @@ const ITEMS: Item[] = [
   { name: 'SwimMode', href: '/swim', match: '/swim', icon: Waves, color: '#38bdf8' },
   { name: 'Benchmarks', href: '/benchmarks', match: '/benchmarks', icon: BarChart3, color: '#f59e0b' },
   { name: 'Recruiting', href: '/connect', match: '/connect', icon: Sparkles, color: '#2dd4bf' },
-  { name: 'CoachMode.ai', href: 'https://coachmode.ai', icon: GraduationCap, color: '#a78bfa', external: true },
 ];
 
 const EXPANDED = 248;
