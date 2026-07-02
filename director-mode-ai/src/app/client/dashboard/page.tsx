@@ -76,6 +76,19 @@ export default function ClientDashboardPage() {
       return;
     }
 
+    // Directors/club owners shouldn't land in the member "My Account" view —
+    // send them to their club dashboard instead.
+    const { data: ownedClub } = await supabase
+      .from('cc_clubs')
+      .select('id')
+      .eq('owner_id', user.id)
+      .limit(1)
+      .maybeSingle();
+    if (ownedClub) {
+      window.location.href = '/mixer/home';
+      return;
+    }
+
     setClientEmail(user.email || '');
 
     const { data: client } = await supabase

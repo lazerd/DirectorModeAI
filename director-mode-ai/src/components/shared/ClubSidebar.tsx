@@ -20,7 +20,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
-  Waves, ListOrdered, BarChart3, Sparkles, ExternalLink,
+  Waves, GraduationCap, ListOrdered, BarChart3, Sparkles, ExternalLink,
   ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
@@ -42,7 +42,8 @@ const ITEMS: Item[] = [
   { name: 'Leagues & JTT', href: '/mixer/leagues', match: '/mixer/leagues', icon: Trophy, color: '#D3FB52' },
   { name: 'MixerMode', href: '/mixer/home', match: '/mixer/home', icon: Shuffle, color: '#fb923c' },
   { name: 'Flex League', href: '/flex', match: '/flex', icon: ListOrdered, color: '#60a5fa' },
-  { name: 'Lessons', href: '/lessons/dashboard', match: '/lessons', icon: Clock, color: '#60a5fa' },
+  { name: 'Lessons', href: '/lessons/dashboard', match: '/lessons/dashboard', icon: Clock, color: '#60a5fa' },
+  { name: 'Coach Mode', href: '/lessons/recap', match: '/lessons/recap', icon: GraduationCap, color: '#a78bfa' },
   { name: 'Stringing', href: '/stringing/jobs', match: '/stringing', icon: Wrench, color: '#f472b6' },
   { name: 'CourtConnect', href: '/courtconnect/home', match: '/courtconnect/home', icon: Users, color: '#34d399' },
   { name: 'PlayerVault', href: '/courtconnect/vault', match: '/courtconnect/vault', icon: Database, color: '#2dd4bf' },

@@ -175,7 +175,7 @@ export default function HomePage() {
       color: "text-violet-400",
       bg: "bg-violet-400/10",
       tagColor: "bg-violet-400/10 text-violet-400",
-      onClick: () => goToTool("/lessons/dashboard"),
+      onClick: () => goToTool("/lessons/recap"),
     },
   ];
 
@@ -729,7 +729,7 @@ export default function HomePage() {
                 { href: "/courtconnect/home", icon: Users, name: "CourtConnect", color: "bg-emerald-500 hover:bg-emerald-600" },
                 { href: "/courtconnect/vault", icon: Database, name: "PlayerVault", color: "bg-teal-500 hover:bg-teal-600" },
                 { href: "/swim", icon: Waves, name: "SwimMode", color: "bg-sky-500 hover:bg-sky-600" },
-                { href: "/lessons/dashboard", icon: GraduationCap, name: "Coach Mode", color: "bg-violet-500 hover:bg-violet-600" },
+                { href: "/lessons/recap", icon: GraduationCap, name: "Coach Mode", color: "bg-violet-500 hover:bg-violet-600" },
               ].map((item) => {
                 const Icon = item.icon;
                 const isButton = 'onClick' in item && item.onClick;
