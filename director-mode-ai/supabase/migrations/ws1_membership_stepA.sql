@@ -107,36 +107,20 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 
 -- ---------------------------------------------------------------------
--- 5. Membership-based policies added ALONGSIDE existing ones (permissive =
---    OR-ed, so this only widens access; nothing breaks). Parent-scoped child
---    tables check their parent's club_id.
+-- 5. RLS POLICIES — intentionally NOT in this step.
+--
+--    Several club-scoped tables (events, leagues, players, matches) are read
+--    ANONYMOUSLY by public scoreboard/roster pages. Enabling RLS + a member-
+--    only policy here would break those public pages if RLS is currently off.
+--    The membership policies are authored in a SEPARATE step AFTER dumping the
+--    live pg_policies, so each new policy preserves the intended public reads.
+--    This step is therefore purely additive DATA (columns + backfill) and
+--    changes no access path.
 -- ---------------------------------------------------------------------
-ALTER TABLE events ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "club members manage events" ON events;
-CREATE POLICY "club members manage events" ON events
-  FOR ALL TO authenticated
-  USING (is_club_member(club_id)) WITH CHECK (is_club_member(club_id));
-
-ALTER TABLE leagues ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "club members manage leagues" ON leagues;
-CREATE POLICY "club members manage leagues" ON leagues
-  FOR ALL TO authenticated
-  USING (is_club_member(club_id)) WITH CHECK (is_club_member(club_id));
-
-ALTER TABLE stringing_customers ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "club members manage stringing customers" ON stringing_customers;
-CREATE POLICY "club members manage stringing customers" ON stringing_customers
-  FOR ALL TO authenticated
-  USING (is_club_member(club_id) OR user_id = auth.uid())
-  WITH CHECK (is_club_member(club_id) OR user_id = auth.uid());
-
--- (More tables — lessons, swim, tournaments/quads via parent — added in the
---  next wave once these three are verified against the app + the cc4401ed
---  isolation canary.)
 
 -- =====================================================================
--- VERIFY (run as separate queries, expect the app to keep working):
+-- VERIFY (run as separate queries, app behavior should be unchanged):
 --   select count(*) from events where club_id is null;      -- expect 0
---   select count(*) from cc_clubs;                            -- one per owner
---   select club_id, count(*) from cc_club_members group by 1;
+--   select count(*) from cc_clubs;                            -- one per data-owning user
+--   select role, count(*) from cc_club_members group by 1;   -- owners seeded
 -- =====================================================================
