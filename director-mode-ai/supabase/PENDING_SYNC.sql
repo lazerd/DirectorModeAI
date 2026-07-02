@@ -625,6 +625,24 @@ ALTER TABLE swim_assignments
 NOTIFY pgrst, 'reload schema';
 
 -- ============================================================================
+-- 13. Benchmarks — owner-curated removals (hide bogus 990 rows/clubs)
+-- ============================================================================
+-- Written only by the service role via /api/benchmarks/removals (gated to
+-- Darrin's login emails). RLS on with no policies = invisible to clients.
+
+CREATE TABLE IF NOT EXISTS benchmark_removals (
+  key text PRIMARY KEY,
+  ein text NOT NULL,
+  person text,
+  year text,
+  scope text NOT NULL CHECK (scope IN ('row', 'club')),
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE benchmark_removals ENABLE ROW LEVEL SECURITY;
+
+NOTIFY pgrst, 'reload schema';
+
+-- ============================================================================
 -- End of pending sync. If you see "Success. No rows returned." the database
 -- is now aligned with every committed migration in director-mode-ai/supabase/
 -- migrations/. Safe to re-run this file any time.

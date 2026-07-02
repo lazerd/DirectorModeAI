@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { Search, ExternalLink, TrendingUp, Users, DollarSign, Percent, MapPin, ArrowUp, ArrowDown, ChevronsUpDown } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Search, ExternalLink, TrendingUp, Users, DollarSign, Percent, MapPin, ArrowUp, ArrowDown, ChevronsUpDown, Trash2 } from 'lucide-react';
 import rawData from './_data/benchmarks.json';
 import { milesBetween } from '@/lib/geo';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,6 +74,36 @@ export default function BenchmarksPage() {
   // otherwise highest total comp first).
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  // Owner-only dataset curation: hidden rows/clubs + whether to show the ✕.
+  const [removals, setRemovals] = useState<Set<string>>(new Set());
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/benchmarks/removals', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        setRemovals(new Set((d.removals ?? []).map((x: { key: string }) => x.key)));
+        setIsAdmin(!!d.isAdmin);
+      })
+      .catch(() => {});
+  }, []);
+
+  async function removeRow(r: Row, scope: 'row' | 'club') {
+    setConfirmId(null);
+    const res = await fetch('/api/benchmarks/removals', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ein: r.ein, person: r.name, year: r.year, scope }),
+    });
+    if (res.ok) {
+      const key = scope === 'club' ? `${r.ein}|*` : `${r.ein}|${r.name}|${r.year}`;
+      setRemovals((prev) => new Set(prev).add(key));
+    } else {
+      const d = await res.json().catch(() => ({}));
+      alert(`Remove failed: ${d.error || res.status}`);
+    }
+  }
 
   function sortBy(col: SortKey) {
     if (sortKey === col) {
@@ -90,6 +120,7 @@ export default function BenchmarksPage() {
     const max = maxComp ? Number(maxComp) : null;
     const rad = origin && radius ? Number(radius) : null;
     const base = DATA.filter((r) => {
+      if (removals.has(`${r.ein}|*`) || removals.has(`${r.ein}|${r.name}|${r.year}`)) return false;
       if (dept !== 'all' && r.dept !== dept) return false;
       if (state !== 'all' && r.state !== state) return false;
       if (region !== 'all' && r.region !== region) return false;
@@ -109,7 +140,7 @@ export default function BenchmarksPage() {
       return out;
     }
     return base;
-  }, [dept, state, region, query, recentOnly, minComp, maxComp, origin, radius]);
+  }, [dept, state, region, query, recentOnly, minComp, maxComp, origin, radius, removals]);
 
   const radiusActive = !!(origin && radius);
 
@@ -414,9 +445,47 @@ export default function BenchmarksPage() {
                   <TableCell className="text-right tabular-nums text-muted-foreground">{r.pct != null ? `${(r.pct * 100).toFixed(1)}%` : '—'}</TableCell>
                   <TableCell className="text-muted-foreground">{r.year}</TableCell>
                   <TableCell>
-                    <a href={r.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground">
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <a href={r.url} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground">
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                      {isAdmin && (confirmId === id ? (
+                        <span className="flex items-center gap-1 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => removeRow(r, 'row')}
+                            className="rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-medium text-white hover:bg-red-700"
+                            title={`Hide just this row (${r.name}, ${r.year})`}
+                          >
+                            Row
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeRow(r, 'club')}
+                            className="rounded bg-red-800 px-1.5 py-0.5 text-[11px] font-medium text-white hover:bg-red-900"
+                            title={`Hide every row for ${r.club}`}
+                          >
+                            Club
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmId(null)}
+                            className="rounded border px-1.5 py-0.5 text-[11px] text-muted-foreground hover:text-foreground"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmId(id)}
+                          className="text-muted-foreground/50 hover:text-red-600"
+                          title="Remove from benchmarks (owner only)"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      ))}
+                    </div>
                   </TableCell>
                 </TableRow>
               );
