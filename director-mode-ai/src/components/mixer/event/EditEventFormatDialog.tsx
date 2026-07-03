@@ -66,6 +66,21 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
       court_names: isDefault ? null : finalCourts,
     };
 
+    // Snapshot the CURRENT court list fresh from the DB before overwriting it
+    // — the event prop can be stale if courts changed elsewhere while this
+    // dialog was open, and remapping matches against a stale list
+    // mis-numbers them.
+    const { data: freshEvent } = await supabase
+      .from("events")
+      .select("num_courts, court_names")
+      .eq("id", event.id)
+      .single();
+    const base = freshEvent ?? event;
+    const oldCourts = Array.from(
+      { length: Math.max(1, base.num_courts) },
+      (_, i) => base.court_names?.[i] ?? String(i + 1),
+    );
+
     const { error } = await supabase
       .from("events")
       .update(updates)
@@ -85,7 +100,7 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
         .update({ num_winners: splitGender ? 2 : Math.max(1, numWinners), winners_split_gender: splitGender })
         .eq("id", event.id);
 
-      const renumbered = await remapExistingMatches(finalCourts);
+      const renumbered = await remapExistingMatches(oldCourts, finalCourts);
 
       toast({
         title: "Format updated",
@@ -103,11 +118,8 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
   // court list here must also renumber every already-generated match — the
   // Rounds tab, public pages, and CourtSheet all read match.court_number.
   // Each match slot i (position in the old list) moves to the new list's i.
-  const remapExistingMatches = async (newCourts: string[]): Promise<number> => {
-    const oldCourts = Array.from(
-      { length: Math.max(1, event.num_courts) },
-      (_, i) => event.court_names?.[i] ?? String(i + 1),
-    );
+  // oldCourts is snapshotted fresh from the DB just before the save.
+  const remapExistingMatches = async (oldCourts: string[], newCourts: string[]): Promise<number> => {
     const unchanged = newCourts.length === oldCourts.length && newCourts.every((c, i) => c === oldCourts[i]);
     if (unchanged) return 0;
 
@@ -198,7 +210,10 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
           </div>
 
           <div>
-            <Label className="text-sm font-medium">Number of Courts</Label>
+            <Label className="text-sm font-medium">Courts available</Label>
+            <p className="mt-0.5 mb-1 text-xs text-gray-500">
+              How many courts you could use tonight — the event only fills what attendance needs, extras just sit unused. More courts = fewer players on BYE.
+            </p>
             <input
               type="number"
               value={numCourts || ''}

@@ -229,7 +229,7 @@ export default function EventDashboard() {
                 <span className="sm:hidden">Share</span>
               </Button>
 
-              <Button variant="outline" size="lg" onClick={() => setShowEditFormatDialog(true)} className="w-full sm:w-auto bg-white">
+              <Button variant="outline" size="lg" onClick={() => setShowEditFormatDialog(true)} className="w-full sm:w-auto bg-white" style={{ color: "#111827" }}>
                 <Settings className="h-5 w-5 mr-2" />
                 <span className="hidden sm:inline">Edit Format</span>
                 <span className="sm:hidden">Edit</span>
