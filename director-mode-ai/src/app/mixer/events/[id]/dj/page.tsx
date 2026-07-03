@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { eventCanUsePremium } from '@/lib/billing';
+import UpgradeButton from '@/components/billing/UpgradeButton';
 import DJConsole from '@/components/mixer/event/DJConsole';
 import DayPassButton from '@/components/billing/DayPassButton';
 
@@ -77,14 +78,12 @@ export default async function DJConsolePage({ params }: { params: Promise<{ id: 
           <p className="text-white/70 mb-6">
             Walk-on songs and a hype announcer voice for every player. Like Ballpark DJ — but for tennis. Free users get one event lifetime; this slot is already used. Upgrade to Pro or unlock just this event with a $9 Day Pass.
           </p>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/pricing"
-              className="px-4 py-2.5 rounded-xl bg-yellow-300 text-[#001820] font-medium text-sm flex items-center gap-2 hover:bg-yellow-200"
-            >
-              See plans
-            </Link>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+            <UpgradeButton />
             <DayPassButton eventId={eventId} />
+          </div>
+          <div className="mt-3">
+            <Link href="/pricing" className="text-xs text-white/40 hover:text-white/70">Compare plans</Link>
           </div>
         </div>
       </div>
