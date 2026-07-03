@@ -487,8 +487,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ===================== PRODUCT SHOWCASE ===================== */}
-      <ProductShowcase />
+      {/* ===================== PRODUCT SHOWCASE (marketing — logged-out only) ===================== */}
+      {!user && <ProductShowcase />}
 
       {/* ===================== TOOLS GRID ===================== */}
       <section id="tools" className="py-20 sm:py-28 px-5 sm:px-6 bg-[#001016]">
