@@ -44,6 +44,7 @@ const ITEMS: Item[] = [
   { name: 'Flex League', href: '/flex', match: '/flex', icon: ListOrdered, color: '#60a5fa' },
   { name: 'Lessons', href: '/lessons/dashboard', match: '/lessons/dashboard', icon: Clock, color: '#60a5fa' },
   { name: 'Coach Mode', href: '/lessons/recap', match: '/lessons/recap', icon: GraduationCap, color: '#a78bfa' },
+  { name: 'Members', href: '/club/members', match: '/club/members', icon: Users, color: '#38bdf8' },
   { name: 'Stringing', href: '/stringing/jobs', match: '/stringing', icon: Wrench, color: '#f472b6' },
   { name: 'CourtConnect', href: '/courtconnect/home', match: '/courtconnect/home', icon: Users, color: '#34d399' },
   { name: 'PlayerVault', href: '/courtconnect/vault', match: '/courtconnect/vault', icon: Database, color: '#2dd4bf' },
