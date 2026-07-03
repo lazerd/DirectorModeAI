@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Plus, Check, RotateCcw, ChevronLeft, ChevronRight, Shuffle, Edit, Users } from "lucide-react";
+import { Play, Plus, Check, RotateCcw, ChevronLeft, ChevronRight, Shuffle, Edit, Users, Trash2 } from "lucide-react";
 import RoundTimer from "@/components/mixer/event/RoundTimer";
 import MatchScoreDialog from "@/components/mixer/event/MatchScoreDialog";
 import TournamentMatchScoreDialog from "@/components/mixer/event/TournamentMatchScoreDialog";
@@ -644,6 +644,45 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     fetchMatches(round.id);
   };
 
+  // Nuke every round + match and zero out per-event W/L so the event can be
+  // regenerated from scratch (e.g. after changing the singles/doubles config).
+  const deleteAllRounds = async () => {
+    if (!confirm(`Delete all ${rounds.length} round${rounds.length > 1 ? 's' : ''} and their matches? Players and teams are kept — you can regenerate fresh rounds right after.`)) return;
+
+    const roundIds = rounds.map(r => r.id);
+    const { error: matchError } = await supabase
+      .from("matches")
+      .delete()
+      .in("round_id", roundIds);
+    if (matchError) {
+      toast({ variant: "destructive", title: "Error deleting matches", description: matchError.message });
+      return;
+    }
+
+    const { error: roundError } = await supabase
+      .from("rounds")
+      .delete()
+      .eq("event_id", event.id);
+    if (roundError) {
+      toast({ variant: "destructive", title: "Error deleting rounds", description: roundError.message });
+      return;
+    }
+
+    await supabase
+      .from("event_players")
+      .update({ wins: 0, losses: 0, games_won: 0, games_lost: 0 })
+      .eq("event_id", event.id);
+
+    setRounds([]);
+    setCurrentRound(null);
+    setSelectedRoundId(null);
+    setMatches([]);
+    toast({
+      title: "All rounds deleted",
+      description: "Set your court configuration on the Teams tab, then generate fresh rounds.",
+    });
+  };
+
   const restartRound = async () => {
     if (!currentRound) return;
 
@@ -684,23 +723,36 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="bg-white border-2">
         <CardHeader>
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
             <div>
-              <CardTitle>Rounds</CardTitle>
-              <CardDescription>Generate and manage rounds</CardDescription>
+              <CardTitle style={{ color: "#111827" }}>Rounds</CardTitle>
+              <CardDescription className="text-gray-500">Generate and manage rounds</CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setShowManagePlayers(true)}>
-              <Users className="h-4 w-4 mr-1" />
-              Manage Players
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={() => setShowManagePlayers(true)} className="bg-white" style={{ color: "#111827" }}>
+                <Users className="h-4 w-4 mr-1" />
+                Manage Players
+              </Button>
+              {rounds.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={deleteAllRounds}
+                  className="bg-white border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete All & Start Over
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {rounds.length === 0 ? (
             <div className="text-center py-8 space-y-4">
-              <p className="text-muted-foreground mb-4">No rounds created yet</p>
+              <p className="text-gray-500 mb-4">No rounds created yet</p>
               <div className="flex gap-3 justify-center">
                 <Button onClick={generateRound} disabled={generating} size="lg">
                   <Plus className="h-4 w-4 mr-2" />
@@ -730,6 +782,8 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                         if (currentIndex > 0) selectRound(rounds[currentIndex - 1]);
                       }}
                       disabled={!currentRound || rounds.findIndex((r) => r.id === currentRound.id) === 0}
+                      className="bg-white"
+                      style={{ color: "#111827" }}
                     >
                       <ChevronLeft className="h-5 w-5" />
                     </Button>
@@ -741,14 +795,14 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                         if (round) selectRound(round);
                       }}
                     >
-                      <SelectTrigger className="w-[180px] h-12">
+                      <SelectTrigger className="w-[180px] h-12 bg-white font-semibold" style={{ color: "#111827" }}>
                         <SelectValue>
                           Round {currentRound?.round_number}
                         </SelectValue>
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="bg-white">
                         {rounds.map((round) => (
-                          <SelectItem key={round.id} value={round.id}>
+                          <SelectItem key={round.id} value={round.id} style={{ color: "#111827" }}>
                             Round {round.round_number} ({round.status})
                           </SelectItem>
                         ))}
@@ -763,6 +817,8 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                         if (currentIndex < rounds.length - 1) selectRound(rounds[currentIndex + 1]);
                       }}
                       disabled={!currentRound || rounds.findIndex((r) => r.id === currentRound.id) === rounds.length - 1}
+                      className="bg-white"
+                      style={{ color: "#111827" }}
                     >
                       <ChevronRight className="h-5 w-5" />
                     </Button>
@@ -777,18 +833,22 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                               await fetchMatches(currentRound.id);
                             }
                             setShowManualEditor(true);
-                          }} 
-                          variant="outline" 
+                          }}
+                          variant="outline"
                           size="lg"
+                          className="bg-white"
+                          style={{ color: "#111827" }}
                         >
                           <Edit className="h-5 w-5 mr-2" />
                           Manual Edit
                         </Button>
-                        <Button 
-                          onClick={() => currentRound && regenerateRound(currentRound.id)} 
-                          variant="outline" 
+                        <Button
+                          onClick={() => currentRound && regenerateRound(currentRound.id)}
+                          variant="outline"
                           size="lg"
                           disabled={generating}
+                          className="bg-white"
+                          style={{ color: "#111827" }}
                         >
                           <Shuffle className="h-5 w-5 mr-2" />
                           Shuffle Pairings
@@ -810,11 +870,13 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                           }}
                           variant="outline"
                           size="lg"
+                          className="bg-white"
+                          style={{ color: "#111827" }}
                         >
                           <Edit className="h-5 w-5 mr-2" />
                           Manual Edit
                         </Button>
-                        <Button onClick={restartRound} variant="outline" size="lg">
+                        <Button onClick={restartRound} variant="outline" size="lg" className="bg-white" style={{ color: "#111827" }}>
                           <RotateCcw className="h-5 w-5 mr-2" />
                           Restart
                         </Button>
@@ -830,7 +892,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                           <Plus className="h-5 w-5 mr-2" />
                           Advance to Next Round
                         </Button>
-                        <Button onClick={() => setShowMultiRoundDialog(true)} disabled={generating} size="lg" variant="outline">
+                        <Button onClick={() => setShowMultiRoundDialog(true)} disabled={generating} size="lg" variant="outline" className="bg-white" style={{ color: "#111827" }}>
                           <Plus className="h-5 w-5 mr-2" />
                           Create Multiple New Rounds
                         </Button>
@@ -862,7 +924,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                       {activeMatches.map((match) => (
                         <Card
                           key={match.id}
-                          className="cursor-pointer hover:shadow-xl hover:border-primary/50 transition-all border-2 rounded-2xl overflow-hidden"
+                          className="cursor-pointer hover:shadow-xl hover:border-primary/50 transition-all border-2 rounded-2xl overflow-hidden bg-white"
                           onClick={() => handleMatchClick(match)}
                         >
                           <div className="bg-primary/10 px-3 sm:px-5 py-2 sm:py-3 border-b-2">
@@ -871,33 +933,33 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                                 Court {match.court_number}
                               </p>
                               {match.winner_team && (
-                                <span className="bg-success text-success-foreground px-2 sm:px-3 py-1 rounded-full text-xs font-medium">
+                                <span className="bg-success text-white px-2 sm:px-3 py-1 rounded-full text-xs font-medium">
                                   ✓ Complete
                                 </span>
                               )}
                             </div>
                           </div>
                           <CardContent className="p-3 sm:p-5 space-y-3 sm:space-y-4">
-                            <div className="flex items-center justify-between p-3 sm:p-4 bg-card rounded-xl border-2">
+                            <div className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl border-2">
                               <div className="flex-1 min-w-0 pr-2">
-                                <p className="font-semibold text-sm sm:text-base truncate">
+                                <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
                                   {match.player1?.name || "TBD"}
                                 </p>
                                 {match.player3 && (
-                                  <p className="font-semibold text-sm sm:text-base truncate">
+                                  <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
                                     {match.player3.name}
                                   </p>
                                 )}
                               </div>
                               <p className="text-3xl sm:text-4xl font-black text-primary flex-shrink-0">{match.team1_score}</p>
                             </div>
-                            <div className="flex items-center justify-between p-3 sm:p-4 bg-card rounded-xl border-2">
+                            <div className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl border-2">
                               <div className="flex-1 min-w-0 pr-2">
-                                <p className="font-semibold text-sm sm:text-base truncate">
+                                <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
                                   {match.player2?.name || "TBD"}
                                 </p>
                                 {match.player4 && (
-                                  <p className="font-semibold text-sm sm:text-base truncate">
+                                  <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
                                     {match.player4.name}
                                   </p>
                                 )}
@@ -911,15 +973,15 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
                     {byeMatches.length > 0 && (
                       <div className="mt-6">
-                        <h3 className="text-base sm:text-lg font-semibold mb-3">On BYE</h3>
+                        <h3 className="text-base sm:text-lg font-semibold mb-3" style={{ color: "#111827" }}>On BYE</h3>
                         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
                           {byeMatches.map((match) => (
-                            <Card key={match.id} className="border-2 border-muted">
+                            <Card key={match.id} className="border-2 border-gray-200 bg-white">
                               <CardContent className="p-3 sm:p-4">
-                                <p className="text-center font-semibold text-base sm:text-lg truncate">
+                                <p className="text-center font-semibold text-base sm:text-lg truncate" style={{ color: "#111827" }}>
                                   {match.player1?.name || "TBD"}
                                 </p>
-                                <p className="text-center text-sm text-muted-foreground mt-1">
+                                <p className="text-center text-sm text-gray-500 mt-1">
                                   sitting out this round
                                 </p>
                               </CardContent>
