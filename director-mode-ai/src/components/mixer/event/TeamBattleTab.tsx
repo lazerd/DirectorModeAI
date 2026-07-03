@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, GripVertical, X, Trophy, Users, Sparkles, Settings2, UserCheck, Zap, CalendarPlus, ListOrdered } from "lucide-react";
+import { Plus, GripVertical, X, Trophy, Users, Sparkles, Settings2, UserCheck, Zap, CalendarPlus, ListOrdered, Pencil, Check, ArrowLeftRight } from "lucide-react";
 import { snakeSplit, globalStrengthOrder, nextWeekCode, plusSevenDays } from "@/lib/teamBattle";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -53,13 +53,29 @@ interface CourtConfig {
   doublesCourts: number;
 }
 
-function SortablePlayer({ player, teamColor, onRemove }: { player: Player; teamColor: string; onRemove: (id: string) => void }) {
+function SortablePlayer({ player, teamColor, onRemove, onRename, onMove, moveToName }: {
+  player: Player;
+  teamColor: string;
+  onRemove: (id: string) => void;
+  onRename: (player: Player, newName: string) => void;
+  onMove: (player: Player) => void;
+  moveToName: string | null;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: player.event_player_id });
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(player.name);
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+  };
+
+  const saveEdit = () => {
+    setEditing(false);
+    const next = draft.trim();
+    if (next && next !== player.name) onRename(player, next);
+    else setDraft(player.name);
   };
 
   return (
@@ -76,23 +92,77 @@ function SortablePlayer({ player, teamColor, onRemove }: { player: Player; teamC
       >
         <GripVertical className="h-4 w-4 text-gray-400" />
       </button>
-      <div 
-        className="w-2 h-8 rounded-full flex-shrink-0" 
+      <div
+        className="w-2 h-8 rounded-full flex-shrink-0"
         style={{ backgroundColor: teamColor }}
       />
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{player.name}</p>
-        <p className="text-xs text-gray-500">{player.wins}W - {player.losses}L</p>
+        {editing ? (
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); saveEdit(); }
+              if (e.key === "Escape") { setDraft(player.name); setEditing(false); }
+            }}
+            autoFocus
+            className="w-full border-2 border-blue-400 rounded-md px-2 py-1 text-sm font-medium"
+            style={{ color: "#111827", backgroundColor: "#fff" }}
+          />
+        ) : (
+          <>
+            <p className="font-medium truncate" style={{ color: "#111827" }}>{player.name}</p>
+            <p className="text-xs text-gray-500">{player.wins}W - {player.losses}L</p>
+          </>
+        )}
       </div>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        onClick={() => onRemove(player.event_player_id)}
-        className="text-gray-400 hover:text-red-500 flex-shrink-0"
-      >
-        <X className="h-4 w-4" />
-      </Button>
+      {editing ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={saveEdit}
+          className="text-green-600 hover:text-green-700 flex-shrink-0 px-2"
+          title="Save name"
+        >
+          <Check className="h-4 w-4" />
+        </Button>
+      ) : (
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => { setDraft(player.name); setEditing(true); }}
+            className="text-gray-400 hover:text-blue-500 flex-shrink-0 px-2"
+            title="Edit name"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          {moveToName && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => onMove(player)}
+              className="text-gray-400 hover:text-purple-600 flex-shrink-0 px-2"
+              title={`Move to ${moveToName}`}
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onRemove(player.event_player_id)}
+            className="text-gray-400 hover:text-red-500 flex-shrink-0 px-2"
+            title="Remove from event"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </>
+      )}
     </div>
   );
 }
@@ -423,6 +493,40 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     setAddingToTeam(null);
   };
 
+  // Renames the underlying players record, so the fix carries into rounds,
+  // standings, and next week's cloned roster.
+  const handleRenamePlayer = async (player: Player, newName: string) => {
+    setPlayers(prev => prev.map(p => p.player_id === player.player_id ? { ...p, name: newName } : p));
+    const { error } = await supabase
+      .from("players")
+      .update({ name: newName })
+      .eq("id", player.player_id);
+    if (error) {
+      toast({ variant: "destructive", title: "Rename failed", description: error.message });
+      fetchPlayers();
+    } else {
+      toast({ title: "Name updated", description: `${player.name} is now ${newName}.` });
+    }
+  };
+
+  const handleMovePlayer = async (player: Player) => {
+    const otherTeam = teams.find(t => t.id !== player.team_id);
+    if (!otherTeam) return;
+    setPlayers(prev => prev.map(p =>
+      p.event_player_id === player.event_player_id ? { ...p, team_id: otherTeam.id } : p
+    ));
+    const { error } = await supabase
+      .from("event_players")
+      .update({ team_id: otherTeam.id })
+      .eq("id", player.event_player_id);
+    if (error) {
+      toast({ variant: "destructive", title: "Move failed", description: error.message });
+      fetchPlayers();
+    } else {
+      toast({ title: "Player moved", description: `${player.name} → ${otherTeam.name}` });
+    }
+  };
+
   const handleRemovePlayer = async (eventPlayerId: string) => {
     const { error } = await supabase
       .from("event_players")
@@ -699,7 +803,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
                   className="w-4 h-4 rounded-full mx-auto mb-2"
                   style={{ backgroundColor: teams[0].color }}
                 />
-                <p className="font-bold text-lg">{teams[0].name}</p>
+                <p className="font-bold text-lg" style={{ color: "#111827" }}>{teams[0].name}</p>
                 <p className="text-4xl font-black" style={{ color: teams[0].color }}>
                   {teamScores[teams[0].id] || 0}
                 </p>
@@ -713,7 +817,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
                   className="w-4 h-4 rounded-full mx-auto mb-2"
                   style={{ backgroundColor: teams[1].color }}
                 />
-                <p className="font-bold text-lg">{teams[1].name}</p>
+                <p className="font-bold text-lg" style={{ color: "#111827" }}>{teams[1].name}</p>
                 <p className="text-4xl font-black" style={{ color: teams[1].color }}>
                   {teamScores[teams[1].id] || 0}
                 </p>
@@ -729,7 +833,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           <CardTitle className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <UserCheck className="h-5 w-5 text-green-600" />
-              <span>Check-in</span>
+              <span style={{ color: "#111827" }}>Check-in</span>
               <span className="text-sm font-normal text-gray-500">
                 {checkedIn.length} of {players.length} here
               </span>
@@ -825,7 +929,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           <CardTitle className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Settings2 className="h-5 w-5 text-purple-600" />
-              <span>Match Configuration</span>
+              <span style={{ color: "#111827" }}>Match Configuration</span>
             </div>
             <Button
               variant="outline"
@@ -850,7 +954,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
               }`}
             >
               <p className="text-2xl mb-1">🎾</p>
-              <p className="font-semibold text-sm">Singles Only</p>
+              <p className="font-semibold text-sm" style={{ color: "#111827" }}>Singles Only</p>
               <p className="text-xs text-gray-500">1v1 matches</p>
             </button>
             <button
@@ -862,7 +966,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
               }`}
             >
               <p className="text-2xl mb-1">👥</p>
-              <p className="font-semibold text-sm">Doubles Only</p>
+              <p className="font-semibold text-sm" style={{ color: "#111827" }}>Doubles Only</p>
               <p className="text-xs text-gray-500">2v2 matches</p>
             </button>
             <button
@@ -874,7 +978,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
               }`}
             >
               <p className="text-2xl mb-1">🎯</p>
-              <p className="font-semibold text-sm">Mixed</p>
+              <p className="font-semibold text-sm" style={{ color: "#111827" }}>Mixed</p>
               <p className="text-xs text-gray-500">Singles + Doubles</p>
             </button>
           </div>
@@ -882,7 +986,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           {/* Mixed Mode Slider */}
           {courtConfig.mode === 'mixed' && event.num_courts > 1 && (
             <div className="p-4 bg-white rounded-xl border-2 border-gray-200">
-              <div className="flex justify-between text-sm mb-2">
+              <div className="flex justify-between text-sm mb-2" style={{ color: "#111827" }}>
                 <span>Singles Courts: {courtConfig.singlesCourts}</span>
                 <span>Doubles Courts: {courtConfig.doublesCourts}</span>
               </div>
@@ -934,7 +1038,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
                     className="w-4 h-4 rounded-full"
                     style={{ backgroundColor: team.color }}
                   />
-                  <span>{team.name}</span>
+                  <span style={{ color: "#111827" }}>{team.name}</span>
                   <span className="text-sm font-normal text-gray-500">
                     ({teamPlayers.length} players)
                   </span>
@@ -958,6 +1062,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
                       }
                     }}
                     className="flex-1 bg-white"
+                    style={{ color: "#111827" }}
                   />
                   <Button 
                     onClick={() => handleAddPlayer(team.id)}
@@ -997,6 +1102,9 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
                                 player={player}
                                 teamColor={team.color}
                                 onRemove={handleRemovePlayer}
+                                onRename={handleRenamePlayer}
+                                onMove={handleMovePlayer}
+                                moveToName={teams.find(t => t.id !== team.id)?.name ?? null}
                               />
                             </div>
                           </div>
