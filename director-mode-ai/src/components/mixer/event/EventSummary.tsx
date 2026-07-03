@@ -50,6 +50,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
   const [eventDate, setEventDate] = useState("");
   const [isTeamBattle, setIsTeamBattle] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [teamRosters, setTeamRosters] = useState<Record<string, string[]>>({});
   const [winningTeam, setWinningTeam] = useState<Team | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [numWinners, setNumWinners] = useState(1);
@@ -213,15 +214,20 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
 
     const { data: eventPlayers } = await supabase
       .from("event_players")
-      .select("player_id, team_id")
+      .select("player_id, team_id, players(name)")
       .eq("event_id", eventId);
 
     if (!eventPlayers) return;
 
     const playerTeamMap: Record<string, string> = {};
-    eventPlayers.forEach(ep => {
-      if (ep.team_id) playerTeamMap[ep.player_id] = ep.team_id;
+    const rosters: Record<string, string[]> = {};
+    eventPlayers.forEach((ep: any) => {
+      if (ep.team_id) {
+        playerTeamMap[ep.player_id] = ep.team_id;
+        if (ep.players?.name) (rosters[ep.team_id] ??= []).push(ep.players.name);
+      }
     });
+    setTeamRosters(rosters);
 
     const teamScores: Record<string, number> = {};
     teamsData.forEach(t => teamScores[t.id] = 0);
@@ -387,9 +393,9 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
             ) : (
               <Trophy className="h-8 w-8 text-primary" />
             )}
-            Event Complete!
+            <span style={{ color: "#111827" }}>Event Complete!</span>
           </CardTitle>
-          <CardDescription className="text-lg">
+          <CardDescription className="text-lg text-gray-500">
             {eventName} • {totalRounds} rounds played
           </CardDescription>
         </CardHeader>
@@ -475,7 +481,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
       {isTeamBattle && teams.length === 2 && (
         <Card className="border-4 border-purple-500 bg-gradient-to-br from-blue-50 via-purple-50 to-red-50">
           <CardHeader className="bg-gradient-to-r from-blue-100 via-purple-100 to-red-100">
-            <CardTitle className="flex items-center gap-2 text-2xl justify-center">
+            <CardTitle className="flex items-center gap-2 text-2xl justify-center" style={{ color: "#111827" }}>
               <Swords className="h-7 w-7 text-purple-600" />
               Team Battle Results
             </CardTitle>
@@ -484,13 +490,13 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
             <div className="flex items-center justify-center gap-6 mb-6">
               <div className="text-center flex-1">
                 <div className="w-6 h-6 rounded-full mx-auto mb-2" style={{ backgroundColor: teams[0].color }} />
-                <p className="font-bold text-xl">{teams[0].name}</p>
+                <p className="font-bold text-xl" style={{ color: "#111827" }}>{teams[0].name}</p>
                 <p className="text-5xl font-black" style={{ color: teams[0].color }}>{teams[0].score}</p>
               </div>
               <div className="text-4xl font-bold text-gray-300">vs</div>
               <div className="text-center flex-1">
                 <div className="w-6 h-6 rounded-full mx-auto mb-2" style={{ backgroundColor: teams[1].color }} />
-                <p className="font-bold text-xl">{teams[1].name}</p>
+                <p className="font-bold text-xl" style={{ color: "#111827" }}>{teams[1].name}</p>
                 <p className="text-5xl font-black" style={{ color: teams[1].color }}>{teams[1].score}</p>
               </div>
             </div>
@@ -500,6 +506,19 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
                 <p className="text-lg font-medium text-gray-600 mb-1">Winner</p>
                 <p className="text-4xl font-black" style={{ color: winningTeam.color }}>{winningTeam.name}</p>
                 <p className="text-lg text-gray-500 mt-2">{winningTeam.score} match wins</p>
+                {(teamRosters[winningTeam.id]?.length ?? 0) > 0 && (
+                  <div className="mt-4 flex flex-wrap justify-center gap-2">
+                    {teamRosters[winningTeam.id].map(name => (
+                      <span
+                        key={name}
+                        className="px-3 py-1.5 rounded-full text-sm font-semibold bg-white border-2"
+                        style={{ color: "#111827", borderColor: winningTeam.color }}
+                      >
+                        🏆 {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : teams[0].score === teams[1].score ? (
               <div className="text-center p-6 rounded-2xl border-4 border-purple-300 bg-purple-50">
@@ -543,30 +562,30 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
 
       <div className="grid gap-4 md:grid-cols-2">
         {bestUpset && (
-          <Card>
+          <Card className="bg-white border-2">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2" style={{ color: "#111827" }}>
                 <Award className="h-5 w-5 text-accent" />
                 Giant Slayer
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-xl font-semibold">{bestUpset.player_name}</p>
-              <p className="text-sm text-muted-foreground mt-1">{bestUpset.wins} wins with impressive upsets</p>
+              <p className="text-xl font-semibold" style={{ color: "#111827" }}>{bestUpset.player_name}</p>
+              <p className="text-sm text-gray-500 mt-1">{bestUpset.wins} wins with impressive upsets</p>
             </CardContent>
           </Card>
         )}
         {mostConsistent && (
-          <Card>
+          <Card className="bg-white border-2">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2" style={{ color: "#111827" }}>
                 <TrendingUp className="h-5 w-5 text-success" />
                 Most Consistent
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-xl font-semibold">{mostConsistent.player_name}</p>
-              <p className="text-sm text-muted-foreground mt-1">+{mostConsistent.games_won - mostConsistent.games_lost} game differential</p>
+              <p className="text-xl font-semibold" style={{ color: "#111827" }}>{mostConsistent.player_name}</p>
+              <p className="text-sm text-gray-500 mt-1">+{mostConsistent.games_won - mostConsistent.games_lost} game differential</p>
             </CardContent>
           </Card>
         )}
