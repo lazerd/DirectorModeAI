@@ -282,129 +282,148 @@ export class RoundGenerator {
     }
   }
 
+  // TEAM BATTLE: line-based matchups by strength order, like real team tennis.
+  // Singles lines come off the top of each roster (court 1 = the two #1s),
+  // doubles fill below with adjacent-rank partners, pair k vs pair k.
+  // Fresh matchups trump line purity: a repeat opponent/partner (-450) loses
+  // to any fresh choice within the 3-line search window (-100/line), so every
+  // round produces different matchups until the window is exhausted. The hard
+  // window cap is what guarantees a #1 can never draw the other team's bottom
+  // player. `randomize` is intentionally ignored here: shuffling would
+  // destroy strength alignment.
   private generateTeamBattleRound(roundNumber: number): Pairing[] {
     const config = this.teamBattleConfig!;
     const pairings: Pairing[] = [];
 
-    const sortPlayers = (players: Player[]) => {
-      const sorted = [...players];
-      if (this.randomize) {
-        return shuffle(sorted);
-      }
-      sorted.sort((a, b) => {
+    const byStrength = (players: Player[]) => [...players].sort((a, b) => this.compareStrength(a, b));
+
+    // Fair bye rotation: fewest byes sit first; among ties, most matches played.
+    // (Bye matches aren't seeded into history, so a prior bye shows up as a
+    // lower timesPlayed and protects that player from sitting twice.)
+    const pickByes = (team: Player[], byesNeeded: number): Player[] => {
+      if (byesNeeded <= 0) return [];
+      const sorted = [...team].sort((a, b) => {
         const hA = this.getHistory(a.player_id);
         const hB = this.getHistory(b.player_id);
-        if (!hA || !hB) return 0;
-        if (hA.byeCount !== hB.byeCount) return hB.byeCount - hA.byeCount;
-        return hA.timesPlayed - hB.timesPlayed;
+        const byeDiff = (hA?.byeCount ?? 0) - (hB?.byeCount ?? 0);
+        if (byeDiff !== 0) return byeDiff;
+        const playDiff = (hB?.timesPlayed ?? 0) - (hA?.timesPlayed ?? 0);
+        if (playDiff !== 0) return playDiff;
+        return Math.random() - 0.5;
       });
-      return sorted;
+      return sorted.slice(0, byesNeeded);
     };
 
-    const team1Players = sortPlayers(this.players.filter(p => p.team_id === config.team1Id));
-    const team2Players = sortPlayers(this.players.filter(p => p.team_id === config.team2Id));
+    const team1All = this.players.filter(p => p.team_id === config.team1Id);
+    const team2All = this.players.filter(p => p.team_id === config.team2Id);
 
-    const available1 = [...team1Players];
-    const available2 = [...team2Players];
+    const neededPerTeam = config.singlesCourts + config.doublesCourts * 2;
+    const byes1 = pickByes(team1All, team1All.length - neededPerTeam);
+    const byes2 = pickByes(team2All, team2All.length - neededPerTeam);
+    const byeIds = new Set([...byes1, ...byes2].map(p => p.player_id));
 
-    // Generate doubles matches first (Team1 pair vs Team2 pair)
-    for (let i = 0; i < config.doublesCourts && available1.length >= 2 && available2.length >= 2; i++) {
-      let bestT1Pair: Player[] | null = null;
-      let bestT1Score = -Infinity;
-      
-      for (let a = 0; a < Math.min(available1.length - 1, 4); a++) {
-        for (let b = a + 1; b < Math.min(available1.length, 5); b++) {
-          let score = 0;
-          const h1 = this.getHistory(available1[a].player_id);
-          const h2 = this.getHistory(available1[b].player_id);
-          score -= (h1?.timesPlayed || 0) + (h2?.timesPlayed || 0);
-          if (this.hasPlayedWith(available1[a].player_id, available1[b].player_id)) {
-            score -= 500;
-          }
-          score += Math.random() * 50 - 25;
-          if (score > bestT1Score) {
-            bestT1Score = score;
-            bestT1Pair = [available1[a], available1[b]];
+    const available1 = byStrength(team1All.filter(p => !byeIds.has(p.player_id)));
+    const available2 = byStrength(team2All.filter(p => !byeIds.has(p.player_id)));
+
+    // Joint search over the whole round. Candidate singles line-ups draw from
+    // each team's top S+2 (so no line ever sits more than 2 off its natural
+    // spot); everything left forms the doubles pools, paired via exhaustive
+    // matching with court assignments permuted. The complete round is scored
+    // at once — repeats (-450 opponent/partner), line misalignment (-100/line),
+    // and doubles strength mismatch (-50/rank of pair-sum gap) — so freshness
+    // and fairness trade off globally instead of court by court.
+    const S = Math.min(config.singlesCourts, available1.length, available2.length);
+    const D = Math.min(
+      config.doublesCourts,
+      Math.floor((available1.length - S) / 2),
+      Math.floor((available2.length - S) / 2),
+    );
+
+    const pos1 = new Map(available1.map((p, i) => [p.player_id, i] as const));
+    const pos2 = new Map(available2.map((p, i) => [p.player_id, i] as const));
+
+    const prep = (avail: Player[], sets: number[][]) => sets.map(set => {
+      const chosen = new Set(set);
+      const rest = avail.filter((_, idx) => !chosen.has(idx));
+      return {
+        set,
+        singles: set.map(i => avail[i]),
+        pool: rest.slice(0, 2 * D),
+        leftover: rest.slice(2 * D),
+        matchings: this.matchingCandidates(rest.slice(0, 2 * D), 12),
+      };
+    });
+
+    const options1 = prep(available1, this.combosOf(Math.min(S + 2, available1.length), S));
+    const options2 = prep(available2, this.combosOf(Math.min(S + 2, available2.length), S));
+    const courtIdx = Array.from({ length: D }, (_, i) => i);
+    const perms = D <= 4 ? this.permutations(courtIdx) : [courtIdx];
+
+    let best: {
+      o1: typeof options1[number]; o2: typeof options2[number];
+      m1: Player[][]; m2: Player[][]; perm: number[];
+    } | null = null;
+    let bestScore = -Infinity;
+
+    for (const o1 of options1) {
+      for (const o2 of options2) {
+        let sScore = 0;
+        for (let i = 0; i < S; i++) {
+          sScore -= 100 * Math.abs(o1.set[i] - o2.set[i]);
+          if (this.hasPlayedAgainst(o1.singles[i].player_id, o2.singles[i].player_id)) sScore -= 450;
+        }
+        for (const m1 of o1.matchings) {
+          for (const m2 of o2.matchings) {
+            for (const perm of perms) {
+              let dScore = m1.score + m2.score;
+              for (let c = 0; c < D; c++) {
+                const pa = m1.pairs[c];
+                const pb = m2.pairs[perm[c]];
+                dScore -= 100 * Math.abs(c - perm[c]);
+                dScore -= 50 * Math.abs(
+                  pos1.get(pa[0].player_id)! + pos1.get(pa[1].player_id)!
+                  - pos2.get(pb[0].player_id)! - pos2.get(pb[1].player_id)!);
+                for (const a of pa) {
+                  for (const b of pb) {
+                    if (this.hasPlayedAgainst(a.player_id, b.player_id)) dScore -= 100;
+                  }
+                }
+              }
+              const total = sScore + dScore + Math.random() * 40 - 20;
+              if (total > bestScore) {
+                bestScore = total;
+                best = { o1, o2, m1: m1.pairs, m2: m2.pairs, perm };
+              }
+            }
           }
         }
-      }
-
-      let bestT2Pair: Player[] | null = null;
-      let bestT2Score = -Infinity;
-      
-      for (let a = 0; a < Math.min(available2.length - 1, 4); a++) {
-        for (let b = a + 1; b < Math.min(available2.length, 5); b++) {
-          let score = 0;
-          const h1 = this.getHistory(available2[a].player_id);
-          const h2 = this.getHistory(available2[b].player_id);
-          score -= (h1?.timesPlayed || 0) + (h2?.timesPlayed || 0);
-          if (this.hasPlayedWith(available2[a].player_id, available2[b].player_id)) {
-            score -= 500;
-          }
-          score += Math.random() * 50 - 25;
-          if (score > bestT2Score) {
-            bestT2Score = score;
-            bestT2Pair = [available2[a], available2[b]];
-          }
-        }
-      }
-
-      if (bestT1Pair && bestT2Pair) {
-        pairings.push({
-          player1_id: bestT1Pair[0].player_id,
-          player2_id: bestT2Pair[0].player_id,
-          player3_id: bestT1Pair[1].player_id,
-          player4_id: bestT2Pair[1].player_id,
-        });
-
-        bestT1Pair.forEach(p => {
-          const idx = available1.findIndex(ap => ap.player_id === p.player_id);
-          if (idx >= 0) available1.splice(idx, 1);
-        });
-        bestT2Pair.forEach(p => {
-          const idx = available2.findIndex(ap => ap.player_id === p.player_id);
-          if (idx >= 0) available2.splice(idx, 1);
-        });
       }
     }
 
-    // Generate singles matches (Team1 player vs Team2 player)
-    for (let i = 0; i < config.singlesCourts && available1.length >= 1 && available2.length >= 1; i++) {
-      let bestMatch: { t1: Player, t2: Player, score: number } | null = null;
-
-      for (let a = 0; a < Math.min(available1.length, 4); a++) {
-        for (let b = 0; b < Math.min(available2.length, 4); b++) {
-          let score = 0;
-          const h1 = this.getHistory(available1[a].player_id);
-          const h2 = this.getHistory(available2[b].player_id);
-          score -= (h1?.timesPlayed || 0) + (h2?.timesPlayed || 0);
-          if (this.hasPlayedAgainst(available1[a].player_id, available2[b].player_id)) {
-            score -= 300;
-          }
-          score += Math.random() * 50 - 25;
-          if (!bestMatch || score > bestMatch.score) {
-            bestMatch = { t1: available1[a], t2: available2[b], score };
-          }
-        }
-      }
-
-      if (bestMatch) {
+    if (best) {
+      for (let i = 0; i < S; i++) {
         pairings.push({
-          player1_id: bestMatch.t1.player_id,
-          player2_id: bestMatch.t2.player_id,
+          player1_id: best.o1.singles[i].player_id,
+          player2_id: best.o2.singles[i].player_id,
           player3_id: null,
           player4_id: null,
         });
-
-        const idx1 = available1.findIndex(p => p.player_id === bestMatch!.t1.player_id);
-        const idx2 = available2.findIndex(p => p.player_id === bestMatch!.t2.player_id);
-        if (idx1 >= 0) available1.splice(idx1, 1);
-        if (idx2 >= 0) available2.splice(idx2, 1);
+      }
+      for (let c = 0; c < D; c++) {
+        const [a1, a2] = best.m1[c];
+        const [b1, b2] = best.m2[best.perm[c]];
+        pairings.push({
+          player1_id: a1.player_id,
+          player2_id: b1.player_id,
+          player3_id: a2.player_id,
+          player4_id: b2.player_id,
+        });
       }
     }
 
-    // Remaining players get BYE
-    [...available1, ...available2].forEach(p => {
+    // Byes + any leftovers on an oversized team sit this round.
+    const leftovers = best ? [...best.o1.leftover, ...best.o2.leftover] : [...available1, ...available2];
+    [...byes1, ...byes2, ...leftovers].forEach(p => {
       pairings.push({
         player1_id: p.player_id,
         player2_id: null,
@@ -416,6 +435,63 @@ export class RoundGenerator {
     });
 
     return pairings;
+  }
+
+  // Top `cap` doubles pairings of one team's pool (strongest first): every
+  // perfect matching, scored for rank spread within pairs (-100/line skipped)
+  // and repeat partners (-450).
+  private matchingCandidates(pool: Player[], cap: number): Array<{ pairs: Player[][]; score: number }> {
+    const idxOf = new Map(pool.map((p, i) => [p.player_id, i] as const));
+    const idxSum = (pair: Player[]) => idxOf.get(pair[0].player_id)! + idxOf.get(pair[1].player_id)!;
+    const scored = this.enumerateDoublesMatchings(pool).map(pairs => {
+      let score = 0;
+      for (const [p, q] of pairs) {
+        score -= 100 * (Math.abs(idxOf.get(p.player_id)! - idxOf.get(q.player_id)!) - 1);
+        if (this.hasPlayedWith(p.player_id, q.player_id)) score -= 450;
+      }
+      return { pairs: [...pairs].sort((x, y) => idxSum(x) - idxSum(y)), score: score + Math.random() * 20 - 10 };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, cap);
+  }
+
+  // All k-subsets of {0..n-1}, ascending within each subset.
+  private combosOf(n: number, k: number): number[][] {
+    const res: number[][] = [];
+    const rec = (start: number, cur: number[]) => {
+      if (cur.length === k) { res.push([...cur]); return; }
+      for (let i = start; i <= n - (k - cur.length); i++) {
+        cur.push(i);
+        rec(i + 1, cur);
+        cur.pop();
+      }
+    };
+    rec(0, []);
+    return res;
+  }
+
+  // All perfect matchings of an even-sized pool (105 for 8 players — tiny).
+  private enumerateDoublesMatchings(pool: Player[]): Player[][][] {
+    if (pool.length === 0) return [[]];
+    const [first, ...rest] = pool;
+    const results: Player[][][] = [];
+    for (let i = 0; i < rest.length; i++) {
+      const remaining = rest.filter((_, idx) => idx !== i);
+      for (const sub of this.enumerateDoublesMatchings(remaining)) {
+        results.push([[first, rest[i]], ...sub]);
+      }
+    }
+    return results;
+  }
+
+  private permutations(arr: number[]): number[][] {
+    if (arr.length <= 1) return [[...arr]];
+    const out: number[][] = [];
+    arr.forEach((v, i) => {
+      const rest = [...arr.slice(0, i), ...arr.slice(i + 1)];
+      this.permutations(rest).forEach(p => out.push([v, ...p]));
+    });
+    return out;
   }
 
   // Compute how the courts should be split between doubles and singles for maximize-courts.
