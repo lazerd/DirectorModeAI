@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
-import { GraduationCap, Sparkles, Loader2, Save } from 'lucide-react';
+import Link from 'next/link';
+import { GraduationCap, Sparkles, Loader2, Save, Dumbbell } from 'lucide-react';
 
 const SKILLS = ['Serve', 'Forehand', 'Backhand', 'Volley', 'Movement', 'Strategy'];
 
@@ -82,7 +83,10 @@ export default function CoachModeRecapPage() {
           <GraduationCap className="text-violet-400" size={24} />
           <h1 className="font-display text-3xl">Coach Mode</h1>
         </div>
-        <p className="text-white/50 mb-8">Log a lesson and get an AI development summary for the player’s record.</p>
+        <p className="text-white/50 mb-4">Log a lesson and get an AI development summary for the player’s record.</p>
+        <Link href="/lessons/drills" className="inline-flex items-center gap-2 mb-8 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm hover:bg-white/10">
+          <Dumbbell size={15} className="text-yellow-300" /> Drill &amp; Clinic Planner
+        </Link>
 
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
