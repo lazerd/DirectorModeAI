@@ -62,7 +62,7 @@ export default function StringingJobsPage() {
   };
 
   const sendNotificationEmail = async (job: Job) => {
-    if (!job.customer.email) {
+    if (!job.customer?.email) {
       alert('No email address for this customer');
       return false;
     }
@@ -86,8 +86,8 @@ export default function StringingJobsPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to: job.customer.email,
-          customerName: job.customer.full_name,
+          to: job.customer?.email,
+          customerName: job.customer?.full_name,
           racketInfo,
           stringInfo: stringName,
           tension,
@@ -117,7 +117,7 @@ export default function StringingJobsPage() {
     // If marking as done, send email notification first
     if (newStatus === 'done' && job) {
       const emailSent = await sendNotificationEmail(job);
-      if (!emailSent && job.customer.email) {
+      if (!emailSent && job.customer?.email) {
         // Email failed but customer has email - ask if they want to continue
         if (!confirm('Email notification failed. Mark as ready anyway?')) {
           return;
@@ -324,12 +324,12 @@ function JobCard({
               href={`/stringing/customers/${job.customer_id}`}
               className="font-display text-lg hover:text-stringing transition-colors"
             >
-              {job.customer.full_name}
+              {job.customer?.full_name || 'Unknown customer'}
             </Link>
             <span className={`badge ${statusColors[job.status as keyof typeof statusColors]}`}>
               {job.status.replace('_', ' ')}
             </span>
-            {job.customer.email && (
+            {job.customer?.email && (
               <Mail size={14} className="text-gray-400" />
             )}
           </div>
@@ -370,15 +370,15 @@ function JobCard({
           )}
           {job.status === 'done' && (
             <>
-              {job.customer.email && (
+              {job.customer?.email && (
                 <button
                   onClick={async () => {
                     const ok = await onSendReminder(job);
-                    if (ok) alert(`Reminder email sent to ${job.customer.full_name}.`);
+                    if (ok) alert(`Reminder email sent to ${job.customer?.full_name}.`);
                   }}
                   className="btn btn-sm btn-ghost"
                   disabled={sendingEmail}
-                  title={`Send pickup reminder to ${job.customer.email}`}
+                  title={`Send pickup reminder to ${job.customer?.email}`}
                 >
                   <Mail size={14} />
                   {sendingEmail ? 'Sending...' : 'Remind'}
