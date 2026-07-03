@@ -18,9 +18,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { createClient } from '@/lib/supabase/client';
 import {
   Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
-  Waves, GraduationCap, ListOrdered, BarChart3, Sparkles, ExternalLink,
+  Waves, GraduationCap, ListOrdered, BarChart3, Sparkles, ExternalLink, Calendar,
   ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
@@ -56,10 +57,10 @@ const ITEMS: Item[] = [
 const EXPANDED = 248;
 const COLLAPSED = 72;
 
-function activeHref(pathname: string): string | null {
+function activeHref(pathname: string, items: Item[]): string | null {
   let best: string | null = null;
   let bestLen = -1;
-  for (const it of ITEMS) {
+  for (const it of items) {
     if (it.external) continue;
     const m = it.match ?? it.href;
     const hit = m === '/' ? pathname === '/' : pathname === m || pathname.startsWith(m + '/') || pathname === m;
@@ -74,7 +75,39 @@ export default function ClubSidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hovering, setHovering] = useState(false); // hover-to-peek when collapsed
   const [mounted, setMounted] = useState(false);
-  const active = activeHref(pathname);
+  // When the signed-in user is a club MEMBER (not a director/owner), show a
+  // member-appropriate nav instead of the full director toolset. null = show all.
+  const [memberNav, setMemberNav] = useState<Item[] | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return; // guest → full nav (marketing shell)
+        const { data: owned } = await supabase.from('cc_clubs').select('id').eq('owner_id', user.id).limit(1).maybeSingle();
+        if (owned) return; // director/owner → full nav
+        const { data: mem } = await supabase
+          .from('cc_club_members')
+          .select('role, cc_clubs(slug)')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle();
+        if (mem && (mem as any).role === 'member') {
+          const slug = (mem as any).cc_clubs?.slug as string | undefined;
+          setMemberNav([
+            { name: 'Home', href: '/', match: '/', icon: Home, color: '#D3FB52' },
+            ...(slug ? [{ name: 'Book a Court', href: `/courtsheet/${slug}`, match: '/courtsheet', icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
+            { name: 'My Account', href: '/client/dashboard', match: '/client/dashboard', icon: Calendar, color: '#60a5fa' },
+            { name: 'Find a Coach', href: '/find-coach', match: '/find-coach', icon: GraduationCap, color: '#a78bfa' },
+          ]);
+        }
+      } catch { /* keep full nav on any error */ }
+    })();
+  }, []);
+
+  const visibleItems = memberNav ?? ITEMS;
+  const active = activeHref(pathname, visibleItems);
 
   // Restore the pinned/collapsed preference before first paint of the rail.
   // Default is COLLAPSED (a thin icon rail) so the nav stays out of the way and
@@ -171,7 +204,7 @@ export default function ClubSidebar() {
 
         {/* Tools */}
         <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-1">
-          {ITEMS.map((it) => {
+          {visibleItems.map((it) => {
             const Icon = it.icon;
             const isActive = !it.external && it.href === active;
             const inner = (
