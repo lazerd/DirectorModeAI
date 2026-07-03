@@ -84,14 +84,65 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
         .from("events")
         .update({ num_winners: splitGender ? 2 : Math.max(1, numWinners), winners_split_gender: splitGender })
         .eq("id", event.id);
+
+      const renumbered = await remapExistingMatches(finalCourts);
+
       toast({
         title: "Format updated",
-        description: "Event format has been updated successfully.",
+        description: renumbered > 0
+          ? `Courts renumbered on ${renumbered} existing match${renumbered === 1 ? "" : "es"} too.`
+          : "Event format has been updated successfully.",
       });
       onFormatUpdated();
       onOpenChange(false);
     }
     setSaving(false);
+  };
+
+  // Court numbers are stamped onto matches at generation time, so editing the
+  // court list here must also renumber every already-generated match — the
+  // Rounds tab, public pages, and CourtSheet all read match.court_number.
+  // Each match slot i (position in the old list) moves to the new list's i.
+  const remapExistingMatches = async (newCourts: string[]): Promise<number> => {
+    const oldCourts = Array.from(
+      { length: Math.max(1, event.num_courts) },
+      (_, i) => event.court_names?.[i] ?? String(i + 1),
+    );
+    const unchanged = newCourts.length === oldCourts.length && newCourts.every((c, i) => c === oldCourts[i]);
+    if (unchanged) return 0;
+
+    const { data: rounds } = await supabase.from("rounds").select("id").eq("event_id", event.id);
+    const roundIds = (rounds ?? []).map(r => r.id);
+    if (roundIds.length === 0) return 0;
+
+    const { data: matches } = await supabase
+      .from("matches")
+      .select("id, court_number")
+      .in("round_id", roundIds);
+
+    // Per-match updates by id (a bulk old→new update would collide when the
+    // lists overlap, e.g. courts 1-4 → 2-5).
+    const updates = (matches ?? []).flatMap(m => {
+      const slot = oldCourts.indexOf(String(m.court_number));
+      if (slot < 0 || slot >= newCourts.length) return [];
+      const parsed = parseInt(newCourts[slot], 10);
+      const next = Number.isFinite(parsed) ? parsed : slot + 1;
+      return next === m.court_number ? [] : [{ id: m.id, court_number: next }];
+    });
+    if (updates.length === 0) return 0;
+
+    const results = await Promise.all(
+      updates.map(u => supabase.from("matches").update({ court_number: u.court_number }).eq("id", u.id)),
+    );
+    const failed = results.filter(r => r.error);
+    if (failed.length) {
+      toast({
+        variant: "destructive",
+        title: "Some matches kept old court numbers",
+        description: failed[0].error!.message,
+      });
+    }
+    return updates.length - failed.length;
   };
 
   const handleNumberChange = (setter: (val: number) => void, value: string) => {
@@ -163,7 +214,7 @@ const EditEventFormatDialog = ({ event, open, onOpenChange, onFormatUpdated }: E
             <div>
               <Label className="text-sm font-medium">Court numbers</Label>
               <p className="mt-0.5 mb-2 text-xs text-gray-500">
-                The actual number of each court you&apos;re using. Defaults to 1–{numCourts}; change them if you&apos;re on, say, courts 2–5. These show on every match and result.
+                The actual number of each court you&apos;re using. Defaults to 1–{numCourts}; change them if you&apos;re on, say, courts 2–5. Saving renumbers all existing matches too.
               </p>
               <div className="flex flex-wrap gap-2">
                 {courtSlots.map((val, i) => (
