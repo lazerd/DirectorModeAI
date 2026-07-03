@@ -27,6 +27,7 @@ interface MatchHistory {
   opponents: Set<string>;
   timesPlayed: number;
   byeCount: number;
+  singlesPlayed: number;
 }
 
 interface TeamBattleConfig {
@@ -60,6 +61,7 @@ export class RoundGenerator {
         opponents: new Set(),
         timesPlayed: 0,
         byeCount: 0,
+        singlesPlayed: 0,
       });
     });
   }
@@ -148,6 +150,13 @@ export class RoundGenerator {
         if (history) history.timesPlayed++;
       }
     });
+
+    if (!p3 && !p4) {
+      [p1, p2].forEach(pid => {
+        const history = this.getHistory(pid);
+        if (history) history.singlesPlayed++;
+      });
+    }
   }
 
   private scoreMatchup(p1: string, p2: string, p3: string | null, p4: string | null): number {
@@ -326,18 +335,33 @@ export class RoundGenerator {
     const available2 = byStrength(team2All.filter(p => !byeIds.has(p.player_id)));
 
     // Joint search over the whole round. Candidate singles line-ups draw from
-    // each team's top S+2 (so no line ever sits more than 2 off its natural
-    // spot); everything left forms the doubles pools, paired via exhaustive
-    // matching with court assignments permuted. The complete round is scored
-    // at once — repeats (-450 opponent/partner), line misalignment (-100/line),
-    // and doubles strength mismatch (-50/rank of pair-sum gap) — so freshness
-    // and fairness trade off globally instead of court by court.
+    // a wide window of each team (so singles duty can rotate down the roster
+    // night-long), but a hard cap keeps every line within 2 spots of its
+    // opposite number — the two sides of a singles court are always close in
+    // strength even when the court itself is mid-roster. Everything left
+    // forms the doubles pools, paired via exhaustive matching with court
+    // assignments permuted. The complete round is scored at once — repeat
+    // opponents/partners -450, playing singles again -450 per prior singles
+    // match (players rotate through singles before anyone goes twice), line
+    // misalignment -100/line, doubles strength mismatch -50/rank — so
+    // freshness and fairness trade off globally instead of court by court.
     const S = Math.min(config.singlesCourts, available1.length, available2.length);
     const D = Math.min(
       config.doublesCourts,
       Math.floor((available1.length - S) / 2),
       Math.floor((available2.length - S) / 2),
     );
+    // Singles fairness is RELATIVE: putting someone in singles only costs
+    // points if a teammate with fewer singles turns is still available. Once
+    // everyone has played singles, the pressure disappears and matchup
+    // freshness takes over again.
+    const singlesCount = (p: Player) => this.getHistory(p.player_id)?.singlesPlayed ?? 0;
+    const minSingles1 = Math.min(...available1.map(singlesCount), 0x7fffffff);
+    const minSingles2 = Math.min(...available2.map(singlesCount), 0x7fffffff);
+    // ±20 jitter keeps normal generation stable; the Shuffle button sets
+    // randomize, where ±100 picks among near-equal rounds so it visibly moves
+    // without ever out-shouting a repeat penalty (-450 vs max ±200 swing).
+    const jitterSpan = this.randomize ? 200 : 40;
 
     const pos1 = new Map(available1.map((p, i) => [p.player_id, i] as const));
     const pos2 = new Map(available2.map((p, i) => [p.player_id, i] as const));
@@ -354,8 +378,8 @@ export class RoundGenerator {
       };
     });
 
-    const options1 = prep(available1, this.combosOf(Math.min(S + 2, available1.length), S));
-    const options2 = prep(available2, this.combosOf(Math.min(S + 2, available2.length), S));
+    const options1 = prep(available1, this.combosOf(Math.min(3 * S + 2, available1.length), S));
+    const options2 = prep(available2, this.combosOf(Math.min(3 * S + 2, available2.length), S));
     const courtIdx = Array.from({ length: D }, (_, i) => i);
     const perms = D <= 4 ? this.permutations(courtIdx) : [courtIdx];
 
@@ -368,10 +392,15 @@ export class RoundGenerator {
     for (const o1 of options1) {
       for (const o2 of options2) {
         let sScore = 0;
+        let aligned = true;
         for (let i = 0; i < S; i++) {
+          if (Math.abs(o1.set[i] - o2.set[i]) > 2) { aligned = false; break; }
           sScore -= 100 * Math.abs(o1.set[i] - o2.set[i]);
+          sScore -= 900 * Math.max(0, singlesCount(o1.singles[i]) - minSingles1);
+          sScore -= 900 * Math.max(0, singlesCount(o2.singles[i]) - minSingles2);
           if (this.hasPlayedAgainst(o1.singles[i].player_id, o2.singles[i].player_id)) sScore -= 450;
         }
+        if (!aligned) continue;
         for (const m1 of o1.matchings) {
           for (const m2 of o2.matchings) {
             for (const perm of perms) {
@@ -389,7 +418,7 @@ export class RoundGenerator {
                   }
                 }
               }
-              const total = sScore + dScore + Math.random() * 40 - 20;
+              const total = sScore + dScore + Math.random() * jitterSpan - jitterSpan / 2;
               if (total > bestScore) {
                 bestScore = total;
                 best = { o1, o2, m1: m1.pairs, m2: m2.pairs, perm };
