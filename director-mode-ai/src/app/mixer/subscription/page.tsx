@@ -40,7 +40,7 @@ export default async function MixerSubscriptionPage() {
             <Sparkles size={20} className="text-yellow-300 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
               <div className="text-yellow-300 font-medium">
-                You're on a 90-day free Pro trial.
+                You're on a free Pro trial.
               </div>
               <div className="text-white/70 text-sm mt-1">
                 {ctx.grandfatheredDaysRemaining} day{ctx.grandfatheredDaysRemaining === 1 ? '' : 's'} remaining. Pick a plan before the trial ends to keep DJ Console, SMS, and unlimited features.
