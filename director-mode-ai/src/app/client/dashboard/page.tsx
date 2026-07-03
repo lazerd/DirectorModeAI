@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Calendar, Clock, MapPin, User, LogOut, X, Plus, Search, Wrench, Trophy, ExternalLink } from 'lucide-react';
+import { Calendar, Clock, MapPin, User, LogOut, X, Plus, Search, Wrench, Trophy, ExternalLink, TrendingUp, Sparkles } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format, parseISO, isPast } from 'date-fns';
 import Link from 'next/link';
@@ -41,7 +41,16 @@ type MixerEvent = {
   event_code: string;
 };
 
-type Tab = 'lessons' | 'stringing' | 'events';
+type Tab = 'lessons' | 'stringing' | 'events' | 'progress';
+
+type ProgressNote = {
+  id: string;
+  lesson_date: string;
+  focus_area: string | null;
+  content: string | null;
+  ai_summary: string | null;
+  created_at: string;
+};
 
 export default function ClientDashboardPage() {
   const [activeTab, setActiveTab] = useState<Tab>('lessons');
@@ -54,6 +63,8 @@ export default function ClientDashboardPage() {
   const [clientEmail, setClientEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  const [progressNotes, setProgressNotes] = useState<ProgressNote[]>([]);
+  const [latestSkills, setLatestSkills] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -116,6 +127,26 @@ export default function ClientDashboardPage() {
           slug: r.lesson_coaches?.slug,
           display_name: r.lesson_coaches?.display_name
         })).filter((c: Coach) => c.slug));
+      }
+
+      // Coach Mode: my development notes (AI summaries) + latest skill ratings
+      const { data: notes } = await supabase
+        .from('lesson_notes')
+        .select('id, lesson_date, focus_area, content, ai_summary, created_at')
+        .eq('client_id', client.id)
+        .order('lesson_date', { ascending: false })
+        .limit(50);
+      if (notes) setProgressNotes(notes as ProgressNote[]);
+
+      const { data: snaps } = await supabase
+        .from('lesson_skill_snapshots')
+        .select('skill, rating, recorded_at')
+        .eq('client_id', client.id)
+        .order('recorded_at', { ascending: false });
+      if (snaps) {
+        const latest: Record<string, number> = {};
+        for (const s of snaps as any[]) if (!(s.skill in latest)) latest[s.skill] = s.rating;
+        setLatestSkills(latest);
       }
 
       // Get booked lessons with coach email
@@ -354,6 +385,17 @@ export default function ClientDashboardPage() {
               <Trophy className="h-4 w-4" />
               Events
             </button>
+            <button
+              onClick={() => setActiveTab('progress')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === 'progress'
+                  ? 'border-violet-600 text-violet-600'
+                  : 'border-transparent text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <TrendingUp className="h-4 w-4" />
+              My Progress
+            </button>
           </div>
         </div>
       </div>
@@ -569,6 +611,63 @@ export default function ClientDashboardPage() {
                       </div>
                     </div>
                   </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PROGRESS TAB */}
+        {activeTab === 'progress' && (
+          <div className="space-y-6">
+            {Object.keys(latestSkills).length > 0 && (
+              <div className="bg-white rounded-xl border p-5">
+                <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-violet-600" /> Latest skill ratings
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {Object.entries(latestSkills).map(([skill, rating]) => (
+                    <div key={skill} className="rounded-lg border p-3">
+                      <div className="text-sm text-gray-600">{skill}</div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <div className="flex-1 h-2 rounded-full bg-gray-100 overflow-hidden">
+                          <div className="h-full bg-violet-500" style={{ width: `${rating * 10}%` }} />
+                        </div>
+                        <span className="text-sm font-semibold text-gray-900">{rating}/10</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {progressNotes.length === 0 ? (
+              <div className="text-center py-12 bg-white rounded-xl border">
+                <Sparkles className="h-10 w-10 mx-auto text-gray-300 mb-3" />
+                <p className="text-gray-600 font-medium">No lesson recaps yet</p>
+                <p className="text-sm text-gray-400 mt-1">After your next lesson, your coach&apos;s AI summary shows up here.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {progressNotes.map((n) => (
+                  <div key={n.id} className="bg-white rounded-xl border p-5">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-semibold text-gray-900">
+                        {format(parseISO(n.lesson_date), 'MMM d, yyyy')}
+                      </span>
+                      {n.focus_area && (
+                        <span className="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-700">{n.focus_area}</span>
+                      )}
+                    </div>
+                    {n.ai_summary ? (
+                      <div className="flex items-start gap-2">
+                        <Sparkles className="h-4 w-4 text-violet-500 mt-0.5 flex-shrink-0" />
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{n.ai_summary}</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-600 whitespace-pre-wrap">{n.content}</p>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
