@@ -60,7 +60,10 @@ export default function DrillsPage() {
           <Dumbbell className="text-yellow-300" size={24} />
           <h1 className="font-display text-3xl">Drill &amp; Clinic Planner</h1>
         </div>
-        <p className="text-white/50 mb-6">AI picks the right drills from your library — for one player or a whole clinic.</p>
+        <p className="text-white/50 mb-3">AI picks the right drills from your library — for one player or a whole clinic.</p>
+        <a href="/lessons/drills/library" className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-lg bg-white/5 border border-white/10 text-sm hover:bg-white/10">
+          <Dumbbell size={15} className="text-yellow-300" /> Browse the full drill library
+        </a>
 
         <div className="inline-flex rounded-xl bg-white/5 p-1 mb-6">
           <button onClick={() => { setMode('player'); setResult(''); }} className={`px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${mode === 'player' ? 'bg-yellow-300 text-[#001820]' : 'text-white/60'}`}>
