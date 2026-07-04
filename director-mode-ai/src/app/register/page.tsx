@@ -36,6 +36,7 @@ export default function RegisterPage() {
           data: {
             full_name: fullName,
           },
+          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/welcome` : undefined,
         },
       });
 
@@ -47,11 +48,12 @@ export default function RegisterPage() {
       // If Supabase has email confirmation enabled, signUp returns no session.
       // Send the user to a confirmation screen instead of the dashboard.
       if (!data.session) {
-        router.push(`/verify-email?email=${encodeURIComponent(email)}`);
+        router.push(`/verify-email?email=${encodeURIComponent(email)}&next=/welcome`);
         return;
       }
 
-      router.push('/');
+      // New signups land on the first-run onboarding, not the marketing page.
+      router.push('/welcome');
       router.refresh();
     } catch {
       setError('An error occurred. Please try again.');
