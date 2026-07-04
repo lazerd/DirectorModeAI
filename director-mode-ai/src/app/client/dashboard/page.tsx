@@ -65,6 +65,7 @@ export default function ClientDashboardPage() {
   const [cancelling, setCancelling] = useState<string | null>(null);
   const [progressNotes, setProgressNotes] = useState<ProgressNote[]>([]);
   const [latestSkills, setLatestSkills] = useState<Record<string, number>>({});
+  const [assignedDrills, setAssignedDrills] = useState<any[]>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -148,6 +149,14 @@ export default function ClientDashboardPage() {
         for (const s of snaps as any[]) if (!(s.skill in latest)) latest[s.skill] = s.rating;
         setLatestSkills(latest);
       }
+
+      const { data: assigned } = await supabase
+        .from('client_drills')
+        .select('id, note, assigned_at, drills(name, category, instructions, coaching_points)')
+        .eq('client_id', client.id)
+        .order('assigned_at', { ascending: false })
+        .limit(20);
+      if (assigned) setAssignedDrills(assigned);
 
       // Get booked lessons with coach email
       const { data: slots } = await supabase
@@ -620,6 +629,22 @@ export default function ClientDashboardPage() {
         {/* PROGRESS TAB */}
         {activeTab === 'progress' && (
           <div className="space-y-6">
+            {assignedDrills.length > 0 && (
+              <div className="bg-white rounded-xl border p-5">
+                <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                  <Trophy className="h-4 w-4 text-violet-600" /> Drills from your coach
+                </h3>
+                <div className="space-y-2">
+                  {assignedDrills.map((a) => (
+                    <div key={a.id} className="rounded-lg border p-3">
+                      <div className="text-sm font-medium text-gray-900">{a.drills?.name || 'Drill'}</div>
+                      {a.drills?.instructions && <div className="text-xs text-gray-500 mt-0.5">{a.drills.instructions}</div>}
+                      {a.note && <div className="text-xs text-violet-700 mt-1">Coach note: {a.note}</div>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {Object.keys(latestSkills).length > 0 && (
               <div className="bg-white rounded-xl border p-5">
                 <h3 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
