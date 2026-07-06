@@ -19,6 +19,7 @@ import MatchupsTab from '@/components/leagues/jtt/MatchupsTab';
 import StandingsTab from '@/components/leagues/jtt/StandingsTab';
 import SettingsTab from '@/components/leagues/jtt/SettingsTab';
 import ResultsEmailModal from '@/components/leagues/jtt/ResultsEmailModal';
+import TournamentEmailModal from '@/components/leagues/jtt/TournamentEmailModal';
 
 type League = {
   id: string;
@@ -123,6 +124,7 @@ export default function JTTLeaguePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
+  const [tourneyEmailOpen, setTourneyEmailOpen] = useState(false);
 
   const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
@@ -241,6 +243,13 @@ export default function JTTLeaguePage() {
           </p>
         </div>
         <button
+          onClick={() => setTourneyEmailOpen(true)}
+          className="shrink-0 inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg px-3 py-2 text-sm"
+        >
+          <Trophy size={16} />
+          <span className="hidden sm:inline">Email tournament</span>
+        </button>
+        <button
           onClick={() => setEmailOpen(true)}
           className="shrink-0 inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg px-3 py-2 text-sm"
         >
@@ -256,6 +265,13 @@ export default function JTTLeaguePage() {
           matchups={matchups}
           lines={lines}
           onClose={() => setEmailOpen(false)}
+        />
+      )}
+
+      {tourneyEmailOpen && (
+        <TournamentEmailModal
+          leagueId={id}
+          onClose={() => setTourneyEmailOpen(false)}
         />
       )}
 
