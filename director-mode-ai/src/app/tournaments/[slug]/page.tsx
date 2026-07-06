@@ -5,6 +5,7 @@ import { Trophy, Calendar, Users, AlertCircle } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { quadScoringLabel } from '@/lib/quads';
 import RegisterForm from './RegisterForm';
+import DivisionToggle, { isSeasonEndSlug } from './DivisionToggle';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,6 +100,8 @@ export default async function PublicTournamentLandingPage({
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+        {isSeasonEndSlug(e.slug) && <DivisionToggle currentSlug={e.slug} />}
+
         {cancelled === '1' && (
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-200 flex items-start gap-2">
             <AlertCircle size={16} className="mt-0.5" />

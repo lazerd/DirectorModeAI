@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CheckCircle2, Trophy, Clock, CreditCard } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { squareConfigured, getOrder } from '@/lib/square';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,12 +27,35 @@ export default async function RegisteredPage({
   const { data: entry } = entryId
     ? await supabase
         .from('tournament_entries')
-        .select('id, player_name, position, payment_status')
+        .select('id, player_name, position, payment_status, square_order_id')
         .eq('id', entryId)
         .maybeSingle()
     : { data: null };
 
   const e: any = entry || {};
+
+  // Parent just got redirected back from Square — confirm the payment on the
+  // spot by checking the order, so the page shows "paid" immediately (the
+  // webhook is a backstop for anyone who closes the tab before returning).
+  if (e.id && e.payment_status === 'pending' && e.square_order_id && squareConfigured()) {
+    try {
+      const order = await getOrder(e.square_order_id);
+      const paid = order?.state === 'COMPLETED' || order?.net_amount_due_money?.amount === 0;
+      if (paid) {
+        await supabase
+          .from('tournament_entries')
+          .update({
+            payment_status: 'paid',
+            amount_paid_cents: order?.total_money?.amount ?? null,
+          })
+          .eq('id', e.id);
+        e.payment_status = 'paid';
+      }
+    } catch {
+      /* leave as pending; webhook will reconcile */
+    }
+  }
+
   const isWaitlist = e.position === 'waitlist';
   const isPending = e.position === 'pending_payment' || e.payment_status === 'pending';
 

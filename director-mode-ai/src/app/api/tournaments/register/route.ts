@@ -21,6 +21,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { stripe, platformFeeForCents } from '@/lib/stripe';
+import { squareConfigured, createEntryPaymentLink } from '@/lib/square';
 import { computeQuadComposite } from '@/lib/quads';
 import { sendQuadsConfirmEmail, sendQuadsWaitlistEmail } from '@/lib/quadEmails';
 
@@ -234,11 +235,37 @@ export async function POST(request: Request) {
 
     const fee = e.entry_fee_cents ?? 0;
 
-    // External payment link (PayPal/Square/etc.) — used when Stripe isn't
-    // available. Register the entry into the draw immediately and leave
-    // payment_status='pending'; the director reconciles the external payment
-    // list against entrants by hand before making draws. The confirmation page
-    // shows the pay link. Takes precedence over Stripe when set.
+    // Square dynamic checkout (preferred when Stripe is unavailable). Creates a
+    // Square-hosted payment link bound to THIS entry (order.reference_id =
+    // entry id), so the webhook marks the exact entry paid — the payment
+    // already knows the division because the entry does. Parent is redirected
+    // to Square to pay, then back to the confirmation page.
+    if (fee > 0 && squareConfigured()) {
+      const origin = new URL(request.url).origin;
+      try {
+        const { url, orderId, paymentLinkId } = await createEntryPaymentLink({
+          entryId: (entry as any).id,
+          amountCents: fee,
+          name: `Entry: ${e.name}`,
+          buyerEmail: player_email || parent_email || null,
+          redirectUrl: `${origin}/tournaments/${slug}/registered?entry=${(entry as any).id}`,
+        });
+        await admin
+          .from('tournament_entries')
+          .update({ square_order_id: orderId, square_payment_link_id: paymentLinkId })
+          .eq('id', (entry as any).id);
+        return NextResponse.json({ url, entry_id: (entry as any).id });
+      } catch (err: any) {
+        return NextResponse.json(
+          { error: `Could not start checkout: ${err?.message || 'Square error'}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Static external payment link (PayPal/Square dashboard link) — legacy
+    // fallback used only if Square API isn't configured. Registers into the
+    // draw with payment_status='pending' for manual reconciliation.
     if (fee > 0 && e.external_payment_url) {
       let position: 'in_draw' | 'waitlist' = 'in_draw';
       if (e.max_players && e.max_players > 0) {
