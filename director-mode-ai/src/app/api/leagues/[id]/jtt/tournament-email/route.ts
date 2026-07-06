@@ -144,7 +144,10 @@ export async function POST(
       );
     }
 
-    await persistRecipients(recipients);
+    // NOTE: unlike the results email, a send here does NOT overwrite the saved
+    // coach list — so the director can send a preview to a single coach (e.g.
+    // Thomas at Moraga) without losing the full 7-coach default. Use the
+    // explicit "Save as default" button to change the saved list.
 
     const replyTo = user.email || undefined;
     let sent = 0, skipped = 0, failed = 0;
