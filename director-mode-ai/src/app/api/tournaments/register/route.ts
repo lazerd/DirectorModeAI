@@ -284,36 +284,58 @@ export async function POST(request: Request) {
 
     const origin = new URL(request.url).origin;
     const applicationFee = platformFeeForCents(fee);
-    const session = await stripe.checkout.sessions.create(
-      {
-        mode: 'payment',
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: 'usd',
-              unit_amount: fee,
-              product_data: {
-                name: `Entry: ${e.name}`,
-                description: `Tournament entry — ${player_name}${isDoubles && partner_name ? ` + ${partner_name}` : ''}`,
-              },
+    const baseSessionParams = {
+      mode: 'payment' as const,
+      payment_method_types: ['card' as const],
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: 'usd',
+            unit_amount: fee,
+            product_data: {
+              name: `Entry: ${e.name}`,
+              description: `Tournament entry — ${player_name}${isDoubles && partner_name ? ` + ${partner_name}` : ''}`,
             },
           },
-        ],
-        ...(applicationFee > 0 && {
-          payment_intent_data: { application_fee_amount: applicationFee },
-        }),
-        customer_email: player_email || parent_email || undefined,
-        success_url: `${origin}/tournaments/${slug}/registered?entry=${(entry as any).id}`,
-        cancel_url: `${origin}/tournaments/${slug}?cancelled=1`,
-        metadata: {
-          tournament_entry_id: (entry as any).id,
-          slug,
         },
+      ],
+      customer_email: player_email || parent_email || undefined,
+      success_url: `${origin}/tournaments/${slug}/registered?entry=${(entry as any).id}`,
+      cancel_url: `${origin}/tournaments/${slug}?cancelled=1`,
+      metadata: {
+        tournament_entry_id: (entry as any).id,
+        slug,
       },
-      { stripeAccount: e.stripe_account_id }
-    );
+    };
+
+    // Try the destination charge WITH the platform application fee. If the
+    // platform's Connect application isn't activated to take application fees
+    // yet, Stripe rejects it — fall back to a plain destination charge (full
+    // amount to the director's connected account, no platform cut) so signups
+    // still work. The fee resumes automatically once the platform is activated.
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create(
+        {
+          ...baseSessionParams,
+          ...(applicationFee > 0 && {
+            payment_intent_data: { application_fee_amount: applicationFee },
+          }),
+        },
+        { stripeAccount: e.stripe_account_id }
+      );
+    } catch (feeErr: any) {
+      const msg = String(feeErr?.message || '');
+      const isFeeActivationError =
+        applicationFee > 0 &&
+        /application fee|must be activated/i.test(msg);
+      if (!isFeeActivationError) throw feeErr;
+      session = await stripe.checkout.sessions.create(
+        baseSessionParams,
+        { stripeAccount: e.stripe_account_id }
+      );
+    }
 
     await admin
       .from('tournament_entries')
