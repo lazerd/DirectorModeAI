@@ -86,9 +86,10 @@ export async function createEntryPaymentLink(args: {
       redirect_url: args.redirectUrl,
       ask_for_shipping_address: false,
     },
-    ...(args.buyerEmail
-      ? { pre_populated_data: { buyer_email: args.buyerEmail } }
-      : {}),
+    // NOTE: intentionally NOT pre-populating buyer_email — Square validates it
+    // strictly and rejects test/edge-case addresses, which would block the
+    // whole checkout. The parent enters their email on Square's page; we match
+    // the payment to the entry by order.reference_id, not by email.
   };
   const data = await squareFetch('/v2/online-checkout/payment-links', {
     method: 'POST',
