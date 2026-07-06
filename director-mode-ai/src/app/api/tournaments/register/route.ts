@@ -131,7 +131,7 @@ export async function POST(request: Request) {
     const { data: ev, error: evErr } = await admin
       .from('events')
       .select(
-        'id, name, slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, event_date, match_format, user_id'
+        'id, name, slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, external_payment_url, event_date, match_format, user_id'
       )
       .eq('slug', slug)
       .maybeSingle();
@@ -233,6 +233,34 @@ export async function POST(request: Request) {
     }
 
     const fee = e.entry_fee_cents ?? 0;
+
+    // External payment link (PayPal/Square/etc.) — used when Stripe isn't
+    // available. Register the entry into the draw immediately and leave
+    // payment_status='pending'; the director reconciles the external payment
+    // list against entrants by hand before making draws. The confirmation page
+    // shows the pay link. Takes precedence over Stripe when set.
+    if (fee > 0 && e.external_payment_url) {
+      let position: 'in_draw' | 'waitlist' = 'in_draw';
+      if (e.max_players && e.max_players > 0) {
+        const { count } = await admin
+          .from('tournament_entries')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', e.id)
+          .in('position', ['in_draw'])
+          .neq('id', (entry as any).id);
+        if ((count ?? 0) >= e.max_players) position = 'waitlist';
+      }
+      await admin
+        .from('tournament_entries')
+        .update({ position })
+        .eq('id', (entry as any).id);
+      return NextResponse.json({
+        entry_id: (entry as any).id,
+        external_payment: true,
+        position,
+      });
+    }
+
     if (fee <= 0) {
       let position: 'in_draw' | 'waitlist' = 'in_draw';
       if (e.max_players && e.max_players > 0) {

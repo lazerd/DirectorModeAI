@@ -70,7 +70,7 @@ export function buildJTTTournamentEmail(input: TournamentEmailInput): {
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px 18px;margin:0 0 22px">
         <div style="font-weight:700;margin-bottom:8px">How it works</div>
         <ul style="margin:0;padding-left:20px;color:#334155">
-          <li style="margin-bottom:6px"><b>${esc(entryFeeLabel)} entry fee per player</b>, paid online at sign-up (secure checkout).</li>
+          <li style="margin-bottom:6px"><b>${esc(entryFeeLabel)} entry fee per player</b>, paid online right after you register (a payment button appears once the registration form is submitted).</li>
           <li style="margin-bottom:6px">Each division runs <b>Compass draws of 8</b>, seeded by regular-season strength — the top 8 players go in the <b>A flight</b>, the next 8 in the <b>B flight</b>, and so on, so every kid plays others at their level.</li>
           <li style="margin-bottom:6px">Parents register each child and pay online using the division link below.</li>
           <li>Registration closes <b>Wednesday, July 15 at midnight</b> — sign up before then to be included in the draws.</li>
