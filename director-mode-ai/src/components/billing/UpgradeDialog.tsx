@@ -85,7 +85,7 @@ export default function UpgradeDialog({ open, onOpenChange, feature, eventId }: 
   async function goToCheckout(body: Record<string, unknown>, setLoading: (v: boolean) => void) {
     setLoading(true);
     try {
-      const res = await fetch('/api/stripe/create-checkout', {
+      const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

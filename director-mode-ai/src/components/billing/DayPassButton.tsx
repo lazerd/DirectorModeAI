@@ -7,7 +7,7 @@ export default function DayPassButton({ eventId }: { eventId: string }) {
 
   async function go() {
     setLoading(true);
-    const res = await fetch('/api/stripe/create-checkout', {
+    const res = await fetch('/api/billing/checkout', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ priceKey: 'day_pass', mode: 'one-time', eventId }),

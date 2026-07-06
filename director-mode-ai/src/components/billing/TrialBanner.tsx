@@ -38,7 +38,7 @@ export default function TrialBanner() {
   const goPro = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/stripe/create-checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priceKey: 'pro_monthly' }) });
+      const res = await fetch('/api/billing/checkout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ priceKey: 'pro_monthly' }) });
       const j = await res.json();
       if (j.url) window.location.href = j.url; else setLoading(false);
     } catch { setLoading(false); }

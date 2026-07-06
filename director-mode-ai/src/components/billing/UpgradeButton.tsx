@@ -5,7 +5,7 @@ import { ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
- * The real Pro purchase path. POSTs to /api/stripe/create-checkout with a
+ * The real Pro purchase path. POSTs to /api/billing/checkout with a
  * subscription price key and sends the user to Stripe Checkout. Replaces the
  * old dead-end "Upgrade" link that only went to /pricing.
  */
@@ -19,7 +19,7 @@ export default function UpgradeButton({
   const go = async (priceKey: 'pro_monthly' | 'pro_annual') => {
     setLoading(priceKey);
     try {
-      const res = await fetch('/api/stripe/create-checkout', {
+      const res = await fetch('/api/billing/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ priceKey }),
