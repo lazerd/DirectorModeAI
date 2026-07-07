@@ -15,8 +15,14 @@ interface Msg {
   content: string;
 }
 
-const GREETING =
-  "Hi! I'm your ClubMode Assistant. On a JTT matchup I can actually do it for you — e.g. \"check in the MCC 13s\" or \"add Brooke McGuire to MCC 12s.\" Or ask me how to do anything in ClubMode.";
+// Context-aware greeting — the matchup-action pitch only makes sense on a JTT
+// matchup page; everywhere else it's confusing, so lead with general help.
+function greetingFor(path: string | null): string {
+  if (path && path.includes('/jtt/matchup/')) {
+    return "Hi! I'm your ClubMode Assistant. On this matchup I can actually do it for you — e.g. \"check in the MCC 13s\" or \"add Brooke McGuire to MCC 12s.\" Or ask me how to do anything in ClubMode.";
+  }
+  return "Hi! I'm your ClubMode Assistant. Ask me how to do anything in ClubMode — events, courts, leagues, billing, whatever you're stuck on. (On a JTT match day I can even check players in and manage lineups for you.)";
+}
 
 // Public marketing surfaces — the live assistant is for directors inside the app,
 // not for prospects. The homepage advertises it instead. Add prefixes here to
@@ -116,7 +122,7 @@ export default function AssistantWidget() {
 
           {/* Messages */}
           <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-            <Bubble role="assistant">{GREETING}</Bubble>
+            <Bubble role="assistant">{greetingFor(pathname)}</Bubble>
             {messages.map((m, i) => (
               <Bubble key={i} role={m.role}>
                 {m.content}
