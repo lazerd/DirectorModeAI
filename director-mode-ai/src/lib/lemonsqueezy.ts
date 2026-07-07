@@ -32,6 +32,31 @@ export function lsConfigured(): boolean {
   return !!process.env.LEMONSQUEEZY_API_KEY && !!process.env.LEMONSQUEEZY_STORE_ID;
 }
 
+// Hosted LemonSqueezy buy links (non-secret, stable per product). Using these
+// avoids needing the API key / numeric store+variant ids just to start a
+// checkout — we pass the account id via custom data query params, and the
+// webhook reads it back from meta.custom_data to flip the right account to Pro.
+const BUY_LINKS: Record<PriceKey, string | null> = {
+  pro_monthly: 'https://coachmode.lemonsqueezy.com/checkout/buy/331145f1-d9ac-4376-b11d-b1b51a50b793',
+  pro_annual: process.env.LEMONSQUEEZY_BUY_LINK_PRO_ANNUAL || null,
+  day_pass: process.env.LEMONSQUEEZY_BUY_LINK_DAY_PASS || null,
+};
+
+/** Build a hosted-checkout URL for a plan with the account id attached. */
+export function buildCheckoutUrl(
+  priceKey: PriceKey,
+  opts: { userId: string; email?: string | null; eventId?: string | null }
+): string | null {
+  const base = BUY_LINKS[priceKey];
+  if (!base) return null;
+  const u = new URL(base);
+  u.searchParams.set('checkout[custom][user_id]', opts.userId);
+  u.searchParams.set('checkout[custom][price_key]', priceKey);
+  if (opts.email) u.searchParams.set('checkout[email]', opts.email);
+  if (opts.eventId) u.searchParams.set('checkout[custom][event_id]', opts.eventId);
+  return u.toString();
+}
+
 export function variantForPriceKey(priceKey: PriceKey): string | null {
   switch (priceKey) {
     case 'pro_monthly':

@@ -11,19 +11,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveBillingUserId } from '@/lib/billing';
-import { lsConfigured, variantForPriceKey, createCheckout, type PriceKey } from '@/lib/lemonsqueezy';
+import { buildCheckoutUrl, type PriceKey } from '@/lib/lemonsqueezy';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
-    if (!lsConfigured()) {
-      return NextResponse.json(
-        { error: 'billing_unconfigured', message: 'Billing is not set up yet.' },
-        { status: 503 }
-      );
-    }
-
     const supabase = await createClient();
     const {
       data: { user },
@@ -36,8 +29,6 @@ export async function POST(request: NextRequest) {
     const isSubscription = body.mode !== 'one-time';
 
     if (!priceKey) return NextResponse.json({ error: 'invalid_price' }, { status: 400 });
-    const variantId = variantForPriceKey(priceKey);
-    if (!variantId) return NextResponse.json({ error: 'price_not_configured' }, { status: 500 });
 
     // Club subscription is club-level: only the owner (payer) may buy it.
     // Day Pass / one-time is per-event, allowed for anyone.
@@ -58,22 +49,14 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single();
 
-    const origin = request.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || '';
-    const redirectUrl =
-      !isSubscription && eventId
-        ? `${origin}/mixer/events/${eventId}?day_pass=success`
-        : `${origin}/mixer/subscription?status=success`;
-
-    const url = await createCheckout({
-      variantId,
+    const url = buildCheckoutUrl(priceKey, {
+      userId: user.id,
       email: user.email || profile?.email || null,
-      custom: {
-        user_id: user.id,
-        price_key: priceKey,
-        ...(eventId ? { event_id: eventId } : {}),
-      },
-      redirectUrl,
+      eventId: eventId || null,
     });
+    if (!url) {
+      return NextResponse.json({ error: 'price_not_configured' }, { status: 500 });
+    }
 
     return NextResponse.json({ url });
   } catch (err: any) {
