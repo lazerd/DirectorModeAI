@@ -17,7 +17,6 @@ const FREE_FEATURES = [
   'PlayerVault roster CRM (up to 25 players)',
   'StringingMode pro-shop job tracking',
   '25 emails / month',
-  '1 free DJ Console event',
 ];
 
 const PRO_FEATURES = [
@@ -142,9 +141,9 @@ export default function PricingPage() {
         <div className="inline-flex items-start gap-2 text-white/50 text-sm">
           <ShieldCheck size={16} className="mt-0.5 flex-shrink-0 text-emerald-400" />
           <p>
-            Collecting entry fees online? Players pay by card and the money goes straight to your account —
-            ClubMode keeps a 3% platform fee (plus standard card processing), paid out of player fees, never
-            from your subscription. We never hold your funds.
+            Collecting entry fees online? Players pay by card and the money goes straight to your account.
+            ClubMode never takes a cut of your entry fees and never holds your funds — we make our money on
+            the subscription, not on your players.
           </p>
         </div>
       </section>
