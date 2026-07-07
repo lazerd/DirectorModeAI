@@ -58,14 +58,31 @@ export async function POST(request: NextRequest) {
     return p?.id || null;
   };
 
+  // Only these carry subscription state (payment_success/failed are invoice
+  // events with a different shape — handling them here would mis-map status).
+  const SUBSCRIPTION_LIFECYCLE = new Set([
+    'subscription_created',
+    'subscription_updated',
+    'subscription_cancelled',
+    'subscription_resumed',
+    'subscription_expired',
+    'subscription_paused',
+    'subscription_unpaused',
+  ]);
+
   try {
-    if (eventName.startsWith('subscription_')) {
+    if (SUBSCRIPTION_LIFECYCLE.has(eventName)) {
       const userId = custom.user_id || (await lookupUserByCustomer(attrs.customer_id));
       if (userId) {
         const { status, grantsAccess } = mapSubscriptionStatus(String(attrs.status || ''));
-        const tier = variantIdToTier(attrs.variant_id);
+        // With buy-link checkout we pass price_key in custom data, so derive the
+        // tier from that (no variant env var needed); fall back to variant id.
+        const tier =
+          custom.price_key === 'pro_monthly' || custom.price_key === 'pro_annual'
+            ? 'pro'
+            : variantIdToTier(attrs.variant_id);
         const periodEnd = attrs.renews_at || attrs.ends_at || null;
-        await service
+        const { error: updErr } = await service
           .from('profiles')
           .update({
             plan_tier: grantsAccess ? (tier ?? 'free') : 'free',
@@ -73,10 +90,9 @@ export async function POST(request: NextRequest) {
             stripe_subscription_id: grantsAccess ? String(data.id) : null,
             stripe_customer_id: attrs.customer_id ? String(attrs.customer_id) : undefined,
             current_period_end: periodEnd,
-            billing_status:
-              status === 'active' ? 'active' : status === 'canceled' ? 'cancelled' : 'trial',
           })
           .eq('id', userId);
+        if (updErr) console.error('[lemonsqueezy/webhook] profile update failed:', updErr.message);
       }
     } else if (eventName === 'order_created') {
       // One-time Day Pass — flip the event's paid flag.
