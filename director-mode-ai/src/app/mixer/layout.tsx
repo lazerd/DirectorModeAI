@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import MixerMobileNav from '@/components/mixer/MixerMobileNav';
 import PlanBadge from '@/components/billing/PlanBadge';
 import GrandfatherTrialBanner from '@/components/billing/GrandfatherTrialBanner';
+import SuggestionBox from '@/components/SuggestionBox';
 
 export default async function MixerLayout({
   children,
@@ -105,6 +106,8 @@ export default async function MixerLayout({
         <GrandfatherTrialBanner />
         {children}
       </main>
+
+      <SuggestionBox />
     </div>
   );
 }
