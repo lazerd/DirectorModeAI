@@ -1,12 +1,12 @@
 /**
  * POST /api/leagues/[id]/jtt/matchup/[matchupId]/confirm-email
  *
- * Director-only. Day-before match confirmation. Reads who marked themselves
- * "Available" in the Sleepy Hollow availability form (Google Sheet) for this
- * matchup's division + date, then previews or sends a confirmation email to
- * those players' parents confirming date / time / host-club location.
- *
- * NOTE: source of truth is the availability FORM (RSVP), not day-of check-ins.
+ * Director-only. Day-before match confirmation. Merges two availability
+ * sources — the in-app RSVP magic links (league_player_availability +
+ * check-ins, exact per matchup) and the legacy Sleepy Hollow Google Form
+ * (division + date) — then previews or sends a confirmation email to those
+ * players' parents confirming date / time / host-club location. An explicit
+ * "no" via the RSVP link removes a player even if the form said Available.
  *
  * Body: { mode: 'preview' | 'send', recipients?: string[], note?: string }
  *
@@ -84,14 +84,64 @@ export async function POST(
 
     const matchDate = String(m.match_date).slice(0, 10);
 
-    // --- Read availability from the Google form/sheet ---
-    let available: Awaited<ReturnType<typeof fetchAvailability>> = [];
-    try {
-      const entries = await fetchAvailability(division.short_code, matchDate);
-      available = entries;
-    } catch (err: any) {
-      return NextResponse.json({ error: err?.message || 'Could not read the availability sheet.' }, { status: 502 });
+    // --- Availability source 1: the in-app RSVP magic links (per-matchup) ---
+    // league_player_availability holds explicit yes/no; a coach check-in also
+    // counts as a yes. This is exact per matchup, so it wins over the sheet.
+    const [dbAvailRes, checkinsRes] = await Promise.all([
+      admin.from('league_player_availability').select('roster_id, status').eq('matchup_id', matchupId),
+      admin.from('league_matchup_checkins').select('roster_id').eq('matchup_id', matchupId),
+    ]);
+    const dbAvail = (dbAvailRes.data as Array<{ roster_id: string; status: 'yes' | 'no' }>) || [];
+    const checkinIds = ((checkinsRes.data as Array<{ roster_id: string }>) || []).map(c => c.roster_id);
+    const yesIds = new Set([
+      ...dbAvail.filter(a => a.status === 'yes').map(a => a.roster_id),
+      ...checkinIds,
+    ]);
+    const respondedIds = new Set([...dbAvail.map(a => a.roster_id), ...checkinIds]);
+
+    type Entry = Awaited<ReturnType<typeof fetchAvailability>>[number];
+    const dbYes: Entry[] = [];
+    const declinedNames = new Set<string>();
+    if (respondedIds.size > 0) {
+      const { data: rosterRows } = await admin
+        .from('league_team_rosters')
+        .select('id, player_name, parent_name, parent_email, parent_phone')
+        .in('id', [...respondedIds])
+        .eq('club_id', shClub.id);
+      for (const r of (rosterRows as Array<{ id: string; player_name: string; parent_name: string | null; parent_email: string | null; parent_phone: string | null }>) || []) {
+        if (yesIds.has(r.id)) {
+          dbYes.push({
+            player_name: r.player_name,
+            parent_name: r.parent_name || '',
+            parent_email: r.parent_email || '',
+            parent_phone: r.parent_phone || '',
+            status: 'available',
+          });
+        } else {
+          declinedNames.add(r.player_name.trim().toLowerCase());
+        }
+      }
     }
+
+    // --- Availability source 2: the legacy Google form/sheet ---
+    let sheetEntries: Entry[] = [];
+    let sheetError: string | null = null;
+    try {
+      sheetEntries = await fetchAvailability(division.short_code, matchDate);
+    } catch (err: any) {
+      sheetError = err?.message || 'Could not read the availability sheet.';
+    }
+    if (sheetError && dbYes.length === 0) {
+      return NextResponse.json({ error: sheetError }, { status: 502 });
+    }
+
+    // Merge: sheet first, drop anyone who explicitly declined via their RSVP
+    // link, then overlay the in-app yeses (exact per-matchup, so they win).
+    const byName = new Map<string, Entry>();
+    for (const e of sheetEntries) byName.set(e.player_name.trim().toLowerCase(), e);
+    for (const name of declinedNames) byName.delete(name);
+    for (const e of dbYes) byName.set(e.player_name.trim().toLowerCase(), e);
+    const available = [...byName.values()].sort((a, b) => a.player_name.localeCompare(b.player_name));
 
     const yes = available.filter(e => e.status === 'available');
     const maybe = available.filter(e => e.status === 'maybe');
