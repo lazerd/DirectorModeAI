@@ -23,6 +23,7 @@ import {
   Tv,
   Printer,
   Music,
+  Download,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
@@ -571,6 +572,60 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
     await fetchAll();
   };
 
+  /** Wrap a CSV cell: quote + escape only when it contains a comma, quote, or newline. */
+  const csvCell = (val: string | number | null | undefined): string => {
+    const s = val == null ? '' : String(val);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  /** Download the entrant list as a CSV — client-side, sorted like the table. */
+  const exportEntries = () => {
+    if (!event) return;
+    const rows = [...entries].sort((a, b) => {
+      const aSeed = a.seed ?? Infinity;
+      const bSeed = b.seed ?? Infinity;
+      if (aSeed !== bSeed) return aSeed - bSeed;
+      return (b.composite_rating ?? 0) - (a.composite_rating ?? 0);
+    });
+    const headers = [
+      'Seed',
+      'Player',
+      'Partner',
+      'Player Email',
+      'Parent Email',
+      'Rating',
+      'Status',
+      'Payment',
+      'Registered',
+    ];
+    const lines = rows.map((e) =>
+      [
+        e.seed ?? '',
+        e.player_name,
+        e.partner_name ?? '',
+        e.player_email ?? '',
+        e.parent_email ?? '',
+        e.utr ? `UTR ${e.utr.toFixed(2)}` : e.ntrp ? `NTRP ${e.ntrp.toFixed(1)}` : '',
+        POSITION_LABELS[e.position].label,
+        e.payment_status,
+        e.registered_at ? new Date(e.registered_at).toLocaleString() : '',
+      ]
+        .map(csvCell)
+        .join(',')
+    );
+    const csv = [headers.join(','), ...lines].join('\r\n');
+    // BOM so Excel reads UTF-8 names (apostrophes/accents) correctly.
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${event.slug}-entrants.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
@@ -703,13 +758,24 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
             <div className="text-sm text-gray-600">
               {entries.length} total · sorted by rating
             </div>
-            <button
-              onClick={() => setShowAdd((s) => !s)}
-              className="inline-flex items-center gap-2 px-3 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600"
-            >
-              <UserPlus size={14} />
-              {showAdd ? 'Cancel' : 'Add player manually'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={exportEntries}
+                disabled={entries.length === 0}
+                className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                title="Download the entrant list as a CSV (opens in Excel/Sheets)"
+              >
+                <Download size={14} />
+                Export CSV
+              </button>
+              <button
+                onClick={() => setShowAdd((s) => !s)}
+                className="inline-flex items-center gap-2 px-3 py-2 bg-orange-500 text-white rounded-lg text-sm font-medium hover:bg-orange-600"
+              >
+                <UserPlus size={14} />
+                {showAdd ? 'Cancel' : 'Add player manually'}
+              </button>
+            </div>
           </div>
 
           {showAdd && (
