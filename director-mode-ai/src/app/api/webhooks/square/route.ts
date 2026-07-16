@@ -55,17 +55,42 @@ export async function POST(request: Request) {
     }
 
     const admin = getSupabaseAdmin();
-    let query = admin.from('tournament_entries').select('id, payment_status');
+    let query = admin
+      .from('tournament_entries')
+      .select('id, payment_status, position, event_id');
     query = entryId ? query.eq('id', entryId) : query.eq('square_order_id', orderId || '__none__');
     const { data: entry } = await query.maybeSingle();
     if (!entry) return NextResponse.json({ ignored: true, reason: 'no matching entry' });
 
     if ((entry as any).payment_status !== 'paid') {
+      // Also promote a pending_payment entry into the draw (or waitlist if the
+      // event is capped and full) — otherwise a parent who closes the tab
+      // before redirect gets marked paid but never lands in the director's draw.
+      let newPosition = (entry as any).position;
+      if (newPosition === 'pending_payment') {
+        newPosition = 'in_draw';
+        const { data: ev } = await admin
+          .from('events')
+          .select('max_players')
+          .eq('id', (entry as any).event_id)
+          .maybeSingle();
+        const cap = (ev as any)?.max_players;
+        if (cap && cap > 0) {
+          const { count } = await admin
+            .from('tournament_entries')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', (entry as any).event_id)
+            .eq('position', 'in_draw')
+            .neq('id', (entry as any).id);
+          if ((count ?? 0) >= cap) newPosition = 'waitlist';
+        }
+      }
       await admin
         .from('tournament_entries')
         .update({
           payment_status: 'paid',
           amount_paid_cents: payment.amount_money?.amount ?? null,
+          position: newPosition,
         })
         .eq('id', (entry as any).id);
     }

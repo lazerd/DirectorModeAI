@@ -19,7 +19,7 @@ export default async function RegisteredPage({
 
   const { data: ev } = await supabase
     .from('events')
-    .select('id, name, slug, entry_fee_cents, external_payment_url')
+    .select('id, name, slug, entry_fee_cents, external_payment_url, max_players')
     .eq('slug', slug)
     .maybeSingle();
   if (!ev) return notFound();
@@ -42,14 +42,33 @@ export default async function RegisteredPage({
       const order = await getOrder(e.square_order_id);
       const paid = order?.state === 'COMPLETED' || order?.net_amount_due_money?.amount === 0;
       if (paid) {
+        // Payment cleared → move them from pending_payment into the draw (or
+        // waitlist if the event is capped and already full). Without this the
+        // entry stays "pending pmt" in the director's Status column forever.
+        let newPosition = e.position;
+        if (e.position === 'pending_payment') {
+          newPosition = 'in_draw';
+          const cap = (ev as any).max_players;
+          if (cap && cap > 0) {
+            const { count } = await supabase
+              .from('tournament_entries')
+              .select('*', { count: 'exact', head: true })
+              .eq('event_id', (ev as any).id)
+              .eq('position', 'in_draw')
+              .neq('id', e.id);
+            if ((count ?? 0) >= cap) newPosition = 'waitlist';
+          }
+        }
         await supabase
           .from('tournament_entries')
           .update({
             payment_status: 'paid',
             amount_paid_cents: order?.total_money?.amount ?? null,
+            position: newPosition,
           })
           .eq('id', e.id);
         e.payment_status = 'paid';
+        e.position = newPosition;
       }
     } catch {
       /* leave as pending; webhook will reconcile */
