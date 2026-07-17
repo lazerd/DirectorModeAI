@@ -109,6 +109,27 @@ export type JTTLine = {
 
 type Tab = 'matchups' | 'rosters' | 'standings' | 'settings';
 
+type SeasonEndDraw = {
+  id: string;
+  name: string;
+  match_format: string | null;
+  public_status: string | null;
+  event_date: string | null;
+};
+
+const DRAW_FORMAT_LABEL: Record<string, string> = {
+  'rr-singles': 'Round Robin',
+  'rr-doubles': 'Round Robin · Doubles',
+  'compass-singles': 'Compass Draw',
+  'compass-doubles': 'Compass Draw · Doubles',
+  'single-elim-singles': 'Single Elimination',
+  'single-elim-doubles': 'Single Elimination · Doubles',
+  'ffic-singles': 'Feed-In Consolation',
+  'ffic-doubles': 'Feed-In Consolation · Doubles',
+  'fmlc-singles': 'First-Match Loser Consolation',
+  'fmlc-doubles': 'First-Match Loser Consolation · Doubles',
+};
+
 export default function JTTLeaguePage() {
   const params = useParams();
   const id = Array.isArray(params.id) ? params.id[0] : (params.id as string);
@@ -125,6 +146,7 @@ export default function JTTLeaguePage() {
   const [error, setError] = useState<string | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
   const [tourneyEmailOpen, setTourneyEmailOpen] = useState(false);
+  const [draws, setDraws] = useState<SeasonEndDraw[]>([]);
 
   const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
@@ -143,6 +165,19 @@ export default function JTTLeaguePage() {
       return;
     }
     setLeague(leagueRow as League);
+
+    // Season-end tournament DRAWS. These are standalone MixerMode tournament
+    // events (not part of the league's team-matchup structure), so there's no
+    // FK to join on — we match this director's events by the "Season-End" name
+    // convention and only show ones with a generated draw (public_status set to
+    // 'running'/'completed'). RLS already scopes events to the owner.
+    supabase
+      .from('events')
+      .select('id, name, match_format, public_status, event_date')
+      .ilike('name', '%season-end%')
+      .in('public_status', ['running', 'completed'])
+      .order('name')
+      .then(({ data }) => setDraws((data as SeasonEndDraw[]) || []));
 
     const [cRes, dRes, dcRes, rRes, mRes] = await Promise.all([
       supabase.from('league_clubs').select('*').eq('league_id', id).order('sort_order'),
@@ -273,6 +308,37 @@ export default function JTTLeaguePage() {
           leagueId={id}
           onClose={() => setTourneyEmailOpen(false)}
         />
+      )}
+
+      {/* Season-End Draws — links out to the standalone tournament events */}
+      {draws.length > 0 && (
+        <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Trophy size={18} className="text-emerald-600" />
+            <h2 className="font-semibold text-gray-900">Season-End Draws</h2>
+            <span className="text-xs text-gray-500">
+              {draws.length} {draws.length === 1 ? 'draw' : 'draws'} live
+            </span>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {draws.map(d => (
+              <Link
+                key={d.id}
+                href={`/mixer/events/${d.id}`}
+                className="flex items-center justify-between gap-3 bg-white border border-emerald-200 rounded-lg px-3 py-2 hover:border-emerald-400 hover:shadow-sm transition-all"
+              >
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-900 text-sm truncate">{d.name}</div>
+                  <div className="text-xs text-gray-500">
+                    {DRAW_FORMAT_LABEL[d.match_format ?? ''] ?? d.match_format}
+                    {d.public_status === 'completed' && ' · final'}
+                  </div>
+                </div>
+                <span className="text-emerald-600 text-sm font-medium shrink-0">Open →</span>
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Tabs */}
