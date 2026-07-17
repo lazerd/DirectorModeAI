@@ -5,6 +5,8 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Plus, GripVertical, X, Trophy, Users, Sparkles, Settings2, UserCheck, Zap, CalendarPlus, ListOrdered, Pencil, Check, ArrowLeftRight } from "lucide-react";
 import { snakeSplit, globalStrengthOrder, nextWeekCode, plusSevenDays } from "@/lib/teamBattle";
@@ -197,7 +199,8 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
   const [splitting, setSplitting] = useState(false);
   const [creatingNextWeek, setCreatingNextWeek] = useState(false);
   const [showStrength, setShowStrength] = useState(false);
-  
+  const [showOptimizer, setShowOptimizer] = useState(false);
+
   // Court configuration - initialize from database
   const [courtConfig, setCourtConfig] = useState<CourtConfig>({
     mode: 'singles',
@@ -357,64 +360,65 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     setTeamScores(scores);
   };
 
-  // Optimize the court split from the entrant count — the same players-first
-  // policy the social "Optimize Courts" mode uses, adapted for two teams:
-  // greedily prefer doubles (they seat more bodies), fit singles with the
-  // leftovers, and treat num_courts as a MAX (idle courts are fine, never a
-  // quota — see the "courts are capacity" rule). Works pre-split too: before
-  // teams are drawn we estimate an even split of the checked-in pool.
-  const calculateOptimalConfig = () => {
+  // Enumerate every sensible way to split the courts for the players on hand —
+  // one option per doubles-court count (0..max), each pairing the most singles
+  // that still fit within the courts + team capacity. This is the menu the
+  // "Optimize Courts" dialog shows so the director can pick the shape they want
+  // (all doubles, all singles, or any mix) rather than being handed one answer.
+  type CourtOption = {
+    mode: 'singles' | 'doubles' | 'mixed';
+    doublesCourts: number;
+    singlesCourts: number;
+    courtsUsed: number;
+    playing: number;
+    byes: number;
+    label: string;
+  };
+
+  const buildCourtOptions = (): {
+    options: CourtOption[];
+    totalPlayers: number;
+    courts: number;
+    perTeam: number;
+  } => {
     const team1Players = teams[0] ? getTeamPlayers(teams[0].id).length : 0;
     const team2Players = teams[1] ? getTeamPlayers(teams[1].id).length : 0;
     const totalPlayers = checkedIn.length || team1Players + team2Players;
     const courts = event.num_courts;
-
-    // Bodies each team can supply to courts. Post-split, every court needs an
-    // equal number from both sides, so we're bounded by the smaller team;
-    // pre-split we assume the pool halves evenly.
     const perTeam =
       team1Players > 0 && team2Players > 0
         ? Math.min(team1Players, team2Players)
         : Math.floor(totalPlayers / 2);
 
-    if (perTeam < 1) {
-      return { mode: 'singles' as const, singlesCourts: courts, doublesCourts: 0, byes: 0, reason: 'Need more players' };
+    const options: CourtOption[] = [];
+    const maxDoubles = Math.min(Math.floor(perTeam / 2), courts);
+    for (let d = 0; d <= maxDoubles; d++) {
+      const s = Math.min(perTeam - d * 2, courts - d);
+      if (s < 0 || (d === 0 && s === 0)) continue;
+      const usedPerTeam = d * 2 + s;
+      const playing = usedPerTeam * 2;
+      const byes = Math.max(0, totalPlayers - playing);
+      const mode: CourtOption['mode'] = d > 0 && s > 0 ? 'mixed' : d > 0 ? 'doubles' : 'singles';
+      const parts: string[] = [];
+      if (d > 0) parts.push(`${d} doubles`);
+      if (s > 0) parts.push(`${s} singles`);
+      options.push({ mode, doublesCourts: d, singlesCourts: s, courtsUsed: d + s, playing, byes, label: parts.join(' + ') });
     }
-
-    // Maximize doubles first (2 players/team per court vs 1 for singles), then
-    // spend any leftover team capacity + free courts on singles. For a fixed
-    // court budget, more doubles always means fewer byes, so this is optimal.
-    const doublesCourts = Math.min(Math.floor(perTeam / 2), courts);
-    const singlesCourts = Math.min(perTeam - doublesCourts * 2, courts - doublesCourts);
-
-    const usedPerTeam = doublesCourts * 2 + singlesCourts;
-    const byes = Math.max(0, totalPlayers - usedPerTeam * 2);
-
-    const mode: 'singles' | 'doubles' | 'mixed' =
-      doublesCourts > 0 && singlesCourts > 0 ? 'mixed' : doublesCourts > 0 ? 'doubles' : 'singles';
-
-    const parts: string[] = [];
-    if (doublesCourts > 0) parts.push(`${doublesCourts} doubles`);
-    if (singlesCourts > 0) parts.push(`${singlesCourts} singles`);
-    const courtsUsed = doublesCourts + singlesCourts;
-    const idle = courts - courtsUsed;
-    const reason =
-      `${parts.join(' + ')} court${courtsUsed === 1 ? '' : 's'}` +
-      (idle > 0 ? ` · ${idle} court${idle === 1 ? '' : 's'} idle` : '');
-
-    return { mode, singlesCourts, doublesCourts, byes, reason };
+    // Best first: fewest byes, then most doubles (the director's stated preference).
+    options.sort((a, b) => a.byes - b.byes || b.doublesCourts - a.doublesCourts);
+    return { options, totalPlayers, courts, perTeam };
   };
 
-  const applyAIRecommendation = () => {
-    const optimal = calculateOptimalConfig();
+  const applyCourtOption = (opt: CourtOption) => {
     saveCourtConfig({
-      mode: optimal.mode,
-      singlesCourts: optimal.singlesCourts,
-      doublesCourts: optimal.doublesCourts,
+      mode: opt.mode,
+      singlesCourts: opt.singlesCourts,
+      doublesCourts: opt.doublesCourts,
     });
+    setShowOptimizer(false);
     toast({
-      title: "✨ Optimized",
-      description: `${optimal.reason} — ${optimal.byes} on BYE`,
+      title: "✨ Court split set",
+      description: `${opt.label} court${opt.courtsUsed === 1 ? '' : 's'} — ${opt.byes} on BYE`,
     });
   };
 
@@ -926,9 +930,9 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
             <Button
               variant="outline"
               size="sm"
-              onClick={applyAIRecommendation}
+              onClick={() => setShowOptimizer(true)}
               className="bg-white"
-              title="Suggest the best doubles/singles court split for the number of players checked in"
+              title="See every doubles/singles court split for the players checked in, and pick one"
             >
               <Sparkles className="h-4 w-4 mr-2 text-purple-600" />
               Optimize Courts
@@ -1129,6 +1133,79 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           Add at least 1 player to each team to continue
         </p>
       )}
+
+      {/* Optimize Courts — menu of every sensible split for the players on hand */}
+      <Dialog open={showOptimizer} onOpenChange={setShowOptimizer}>
+        <DialogContent className="max-w-lg">
+          {(() => {
+            const { options, totalPlayers, courts, perTeam } = buildCourtOptions();
+            if (perTeam < 1 || options.length === 0) {
+              return (
+                <>
+                  <DialogHeader>
+                    <DialogTitle style={{ color: "#111827" }}>Optimize Courts</DialogTitle>
+                    <DialogDescription>
+                      Check in players (and split into teams) first, then reopen this to see your options.
+                    </DialogDescription>
+                  </DialogHeader>
+                </>
+              );
+            }
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle style={{ color: "#111827" }}>
+                    {totalPlayers} players · {courts} court{courts === 1 ? '' : 's'} available
+                  </DialogTitle>
+                  <DialogDescription>
+                    {perTeam} per team. Here's every way to play it — pick the shape you want.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                  {options.map((opt, i) => (
+                    <button
+                      key={`${opt.doublesCourts}-${opt.singlesCourts}`}
+                      onClick={() => applyCourtOption(opt)}
+                      className={`w-full text-left p-3 rounded-xl border-2 transition-all hover:shadow-md ${
+                        i === 0
+                          ? 'border-purple-400 bg-purple-50 hover:border-purple-500'
+                          : 'border-gray-200 bg-white hover:border-purple-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-semibold text-base" style={{ color: "#111827" }}>
+                            {opt.label}
+                          </span>
+                          {i === 0 && (
+                            <Badge className="bg-purple-600 hover:bg-purple-600 text-white flex-shrink-0">
+                              Recommended
+                            </Badge>
+                          )}
+                        </div>
+                        {opt.byes > 0 ? (
+                          <span className="text-sm font-semibold text-orange-500 flex-shrink-0">
+                            {opt.byes} BYE
+                          </span>
+                        ) : (
+                          <span className="text-sm font-semibold text-green-600 flex-shrink-0">
+                            everyone plays
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {opt.courtsUsed} of {courts} court{courts === 1 ? '' : 's'} used
+                        {courts - opt.courtsUsed > 0 ? ` · ${courts - opt.courtsUsed} idle` : ''} ·{' '}
+                        {opt.playing} playing
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
