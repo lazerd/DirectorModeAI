@@ -49,7 +49,7 @@ export default function SuggestionBox() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2 bg-yellow-300 text-[#001820] font-semibold rounded-full pl-3 pr-4 py-2.5 shadow-lg hover:bg-yellow-200 transition-colors"
+        className="fixed bottom-24 right-5 z-40 inline-flex items-center gap-2 bg-yellow-300 text-[#001820] font-semibold rounded-full pl-3 pr-4 py-2.5 shadow-lg hover:bg-yellow-200 transition-colors"
         title="Suggest a feature"
       >
         <Lightbulb size={18} />

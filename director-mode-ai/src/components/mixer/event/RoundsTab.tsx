@@ -63,6 +63,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
   const [rounds, setRounds] = useState<Round[]>([]);
   const [currentRound, setCurrentRound] = useState<Round | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [teamByPlayer, setTeamByPlayer] = useState<Record<string, { name: string; color: string }>>({});
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
@@ -85,7 +86,29 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
   useEffect(() => {
     fetchRounds();
+    fetchTeamMap();
   }, [event.id]);
+
+  // Map each player -> their team (name + color) so court cards can label which
+  // side is playing for which team in a team battle.
+  const fetchTeamMap = async () => {
+    const { data: teamRows } = await supabase
+      .from("event_teams")
+      .select("id, name, color")
+      .eq("event_id", event.id);
+    if (!teamRows || teamRows.length === 0) return;
+    const teamById: Record<string, { name: string; color: string }> = {};
+    teamRows.forEach((t: any) => (teamById[t.id] = { name: t.name, color: t.color }));
+    const { data: eps } = await supabase
+      .from("event_players")
+      .select("player_id, team_id")
+      .eq("event_id", event.id);
+    const map: Record<string, { name: string; color: string }> = {};
+    (eps || []).forEach((ep: any) => {
+      if (ep.team_id && teamById[ep.team_id]) map[ep.player_id] = teamById[ep.team_id];
+    });
+    setTeamByPlayer(map);
+  };
 
   const fetchRounds = async (targetRoundId?: string) => {
     const { data, error } = await supabase
@@ -1051,32 +1074,58 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                             </div>
                           </div>
                           <CardContent className="p-3 sm:p-5 space-y-3 sm:space-y-4">
-                            <div className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl border-2">
-                              <div className="flex-1 min-w-0 pr-2">
-                                <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
-                                  {match.player1?.name || "TBD"}
-                                </p>
-                                {match.player3 && (
-                                  <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
-                                    {match.player3.name}
-                                  </p>
-                                )}
-                              </div>
-                              <p className="text-3xl sm:text-4xl font-black text-primary flex-shrink-0">{match.team1_score}</p>
-                            </div>
-                            <div className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl border-2">
-                              <div className="flex-1 min-w-0 pr-2">
-                                <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
-                                  {match.player2?.name || "TBD"}
-                                </p>
-                                {match.player4 && (
-                                  <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
-                                    {match.player4.name}
-                                  </p>
-                                )}
-                              </div>
-                              <p className="text-3xl sm:text-4xl font-black text-primary flex-shrink-0">{match.team2_score}</p>
-                            </div>
+                            {(() => {
+                              const side1Team = match.player1_id ? teamByPlayer[match.player1_id] : null;
+                              const side2Team = match.player2_id ? teamByPlayer[match.player2_id] : null;
+                              const TeamTag = ({ team }: { team: { name: string; color: string } | null }) =>
+                                team ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold uppercase tracking-wide mb-1 px-1.5 py-0.5 rounded"
+                                    style={{ backgroundColor: team.color + '22', color: team.color }}
+                                  >
+                                    <span className="w-2 h-2 rounded-full" style={{ backgroundColor: team.color }} />
+                                    {team.name}
+                                  </span>
+                                ) : null;
+                              return (
+                                <>
+                                  <div
+                                    className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl border-2"
+                                    style={side1Team ? { borderColor: side1Team.color + '55' } : undefined}
+                                  >
+                                    <div className="flex-1 min-w-0 pr-2">
+                                      <TeamTag team={side1Team} />
+                                      <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
+                                        {match.player1?.name || "TBD"}
+                                      </p>
+                                      {match.player3 && (
+                                        <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
+                                          {match.player3.name}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <p className="text-3xl sm:text-4xl font-black text-primary flex-shrink-0">{match.team1_score}</p>
+                                  </div>
+                                  <div
+                                    className="flex items-center justify-between p-3 sm:p-4 bg-gray-50 rounded-xl border-2"
+                                    style={side2Team ? { borderColor: side2Team.color + '55' } : undefined}
+                                  >
+                                    <div className="flex-1 min-w-0 pr-2">
+                                      <TeamTag team={side2Team} />
+                                      <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
+                                        {match.player2?.name || "TBD"}
+                                      </p>
+                                      {match.player4 && (
+                                        <p className="font-semibold text-sm sm:text-base truncate" style={{ color: "#111827" }}>
+                                          {match.player4.name}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <p className="text-3xl sm:text-4xl font-black text-primary flex-shrink-0">{match.team2_score}</p>
+                                  </div>
+                                </>
+                              );
+                            })()}
                           </CardContent>
                         </Card>
                       ))}

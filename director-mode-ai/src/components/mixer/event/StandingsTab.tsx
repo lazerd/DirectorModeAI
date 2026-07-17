@@ -32,6 +32,7 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
   const [standings, setStandings] = useState<Standing[]>([]);
   const [teams, setTeams] = useState<TeamInfo[]>([]);
   const [teamScores, setTeamScores] = useState<Record<string, number>>({});
+  const [teamGames, setTeamGames] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -109,6 +110,8 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
         player2_id,
         player3_id,
         player4_id,
+        team1_score,
+        team2_score,
         winner_team,
         rounds!inner (event_id)
       `)
@@ -127,13 +130,20 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
       if (ep.team_id) playerTeamMap[ep.player_id] = ep.team_id;
     });
     const scores: Record<string, number> = {};
+    const games: Record<string, number> = {};
     (matchData || []).forEach((m: any) => {
       const winnerPlayerId = m.winner_team === 1 ? m.player1_id : m.player2_id;
       const teamId = winnerPlayerId ? playerTeamMap[winnerPlayerId] : null;
       if (teamId) scores[teamId] = (scores[teamId] || 0) + 1;
+      // Total games won by each team (side 1 = player1's team, side 2 = player2's).
+      const side1Team = m.player1_id ? playerTeamMap[m.player1_id] : null;
+      const side2Team = m.player2_id ? playerTeamMap[m.player2_id] : null;
+      if (side1Team) games[side1Team] = (games[side1Team] || 0) + (m.team1_score || 0);
+      if (side2Team) games[side2Team] = (games[side2Team] || 0) + (m.team2_score || 0);
     });
     setTeams((teamData as TeamInfo[]) || []);
     setTeamScores(scores);
+    setTeamGames(games);
 
     if (error) {
       toast({
@@ -248,14 +258,18 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
   }
 
   const isTeamBattle = teams.length === 2;
-  const teamLeader =
-    isTeamBattle
-      ? (teamScores[teams[0].id] || 0) === (teamScores[teams[1].id] || 0)
-        ? null
-        : (teamScores[teams[0].id] || 0) > (teamScores[teams[1].id] || 0)
-          ? teams[0].id
-          : teams[1].id
-      : null;
+  // Winner = more match wins; if tied, more games won breaks it.
+  const teamLeader = (() => {
+    if (!isTeamBattle) return null;
+    const [a, b] = teams;
+    const wa = teamScores[a.id] || 0, wb = teamScores[b.id] || 0;
+    if (wa !== wb) return wa > wb ? a.id : b.id;
+    const ga = teamGames[a.id] || 0, gb = teamGames[b.id] || 0;
+    if (ga !== gb) return ga > gb ? a.id : b.id;
+    return null;
+  })();
+  const teamsTiedOnWins =
+    isTeamBattle && (teamScores[teams[0].id] || 0) === (teamScores[teams[1].id] || 0);
 
   return (
     <div className="space-y-4">
@@ -277,8 +291,15 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
                       {team.name}
                       {teamLeader === team.id && ' 🏆'}
                     </p>
-                    <p className="text-4xl sm:text-5xl font-black" style={{ color: team.color }}>
+                    <p className="text-4xl sm:text-5xl font-black leading-none" style={{ color: team.color }}>
                       {teamScores[team.id] || 0}
+                    </p>
+                    <p
+                      className={`text-sm mt-1 ${teamsTiedOnWins ? 'font-bold' : ''}`}
+                      style={{ color: teamsTiedOnWins ? team.color : '#6b7280' }}
+                      title="Total games won — breaks a tie on match wins"
+                    >
+                      {teamGames[team.id] || 0} games
                     </p>
                   </div>
                 </div>
