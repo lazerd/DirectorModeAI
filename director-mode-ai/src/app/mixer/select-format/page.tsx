@@ -222,10 +222,24 @@ export default function SelectFormatPage() {
       id: 'compass',
       name: 'Compass Draw',
       description:
-        'Every player plays the same # of matches over one weekend. Winners East, losers West. Splits into Compass / Plate / Bowl / Shield sub-brackets.',
+        'Every player plays the same number of matches. Winners head East, losers West, fanning out into 8 directional finals that rank all 16 players 1st–16th. Best with 16 — pad a short field with a BYE.',
       icon: '🧭',
-      status: 'live',
-      directRoute: '/mixer/leagues/new?type=compass',
+      subChoices: [
+        {
+          id: 'compass-singles',
+          name: 'Singles',
+          description: '16-player compass. Everyone plays 4 matches and earns a 1st–16th placing.',
+          status: 'live',
+          route: '/mixer/tournaments/new?format=compass-singles',
+        },
+        {
+          id: 'compass-doubles',
+          name: 'Doubles',
+          description: '16-team compass. Every team plays 4 matches and earns a 1st–16th placing.',
+          status: 'live',
+          route: '/mixer/tournaments/new?format=compass-doubles',
+        },
+      ],
     },
   ];
 

@@ -31,7 +31,9 @@ export type TournamentFormat =
   | 'fmlc-singles'
   | 'fmlc-doubles'
   | 'ffic-singles'
-  | 'ffic-doubles';
+  | 'ffic-doubles'
+  | 'compass-singles'
+  | 'compass-doubles';
 
 export type Bracket = 'main' | 'consolation';
 
@@ -627,6 +629,83 @@ export function generateFFICBracket(entryIds: string[]): GeneratedMatch[] {
 }
 
 // =============================================================================
+// Compass Draw (16-player)
+// =============================================================================
+
+/**
+ * 16-player compass draw. Winners head East, losers West; the draw fans out
+ * into 8 directional finals so all 16 players are ranked 1st–16th and everyone
+ * plays 4 matches regardless of results. Only R1 has players assigned up front;
+ * every later match is wired through winner_feeds_to / loser_feeds_to so the
+ * match-report route auto-advances players (winner → deeper East path, loser →
+ * the appropriate consolation direction) as scores are confirmed.
+ *
+ * Requires exactly 16 entries in seed order (entryIds[0] = #1 seed). To run a
+ * short field, pad to 16 with a "BYE" entry seeded last — whoever draws it wins
+ * a walkover.
+ *
+ * Mirrors the directional wiring used to build the flex-league compass:
+ * winners of a source slot s feed the destination match at slot ceil(s/2),
+ * side a for odd s / side b for even s.
+ */
+type CompassNode = { bracket: Bracket; round: number; n: number; w: string | null; l: string | null };
+
+const COMPASS16: Record<string, CompassNode> = {
+  R1:  { bracket: 'main',        round: 1,  n: 8, w: 'ER2', l: 'WR1' },
+  ER2: { bracket: 'main',        round: 2,  n: 4, w: 'ESF', l: 'NR1' },
+  ESF: { bracket: 'main',        round: 3,  n: 2, w: 'EF',  l: 'NE'  },
+  EF:  { bracket: 'main',        round: 4,  n: 1, w: null,  l: null  },
+  WR1: { bracket: 'consolation', round: 1,  n: 4, w: 'WR2', l: 'SR1' },
+  WR2: { bracket: 'consolation', round: 2,  n: 2, w: 'WF',  l: 'SW'  },
+  WF:  { bracket: 'consolation', round: 3,  n: 1, w: null,  l: null  },
+  NR1: { bracket: 'consolation', round: 4,  n: 2, w: 'NF',  l: 'NW'  },
+  NF:  { bracket: 'consolation', round: 5,  n: 1, w: null,  l: null  },
+  SR1: { bracket: 'consolation', round: 6,  n: 2, w: 'SF',  l: 'SE'  },
+  SF:  { bracket: 'consolation', round: 7,  n: 1, w: null,  l: null  },
+  NE:  { bracket: 'consolation', round: 8,  n: 1, w: null,  l: null  },
+  SW:  { bracket: 'consolation', round: 9,  n: 1, w: null,  l: null  },
+  NW:  { bracket: 'consolation', round: 10, n: 1, w: null,  l: null  },
+  SE:  { bracket: 'consolation', round: 11, n: 1, w: null,  l: null  },
+};
+
+/** Standard 16-draw seed pairing for round 1 (seed numbers, 1-indexed). */
+const COMPASS16_R1_SEEDS: Array<[number, number]> = [
+  [1, 16], [8, 9], [5, 12], [4, 13], [3, 14], [6, 11], [7, 10], [2, 15],
+];
+
+/** Where the winner/loser of source slot s feeds: dest slot ceil(s/2), side a (odd) / b (even). */
+function compassFeed(dest: CompassNode, sourceSlot: number): string {
+  return `${dest.bracket}:${dest.round}:${Math.ceil(sourceSlot / 2)}:${sourceSlot % 2 === 1 ? 'a' : 'b'}`;
+}
+
+export function generateCompassBracket(entryIds: string[]): GeneratedMatch[] {
+  if (entryIds.length !== 16) {
+    throw new Error(
+      `Compass draw requires exactly 16 entries (got ${entryIds.length}). Pad a short field to 16 with a "BYE" entry seeded last.`
+    );
+  }
+  const matches: GeneratedMatch[] = [];
+  for (const [key, node] of Object.entries(COMPASS16)) {
+    for (let slot = 1; slot <= node.n; slot++) {
+      const pair = key === 'R1' ? COMPASS16_R1_SEEDS[slot - 1] : null;
+      matches.push({
+        bracket: node.bracket,
+        round: node.round,
+        slot,
+        match_type: 'singles',
+        player1_id: pair ? entryIds[pair[0] - 1] : null,
+        player2_id: null,
+        player3_id: pair ? entryIds[pair[1] - 1] : null,
+        player4_id: null,
+        winner_feeds_to: node.w ? compassFeed(COMPASS16[node.w], slot) : null,
+        loser_feeds_to: node.l ? compassFeed(COMPASS16[node.l], slot) : null,
+      });
+    }
+  }
+  return matches;
+}
+
+// =============================================================================
 // Format dispatcher
 // =============================================================================
 
@@ -647,6 +726,8 @@ export function generateTournamentMatches(
     raw = generateFMLCBracket(entryIds);
   } else if (format === 'ffic-singles' || format === 'ffic-doubles') {
     raw = generateFFICBracket(entryIds);
+  } else if (format === 'compass-singles' || format === 'compass-doubles') {
+    raw = generateCompassBracket(entryIds);
   } else {
     throw new Error(`Unknown tournament format: ${format}`);
   }

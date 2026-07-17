@@ -29,6 +29,8 @@ const VALID_FORMATS = new Set<TournamentFormat>([
   'fmlc-doubles',
   'ffic-singles',
   'ffic-doubles',
+  'compass-singles',
+  'compass-doubles',
 ]);
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {

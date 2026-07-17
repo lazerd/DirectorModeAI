@@ -88,6 +88,8 @@ const VALID_FORMATS = new Set([
   'fmlc-doubles',
   'ffic-singles',
   'ffic-doubles',
+  'compass-singles',
+  'compass-doubles',
 ]);
 
 export async function POST(request: Request) {
