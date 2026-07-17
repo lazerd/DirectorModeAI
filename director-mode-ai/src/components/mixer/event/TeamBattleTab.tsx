@@ -538,7 +538,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
         event_id: event.id,
         player_id: playerId,
         team_id: teamId,
-        active: true,
+        active: false, // new players start checked OUT — check in on arrival
         strength_order: teamPlayers.length
       }]);
 
@@ -634,7 +634,10 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
   // Tap a roster chip: check in (active=true) or out (active=false + off team).
   const toggleCheckin = async (p: Player) => {
     const next = !p.active;
-    const patch = next ? { active: true } : { active: false, team_id: null };
+    // Checking OUT keeps the player's team assignment (they're just not here
+    // yet) so pre-built teams survive the check-in/out cycle. Team membership
+    // is only cleared explicitly via a re-split.
+    const patch = next ? { active: true } : { active: false };
     setPlayers(prev => prev.map(x =>
       x.event_player_id === p.event_player_id ? { ...x, ...patch } : x
     ));
@@ -648,7 +651,25 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     }
   };
 
-  // Quick-add to the roster pool (checked in, no team yet).
+  // Bulk check-in / check-out of the whole roster. Preserves team assignments
+  // (only the active flag changes) so pre-built teams survive a reset.
+  const setAllCheckedIn = async (active: boolean) => {
+    const targets = players.filter(p => p.active !== active);
+    if (targets.length === 0) return;
+    setPlayers(prev => prev.map(p => ({ ...p, active })));
+    const results = await Promise.all(
+      targets.map(p => supabase.from("event_players").update({ active }).eq("id", p.event_player_id))
+    );
+    const failed = results.filter(r => r.error);
+    if (failed.length) {
+      toast({ variant: "destructive", title: "Bulk check-in failed", description: failed[0].error!.message });
+      fetchPlayers();
+    } else {
+      toast({ title: active ? "Everyone checked in" : "Everyone checked out", description: `${targets.length} player${targets.length === 1 ? '' : 's'} updated` });
+    }
+  };
+
+  // Quick-add to the roster pool (starts checked OUT, no team yet).
   const handleAddToPool = async () => {
     if (!newPoolName.trim()) return;
     setAddingToPool(true);
@@ -688,7 +709,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
         event_id: event.id,
         player_id: playerId,
         team_id: null,
-        active: true,
+        active: false, // new players start checked OUT — check in on arrival
         strength_order: maxOrder + 1, // new players start at the bottom; drag to adjust
       }]);
       if (error) toast({ variant: "destructive", title: "Error adding player", description: error.message });
@@ -942,6 +963,18 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
               {players.length === 0 ? (
                 <p className="text-sm text-gray-500">No roster yet — add players below or on a team.</p>
               ) : (
+                <>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <p className="text-xs text-gray-500">Tap a name to check them in / out.</p>
+                  <div className="flex items-center gap-1.5">
+                    <Button variant="outline" size="sm" className="bg-white h-7 px-2 text-xs" onClick={() => setAllCheckedIn(true)} disabled={checkedIn.length === players.length}>
+                      All in
+                    </Button>
+                    <Button variant="outline" size="sm" className="bg-white h-7 px-2 text-xs" onClick={() => setAllCheckedIn(false)} disabled={checkedIn.length === 0}>
+                      All out
+                    </Button>
+                  </div>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {globalStrengthOrder(players).map(({ player }) => (
                     <button
@@ -957,6 +990,7 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
                     </button>
                   ))}
                 </div>
+                </>
               )}
 
               {/* Quick add + split */}
@@ -1092,19 +1126,23 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
       {/* Team Columns */}
       <div className="grid md:grid-cols-2 gap-6">
         {teams.map((team) => {
-          const teamPlayers = getTeamPlayers(team.id);
-          
+          const teamPlayers = getTeamPlayers(team.id); // checked-in (playing)
+          // Checked-out team members — still on the team, just not here yet.
+          const benchPlayers = players
+            .filter(p => p.team_id === team.id && !p.active)
+            .sort((a, b) => a.strength_order - b.strength_order);
+
           return (
             <Card key={team.id} className="border-2" style={{ borderColor: team.color + '40' }}>
               <CardHeader className="pb-3" style={{ backgroundColor: team.color + '10' }}>
                 <CardTitle className="flex items-center gap-3">
-                  <div 
+                  <div
                     className="w-4 h-4 rounded-full"
                     style={{ backgroundColor: team.color }}
                   />
                   <span style={{ color: "#111827" }}>{team.name}</span>
                   <span className="text-sm font-normal text-gray-500">
-                    ({teamPlayers.length} players)
+                    ({teamPlayers.length} here{benchPlayers.length > 0 ? ` · ${benchPlayers.length} out` : ''})
                   </span>
                 </CardTitle>
               </CardHeader>
@@ -1140,42 +1178,73 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
                 </div>
 
                 {/* Player List */}
-                {teamPlayers.length === 0 ? (
+                {teamPlayers.length === 0 && benchPlayers.length === 0 ? (
                   <div className="text-center py-8 text-gray-400">
                     <Users className="h-8 w-8 mx-auto mb-2 opacity-50" />
                     <p>No players yet</p>
                   </div>
                 ) : (
-                  <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={(e) => handleDragEnd(e, team.id)}
-                  >
-                    <SortableContext items={teamPlayers.map(p => p.event_player_id)} strategy={verticalListSortingStrategy}>
-                      <div className="space-y-2">
-                        {teamPlayers.map((player, index) => (
-                          <div key={player.event_player_id} className="flex items-center gap-2">
-                            <div 
-                              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                              style={{ backgroundColor: team.color }}
+                  <div className="space-y-3">
+                    {teamPlayers.length > 0 && (
+                      <DndContext
+                        sensors={sensors}
+                        collisionDetection={closestCenter}
+                        onDragEnd={(e) => handleDragEnd(e, team.id)}
+                      >
+                        <SortableContext items={teamPlayers.map(p => p.event_player_id)} strategy={verticalListSortingStrategy}>
+                          <div className="space-y-2">
+                            {teamPlayers.map((player, index) => (
+                              <div key={player.event_player_id} className="flex items-center gap-2">
+                                <div
+                                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+                                  style={{ backgroundColor: team.color }}
+                                >
+                                  {index + 1}
+                                </div>
+                                <div className="flex-1">
+                                  <SortablePlayer
+                                    player={player}
+                                    teamColor={team.color}
+                                    onRemove={handleRemovePlayer}
+                                    onRename={handleRenamePlayer}
+                                    onMove={handleMovePlayer}
+                                    moveToName={teams.find(t => t.id !== team.id)?.name ?? null}
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </SortableContext>
+                      </DndContext>
+                    )}
+
+                    {benchPlayers.length > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+                          Not here yet ({benchPlayers.length})
+                        </p>
+                        {benchPlayers.map((player) => (
+                          <div
+                            key={player.event_player_id}
+                            className="flex items-center gap-2 p-2 rounded-lg border border-dashed border-gray-200 bg-gray-50"
+                          >
+                            <div className="w-2 h-8 rounded-full flex-shrink-0 opacity-30" style={{ backgroundColor: team.color }} />
+                            <p className="flex-1 min-w-0 truncate text-sm text-gray-400">{player.name}</p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => toggleCheckin(player)}
+                              className="bg-white text-green-700 border-green-200 hover:bg-green-50 flex-shrink-0 h-8 px-2.5"
+                              title="Check in — mark as arrived"
                             >
-                              {index + 1}
-                            </div>
-                            <div className="flex-1">
-                              <SortablePlayer
-                                player={player}
-                                teamColor={team.color}
-                                onRemove={handleRemovePlayer}
-                                onRename={handleRenamePlayer}
-                                onMove={handleMovePlayer}
-                                moveToName={teams.find(t => t.id !== team.id)?.name ?? null}
-                              />
-                            </div>
+                              <UserCheck className="h-4 w-4 mr-1" />
+                              Check in
+                            </Button>
                           </div>
                         ))}
                       </div>
-                    </SortableContext>
-                  </DndContext>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>
