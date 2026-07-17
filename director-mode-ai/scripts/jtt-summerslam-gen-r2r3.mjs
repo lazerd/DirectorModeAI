@@ -44,20 +44,34 @@ try {
     return elig[elig.length - 1]; // weakest eligible; reported so it can be swapped
   };
 
-  // 8 doubles, strength-aligned: pair each team's top-half with its bottom-half
-  // ('half') or strongest-with-weakest ('snake'); match pair i vs pair i so both
-  // teams field comparable strength on each court.
+  // Strength BANDS of 4: split each team's 16 into 4 bands by rank (band 0 =
+  // strongest four → courts 1-2, band 3 = weakest four → courts 7-8). Within a
+  // band, rotate partners AND opponents between rounds so nobody repeats a
+  // partner and opponents change, while strong still plays strong. Court 1 is
+  // always the top band; no #1-with-bottom pairings.
   const makeMatches = (alcPlay, sinPlay, scheme) => {
-    const pairs = (arr) => {
-      const out = [];
-      for (let i = 0; i < 8; i++) {
-        out.push(scheme === 'half' ? [arr[i], arr[i + 8]] : [arr[i], arr[15 - i]]);
+    const out = [];
+    for (let b = 0; b < 4; b++) {
+      const a = alcPlay.slice(b * 4, b * 4 + 4); // local ranks 0..3 (strongest first)
+      const s = sinPlay.slice(b * 4, b * 4 + 4);
+      if (scheme === 'r2') {
+        out.push({ court: 2 * b + 1, p1: a[0], p3: a[1], p2: s[0], p4: s[1] });
+        out.push({ court: 2 * b + 2, p1: a[2], p3: a[3], p2: s[2], p4: s[3] });
+      } else {
+        // New partners (0+2, 1+3) and swapped opponents vs r2.
+        out.push({ court: 2 * b + 1, p1: a[0], p3: a[2], p2: s[1], p4: s[3] });
+        out.push({ court: 2 * b + 2, p1: a[1], p3: a[3], p2: s[0], p4: s[2] });
       }
-      return out;
-    };
-    const pa = pairs(alcPlay), ps = pairs(sinPlay);
-    return pa.map((ap, i) => ({ court: i + 1, p1: ap[0], p3: ap[1], p2: ps[i][0], p4: ps[i][1] }));
+    }
+    return out;
   };
+
+  // Wipe any existing R2/R3 so this regenerates cleanly (no scores exist yet).
+  await client.query(
+    `delete from matches where round_id in (select id from rounds where event_id=$1 and round_number in (2,3))`,
+    [EVENT]
+  );
+  await client.query(`delete from rounds where event_id=$1 and round_number in (2,3)`, [EVENT]);
 
   const genRound = async (roundNumber, bench, scheme) => {
     const alcPlay = alc.filter((p) => p.name !== bench.name);
@@ -74,14 +88,34 @@ try {
         [r.id, m.court, m.p1.player_id, m.p2.player_id, m.p3.player_id, m.p4.player_id]
       );
     }
+    // Bye row (player1 only) so the benched player shows in the "On BYE" panel,
+    // matching how the app records byes. Court 9 = past the 8 playing courts.
+    await client.query(
+      `insert into matches(id, round_id, court_number, player1_id, player2_id, player3_id, player4_id, team1_score, team2_score, winner_team)
+       values(gen_random_uuid(), $1, 9, $2, null, null, null, 0, 0, null)`,
+      [r.id, bench.player_id]
+    );
     const playing = new Set([...alcPlay, ...sinPlay].map((p) => p.name));
     return { matches, playing, bench };
   };
 
   const benchR2 = pickBench(alc); byed.add(benchR2.name);
-  const r2 = await genRound(2, benchR2, 'half');
+  const r2 = await genRound(2, benchR2, 'r2');
   const benchR3 = pickBench(alc); byed.add(benchR3.name);
-  const r3 = await genRound(3, benchR3, 'snake');
+  const r3 = await genRound(3, benchR3, 'r3');
+
+  // Cross-check: no player keeps the same partner across R2 and R3.
+  const partnerOf = (matches) => {
+    const map = {};
+    for (const m of matches) {
+      map[m.p1.name] = m.p3.name; map[m.p3.name] = m.p1.name;
+      map[m.p2.name] = m.p4.name; map[m.p4.name] = m.p2.name;
+    }
+    return map;
+  };
+  const pr2 = partnerOf(r2.matches), pr3 = partnerOf(r3.matches);
+  const repeats = Object.keys(pr2).filter((n) => pr3[n] && pr2[n] === pr3[n]);
+  console.log(`\nRepeat partners R2→R3: ${repeats.length ? repeats.join(', ') : 'NONE ✓'}`);
 
   for (const [label, r] of [['ROUND 2', r2], ['ROUND 3', r3]]) {
     console.log(`\n=== ${label} — Alcaraz bench (BYE): ${r.bench.name} ===`);

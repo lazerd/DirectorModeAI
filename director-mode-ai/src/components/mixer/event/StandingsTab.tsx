@@ -21,9 +21,17 @@ interface StandingsTabProps {
   eventId: string;
 }
 
+interface TeamInfo {
+  id: string;
+  name: string;
+  color: string;
+}
+
 const StandingsTab = ({ eventId }: StandingsTabProps) => {
   const { toast } = useToast();
   const [standings, setStandings] = useState<Standing[]>([]);
+  const [teams, setTeams] = useState<TeamInfo[]>([]);
+  const [teamScores, setTeamScores] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -85,6 +93,7 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
       .from("event_players")
       .select(`
         player_id,
+        team_id,
         wins,
         losses,
         games_won,
@@ -105,6 +114,26 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
       `)
       .eq("rounds.event_id", eventId)
       .not("winner_team", "is", null);
+
+    // Team Battle score = match wins per team. Map each player to their team,
+    // then credit the winning side's team for every completed match.
+    const { data: teamData } = await supabase
+      .from("event_teams")
+      .select("id, name, color")
+      .eq("event_id", eventId)
+      .order("created_at");
+    const playerTeamMap: Record<string, string> = {};
+    (data || []).forEach((ep: any) => {
+      if (ep.team_id) playerTeamMap[ep.player_id] = ep.team_id;
+    });
+    const scores: Record<string, number> = {};
+    (matchData || []).forEach((m: any) => {
+      const winnerPlayerId = m.winner_team === 1 ? m.player1_id : m.player2_id;
+      const teamId = winnerPlayerId ? playerTeamMap[winnerPlayerId] : null;
+      if (teamId) scores[teamId] = (scores[teamId] || 0) + 1;
+    });
+    setTeams((teamData as TeamInfo[]) || []);
+    setTeamScores(scores);
 
     if (error) {
       toast({
@@ -218,12 +247,52 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
     );
   }
 
+  const isTeamBattle = teams.length === 2;
+  const teamLeader =
+    isTeamBattle
+      ? (teamScores[teams[0].id] || 0) === (teamScores[teams[1].id] || 0)
+        ? null
+        : (teamScores[teams[0].id] || 0) > (teamScores[teams[1].id] || 0)
+          ? teams[0].id
+          : teams[1].id
+      : null;
+
   return (
-    <Card style={{ background: '#ffffff', color: '#000000' }}>
+    <div className="space-y-4">
+      {isTeamBattle && (
+        <Card style={{ background: '#ffffff' }}>
+          <CardContent className="py-5">
+            <div className="flex items-center justify-center gap-6 sm:gap-10">
+              {teams.map((team, idx) => (
+                <div key={team.id} className="contents">
+                  {idx === 1 && (
+                    <div className="text-center flex-shrink-0">
+                      <Trophy className="h-7 w-7 text-yellow-500 mx-auto" />
+                      <p className="text-xs mt-1" style={{ color: '#6b7280' }}>Match Wins</p>
+                    </div>
+                  )}
+                  <div className="text-center">
+                    <div className="w-4 h-4 rounded-full mx-auto mb-2" style={{ backgroundColor: team.color }} />
+                    <p className="font-bold text-base sm:text-lg" style={{ color: '#111827' }}>
+                      {team.name}
+                      {teamLeader === team.id && ' 🏆'}
+                    </p>
+                    <p className="text-4xl sm:text-5xl font-black" style={{ color: team.color }}>
+                      {teamScores[team.id] || 0}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card style={{ background: '#ffffff', color: '#000000' }}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2" style={{ color: '#000000' }}>
           <Trophy className="h-5 w-5 text-primary" />
-          Final Standings
+          {isTeamBattle ? 'Individual Standings' : 'Final Standings'}
         </CardTitle>
         <CardDescription style={{ color: '#374151' }}>Complete rankings for all players</CardDescription>
       </CardHeader>
@@ -291,6 +360,7 @@ const StandingsTab = ({ eventId }: StandingsTabProps) => {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 };
 
