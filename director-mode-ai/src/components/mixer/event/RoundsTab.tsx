@@ -683,6 +683,105 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     });
   };
 
+  // Delete a SINGLE round (keep the rest). Reverses that round's contribution
+  // to each player's W/L/games (mirror of MatchScoreDialog), deletes its
+  // matches + the round, then renumbers later rounds down so numbering stays
+  // contiguous (e.g. delete R2 of R1/R2/R3 → R3 becomes R2).
+  const deleteRound = async (round: Round) => {
+    if (
+      !confirm(
+        `Delete Round ${round.round_number} and its matches? Any standings from this round are reversed; your other rounds are kept.`
+      )
+    )
+      return;
+
+    // Pull this round's matches so we can undo their standings impact.
+    const { data: roundMatches, error: fetchErr } = await supabase
+      .from("matches")
+      .select("player1_id, player2_id, player3_id, player4_id, team1_score, team2_score, winner_team")
+      .eq("round_id", round.id);
+    if (fetchErr) {
+      toast({ variant: "destructive", title: "Error reading round", description: fetchErr.message });
+      return;
+    }
+
+    // Sum the W/L/games each player earned in this round (only scored matches).
+    const deltas = new Map<string, { w: number; l: number; gw: number; gl: number }>();
+    const bump = (pid: string, w: number, l: number, gw: number, gl: number) => {
+      const d = deltas.get(pid) || { w: 0, l: 0, gw: 0, gl: 0 };
+      d.w += w; d.l += l; d.gw += gw; d.gl += gl;
+      deltas.set(pid, d);
+    };
+    for (const m of roundMatches || []) {
+      if (m.winner_team == null) continue;
+      const slots = [
+        { pid: m.player1_id, isTeam1: true },
+        { pid: m.player2_id, isTeam1: false },
+        { pid: m.player3_id, isTeam1: true },
+        { pid: m.player4_id, isTeam1: false },
+      ];
+      for (const s of slots) {
+        if (!s.pid) continue;
+        const won = (s.isTeam1 && m.winner_team === 1) || (!s.isTeam1 && m.winner_team === 2);
+        const lost = (s.isTeam1 && m.winner_team === 2) || (!s.isTeam1 && m.winner_team === 1);
+        const gw = s.isTeam1 ? (m.team1_score || 0) : (m.team2_score || 0);
+        const gl = s.isTeam1 ? (m.team2_score || 0) : (m.team1_score || 0);
+        bump(s.pid, won ? 1 : 0, lost ? 1 : 0, gw, gl);
+      }
+    }
+
+    if (deltas.size > 0) {
+      const pids = [...deltas.keys()];
+      const { data: standings } = await supabase
+        .from("event_players")
+        .select("id, player_id, wins, losses, games_won, games_lost")
+        .eq("event_id", event.id)
+        .in("player_id", pids);
+      for (const sp of standings || []) {
+        const d = deltas.get(sp.player_id);
+        if (!d) continue;
+        await supabase
+          .from("event_players")
+          .update({
+            wins: Math.max(0, (sp.wins || 0) - d.w),
+            losses: Math.max(0, (sp.losses || 0) - d.l),
+            games_won: Math.max(0, (sp.games_won || 0) - d.gw),
+            games_lost: Math.max(0, (sp.games_lost || 0) - d.gl),
+          })
+          .eq("id", sp.id);
+      }
+    }
+
+    const { error: matchErr } = await supabase.from("matches").delete().eq("round_id", round.id);
+    if (matchErr) {
+      toast({ variant: "destructive", title: "Error deleting matches", description: matchErr.message });
+      return;
+    }
+    const { error: roundErr } = await supabase.from("rounds").delete().eq("id", round.id);
+    if (roundErr) {
+      toast({ variant: "destructive", title: "Error deleting round", description: roundErr.message });
+      return;
+    }
+
+    // Close the gap: shift later rounds down by one (ascending order = no
+    // transient collision on the unique round_number).
+    const later = rounds
+      .filter((r) => r.round_number > round.round_number)
+      .sort((a, b) => a.round_number - b.round_number);
+    for (const r of later) {
+      await supabase.from("rounds").update({ round_number: r.round_number - 1 }).eq("id", r.id);
+    }
+
+    // Move focus off the deleted round before reloading.
+    if (currentRound?.id === round.id) {
+      setSelectedRoundId(null);
+      setCurrentRound(null);
+      setMatches([]);
+    }
+    await fetchRounds();
+    toast({ title: `Round ${round.round_number} deleted`, description: "Other rounds kept and renumbered." });
+  };
+
   const restartRound = async () => {
     if (!currentRound) return;
 
@@ -822,6 +921,18 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                     >
                       <ChevronRight className="h-5 w-5" />
                     </Button>
+
+                    {currentRound && (
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => currentRound && deleteRound(currentRound)}
+                        className="bg-white text-red-600 hover:bg-red-50 border-red-200"
+                        title={`Delete Round ${currentRound.round_number} only (keeps other rounds)`}
+                      >
+                        <Trash2 className="h-5 w-5" />
+                      </Button>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
