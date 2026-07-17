@@ -53,6 +53,7 @@ const TOURNAMENT_FORMATS = new Set([
   'single-elim-singles', 'single-elim-doubles',
   'fmlc-singles', 'fmlc-doubles',
   'ffic-singles', 'ffic-doubles',
+  'compass-singles', 'compass-doubles',
 ]);
 
 const VOICE_STORAGE_KEY = 'dm:console:voice';

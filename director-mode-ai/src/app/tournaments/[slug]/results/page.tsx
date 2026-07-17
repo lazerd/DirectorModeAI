@@ -16,6 +16,8 @@ const FORMAT_LABELS: Record<string, string> = {
   'fmlc-doubles': 'First-Match Loser Consolation — Doubles',
   'ffic-singles': 'Full Feed-In Consolation — Singles',
   'ffic-doubles': 'Full Feed-In Consolation — Doubles',
+  'compass-singles': 'Compass Draw — Singles',
+  'compass-doubles': 'Compass Draw — Doubles',
 };
 
 const ORDINAL = ['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th'];
@@ -209,7 +211,7 @@ export default async function PublicResultsPage({
                               >
                                 {labelEntry(m.player1_id)}
                               </div>
-                              <div className="text-xs text-gray-400">vs</div>
+                              <div className="text-xs text-gray-600">vs</div>
                               <div
                                 className={bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}
                                 style={!bWon ? { color: '#000000' } : undefined}

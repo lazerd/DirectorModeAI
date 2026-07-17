@@ -37,6 +37,8 @@ const FORMAT_LABELS: Record<string, string> = {
   'fmlc-doubles': 'First-Match Loser Consolation — Doubles',
   'ffic-singles': 'Full Feed-In Consolation — Singles',
   'ffic-doubles': 'Full Feed-In Consolation — Doubles',
+  'compass-singles': 'Compass Draw — Singles',
+  'compass-doubles': 'Compass Draw — Doubles',
 };
 
 type EventRow = {

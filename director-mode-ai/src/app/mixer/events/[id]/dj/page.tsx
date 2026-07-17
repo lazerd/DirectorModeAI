@@ -18,6 +18,8 @@ const TOURNAMENT_FORMATS = new Set([
   'fmlc-doubles',
   'ffic-singles',
   'ffic-doubles',
+  'compass-singles',
+  'compass-doubles',
 ]);
 
 /** Format a tournament entry as a single "player" name for the announcer. */

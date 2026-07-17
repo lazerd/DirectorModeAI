@@ -14,6 +14,8 @@ const FORMAT_LABELS: Record<string, string> = {
   'fmlc-doubles': 'First-Match Loser Consolation — Doubles',
   'ffic-singles': 'Full Feed-In Consolation — Singles',
   'ffic-doubles': 'Full Feed-In Consolation — Doubles',
+  'compass-singles': 'Compass Draw — Singles',
+  'compass-doubles': 'Compass Draw — Doubles',
 };
 
 type Entry = {
@@ -249,7 +251,7 @@ function DrawTeamRow({
 }) {
   if (!entry) {
     return (
-      <div className="px-2 py-1.5 min-h-[36px] flex items-center text-gray-400 italic text-sm">
+      <div className="px-2 py-1.5 min-h-[36px] flex items-center text-gray-600 italic text-sm">
         <span className="w-6 text-center">—</span>
         <span className="ml-2">TBD</span>
       </div>
@@ -260,7 +262,7 @@ function DrawTeamRow({
       <div className="flex items-center gap-2 min-w-0">
         <span
           className={`w-6 h-5 inline-flex items-center justify-center text-[10px] font-bold rounded flex-shrink-0 ${
-            entry.seed != null ? 'bg-gray-900 text-white' : 'text-gray-300 border border-gray-300'
+            entry.seed != null ? 'bg-gray-900 text-white' : 'text-gray-500 border border-gray-300'
           }`}
         >
           {entry.seed ?? '·'}
