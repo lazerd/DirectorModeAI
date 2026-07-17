@@ -222,12 +222,12 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     const doubles = event.team_battle_doubles_courts ?? 0;
     
     let mode: 'singles' | 'doubles' | 'mixed' = 'singles';
-    if (doubles === event.num_courts) {
-      mode = 'doubles';
-    } else if (doubles > 0 && singles > 0) {
+    if (doubles > 0 && singles > 0) {
       mode = 'mixed';
+    } else if (doubles > 0) {
+      mode = 'doubles';
     }
-    
+
     setCourtConfig({ mode, singlesCourts: singles, doublesCourts: doubles });
   };
 
@@ -357,60 +357,52 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
     setTeamScores(scores);
   };
 
-  // AI Optimization Logic
+  // Optimize the court split from the entrant count — the same players-first
+  // policy the social "Optimize Courts" mode uses, adapted for two teams:
+  // greedily prefer doubles (they seat more bodies), fit singles with the
+  // leftovers, and treat num_courts as a MAX (idle courts are fine, never a
+  // quota — see the "courts are capacity" rule). Works pre-split too: before
+  // teams are drawn we estimate an even split of the checked-in pool.
   const calculateOptimalConfig = () => {
     const team1Players = teams[0] ? getTeamPlayers(teams[0].id).length : 0;
     const team2Players = teams[1] ? getTeamPlayers(teams[1].id).length : 0;
-    const minTeamSize = Math.min(team1Players, team2Players);
-    const totalPlayers = team1Players + team2Players;
+    const totalPlayers = checkedIn.length || team1Players + team2Players;
     const courts = event.num_courts;
 
-    if (totalPlayers < 2) {
-      return { mode: 'singles' as const, singlesCourts: courts, doublesCourts: 0, byes: 0, reason: "Need more players" };
+    // Bodies each team can supply to courts. Post-split, every court needs an
+    // equal number from both sides, so we're bounded by the smaller team;
+    // pre-split we assume the pool halves evenly.
+    const perTeam =
+      team1Players > 0 && team2Players > 0
+        ? Math.min(team1Players, team2Players)
+        : Math.floor(totalPlayers / 2);
+
+    if (perTeam < 1) {
+      return { mode: 'singles' as const, singlesCourts: courts, doublesCourts: 0, byes: 0, reason: 'Need more players' };
     }
 
-    let bestConfig: { mode: 'singles' | 'doubles' | 'mixed', singlesCourts: number, doublesCourts: number, byes: number, reason: string } = { 
-      mode: 'singles', singlesCourts: courts, doublesCourts: 0, byes: Infinity, reason: "" 
-    };
+    // Maximize doubles first (2 players/team per court vs 1 for singles), then
+    // spend any leftover team capacity + free courts on singles. For a fixed
+    // court budget, more doubles always means fewer byes, so this is optimal.
+    const doublesCourts = Math.min(Math.floor(perTeam / 2), courts);
+    const singlesCourts = Math.min(perTeam - doublesCourts * 2, courts - doublesCourts);
 
-    // Singles only
-    const singlesCapacity = Math.min(courts, minTeamSize) * 2;
-    const singlesByes = totalPlayers - singlesCapacity;
-    if (singlesByes < bestConfig.byes && minTeamSize >= 1) {
-      bestConfig = { mode: 'singles', singlesCourts: courts, doublesCourts: 0, byes: Math.max(0, singlesByes), reason: `${courts} singles courts` };
-    }
+    const usedPerTeam = doublesCourts * 2 + singlesCourts;
+    const byes = Math.max(0, totalPlayers - usedPerTeam * 2);
 
-    // Doubles only
-    const doublesCapacity = Math.min(courts, Math.floor(minTeamSize / 2)) * 4;
-    const doublesByes = totalPlayers - doublesCapacity;
-    if (doublesByes < bestConfig.byes && minTeamSize >= 2) {
-      bestConfig = { mode: 'doubles', singlesCourts: 0, doublesCourts: courts, byes: Math.max(0, doublesByes), reason: `${courts} doubles courts` };
-    }
+    const mode: 'singles' | 'doubles' | 'mixed' =
+      doublesCourts > 0 && singlesCourts > 0 ? 'mixed' : doublesCourts > 0 ? 'doubles' : 'singles';
 
-    // Mixed configurations
-    for (let d = 1; d < courts; d++) {
-      const s = courts - d;
-      const doublesNeededPerTeam = d * 2;
-      const singlesNeededPerTeam = s;
-      const totalNeededPerTeam = doublesNeededPerTeam + singlesNeededPerTeam;
-      
-      if (minTeamSize >= totalNeededPerTeam) {
-        const mixedCapacity = (d * 4) + (s * 2);
-        const mixedByes = totalPlayers - mixedCapacity;
-        
-        if (mixedByes < bestConfig.byes) {
-          bestConfig = { 
-            mode: 'mixed', 
-            singlesCourts: s,
-            doublesCourts: d, 
-            byes: Math.max(0, mixedByes), 
-            reason: `${d} doubles + ${s} singles` 
-          };
-        }
-      }
-    }
+    const parts: string[] = [];
+    if (doublesCourts > 0) parts.push(`${doublesCourts} doubles`);
+    if (singlesCourts > 0) parts.push(`${singlesCourts} singles`);
+    const courtsUsed = doublesCourts + singlesCourts;
+    const idle = courts - courtsUsed;
+    const reason =
+      `${parts.join(' + ')} court${courtsUsed === 1 ? '' : 's'}` +
+      (idle > 0 ? ` · ${idle} court${idle === 1 ? '' : 's'} idle` : '');
 
-    return bestConfig;
+    return { mode, singlesCourts, doublesCourts, byes, reason };
   };
 
   const applyAIRecommendation = () => {
@@ -421,8 +413,8 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
       doublesCourts: optimal.doublesCourts,
     });
     toast({
-      title: "✨ AI Recommendation Applied",
-      description: `${optimal.reason}, ${optimal.byes} players on BYE`,
+      title: "✨ Optimized",
+      description: `${optimal.reason} — ${optimal.byes} on BYE`,
     });
   };
 
@@ -936,9 +928,10 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
               size="sm"
               onClick={applyAIRecommendation}
               className="bg-white"
+              title="Suggest the best doubles/singles court split for the number of players checked in"
             >
               <Sparkles className="h-4 w-4 mr-2 text-purple-600" />
-              AI Optimize
+              Optimize Courts
             </Button>
           </CardTitle>
         </CardHeader>
