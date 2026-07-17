@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, GripVertical, X, Trophy, Users, Sparkles, Settings2, UserCheck, Zap, CalendarPlus, ListOrdered, Pencil, Check, ArrowLeftRight } from "lucide-react";
+import { Plus, GripVertical, X, Trophy, Users, Sparkles, Settings2, UserCheck, Zap, CalendarPlus, ListOrdered, Pencil, Check, ArrowLeftRight, Printer } from "lucide-react";
 import { snakeSplit, globalStrengthOrder, nextWeekCode, plusSevenDays } from "@/lib/teamBattle";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -420,6 +420,69 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
       title: "✨ Court split set",
       description: `${opt.label} court${opt.courtsUsed === 1 ? '' : 's'} — ${opt.byes} on BYE`,
     });
+  };
+
+  // Print a paper check-in sheet: alphabetical roster with a checkbox per name
+  // (plus blank rows for walk-ons) so staff can tick people off as they arrive,
+  // before the roster gets split into teams.
+  const printCheckinSheet = () => {
+    const esc = (s: string) =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const roster = [...players].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    );
+    const dateLabel = event.event_date
+      ? new Date(event.event_date + 'T12:00:00').toLocaleDateString(undefined, {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+        })
+      : '';
+
+    const BLANK_ROWS = 8; // room for walk-ons not already on the roster
+    const rows = [
+      ...roster.map(
+        (p) => `<div class="row"><span class="box"></span><span class="name">${esc(p.name)}</span></div>`
+      ),
+      ...Array.from(
+        { length: BLANK_ROWS },
+        () => `<div class="row"><span class="box"></span><span class="name blank"></span></div>`
+      ),
+    ].join('');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Check-in — ${esc(event.name)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111; margin: 32px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .sub { color: #555; font-size: 13px; margin-bottom: 4px; }
+  .count { color: #555; font-size: 13px; margin-bottom: 16px; }
+  .grid { column-count: 2; column-gap: 40px; }
+  .row { display: flex; align-items: center; gap: 10px; padding: 7px 0; break-inside: avoid; border-bottom: 1px solid #e5e5e5; }
+  .box { width: 18px; height: 18px; border: 2px solid #333; border-radius: 4px; flex: 0 0 auto; }
+  .name { font-size: 15px; }
+  .name.blank { flex: 1; border-bottom: 1px solid #bbb; height: 18px; }
+  @media print { body { margin: 0.5in; } .grid { column-gap: 0.5in; } }
+</style></head><body>
+  <h1>${esc(event.name)} — Check-in</h1>
+  ${dateLabel ? `<div class="sub">${esc(dateLabel)}</div>` : ''}
+  <div class="count">${roster.length} on roster · tick each player as they arrive</div>
+  <div class="grid">${rows}</div>
+  <script>window.onload = function () { window.print(); };</script>
+</body></html>`;
+
+    const win = window.open('', '_blank');
+    if (!win) {
+      toast({
+        variant: 'destructive',
+        title: 'Popup blocked',
+        description: 'Allow popups for this site, then tap Print check-in sheet again.',
+      });
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
   };
 
   const handleAddPlayer = async (teamId: string) => {
@@ -834,7 +897,11 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
                 {checkedIn.length} of {players.length} here
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant="outline" size="sm" className="bg-white" onClick={printCheckinSheet} disabled={players.length === 0}>
+                <Printer className="h-4 w-4 mr-1.5" />
+                Print check-in sheet
+              </Button>
               <Button variant="outline" size="sm" className="bg-white" onClick={() => setShowStrength(s => !s)}>
                 <ListOrdered className="h-4 w-4 mr-1.5" />
                 {showStrength ? "Done ordering" : "Strength order"}
