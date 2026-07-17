@@ -257,15 +257,18 @@ function DrawTeamRow({
       </div>
     );
   }
+  // Public draws only reveal the top 4 seeds; everyone else shows as unseeded
+  // so lower-ranked kids don't see a rank number next to their name.
+  const showSeed = entry.seed != null && entry.seed <= 4;
   return (
     <div className="px-2 py-1.5 min-h-[36px] flex items-center justify-between gap-2">
       <div className="flex items-center gap-2 min-w-0">
         <span
           className={`w-6 h-5 inline-flex items-center justify-center text-[10px] font-bold rounded flex-shrink-0 ${
-            entry.seed != null ? 'bg-gray-900 text-white' : 'text-gray-500 border border-gray-300'
+            showSeed ? 'bg-gray-900 text-white' : 'text-gray-500 border border-gray-300'
           }`}
         >
-          {entry.seed ?? '·'}
+          {showSeed ? entry.seed : '·'}
         </span>
         <span
           className={`text-sm truncate ${won ? 'font-bold text-gray-900' : 'font-medium text-gray-800'}`}
