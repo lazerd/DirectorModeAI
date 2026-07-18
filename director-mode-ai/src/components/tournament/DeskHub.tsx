@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Play, Trophy, X, Zap, RefreshCw, Minus, Plus, AlertTriangle, Check } from 'lucide-react';
 
-type DeskEvent = { id: string; name: string; division: string; num_courts: number; match_format: string; public_status: string };
+type DeskEvent = { id: string; name: string; division: string; num_courts: number; match_format: string; public_status: string; event_date: string | null };
 type DeskMatch = {
   id: string; event_id: string; division: string; round: number; slot: number;
   court: string | null; status: string; score: string | null; score_token: string;
@@ -16,6 +16,26 @@ const DIVISION_COLORS: Record<string, string> = {
 };
 function divColor(d: string): string {
   return DIVISION_COLORS[d] || '#22d3ee';
+}
+
+type EventGroups = { today: DeskEvent[]; week: DeskEvent[]; older: DeskEvent[] };
+// Bucket events by date so the picker stays fast with lots of past tournaments:
+// Today, This week (±7 days), Older (everything else / undated).
+function groupEvents(events: DeskEvent[]): EventGroups {
+  const t = new Date(); t.setHours(0, 0, 0, 0);
+  const DAY = 86400000;
+  const g: EventGroups = { today: [], week: [], older: [] };
+  for (const e of events) {
+    if (!e.event_date) { g.older.push(e); continue; }
+    const diff = Math.round((new Date(e.event_date + 'T00:00:00').getTime() - t.getTime()) / DAY);
+    if (diff === 0) g.today.push(e);
+    else if (Math.abs(diff) <= 7) g.week.push(e);
+    else g.older.push(e);
+  }
+  const byDate = (a: DeskEvent, b: DeskEvent) =>
+    (a.event_date || '').localeCompare(b.event_date || '') || a.name.localeCompare(b.name);
+  g.today.sort(byDate); g.week.sort(byDate); g.older.sort((a, b) => byDate(b, a)); // older newest-first
+  return g;
 }
 
 export default function DeskHub({ initialEvents }: { initialEvents: string[] }) {
@@ -48,6 +68,7 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
   // tournament still marked running) never clutter the board. Persisted locally.
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ today: true, week: true, older: false });
   const initedSel = useRef(false);
   const persist = (s: Set<string>) => { try { localStorage.setItem('deskhub.selected', JSON.stringify([...s])); } catch { /* ignore */ } };
   useEffect(() => {
@@ -85,6 +106,12 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     () => (data?.matches || []).filter((m) => isOn(m.event_id)),
     [data, isOn],
   );
+  // Picker groups: only events that actually have a draw (skip registration-only),
+  // bucketed by date so the list stays short even with many past tournaments.
+  const pickerGroups = useMemo(() => {
+    const withDraw = (data?.events || []).filter((e) => (data?.matches || []).some((m) => m.event_id === e.id));
+    return groupEvents(withDraw);
+  }, [data]);
 
   const post = useCallback(async (payload: any) => {
     setBusy(true); setErr(null);
@@ -291,27 +318,55 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
 
       {pickerOpen && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setPickerOpen(false)}>
-          <div className="bg-[#062733] border border-white/10 rounded-2xl p-5 w-full max-w-md max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-[#062733] border border-white/10 rounded-2xl p-5 w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-1">
-              <p className="font-bold text-slate-100">Which events are you running?</p>
+              <p className="font-bold text-slate-100">Choose events to run</p>
               <button onClick={() => setPickerOpen(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
             </div>
-            <p className="text-xs text-slate-400 mb-3">Only the events you pick appear on this desk — old or other-venue tournaments stay hidden.</p>
-            <div className="space-y-1.5">
-              {data.events.map((e) => {
-                const on = isOn(e.id);
-                return (
-                  <button key={e.id} onClick={() => toggleDiv(e.id)}
-                    className={`w-full flex items-center justify-between rounded-lg px-3 py-2.5 border text-left ${on ? 'bg-[#D3FB52]/15 border-[#D3FB52]/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}>
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: divColor(e.division) }} />
-                      <span className="font-medium text-slate-100 truncate">{e.name}</span>
-                    </span>
-                    {on && <Check size={16} className="text-[#D3FB52] shrink-0" />}
+            <p className="text-xs text-slate-400 mb-3">Pick the divisions you’re running. Registration-only events (no draw yet) don’t appear here.</p>
+
+            {(['today', 'week', 'older'] as const).map((key) => {
+              const list = pickerGroups[key];
+              if (!list.length) return null;
+              const label = key === 'today' ? 'Today' : key === 'week' ? 'This week' : 'Older';
+              const open = openGroups[key];
+              const selCount = list.filter((e) => isOn(e.id)).length;
+              return (
+                <div key={key} className="mb-1.5">
+                  <button onClick={() => setOpenGroups((g) => ({ ...g, [key]: !g[key] }))}
+                    className="w-full flex items-center gap-2 py-1.5 text-slate-200 font-semibold text-sm hover:text-white">
+                    <span className="text-slate-500 w-3 inline-block">{open ? '▾' : '▸'}</span>
+                    {label}
+                    <span className="text-xs text-slate-500 font-normal">{list.length}{selCount ? ` · ${selCount} selected` : ''}</span>
                   </button>
-                );
-              })}
-            </div>
+                  {open && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-5 pb-1">
+                      {list.map((e) => {
+                        const on = isOn(e.id);
+                        return (
+                          <button key={e.id} onClick={() => toggleDiv(e.id)}
+                            className={`flex items-center justify-between rounded-lg px-3 py-2 border text-left ${on ? 'bg-[#D3FB52]/15 border-[#D3FB52]/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}>
+                            <span className="flex items-center gap-2 min-w-0">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: divColor(e.division) }} />
+                              <span className="min-w-0">
+                                <span className="block font-medium text-slate-100 text-sm leading-tight">{e.division}</span>
+                                <span className="block text-[11px] text-slate-500 truncate leading-tight">{e.name}</span>
+                              </span>
+                            </span>
+                            {on && <Check size={16} className="text-[#D3FB52] shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {pickerGroups.today.length + pickerGroups.week.length + pickerGroups.older.length === 0 && (
+              <p className="text-sm text-slate-500 py-4 text-center">No tournaments with a draw yet — generate a draw and it’ll show up here.</p>
+            )}
+
             <button onClick={() => setPickerOpen(false)} className="w-full mt-4 rounded-xl bg-[#D3FB52] text-[#00131c] font-bold py-2.5">Done</button>
           </div>
         </div>

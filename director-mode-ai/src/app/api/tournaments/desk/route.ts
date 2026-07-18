@@ -62,7 +62,7 @@ export async function GET(req: Request) {
   if (ids.length === 0) return NextResponse.json({ events: [], matches: [], courtCount: 8 });
 
   const [{ data: evs }, { data: entries }, { data: matches }] = await Promise.all([
-    admin.from('events').select('id, name, num_courts, match_format, public_status').in('id', ids),
+    admin.from('events').select('id, name, num_courts, match_format, public_status, event_date').in('id', ids),
     admin.from('tournament_entries').select('id, event_id, player_name, partner_name').in('event_id', ids),
     admin.from('tournament_matches')
       .select('id, event_id, bracket, round, slot, court, status, score, score_token, match_type, player1_id, player2_id, player3_id, player4_id')
@@ -83,6 +83,7 @@ export async function GET(req: Request) {
   const eventList = (evs || []).map((e: any) => ({
     id: e.id, name: e.name, division: divisionTag(e.name),
     num_courts: e.num_courts ?? 8, match_format: e.match_format, public_status: e.public_status,
+    event_date: e.event_date ?? null,
   }));
   const divByEvent = new Map(eventList.map((e) => [e.id, e.division]));
 
