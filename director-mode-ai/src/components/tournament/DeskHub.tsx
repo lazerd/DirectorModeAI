@@ -82,7 +82,9 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     if (!queue.length) return;
     assign(queue[0].id, court);
   };
-  const setCourts = (num: number) => { courtOverride.current = num; setCourtCount(num); post({ action: 'set_courts', eventIds, num }); };
+  // Court count is a hub VIEW setting (how many court columns to run), not a
+  // write — so it never mutates the unrelated events' saved num_courts.
+  const setCourts = (num: number) => { courtOverride.current = num; setCourtCount(num); };
   const autofill = () => post({ action: 'autofill', eventIds, courtCount });
 
   const stats = useMemo(() => {
