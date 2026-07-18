@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Play, Trophy, X, Zap, RefreshCw } from 'lucide-react';
+import { Loader2, Play, Trophy, X, Zap, RefreshCw, Minus, Plus, AlertTriangle } from 'lucide-react';
 
 type DeskEvent = { id: string; name: string; division: string; num_courts: number; match_format: string; public_status: string };
 type DeskMatch = {
@@ -43,7 +43,27 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     return () => clearInterval(iv);
   }, [load]);
 
-  const eventIds = useMemo(() => (data?.events || []).map((e) => e.id), [data]);
+  // Which divisions (events) are shown. Defaults to all; a director can deselect
+  // to focus on just their own venue's draws (divisions can be at different sites).
+  const [selected, setSelected] = useState<Set<string> | null>(null);
+  useEffect(() => {
+    if (data && selected === null) setSelected(new Set(data.events.map((e) => e.id)));
+  }, [data, selected]);
+  const isOn = useCallback((id: string) => !selected || selected.has(id), [selected]);
+  const toggleDiv = (id: string) => setSelected((prev) => {
+    const next = new Set(prev ?? (data?.events || []).map((e) => e.id));
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  const activeEventIds = useMemo(
+    () => (data?.events || []).filter((e) => isOn(e.id)).map((e) => e.id),
+    [data, isOn],
+  );
+  const shownMatches = useMemo(
+    () => (data?.matches || []).filter((m) => isOn(m.event_id)),
+    [data, isOn],
+  );
 
   const post = useCallback(async (payload: any) => {
     setBusy(true); setErr(null);
@@ -58,22 +78,26 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     } finally { setBusy(false); }
   }, [load]);
 
-  // Court occupancy + waiting queue.
-  const { courtsView, queue } = useMemo(() => {
-    const matches = data?.matches || [];
+  // Court occupancy, waiting queue, and any match stranded on a court above the
+  // current count (so lowering courts mid-day never hides a live match).
+  const { courtsView, queue, offBoard } = useMemo(() => {
     const occByCourt = new Map<string, DeskMatch>();
-    for (const m of matches) {
-      if (m.status !== 'completed' && m.court) occByCourt.set(String(m.court), m);
+    const offBoard: DeskMatch[] = [];
+    for (const m of shownMatches) {
+      if (m.status === 'completed' || !m.court) continue;
+      const n = parseInt(String(m.court), 10);
+      if (Number.isFinite(n) && n >= 1 && n <= courtCount) occByCourt.set(String(n), m);
+      else offBoard.push(m);
     }
     const courtsView = Array.from({ length: courtCount }, (_, i) => {
       const n = String(i + 1);
       return { court: n, match: occByCourt.get(n) || null };
     });
-    const queue = matches
+    const queue = shownMatches
       .filter((m) => m.ready && !m.court)
       .sort((a, b) => a.round - b.round || a.slot - b.slot);
-    return { courtsView, queue };
-  }, [data, courtCount]);
+    return { courtsView, queue, offBoard };
+  }, [shownMatches, courtCount]);
 
   const nextOpenCourt = useMemo(() => courtsView.find((c) => !c.match)?.court ?? null, [courtsView]);
 
@@ -82,20 +106,20 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     if (!queue.length) return;
     assign(queue[0].id, court);
   };
-  // Court count is a hub VIEW setting (how many court columns to run), not a
-  // write — so it never mutates the unrelated events' saved num_courts.
-  const setCourts = (num: number) => { courtOverride.current = num; setCourtCount(num); };
-  const autofill = () => post({ action: 'autofill', eventIds, courtCount });
+  // Court count is a hub VIEW setting — change it any time during the day. It
+  // never writes the events' saved num_courts.
+  const setCourts = (num: number) => {
+    const clamped = Math.max(1, Math.min(24, num));
+    courtOverride.current = clamped; setCourtCount(clamped);
+  };
+  const autofill = () => post({ action: 'autofill', eventIds: activeEventIds, courtCount });
 
-  const stats = useMemo(() => {
-    const ms = data?.matches || [];
-    return {
-      done: ms.filter((m) => m.status === 'completed').length,
-      total: ms.length,
-      onCourt: ms.filter((m) => m.court && m.status !== 'completed').length,
-      waiting: queue.length,
-    };
-  }, [data, queue]);
+  const stats = useMemo(() => ({
+    done: shownMatches.filter((m) => m.status === 'completed').length,
+    total: shownMatches.length,
+    onCourt: shownMatches.filter((m) => m.court && m.status !== 'completed').length,
+    waiting: queue.length,
+  }), [shownMatches, queue]);
 
   if (!data) {
     return <div className="min-h-screen flex items-center justify-center text-slate-400"><Loader2 className="animate-spin" /></div>;
@@ -116,24 +140,29 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <h1 className="text-xl font-bold">Tournament Desk</h1>
-        <div className="flex items-center gap-1 text-xs">
-          {data.events.map((e) => (
-            <span key={e.id} className="rounded-full px-2 py-0.5 font-semibold text-[#00131c]" style={{ backgroundColor: divColor(e.division) }}>
-              {e.division}
-            </span>
-          ))}
+        <div className="flex items-center gap-1.5 text-xs flex-wrap">
+          {data.events.map((e) => {
+            const on = isOn(e.id);
+            return (
+              <button key={e.id} onClick={() => toggleDiv(e.id)}
+                title={on ? 'Showing — tap to hide this division' : 'Hidden — tap to show'}
+                className={`rounded-full px-2.5 py-1 font-semibold transition ${on ? 'text-[#00131c]' : 'text-slate-500 bg-white/5 line-through'}`}
+                style={on ? { backgroundColor: divColor(e.division) } : undefined}>
+                {e.division}
+              </button>
+            );
+          })}
         </div>
         <div className="flex-1" />
         <div className="text-sm text-slate-400 mr-2">
           {stats.done}/{stats.total} done · {stats.onCourt} on court · {stats.waiting} waiting
         </div>
-        <div className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
-          {[8, 10].map((n) => (
-            <button key={n} onClick={() => setCourts(n)}
-              className={`px-3 py-1.5 rounded-md text-sm font-semibold ${courtCount === n ? 'bg-[#D3FB52] text-[#00131c]' : 'text-slate-300 hover:bg-white/5'}`}>
-              {n} courts
-            </button>
-          ))}
+        {/* Courts — change any time during the event */}
+        <div className="flex items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5">
+          <span className="text-xs text-slate-400 uppercase tracking-wide">Courts</span>
+          <button onClick={() => setCourts(courtCount - 1)} className="rounded-md bg-white/10 hover:bg-white/20 p-1.5" aria-label="Fewer courts"><Minus size={14} /></button>
+          <span className="text-lg font-bold w-7 text-center tabular-nums">{courtCount}</span>
+          <button onClick={() => setCourts(courtCount + 1)} className="rounded-md bg-white/10 hover:bg-white/20 p-1.5" aria-label="More courts"><Plus size={14} /></button>
         </div>
         <button onClick={autofill} disabled={busy || !queue.length}
           className="inline-flex items-center gap-2 rounded-lg bg-[#D3FB52] text-[#00131c] font-bold px-4 py-2 disabled:opacity-40">
@@ -145,6 +174,25 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
       </div>
 
       {err && <div className="mb-3 text-sm text-red-400">{err}</div>}
+
+      {offBoard.length > 0 && (
+        <div className="mb-3 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3">
+          <div className="flex items-center gap-2 text-amber-300 text-sm font-semibold mb-2">
+            <AlertTriangle size={16} /> {offBoard.length} match{offBoard.length > 1 ? 'es' : ''} on a court above your current {courtCount}-court setup — score or send back:
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {offBoard.map((m) => (
+              <div key={m.id} className="flex items-center gap-2 rounded-lg bg-white/5 px-2.5 py-1.5 text-sm">
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-[#00131c]" style={{ backgroundColor: divColor(m.division) }}>{m.division}</span>
+                <span className="text-slate-400">Court {m.court}:</span>
+                <span>{m.sideA} vs {m.sideB}</span>
+                <button onClick={() => setScoring(m)} className="ml-1 rounded bg-[#D3FB52] text-[#00131c] font-bold px-2 py-0.5 text-xs">Score</button>
+                <button onClick={() => assign(m.id, null)} title="Send back to queue" className="rounded bg-white/10 hover:bg-white/20 px-1.5 py-0.5"><X size={12} /></button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-4">
         {/* Court board */}
