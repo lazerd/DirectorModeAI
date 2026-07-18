@@ -418,10 +418,10 @@ export default function CoachPublicPage() {
                     <div key={day.toISOString()} className={`min-h-[180px] ${isPast ? 'bg-gray-50' : ''}`}>
                       <div className={`p-2 text-center border-b ${isToday ? 'bg-blue-50' : ''}`}>
                         <p className="text-xs text-gray-500">{format(day, 'EEE')}</p>
-                        <p className={`text-lg font-semibold ${isToday ? 'text-blue-600' : isPast ? 'text-gray-400' : ''}`}>{format(day, 'd')}</p>
+                        <p className={`text-lg font-semibold ${isToday ? 'text-blue-600' : isPast ? 'text-gray-500' : ''}`}>{format(day, 'd')}</p>
                       </div>
                       <div className="p-2 space-y-2">
-                        {daySlots.length === 0 && !isPast && <p className="text-xs text-gray-400 text-center py-4">No slots</p>}
+                        {daySlots.length === 0 && !isPast && <p className="text-xs text-gray-600 text-center py-4">No slots</p>}
                         {daySlots.map((slot) => (
                           <button key={slot.id} onClick={() => setSelectedSlot(slot)} className="w-full p-2 bg-green-100 hover:bg-green-200 text-green-800 rounded-lg text-xs text-left transition-colors">
                             <p className="font-medium">{format(parseISO(slot.start_time), 'h:mm a')}</p>

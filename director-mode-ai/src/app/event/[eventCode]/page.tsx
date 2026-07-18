@@ -349,7 +349,7 @@ export default function PublicEvent() {
               </CardHeader>
               <CardContent style={{ color: '#000000' }}>
                 {standings.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-8">
+                  <p className="text-center text-slate-500 py-8">
                     No matches have been played yet.
                   </p>
                 ) : (

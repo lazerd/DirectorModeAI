@@ -192,7 +192,7 @@ export default function CandidatePage() {
   }
 
   if (loading) {
-    return <div className="max-w-3xl mx-auto px-4 py-16 text-center text-slate-500"><Loader2 className="h-5 w-5 animate-spin inline" /> Loading…</div>;
+    return <div className="max-w-3xl mx-auto px-4 py-16 text-center text-slate-300"><Loader2 className="h-5 w-5 animate-spin inline" /> Loading…</div>;
   }
 
   return (
@@ -233,7 +233,7 @@ export default function CandidatePage() {
       <Card className="mb-6">
         <CardHeader><CardTitle className="text-base flex items-center gap-2"><Search className="h-4 w-4 text-teal-600" /> Claim your 990 record (optional prefill)</CardTitle></CardHeader>
         <CardContent>
-          <p className="text-xs text-slate-500 mb-2">
+          <p className="text-xs text-slate-300 mb-2">
             Optional shortcut: if your comp is in the public IRS filings, pick it to auto-fill your profile. If not, skip this and fill in the form below — then hit <strong>Save profile</strong>.
           </p>
           <div className="relative">
@@ -251,11 +251,11 @@ export default function CandidatePage() {
             </div>
           )}
           {!claimBusy && claimSearched && claimResults.length === 0 && !claimedEin && (
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-slate-300">
               No public 990 record found for “{claimQuery.trim()}”. That’s normal — the filings only list each club’s few highest-paid people. Just fill in your details below.
             </p>
           )}
-          {claimedEin && <p className="mt-2 text-xs text-teal-700 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Prefilled from EIN {claimedEin}. Review the fields below, then Save.</p>}
+          {claimedEin && <p className="mt-2 text-xs text-teal-300 flex items-center gap-1"><CheckCircle2 className="h-3 w-3" /> Prefilled from EIN {claimedEin}. Review the fields below, then Save.</p>}
         </CardContent>
       </Card>
 
@@ -281,7 +281,7 @@ export default function CandidatePage() {
           <div className="flex items-center justify-between border-t pt-4">
             <div>
               <Label className="text-slate-100">Open to work</Label>
-              <p className="text-xs text-slate-500">Turn off to pause all matching without deleting your profile.</p>
+              <p className="text-xs text-slate-300">Turn off to pause all matching without deleting your profile.</p>
             </div>
             <Switch checked={openToWork} onCheckedChange={setOpenToWork} />
           </div>
@@ -289,7 +289,7 @@ export default function CandidatePage() {
           <div className="flex items-center justify-between">
             <div>
               <Label className="text-slate-100">Reveal mode</Label>
-              <p className="text-xs text-slate-500">{revealMode === 'auto' ? 'Auto: clubs get your contact the moment you match.' : 'Approve-first: you confirm before any club sees your contact.'}</p>
+              <p className="text-xs text-slate-300">{revealMode === 'auto' ? 'Auto: clubs get your contact the moment you match.' : 'Approve-first: you confirm before any club sees your contact.'}</p>
             </div>
             <Select value={revealMode} onValueChange={(v) => setRevealMode(v as any)}>
               <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
@@ -302,7 +302,7 @@ export default function CandidatePage() {
 
           <div className="flex items-center gap-3 border-t pt-4">
             <Button onClick={save} disabled={saving}>{saving ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Saving…</> : 'Save profile'}</Button>
-            {savedMsg && <span className="text-sm text-teal-700">{savedMsg}</span>}
+            {savedMsg && <span className="text-sm text-teal-300">{savedMsg}</span>}
           </div>
         </CardContent>
       </Card>
@@ -329,7 +329,7 @@ export default function CandidatePage() {
                     <div className="min-w-0">
                       <div className="font-medium text-slate-900 truncate">
                         {c.url ? <a href={c.url} target="_blank" rel="noreferrer" className="hover:underline">{c.club}</a> : c.club}
-                        <span className="text-slate-400 font-normal"> · {c.state}</span>
+                        <span className="text-slate-600 font-normal"> · {c.state}</span>
                       </div>
                       <div className="text-xs text-slate-500 flex flex-wrap gap-x-2">
                         {c.distanceMiles != null && <span><MapPin className="h-3 w-3 inline" /> {c.distanceMiles} mi</span>}

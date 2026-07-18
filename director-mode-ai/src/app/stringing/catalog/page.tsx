@@ -194,7 +194,7 @@ export default function CatalogPage() {
                       </select>
                     </td>
                     <td className="py-2 pr-3"><input value={r.price} onChange={(e) => setReviewField(i, { price: e.target.value })} placeholder="—" className="w-20 px-2 py-1 border rounded" style={{ color: '#111827' }} /></td>
-                    <td className="py-2 pr-3 text-gray-400">{r.quantity ?? '—'}</td>
+                    <td className="py-2 pr-3 text-gray-600">{r.quantity ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -249,12 +249,12 @@ export default function CatalogPage() {
         <div className="bg-white rounded-xl border overflow-hidden">
           <table className="w-full">
             <thead><tr className="bg-gray-50 border-b">
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">String</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Type</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Gauge</th>
-              <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">Price</th>
-              <th className="text-center px-4 py-3 text-sm font-medium text-gray-500">Stock</th>
-              <th className="text-right px-4 py-3 text-sm font-medium text-gray-500"></th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">String</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Type</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Gauge</th>
+              <th className="text-left px-4 py-3 text-sm font-medium text-gray-600">Price</th>
+              <th className="text-center px-4 py-3 text-sm font-medium text-gray-600">Stock</th>
+              <th className="text-right px-4 py-3 text-sm font-medium text-gray-600"></th>
             </tr></thead>
             <tbody className="divide-y">
               {filtered.map((s) => (

@@ -238,7 +238,7 @@ export default function FamilyPublicPage() {
             <div className="text-2xl font-extrabold text-cyan-700 leading-none">
               +{job.points}
             </div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-600">
               pts
             </div>
           </div>
@@ -273,7 +273,7 @@ export default function FamilyPublicPage() {
                   {taken} of {slots} {full ? '— FULL' : 'spots'}
                 </span>
               </span>
-              <span className="text-gray-400">{slotPct}%</span>
+              <span className="text-gray-600">{slotPct}%</span>
             </div>
             <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
               <div
@@ -433,7 +433,7 @@ export default function FamilyPublicPage() {
               </p>
               <h2 className="font-display text-3xl font-bold text-gray-900 mt-0.5">
                 {progress.earned}
-                <span className="text-gray-300"> / </span>
+                <span className="text-gray-500"> / </span>
                 <span className="text-gray-600">{progress.required}</span>
                 <span className="text-base font-semibold text-gray-500 ml-1">pts</span>
               </h2>
@@ -535,7 +535,7 @@ export default function FamilyPublicPage() {
           </div>
         )}
 
-        <p className="text-center text-xs text-gray-400 pt-4">
+        <p className="text-center text-xs text-gray-600 pt-4">
           🔒 This is your private link. Don't share it — anyone with it can sign up as you.
         </p>
       </main>

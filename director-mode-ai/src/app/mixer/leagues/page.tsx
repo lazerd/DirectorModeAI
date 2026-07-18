@@ -75,7 +75,7 @@ export default function LeaguesListPage() {
           </div>
           <div>
             <h3 className="font-semibold text-gray-900">Summer Flex League 2026</h3>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-gray-600">
               Live hub — Men&apos;s/Women&apos;s Singles &amp; Doubles, compass draw, pool standings &amp; scoring
             </p>
           </div>
@@ -142,7 +142,7 @@ export default function LeaguesListPage() {
                   {format(new Date(league.end_date), 'MM/dd/yyyy')}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs text-gray-400">
+              <div className="flex items-center gap-2 text-xs text-gray-600">
                 <Users size={12} />
                 <code>/leagues/{league.slug}</code>
               </div>

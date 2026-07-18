@@ -41,11 +41,28 @@
   --card: 200, 70%, 11%;          /* #002838 */
   --card-foreground: 210, 20%, 95%;
   --muted: 200, 50%, 14%;
-  --muted-foreground: 210, 15%, 60%;
+  --muted-foreground: 210, 16%, 66%;  /* 66% L → ~6.7:1 on card, ~7.5:1 on bg (was 60% ≈ 5.6:1) */
   --border: 200, 30%, 18%;
   --input: 200, 30%, 18%;
   --ring: 75, 80%, 65%;
-  
+
+  /* Overlay surfaces (Select/DropdownMenu/Popover/Tooltip menus).
+     Previously undefined → shadcn's bg-popover/text-popover-foreground were
+     no-ops, so option menus rendered transparent with inherited near-white
+     text (invisible over light areas) and lime-on-near-white focus states. */
+  --popover: 200, 70%, 11%;           /* = card #002838 */
+  --popover-foreground: 210, 20%, 95%;
+
+  /* Foreground pairs for colored surfaces (were undefined → *-foreground
+     utilities were no-ops → near-white text inherited onto bright fills). */
+  --primary-foreground: 0, 0%, 100%;      /* white on court blue — 4.6:1 */
+  --secondary: 200, 40%, 20%;             /* subtle navy chip surface */
+  --secondary-foreground: 210, 20%, 95%;  /* 10.7:1 on secondary */
+  --accent-foreground: 200, 100%, 10%;    /* dark navy on lime accent — 11.5:1 */
+  --destructive-foreground: 0, 0%, 100%;
+  --success-foreground: 142, 90%, 13%;    /* dark on light green — 5.6:1 */
+  --warning-foreground: 38, 92%, 12%;     /* dark on amber — 6.7:1 */
+
   /* Radius */
   --radius: 0.75rem;
 }
@@ -56,9 +73,19 @@
   --card: 200, 70%, 11%;
   --card-foreground: 210, 20%, 95%;
   --muted: 200, 50%, 14%;
-  --muted-foreground: 210, 15%, 60%;
+  --muted-foreground: 210, 16%, 66%;
   --border: 200, 30%, 18%;
   --input: 200, 30%, 18%;
+  --ring: 75, 80%, 65%;
+  --popover: 200, 70%, 11%;
+  --popover-foreground: 210, 20%, 95%;
+  --primary-foreground: 0, 0%, 100%;
+  --secondary: 200, 40%, 20%;
+  --secondary-foreground: 210, 20%, 95%;
+  --accent-foreground: 200, 100%, 10%;
+  --destructive-foreground: 0, 0%, 100%;
+  --success-foreground: 142, 90%, 13%;
+  --warning-foreground: 38, 92%, 12%;
 }
 
 /* ========================================

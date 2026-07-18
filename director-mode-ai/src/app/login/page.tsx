@@ -54,7 +54,7 @@ function LoginForm() {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
-      <h2 className="font-semibold text-2xl mb-2">Sign in</h2>
+      <h2 className="font-semibold text-2xl mb-2 text-slate-900">Sign in</h2>
       <p className="text-gray-500 mb-6">Enter your credentials to continue</p>
 
       <form onSubmit={handleSubmit} className="space-y-4">

@@ -191,7 +191,7 @@ export default function MixerSettingsPage() {
             disabled
             className="w-full px-3 py-2 border rounded-lg bg-gray-50 text-gray-500"
           />
-          <p className="text-xs text-gray-400 mt-1">Email is managed in your account.</p>
+          <p className="text-xs text-gray-600 mt-1">Email is managed in your account.</p>
         </div>
 
         <div>

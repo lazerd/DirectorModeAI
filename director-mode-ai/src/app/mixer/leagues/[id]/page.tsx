@@ -816,7 +816,7 @@ export default function LeagueDetailPage() {
                     <div className="text-xs text-gray-500 flex items-center gap-2">
                       <span>
                         {formatMoney(fee)}
-                        <span className="text-gray-400 ml-1">/ {doubles ? 'team' : 'player'}</span>
+                        <span className="text-gray-600 ml-1">/ {doubles ? 'team' : 'player'}</span>
                       </span>
                       <span>·</span>
                       <span>{activeEntries.length} active {activeEntries.length === 1 ? 'entry' : 'entries'}</span>
@@ -1057,7 +1057,7 @@ export default function LeagueDetailPage() {
                 )}
 
                 {catEntries.length === 0 && !isAdding ? (
-                  <p className="text-sm text-gray-400 italic">No entries yet.</p>
+                  <p className="text-sm text-gray-600 italic">No entries yet.</p>
                 ) : catEntries.length > 0 ? (
                   <div className="divide-y divide-gray-100">
                     {catEntries.map(entry => (
@@ -1309,7 +1309,7 @@ function PaymentRailRow({ label, value }: { label: string; value: string | null 
       {value ? (
         <span className="font-mono text-gray-900 text-xs truncate max-w-[180px]">{value}</span>
       ) : (
-        <span className="text-gray-300 text-xs">not set</span>
+        <span className="text-gray-600 text-xs">not set</span>
       )}
     </div>
   );
@@ -1365,8 +1365,8 @@ function EntryRow({
               <AlertCircle size={10} /> awaiting partner
             </span>
           )}
-          {isWaitlisted && <span className="text-gray-400">waitlisted</span>}
-          {isWithdrawn && <span className="text-gray-400">withdrawn</span>}
+          {isWaitlisted && <span className="text-gray-600">waitlisted</span>}
+          {isWithdrawn && <span className="text-gray-600">withdrawn</span>}
         </div>
       </div>
       {/* Native select styled as a pill — mobile gets the OS picker for free,

@@ -163,7 +163,7 @@ export default async function PublicRostersPage({
                     <div key={club.id} className="bg-white p-4">
                       <h4 className="font-medium text-gray-900 mb-2">{club.name}</h4>
                       {teamRosters.length === 0 ? (
-                        <p className="text-xs text-gray-400 italic">Roster TBD</p>
+                        <p className="text-xs text-gray-600 italic">Roster TBD</p>
                       ) : (
                         <ol className="text-sm divide-y divide-gray-100 border border-gray-100 rounded-md">
                           {teamRosters.map((r, i) => {
@@ -173,7 +173,7 @@ export default async function PublicRostersPage({
                                 key={r.id}
                                 className="flex items-center gap-2 px-3 py-1.5"
                               >
-                                <span className="w-6 text-right text-gray-400">
+                                <span className="w-6 text-right text-gray-600">
                                   {i + 1}.
                                 </span>
                                 <span className="flex-1 text-gray-900 truncate">

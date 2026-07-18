@@ -540,7 +540,7 @@ export default function ClientDashboardPage() {
               <div className="bg-white rounded-xl border p-8 text-center">
                 <Wrench className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                 <p className="text-gray-500 mb-2">No stringing jobs found</p>
-                <p className="text-sm text-gray-400">Jobs will appear here when your pro shop strings your racket using {clientEmail}</p>
+                <p className="text-sm text-gray-600">Jobs will appear here when your pro shop strings your racket using {clientEmail}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -570,7 +570,7 @@ export default function ClientDashboardPage() {
                             {job.status?.replace('_', ' ') || 'pending'}
                           </span>
                         </div>
-                        <p className="text-xs text-gray-400 mt-2">
+                        <p className="text-xs text-gray-600 mt-2">
                           {format(parseISO(job.created_at), 'MM/dd/yyyy')}
                         </p>
                       </div>
@@ -614,7 +614,7 @@ export default function ClientDashboardPage() {
                           </div>
                           <ExternalLink className="h-4 w-4 text-gray-400" />
                         </div>
-                        <p className="text-xs text-gray-400 mt-2">
+                        <p className="text-xs text-gray-600 mt-2">
                           {format(parseISO(event.date), 'MM/dd/yyyy')}
                         </p>
                       </div>
@@ -670,7 +670,7 @@ export default function ClientDashboardPage() {
               <div className="text-center py-12 bg-white rounded-xl border">
                 <Sparkles className="h-10 w-10 mx-auto text-gray-300 mb-3" />
                 <p className="text-gray-600 font-medium">No lesson recaps yet</p>
-                <p className="text-sm text-gray-400 mt-1">After your next lesson, your coach&apos;s AI summary shows up here.</p>
+                <p className="text-sm text-gray-600 mt-1">After your next lesson, your coach&apos;s AI summary shows up here.</p>
               </div>
             ) : (
               <div className="space-y-4">

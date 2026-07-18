@@ -342,7 +342,7 @@ function JobCard({
             <span>{tension}</span>
           </div>
           
-          <div className="text-xs text-gray-400 mt-2">
+          <div className="text-xs text-gray-600 mt-2">
             Created {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
             {job.quoted_ready_at && (
               <> • Due {formatDistanceToNow(new Date(job.quoted_ready_at), { addSuffix: true })}</>

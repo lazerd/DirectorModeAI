@@ -234,16 +234,16 @@ export default function BookSlotPage() {
         <div className="bg-blue-50 rounded-xl p-4 mb-6 space-y-3">
           <div className="flex items-center gap-3">
             <Calendar className="h-5 w-5 text-blue-600 flex-shrink-0" />
-            <span className="font-medium">{format(startDate, 'MM/dd/yyyy')}</span>
+            <span className="font-medium text-slate-900">{format(startDate, 'MM/dd/yyyy')}</span>
           </div>
           <div className="flex items-center gap-3">
             <Clock className="h-5 w-5 text-blue-600 flex-shrink-0" />
-            <span>{format(startDate, 'h:mm a')} - {format(endDate, 'h:mm a')}</span>
+            <span className="text-slate-900">{format(startDate, 'h:mm a')} - {format(endDate, 'h:mm a')}</span>
           </div>
           {slot.location && (
             <div className="flex items-center gap-3">
               <MapPin className="h-5 w-5 text-blue-600 flex-shrink-0" />
-              <span>{slot.location}</span>
+              <span className="text-slate-900">{slot.location}</span>
             </div>
           )}
         </div>

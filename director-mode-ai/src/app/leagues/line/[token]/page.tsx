@@ -278,7 +278,7 @@ export default function MagicLinkScorePage() {
         {/* Reporter name */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">
-            Your name <span className="text-gray-400 font-normal">(optional)</span>
+            Your name <span className="text-gray-600 font-normal">(optional)</span>
           </label>
           <input
             value={reporter}

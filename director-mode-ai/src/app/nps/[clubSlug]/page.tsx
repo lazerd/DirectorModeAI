@@ -23,7 +23,7 @@ export default async function NpsSurveyPage({ params }: PageProps) {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-10">
       <div className="w-full max-w-md">
         <SurveyForm clubSlug={club.slug} clubName={club.name} />
-        <p className="mt-4 text-center text-xs text-gray-400">Powered by ClubMode AI</p>
+        <p className="mt-4 text-center text-xs text-gray-600">Powered by ClubMode AI</p>
       </div>
     </div>
   );

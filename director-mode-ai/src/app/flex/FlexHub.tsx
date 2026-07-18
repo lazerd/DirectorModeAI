@@ -41,7 +41,7 @@ export default function FlexHub({ divisions }: { divisions: Division[] }) {
 
         {divisions.map((d) => <DivisionCard key={d.id} d={d} />)}
 
-        <div style={{ textAlign: 'center', color: '#6F7B90', fontSize: 13, marginTop: 30 }}>Sleepy Hollow Swim &amp; Tennis Club · Summer Flex League · June 22 – Aug 30</div>
+        <div style={{ textAlign: 'center', color: '#475569', fontSize: 13, marginTop: 30 }}>Sleepy Hollow Swim &amp; Tennis Club · Summer Flex League · June 22 – Aug 30</div>
       </div>
     </main>
   );
@@ -72,7 +72,7 @@ function Group({ g, accent }: { g: GroupT; accent: string }) {
       {g.standings && g.standings.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, marginBottom: 12 }}>
           <thead>
-            <tr style={{ textAlign: 'left', color: '#9AA5B8', textTransform: 'uppercase', fontFamily: "'Barlow Semi Condensed'", fontSize: 11, letterSpacing: '.06em' }}>
+            <tr style={{ textAlign: 'left', color: '#475569', textTransform: 'uppercase', fontFamily: "'Barlow Semi Condensed'", fontSize: 11, letterSpacing: '.06em' }}>
               <th style={{ padding: '4px 8px 4px 0', width: 26 }}>#</th><th style={{ padding: '4px 8px' }}>Player</th>
               <th style={{ padding: '4px 8px', textAlign: 'center' }}>W-L</th><th style={{ padding: '4px 8px', textAlign: 'center' }}>Games</th>
             </tr>
@@ -80,10 +80,10 @@ function Group({ g, accent }: { g: GroupT; accent: string }) {
           <tbody>
             {g.standings.map((s, i) => (
               <tr key={s.name} style={{ borderTop: '1px solid #EEF1F6' }}>
-                <td style={{ padding: '6px 8px 6px 0', color: '#9AA5B8', fontWeight: 700 }}>{i + 1}</td>
+                <td style={{ padding: '6px 8px 6px 0', color: '#475569', fontWeight: 700 }}>{i + 1}</td>
                 <td style={{ padding: '6px 8px', color: '#1B2536', fontWeight: 500 }}>{s.name}</td>
                 <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#1B2536' }}>{s.w}-{s.l}</td>
-                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#6F7B90' }}>{s.gf}-{s.ga}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569' }}>{s.gf}-{s.ga}</td>
               </tr>
             ))}
           </tbody>
@@ -121,8 +121,8 @@ function MatchRow({ m }: { m: MatchT }) {
 
   if (!done && !ready) {
     return (
-      <div style={{ border: '1px dashed #DCE1EA', borderRadius: 10, padding: '10px 13px', marginBottom: 8, color: '#9AA5B8', fontSize: 14 }}>
-        {m.a} <span style={{ color: '#cbd5e1' }}>vs</span> {m.b} &mdash; <em>awaiting earlier-round results</em>
+      <div style={{ border: '1px dashed #DCE1EA', borderRadius: 10, padding: '10px 13px', marginBottom: 8, color: '#475569', fontSize: 14 }}>
+        {m.a} <span style={{ color: '#64748b' }}>vs</span> {m.b} &mdash; <em>awaiting earlier-round results</em>
       </div>
     );
   }
@@ -136,7 +136,7 @@ function MatchRow({ m }: { m: MatchT }) {
       <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: '9px 13px', marginBottom: 8, background: '#f6fefb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <div style={{ fontSize: 14.5 }}>
           <span style={{ fontWeight: 700, color: '#15803d' }}>{winnerName}</span>
-          <span style={{ color: '#9AA5B8' }}> def. </span>
+          <span style={{ color: '#475569' }}> def. </span>
           <span style={{ fontWeight: 500, color: '#1B2536' }}>{loserName}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -153,7 +153,7 @@ function MatchRow({ m }: { m: MatchT }) {
 
   return (
     <div style={{ border: '1px solid #E5E7EB', borderRadius: 10, padding: 11, marginBottom: 8, background: '#fff' }}>
-      <div style={{ display: 'flex', gap: 7, marginBottom: 8, alignItems: 'center' }}>{btn('a', m.a)}<span style={{ color: '#9ca3af', fontWeight: 700, fontSize: 11 }}>vs</span>{btn('b', m.b)}</div>
+      <div style={{ display: 'flex', gap: 7, marginBottom: 8, alignItems: 'center' }}>{btn('a', m.a)}<span style={{ color: '#475569', fontWeight: 700, fontSize: 11 }}>vs</span>{btn('b', m.b)}</div>
       <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', alignItems: 'center' }}>
         <input value={score} onChange={(e) => setScore(e.target.value)} placeholder="6-4, 3-6, 10-7" style={{ flex: '2 1 150px', padding: '9px 11px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14.5, color: '#111827', background: '#fff' }} />
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" style={{ flex: '1 1 100px', padding: '9px 11px', border: '1px solid #d1d5db', borderRadius: 8, fontSize: 14.5, color: '#111827', background: '#fff' }} />
@@ -199,7 +199,7 @@ function DrawCard({ m }: { m: MatchT }) {
     const tbd = name === 'TBD' || !name;
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', background: won ? '#EAF7EE' : 'transparent' }}>
-        <span style={{ fontSize: 12.5, fontWeight: won ? 700 : 500, color: tbd ? '#B6BECC' : (won ? '#15803d' : '#1B2536'), fontStyle: tbd ? 'italic' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'TBD'}</span>
+        <span style={{ fontSize: 12.5, fontWeight: won ? 700 : 500, color: tbd ? '#64748b' : (won ? '#15803d' : '#1B2536'), fontStyle: tbd ? 'italic' : 'normal', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name || 'TBD'}</span>
         {won && <span style={{ marginLeft: 'auto', color: '#16a34a', fontSize: 11, fontWeight: 800 }}>✓</span>}
       </div>
     );
@@ -222,12 +222,12 @@ function DirectionRow({ dir, stages }: { dir: Dir; stages: Record<string, MatchT
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
         <span style={{ width: 10, height: 10, borderRadius: '50%', background: dir.tint }} />
         <span style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 18, textTransform: 'uppercase', color: '#111726' }}>{dir.title}</span>
-        <span style={{ fontSize: 12, color: '#9AA5B8' }}>{dir.sub}</span>
+        <span style={{ fontSize: 12, color: '#475569' }}>{dir.sub}</span>
       </div>
       <div style={{ display: 'flex', gap: 28, overflowX: 'auto', paddingBottom: 6, alignItems: 'stretch' }}>
         {cols.map((c) => (
           <div key={c.stage} style={{ display: 'flex', flexDirection: 'column', minWidth: 150 }}>
-            <div style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.08em', textTransform: 'uppercase', color: '#9AA5B8', marginBottom: 6, textAlign: 'center' }}>{c.label}</div>
+            <div style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.08em', textTransform: 'uppercase', color: '#475569', marginBottom: 6, textAlign: 'center' }}>{c.label}</div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-around', gap: 8 }}>
               {(stages[c.stage] || []).map((m, i) => <DrawCard key={m.token || i} m={m} />)}
             </div>

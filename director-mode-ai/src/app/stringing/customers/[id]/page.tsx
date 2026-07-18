@@ -293,7 +293,7 @@ export default function CustomerDetailPage() {
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusBadge(job.status)}`}>
                             {job.status.replace('_', ' ')}
                           </span>
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-gray-600">
                             {format(new Date(job.created_at), 'MM/dd/yyyy')}
                           </span>
                         </div>
@@ -302,7 +302,7 @@ export default function CustomerDetailPage() {
                           <div className="font-medium">
                             {job.racket.brand} {job.racket.model}
                             {job.racket.string_pattern && (
-                              <span className="text-gray-400 font-normal"> ({job.racket.string_pattern})</span>
+                              <span className="text-gray-600 font-normal"> ({job.racket.string_pattern})</span>
                             )}
                           </div>
                         )}
@@ -314,7 +314,7 @@ export default function CustomerDetailPage() {
                         </div>
 
                         {job.picked_up_at && (
-                          <div className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                          <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
                             <CheckCircle size={12} />
                             Picked up {format(new Date(job.picked_up_at), 'MM/dd/yyyy')}
                           </div>

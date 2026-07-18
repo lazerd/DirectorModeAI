@@ -185,7 +185,7 @@ export default function NewLeaguePage() {
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-700">URL slug *</label>
               <div className="flex items-center gap-2">
-                <span className="text-gray-400 text-sm">club.coachmode.ai/leagues/</span>
+                <span className="text-gray-600 text-sm">club.coachmode.ai/leagues/</span>
                 <input
                   type="text"
                   value={effectiveSlug}
@@ -195,7 +195,7 @@ export default function NewLeaguePage() {
                   required
                 />
               </div>
-              <p className="text-xs text-gray-400 mt-1">Auto-generated from name. Edit for a custom URL.</p>
+              <p className="text-xs text-gray-600 mt-1">Auto-generated from name. Edit for a custom URL.</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-700">Description</label>
@@ -307,7 +307,7 @@ export default function NewLeaguePage() {
                 onChange={e => setRegOpens(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
-              <p className="text-xs text-gray-400 mt-1">Leave blank to open immediately.</p>
+              <p className="text-xs text-gray-600 mt-1">Leave blank to open immediately.</p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-700">Registration closes</label>
@@ -317,7 +317,7 @@ export default function NewLeaguePage() {
                 onChange={e => setRegCloses(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
-              <p className="text-xs text-gray-400 mt-1">Typically a week before start date.</p>
+              <p className="text-xs text-gray-600 mt-1">Typically a week before start date.</p>
             </div>
           </div>
         </section>
@@ -348,10 +348,10 @@ export default function NewLeaguePage() {
                   />
                   <div className="flex-1">
                     <div className="text-sm font-medium text-gray-900">{CATEGORY_LABELS[cat.key]}</div>
-                    <div className="text-xs text-gray-400">{doubles ? 'Charged per team' : 'Charged per player'}</div>
+                    <div className="text-xs text-gray-600">{doubles ? 'Charged per team' : 'Charged per player'}</div>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className="text-gray-400 text-sm">$</span>
+                    <span className="text-gray-600 text-sm">$</span>
                     <input
                       type="number"
                       min={0}
@@ -412,7 +412,7 @@ export default function NewLeaguePage() {
                 placeholder="https://buy.stripe.com/..."
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-gray-600 mt-1">
                 Create in Stripe Dashboard → Payment Links. Paste the full URL here.
               </p>
             </div>

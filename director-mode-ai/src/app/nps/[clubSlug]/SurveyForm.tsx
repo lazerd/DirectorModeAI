@@ -75,7 +75,7 @@ export default function SurveyForm({
           </button>
         ))}
       </div>
-      <div className="mt-1 flex justify-between text-xs text-gray-400">
+      <div className="mt-1 flex justify-between text-xs text-gray-600">
         <span>Not likely</span>
         <span>Very likely</span>
       </div>

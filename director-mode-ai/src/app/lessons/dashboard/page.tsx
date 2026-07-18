@@ -265,7 +265,7 @@ export default function DashboardPage() {
         <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl p-4 mb-6 flex items-center justify-between">
           <div>
             <p className="font-semibold">{unnotifiedSlots.length} slot{unnotifiedSlots.length > 1 ? 's' : ''} ready to blast!</p>
-            <p className="text-sm text-orange-100">Notify your {clients.length} clients about availability</p>
+            <p className="text-sm text-white">Notify your {clients.length} clients about availability</p>
           </div>
           <button onClick={sendBlast} disabled={sending} className="px-6 py-2 bg-white text-orange-600 rounded-lg font-semibold hover:bg-orange-50 disabled:opacity-50 flex items-center gap-2">
             {sending ? <div className="animate-spin h-5 w-5 border-2 border-orange-600 border-t-transparent rounded-full" /> : <Send size={18} />}
@@ -309,7 +309,7 @@ export default function DashboardPage() {
                         </div>
                       );
                     })}
-                    <button onClick={() => openAddSlot(day)} className="w-full p-2 border-2 border-dashed border-gray-200 rounded-lg text-gray-400 hover:border-blue-400 hover:text-blue-500 flex items-center justify-center gap-1">
+                    <button onClick={() => openAddSlot(day)} className="w-full p-2 border-2 border-dashed border-gray-200 rounded-lg text-gray-600 hover:border-blue-400 hover:text-blue-500 flex items-center justify-center gap-1">
                       <Plus size={14} /><span className="text-xs">Add</span>
                     </button>
                   </div>

@@ -90,14 +90,14 @@ export default function ResetPasswordPage() {
               <div className="w-12 h-12 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-4">
                 <CheckCircle size={22} className="text-green-600" />
               </div>
-              <h2 className="font-semibold text-2xl mb-2">Password updated</h2>
+              <h2 className="font-semibold text-2xl mb-2 text-slate-900">Password updated</h2>
               <p className="text-gray-500 text-sm">
                 Redirecting you to your dashboard...
               </p>
             </div>
           ) : hasRecoverySession === false ? (
             <>
-              <h2 className="font-semibold text-2xl mb-2">Reset link invalid</h2>
+              <h2 className="font-semibold text-2xl mb-2 text-slate-900">Reset link invalid</h2>
               <p className="text-gray-500 mb-6">
                 This password reset link is missing, expired, or has already
                 been used. Request a fresh one to continue.
@@ -111,7 +111,7 @@ export default function ResetPasswordPage() {
             </>
           ) : (
             <>
-              <h2 className="font-semibold text-2xl mb-2">Set a new password</h2>
+              <h2 className="font-semibold text-2xl mb-2 text-slate-900">Set a new password</h2>
               <p className="text-gray-500 mb-6">
                 Pick a new password to finish signing in.
               </p>

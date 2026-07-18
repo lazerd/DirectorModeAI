@@ -123,7 +123,7 @@ export default function ClubMembersPage() {
             {vault.map((v) => (
               <label key={v.id} className="flex items-center gap-3 py-2 cursor-pointer">
                 <input type="checkbox" checked={selected.has(v.id)} onChange={() => toggle(v.id)} className="h-4 w-4" />
-                <div><div className="text-sm font-medium text-gray-900">{v.full_name}</div><div className="text-xs text-gray-400">{v.email}</div></div>
+                <div><div className="text-sm font-medium text-gray-900">{v.full_name}</div><div className="text-xs text-gray-600">{v.email}</div></div>
               </label>
             ))}
           </div>
@@ -139,7 +139,7 @@ export default function ClubMembersPage() {
                 {roleIcon(m.role)}
                 <div>
                   <div className="text-sm font-medium text-gray-900">{m.name}</div>
-                  {m.email && <div className="text-xs text-gray-400">{m.email}</div>}
+                  {m.email && <div className="text-xs text-gray-600">{m.email}</div>}
                 </div>
               </div>
               <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600 capitalize">{m.role}</span>

@@ -260,7 +260,7 @@ export default function ClubsPage() {
                       <div className="min-w-0">
                         <div className="font-medium text-slate-900 truncate flex items-center gap-1.5 flex-wrap">
                           {p.url ? <a href={p.url} target="_blank" rel="noreferrer" className="hover:underline">{p.name}</a> : <span>{p.name}</span>}
-                          <span className="text-slate-400 font-normal">· {p.title}</span>
+                          <span className="text-slate-600 font-normal">· {p.title}</span>
                           {p.likelyToMove && (
                             <span className="text-[11px] font-medium rounded-full px-2 py-0.5 bg-orange-100 text-orange-700" title={p.sizeExpected ? `Underpaid for their club's size — similar clubs pay ~${usd(p.sizeExpected)}` : 'Underpaid for their club’s size'}>
                               ⚡ Likely to move

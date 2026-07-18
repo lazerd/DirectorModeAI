@@ -64,7 +64,7 @@ export default function ForgotPasswordPage() {
               <div className="w-12 h-12 rounded-full bg-blue-50 flex items-center justify-center mx-auto mb-4">
                 <Mail size={22} className="text-blue-600" />
               </div>
-              <h2 className="font-semibold text-2xl mb-2 text-center">
+              <h2 className="font-semibold text-2xl mb-2 text-center text-slate-900">
                 Check your email
               </h2>
               <p className="text-gray-500 text-sm text-center mb-6">
@@ -79,7 +79,7 @@ export default function ForgotPasswordPage() {
                 <ArrowLeft size={16} />
                 Back to sign in
               </Link>
-              <p className="text-xs text-gray-400 mt-4 text-center">
+              <p className="text-xs text-gray-600 mt-4 text-center">
                 Did not get the email? Check your spam folder, or{' '}
                 <button
                   type="button"
@@ -93,7 +93,7 @@ export default function ForgotPasswordPage() {
             </>
           ) : (
             <>
-              <h2 className="font-semibold text-2xl mb-2">Reset your password</h2>
+              <h2 className="font-semibold text-2xl mb-2 text-slate-900">Reset your password</h2>
               <p className="text-gray-500 mb-6">
                 Enter the email tied to your account and we will send you a
                 link to set a new password.

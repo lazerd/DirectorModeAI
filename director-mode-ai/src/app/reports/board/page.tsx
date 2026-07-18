@@ -32,11 +32,11 @@ export default async function BoardReportPage() {
   if (!club) {
     return (
       <div className="mx-auto max-w-2xl px-6 py-16 text-center">
-        <h1 className="text-2xl font-bold text-gray-900">No club found</h1>
-        <p className="mt-2 text-gray-600">
+        <h1 className="text-2xl font-bold text-white">No club found</h1>
+        <p className="mt-2 text-slate-300">
           Set up your club in CourtSheet first, then your Board Report will populate here.
         </p>
-        <Link href="/reports/board/demo" className="mt-6 inline-block text-[#002838] underline">
+        <Link href="/reports/board/demo" className="mt-6 inline-block text-teal-400 underline">
           See a sample report
         </Link>
       </div>

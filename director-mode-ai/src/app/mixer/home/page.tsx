@@ -204,7 +204,7 @@ export default function MixerHomePage() {
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-lg truncate">{event.name}</h3>
-                        <p className="text-sm text-gray-500">
+                        <p className="text-sm text-gray-700">
                           {format(new Date(event.event_date), 'MMM d, yyyy')}
                           {event.start_time && ` at ${event.start_time}`}
                         </p>

@@ -128,7 +128,7 @@ export default async function PublicBracketPage({ params }: { params: Promise<{ 
           initialMatchesByFlightId={matchesByFlightId}
         />
 
-        <div className="text-center text-xs text-gray-400 mt-8 py-6 border-t border-gray-200">
+        <div className="text-center text-xs text-gray-600 mt-8 py-6 border-t border-gray-200">
           Powered by <Link href="/" className="text-orange-600 hover:underline">CoachMode AI</Link>
         </div>
       </main>

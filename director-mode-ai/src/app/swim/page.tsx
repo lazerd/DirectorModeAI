@@ -274,7 +274,7 @@ export default function SwimHomePage() {
                             {s.start_date} → {s.end_date}
                           </p>
                         ) : (
-                          <p className="text-[11px] text-gray-400">No dates set</p>
+                          <p className="text-[11px] text-gray-600">No dates set</p>
                         )}
                       </div>
                     </div>

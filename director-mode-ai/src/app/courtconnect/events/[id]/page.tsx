@@ -573,7 +573,7 @@ export default function EventDetailPage() {
             <h3 className="text-sm font-medium text-gray-500 mb-2">Confirmed</h3>
             <div className="space-y-2">
               {acceptedPlayers.map(p => (
-                <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+                <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5">
                   {statusIcon(p.status)}
                   <span className="font-medium">
                     {p.player?.display_name || p.guest_name || 'Unknown'}
@@ -590,9 +590,9 @@ export default function EventDetailPage() {
             <h3 className="text-sm font-medium text-gray-500 mb-2">Waitlist</h3>
             <div className="space-y-2">
               {waitlistedPlayers.map(p => (
-                <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+                <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5">
                   {statusIcon(p.status)}
-                  <span className="font-medium text-gray-600">
+                  <span className="font-medium text-gray-300">
                     {p.player?.display_name || p.guest_name || 'Unknown'}
                   </span>
                 </div>
@@ -607,7 +607,7 @@ export default function EventDetailPage() {
             <h3 className="text-sm font-medium text-gray-500 mb-2">Pending Invites</h3>
             <div className="space-y-2">
               {invitedPlayers.map(p => (
-                <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50">
+                <div key={p.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5">
                   {statusIcon(p.status)}
                   <span className="font-medium text-gray-400">
                     {p.player?.display_name || p.guest_email || 'Unknown'}
@@ -672,7 +672,7 @@ export default function EventDetailPage() {
                     {availablePlayers.map(p => (
                       <label
                         key={p.id}
-                        className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-gray-50 ${
+                        className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer hover:bg-white/5 ${
                           p.already_invited ? 'opacity-50' : ''
                         }`}
                       >

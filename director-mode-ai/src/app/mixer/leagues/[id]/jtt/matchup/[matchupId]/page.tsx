@@ -907,7 +907,7 @@ export default function MatchupFacilitatorPage() {
             {isMashup ? (
               <>
                 {division.name} Mashup{' '}
-                <span className="text-gray-400 text-base font-normal">
+                <span className="text-gray-600 text-base font-normal">
                   · {mashupClubs.map(c => c.short_code).join(' · ')}
                 </span>
               </>
@@ -1070,7 +1070,7 @@ export default function MatchupFacilitatorPage() {
               onSet={v => setCourtsInUse(v ?? homeClub.courts_available)}
               defaultCourts={homeClub.courts_available}
             />
-            <p className="text-xs text-gray-400 text-right">
+            <p className="text-xs text-gray-600 text-right">
               Resizes the current round to {courtsForThisMatchup} court
               {courtsForThisMatchup === 1 ? '' : 's'} (scored rounds are left as-is).
             </p>
@@ -1226,7 +1226,7 @@ function RoundCard({
             >
               <Plus size={13} />
             </button>
-            <span className="text-xs text-gray-400">/ {doublesCount} doubles</span>
+            <span className="text-xs text-gray-600">/ {doublesCount} doubles</span>
           </div>
 
           <button
@@ -1302,7 +1302,7 @@ function TeamScore({
 }) {
   return (
     <div className="text-center">
-      <div className="text-xs uppercase text-gray-400">{side}</div>
+      <div className="text-xs uppercase text-gray-600">{side}</div>
       <div className={`text-4xl font-bold ${isWinner ? 'text-green-600' : 'text-gray-900'}`}>
         {score}
       </div>
@@ -1681,7 +1681,7 @@ function SortableAttendee({
       </button>
       <label className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
         <input type="checkbox" checked={checked} onChange={() => onToggle(id)} className="w-4 h-4" />
-        <span className="w-5 text-right text-gray-400 text-xs">{`#${rank}`}</span>
+        <span className="w-5 text-right text-gray-600 text-xs">{`#${rank}`}</span>
         <span className="flex-1 truncate text-gray-900">{name}</span>
       </label>
     </div>
@@ -1751,12 +1751,12 @@ function AttendanceColumn({
     <div>
       <div className="flex items-center justify-between mb-1.5">
         <div className="text-xs font-medium text-gray-500 uppercase">{label}</div>
-        <div className="text-xs text-gray-400">
+        <div className="text-xs text-gray-600">
           {here}/{rosters.length} here
         </div>
       </div>
       {rosters.length === 0 ? (
-        <p className="text-xs text-gray-400 italic">No active roster.</p>
+        <p className="text-xs text-gray-600 italic">No active roster.</p>
       ) : (
         <>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -1934,7 +1934,7 @@ function PlayerPicker({
           <button
             type="button"
             onClick={() => setBorrow(false)}
-            className="mt-1 text-[11px] text-gray-400 hover:text-gray-700"
+            className="mt-1 text-[11px] text-gray-600 hover:text-gray-700"
           >
             ↩ Show only {ownShort || 'my team'}
           </button>

@@ -333,7 +333,7 @@ function MatchupSection({
           </div>
 
           {myRosters.length === 0 ? (
-            <p className="text-sm text-gray-400 italic">No players on your roster for this division.</p>
+            <p className="text-sm text-gray-600 italic">No players on your roster for this division.</p>
           ) : (
             <>
               <div className="border border-gray-200 rounded-md divide-y divide-gray-100 mb-2">
@@ -358,7 +358,7 @@ function MatchupSection({
                           }
                           className="w-4 h-4 accent-orange-500"
                         />
-                        <span className="w-5 text-right text-gray-400 text-xs font-mono">
+                        <span className="w-5 text-right text-gray-600 text-xs font-mono">
                           #{r.ladder_position || '—'}
                         </span>
                         <span className="flex-1 text-gray-900">{r.player_name}</span>

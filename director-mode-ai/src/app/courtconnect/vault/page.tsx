@@ -385,7 +385,7 @@ export default function PlayerVaultPage() {
                     {player.cc_player_id ? (
                       <span className="badge badge-success text-xs">Connected</span>
                     ) : (
-                      <span className="badge text-xs bg-gray-100 text-gray-500">Vault only</span>
+                      <span className="badge text-xs bg-gray-100 text-gray-600">Vault only</span>
                     )}
                   </td>
                 </tr>

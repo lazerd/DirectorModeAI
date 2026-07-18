@@ -101,7 +101,7 @@ export default function PlayerDetailPage() {
             {player.sports.map(s => (
               <div key={s.sport} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div>
-                  <span className="font-medium">{sportLabel(s.sport)}</span>
+                  <span className="font-medium text-gray-900">{sportLabel(s.sport)}</span>
                   {s.level_label && (
                     <span className="text-sm text-gray-500 ml-2">({s.level_label})</span>
                   )}

@@ -264,7 +264,9 @@ export default function BenchmarksPage() {
       </a>
 
       {/* Filters */}
-      <Card className="mb-6">
+      {/* Labels default to dark slate (global `label` rule for white forms); this
+          filter card sits on the dark navy body, so force light labels here. */}
+      <Card className="mb-6 [&_label]:text-slate-200">
         <CardContent className="flex flex-wrap items-end gap-4 pt-6">
           <div className="grid gap-1.5">
             <Label>Position</Label>
