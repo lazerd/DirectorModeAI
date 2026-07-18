@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Play, Trophy, X, Zap, RefreshCw, Minus, Plus, AlertTriangle } from 'lucide-react';
+import { Loader2, Play, Trophy, X, Zap, RefreshCw, Minus, Plus, AlertTriangle, Check } from 'lucide-react';
 
 type DeskEvent = { id: string; name: string; division: string; num_courts: number; match_format: string; public_status: string };
 type DeskMatch = {
@@ -43,17 +43,38 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     return () => clearInterval(iv);
   }, [load]);
 
-  // Which divisions (events) are shown. Defaults to all; a director can deselect
-  // to focus on just their own venue's draws (divisions can be at different sites).
-  const [selected, setSelected] = useState<Set<string> | null>(null);
+  // Which events (divisions) the director is running on THIS desk. The desk only
+  // shows the events they pick — so old or other-venue events (e.g. a stale
+  // tournament still marked running) never clutter the board. Persisted locally.
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const initedSel = useRef(false);
+  const persist = (s: Set<string>) => { try { localStorage.setItem('deskhub.selected', JSON.stringify([...s])); } catch { /* ignore */ } };
   useEffect(() => {
-    if (data && selected === null) setSelected(new Set(data.events.map((e) => e.id)));
-  }, [data, selected]);
-  const isOn = useCallback((id: string) => !selected || selected.has(id), [selected]);
+    if (!data || initedSel.current) return;
+    initedSel.current = true;
+    let restored: Set<string> | null = null;
+    if (initialEvents.length) {
+      const v = initialEvents.filter((id) => data.events.some((e) => e.id === id));
+      if (v.length) restored = new Set(v);
+    }
+    if (!restored) {
+      try {
+        const saved = JSON.parse(localStorage.getItem('deskhub.selected') || 'null');
+        if (Array.isArray(saved)) {
+          const v = saved.filter((id: string) => data.events.some((e) => e.id === id));
+          if (v.length) restored = new Set(v);
+        }
+      } catch { /* ignore */ }
+    }
+    if (restored && restored.size) { setSelected(restored); persist(restored); }
+    else setPickerOpen(true); // first visit — make them choose
+  }, [data, initialEvents]);
+  const isOn = useCallback((id: string) => selected.has(id), [selected]);
   const toggleDiv = (id: string) => setSelected((prev) => {
-    const next = new Set(prev ?? (data?.events || []).map((e) => e.id));
+    const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
+    persist(next); return next;
   });
 
   const activeEventIds = useMemo(
@@ -141,17 +162,17 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <h1 className="text-xl font-bold">Tournament Desk</h1>
         <div className="flex items-center gap-1.5 text-xs flex-wrap">
-          {data.events.map((e) => {
-            const on = isOn(e.id);
-            return (
-              <button key={e.id} onClick={() => toggleDiv(e.id)}
-                title={on ? 'Showing — tap to hide this division' : 'Hidden — tap to show'}
-                className={`rounded-full px-2.5 py-1 font-semibold transition ${on ? 'text-[#00131c]' : 'text-slate-500 bg-white/5 line-through'}`}
-                style={on ? { backgroundColor: divColor(e.division) } : undefined}>
-                {e.division}
-              </button>
-            );
-          })}
+          {data.events.filter((e) => isOn(e.id)).map((e) => (
+            <button key={e.id} onClick={() => toggleDiv(e.id)} title="Remove from this desk"
+              className="rounded-full px-2.5 py-1 font-semibold text-[#00131c] inline-flex items-center gap-1"
+              style={{ backgroundColor: divColor(e.division) }}>
+              {e.division} <X size={11} />
+            </button>
+          ))}
+          <button onClick={() => setPickerOpen(true)}
+            className="rounded-full px-2.5 py-1 font-semibold border border-white/20 text-slate-300 hover:bg-white/10 inline-flex items-center gap-1">
+            <Plus size={12} /> Events
+          </button>
         </div>
         <div className="flex-1" />
         <div className="text-sm text-slate-400 mr-2">
@@ -174,6 +195,13 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
       </div>
 
       {err && <div className="mb-3 text-sm text-red-400">{err}</div>}
+
+      {activeEventIds.length === 0 && !pickerOpen && (
+        <div className="mb-3 rounded-xl border border-[#D3FB52]/40 bg-[#D3FB52]/10 p-4 text-center">
+          <p className="text-slate-100 font-semibold mb-2">Pick the events you’re running on this desk</p>
+          <button onClick={() => setPickerOpen(true)} className="rounded-lg bg-[#D3FB52] text-[#00131c] font-bold px-4 py-2">Choose events</button>
+        </div>
+      )}
 
       {offBoard.length > 0 && (
         <div className="mb-3 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3">
@@ -260,6 +288,34 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
           </div>
         </div>
       </div>
+
+      {pickerOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setPickerOpen(false)}>
+          <div className="bg-[#062733] border border-white/10 rounded-2xl p-5 w-full max-w-md max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <p className="font-bold text-slate-100">Which events are you running?</p>
+              <button onClick={() => setPickerOpen(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-slate-400 mb-3">Only the events you pick appear on this desk — old or other-venue tournaments stay hidden.</p>
+            <div className="space-y-1.5">
+              {data.events.map((e) => {
+                const on = isOn(e.id);
+                return (
+                  <button key={e.id} onClick={() => toggleDiv(e.id)}
+                    className={`w-full flex items-center justify-between rounded-lg px-3 py-2.5 border text-left ${on ? 'bg-[#D3FB52]/15 border-[#D3FB52]/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}>
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: divColor(e.division) }} />
+                      <span className="font-medium text-slate-100 truncate">{e.name}</span>
+                    </span>
+                    {on && <Check size={16} className="text-[#D3FB52] shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={() => setPickerOpen(false)} className="w-full mt-4 rounded-xl bg-[#D3FB52] text-[#00131c] font-bold py-2.5">Done</button>
+          </div>
+        </div>
+      )}
 
       {scoring && (
         <ScoreModal match={scoring} onClose={() => setScoring(null)} onSaved={async () => { setScoring(null); await load(); }} />
