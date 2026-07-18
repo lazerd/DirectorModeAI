@@ -24,6 +24,7 @@ import {
   Printer,
   Music,
   Download,
+  LayoutGrid,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
@@ -720,6 +721,14 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         >
           <Music size={12} />
           DJ Console
+        </Link>
+        <Link
+          href="/mixer/tournaments/desk"
+          target="_blank"
+          className="inline-flex items-center gap-1 px-2 py-1 bg-[#D3FB52] hover:brightness-95 text-[#00131c] rounded text-xs font-bold flex-shrink-0"
+        >
+          <LayoutGrid size={12} />
+          Desk Hub
         </Link>
         <Link
           href={`/mixer/events/${eventId}/console`}
