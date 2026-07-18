@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Play, Trophy, X, Zap, RefreshCw, Minus, Plus, AlertTriangle, Check } from 'lucide-react';
+import { Loader2, Play, Trophy, X, Zap, RefreshCw, Minus, Plus, AlertTriangle, Check, MoreHorizontal } from 'lucide-react';
 
 type DeskEvent = { id: string; name: string; division: string; num_courts: number; match_format: string; public_status: string; event_date: string | null };
 type DeskMatch = {
@@ -69,6 +69,7 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ today: true, week: true, older: false });
+  const [closingId, setClosingId] = useState<string | null>(null);
   const initedSel = useRef(false);
   const persist = (s: Set<string>) => { try { localStorage.setItem('deskhub.selected', JSON.stringify([...s])); } catch { /* ignore */ } };
   useEffect(() => {
@@ -161,6 +162,14 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     courtOverride.current = clamped; setCourtCount(clamped);
   };
   const autofill = () => post({ action: 'autofill', eventIds: activeEventIds, courtCount });
+
+  // Close out an event (mark completed/cancelled). It stops being "running", so
+  // the next refetch drops it from the desk and the picker entirely.
+  const closeEvent = async (id: string, status: 'completed' | 'cancelled') => {
+    setClosingId(null);
+    setSelected((prev) => { const n = new Set(prev); n.delete(id); persist(n); return n; });
+    await post({ action: 'set_status', eventId: id, status });
+  };
 
   const stats = useMemo(() => ({
     done: shownMatches.filter((m) => m.status === 'completed').length,
@@ -344,17 +353,28 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
                       {list.map((e) => {
                         const on = isOn(e.id);
                         return (
-                          <button key={e.id} onClick={() => toggleDiv(e.id)}
-                            className={`flex items-center justify-between rounded-lg px-3 py-2 border text-left ${on ? 'bg-[#D3FB52]/15 border-[#D3FB52]/50' : 'bg-white/5 border-white/10 hover:bg-white/10'}`}>
-                            <span className="flex items-center gap-2 min-w-0">
+                          <div key={e.id}
+                            className={`flex items-center justify-between rounded-lg px-3 py-2 border ${on ? 'bg-[#D3FB52]/15 border-[#D3FB52]/50' : 'bg-white/5 border-white/10'}`}>
+                            <button onClick={() => toggleDiv(e.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
                               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: divColor(e.division) }} />
                               <span className="min-w-0">
                                 <span className="block font-medium text-slate-100 text-sm leading-tight">{e.division}</span>
                                 <span className="block text-[11px] text-slate-500 truncate leading-tight">{e.name}</span>
                               </span>
-                            </span>
-                            {on && <Check size={16} className="text-[#D3FB52] shrink-0" />}
-                          </button>
+                            </button>
+                            {closingId === e.id ? (
+                              <span className="flex items-center gap-1 text-[11px] shrink-0">
+                                <button onClick={() => closeEvent(e.id, 'completed')} className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 font-medium">Completed</button>
+                                <button onClick={() => closeEvent(e.id, 'cancelled')} className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30 font-medium">Cancelled</button>
+                                <button onClick={() => setClosingId(null)} className="text-slate-500 hover:text-slate-300 p-0.5"><X size={12} /></button>
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1.5 shrink-0">
+                                {on && <Check size={16} className="text-[#D3FB52]" />}
+                                <button onClick={() => setClosingId(e.id)} title="Close out this event (mark completed/cancelled)" className="text-slate-500 hover:text-slate-300 p-1"><MoreHorizontal size={16} /></button>
+                              </span>
+                            )}
+                          </div>
                         );
                       })}
                     </div>

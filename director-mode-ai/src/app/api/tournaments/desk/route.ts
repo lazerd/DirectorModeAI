@@ -142,6 +142,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  if (action === 'set_status') {
+    const eventId = String(body.eventId ?? '');
+    const status = String(body.status ?? '');
+    if (status !== 'completed' && status !== 'cancelled') {
+      return NextResponse.json({ error: 'status must be completed or cancelled' }, { status: 400 });
+    }
+    if (!(await ownsEvent(eventId))) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    const { error } = await admin.from('events').update({ public_status: status }).eq('id', eventId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === 'set_courts') {
     const eventIds: string[] = Array.isArray(body.eventIds) ? body.eventIds.map(String) : [];
     const num = Number(body.num);
