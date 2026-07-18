@@ -11,6 +11,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { maybeGeneratePlacementPlayoffs } from '@/lib/tournamentPlayoffs';
 import { isValidQuadScore, resolveCourtList } from '@/lib/quads';
 import {
   optimizeTournamentSchedule,
@@ -164,6 +165,14 @@ export async function POST(req: Request, { params }: { params: { token: string }
     await reflowDownstream(admin, m.event_id);
   } catch (err) {
     console.error('reflow failed:', err);
+  }
+
+  // Auto-generate the placement playoff if this score just completed a
+  // multi-pool round-robin event's pools. Idempotent + best-effort.
+  try {
+    await maybeGeneratePlacementPlayoffs(admin, m.event_id);
+  } catch (err) {
+    console.error('placement playoff generation failed:', err);
   }
 
   return NextResponse.json({ success: true });
