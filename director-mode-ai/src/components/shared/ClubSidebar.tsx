@@ -42,9 +42,9 @@ const ITEMS: Item[] = [
   { name: 'CourtSheet', href: '/courtsheet/staff', match: '/courtsheet', icon: LayoutGrid, color: '#22d3ee' },
   { name: 'Leagues & JTT', href: '/mixer/leagues', match: '/mixer/leagues', icon: Trophy, color: '#D3FB52' },
   { name: 'MixerMode', href: '/mixer/home', match: '/mixer/home', icon: Shuffle, color: '#fb923c' },
-  { name: 'Flex League', href: '/flex', match: '/flex', icon: ListOrdered, color: '#60a5fa' },
+  { name: 'FlexLeague', href: '/flex', match: '/flex', icon: ListOrdered, color: '#60a5fa' },
   { name: 'Lessons', href: '/lessons/dashboard', match: '/lessons/dashboard', icon: Clock, color: '#60a5fa' },
-  { name: 'Coach Mode', href: '/lessons/recap', match: '/lessons/recap', icon: GraduationCap, color: '#a78bfa' },
+  { name: 'CoachMode', href: '/lessons/recap', match: '/lessons/recap', icon: GraduationCap, color: '#a78bfa' },
   { name: 'Members', href: '/club/members', match: '/club/members', icon: Users, color: '#38bdf8' },
   { name: 'Stringing', href: '/stringing/jobs', match: '/stringing', icon: Wrench, color: '#f472b6' },
   { name: 'CourtConnect', href: '/courtconnect/home', match: '/courtconnect/home', icon: Users, color: '#34d399' },
@@ -52,7 +52,7 @@ const ITEMS: Item[] = [
   { name: 'SwimMode', href: '/swim', match: '/swim', icon: Waves, color: '#38bdf8' },
   { name: 'Benchmarks', href: '/benchmarks', match: '/benchmarks', icon: BarChart3, color: '#f59e0b' },
   { name: 'Recruiting', href: '/connect', match: '/connect', icon: Sparkles, color: '#2dd4bf' },
-  { name: 'Club Hub', href: '/club-hub', match: '/club-hub', icon: MessagesSquare, color: '#D3FB52' },
+  { name: 'ClubHub', href: '/club-hub', match: '/club-hub', icon: MessagesSquare, color: '#D3FB52' },
 ];
 
 const EXPANDED = 248;
