@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/sync-master-players",
       "schedule": "0 9 * * 1"
+    },
+    {
+      "path": "/api/cron/club-hub-tick",
+      "schedule": "0 * * * *"
     }
   ]
 }

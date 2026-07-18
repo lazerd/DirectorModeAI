@@ -22,7 +22,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
   Waves, GraduationCap, ListOrdered, BarChart3, Sparkles, ExternalLink, Calendar,
-  ChevronLeft, ChevronRight, Menu, X,
+  MessagesSquare, ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
 type Item = {
@@ -52,6 +52,7 @@ const ITEMS: Item[] = [
   { name: 'SwimMode', href: '/swim', match: '/swim', icon: Waves, color: '#38bdf8' },
   { name: 'Benchmarks', href: '/benchmarks', match: '/benchmarks', icon: BarChart3, color: '#f59e0b' },
   { name: 'Recruiting', href: '/connect', match: '/connect', icon: Sparkles, color: '#2dd4bf' },
+  { name: 'Club Hub', href: '/club-hub', match: '/club-hub', icon: MessagesSquare, color: '#D3FB52' },
 ];
 
 const EXPANDED = 248;
