@@ -6,6 +6,13 @@ import { generateBurst, personaName, type HubMessage } from './generate';
 // serverless function timeout. Called on-demand when directors are in the room
 // (src/app/api/club-hub/refresh) and available to a cron route for future use.
 
+// Master switch for AI persona generation. Paused for now: the personas don't
+// know anything about the actual ClubMode tools (CourtSheet, MixerMode, JTT,
+// Stringing, Benchmarks, …), which makes the banter unbelievable. Flip back to
+// true once the persona prompt is briefed on the real product. While false, no
+// persona messages are generated; humans can still read the room and post.
+const GENERATION_ENABLED = false;
+
 type Row = HubMessage & { reply_to: string | null };
 const RECENT_WINDOW = 40;
 export const REFRESH_THRESHOLD_MS = 4 * 60 * 1000; // ambient simmer cadence (humans bypass this)
@@ -67,6 +74,7 @@ async function generateAndInsert(admin: Admin, recent: Row[], human: Row | null)
  * ambient banter if the room has been quiet longer than `throttleMs`.
  */
 export async function maybeRunBurst(admin: Admin, throttleMs: number): Promise<BurstResult> {
+  if (!GENERATION_ENABLED) return { ok: true, mode: 'paused', inserted: 0 };
   const recent = await loadRecent(admin);
   const human = unansweredHuman(recent);
   if (!human) {
@@ -79,6 +87,7 @@ export async function maybeRunBurst(admin: Admin, throttleMs: number): Promise<B
 
 /** Unconditional single burst (for cron / manual triggers). */
 export async function runOneBurst(admin: Admin): Promise<BurstResult> {
+  if (!GENERATION_ENABLED) return { ok: true, mode: 'paused', inserted: 0 };
   const recent = await loadRecent(admin);
   return generateAndInsert(admin, recent, unansweredHuman(recent));
 }
