@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
+import EventSettingsPanel from './EventSettingsPanel';
 
 const FORMAT_LABELS: Record<string, string> = {
   'rr-singles': 'Round Robin — Singles',
@@ -1410,16 +1411,8 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         />
       )}
 
-      {tab === 'settings' && (
-        <div className="bg-white border border-gray-200 rounded-xl p-5 text-sm text-gray-600">
-          <p className="font-medium text-gray-900 mb-2 flex items-center gap-2">
-            <ListChecks size={16} /> Settings
-          </p>
-          <p>
-            Inline editing of name / dates / fees / scoring format coming soon. For now, edit
-            directly in Supabase if needed, or recreate the tournament.
-          </p>
-        </div>
+      {tab === 'settings' && event && (
+        <EventSettingsPanel event={event} onSaved={fetchAll} />
       )}
     </div>
   );
