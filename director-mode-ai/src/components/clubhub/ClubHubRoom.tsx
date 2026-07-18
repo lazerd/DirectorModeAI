@@ -120,6 +120,8 @@ export default function ClubHubRoom({
       if (!res.ok) { setError(data?.error || 'Could not send.'); return; }
       setInput('');
       if (data?.message) addMessages([data.message as HubMsg]); // optimistic; realtime echo de-dupes
+      // Nudge the personas to reply right away instead of waiting for the poll.
+      fetch('/api/club-hub/refresh', { method: 'POST' }).catch(() => {});
     } catch {
       setError('Could not send — check your connection.');
     } finally {

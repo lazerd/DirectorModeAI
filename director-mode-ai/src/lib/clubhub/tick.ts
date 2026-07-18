@@ -8,7 +8,7 @@ import { generateBurst, personaName, type HubMessage } from './generate';
 
 type Row = HubMessage & { reply_to: string | null };
 const RECENT_WINDOW = 40;
-export const REFRESH_THRESHOLD_MS = 4 * 60 * 1000; // don't auto-generate more often than this
+export const REFRESH_THRESHOLD_MS = 4 * 60 * 1000; // ambient simmer cadence (humans bypass this)
 
 type Admin = ReturnType<typeof getSupabaseAdmin>;
 
@@ -47,24 +47,38 @@ async function insertBurst(
   return { inserted: error ? 0 : rows.length, error: error?.message };
 }
 
-/** Milliseconds since the newest message, or null if the room is empty. */
-export async function msSinceLastMessage(admin: Admin): Promise<number | null> {
-  const { data } = await admin
-    .from('club_hub_messages')
-    .select('created_at')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (!data?.created_at) return null;
-  return Date.now() - new Date(data.created_at as string).getTime();
-}
+type BurstResult = { ok: boolean; mode: string; inserted: number; skipped?: string; error?: string };
 
-/** Generate and insert one burst continuing the room. */
-export async function runOneBurst(admin: Admin): Promise<{ ok: boolean; mode: string; inserted: number; error?: string }> {
-  const recent = await loadRecent(admin);
-  const human = unansweredHuman(recent);
+async function generateAndInsert(admin: Admin, recent: Row[], human: Row | null): Promise<BurstResult> {
   const gen = await generateBurst(recent, human ? { answerHuman: human, count: 3 } : { count: 3 });
   if (!gen.ok) return { ok: false, mode: 'error', inserted: 0, error: gen.error };
   const res = await insertBurst(admin, gen.messages, human?.id ?? null);
-  return { ok: !res.error, mode: recent.length === 0 ? 'seed' : human ? 'answer-human' : 'simmer', inserted: res.inserted, error: res.error };
+  return {
+    ok: !res.error,
+    mode: recent.length === 0 ? 'seed' : human ? 'answer-human' : 'simmer',
+    inserted: res.inserted,
+    error: res.error,
+  };
+}
+
+/**
+ * On-demand tick with throttling. ALWAYS generates when a real director has an
+ * unanswered post (so replies are near-instant); otherwise only generates
+ * ambient banter if the room has been quiet longer than `throttleMs`.
+ */
+export async function maybeRunBurst(admin: Admin, throttleMs: number): Promise<BurstResult> {
+  const recent = await loadRecent(admin);
+  const human = unansweredHuman(recent);
+  if (!human) {
+    const last = recent[recent.length - 1];
+    const age = last ? Date.now() - new Date(last.created_at).getTime() : null;
+    if (age !== null && age < throttleMs) return { ok: true, mode: 'skip', inserted: 0, skipped: 'fresh' };
+  }
+  return generateAndInsert(admin, recent, human);
+}
+
+/** Unconditional single burst (for cron / manual triggers). */
+export async function runOneBurst(admin: Admin): Promise<BurstResult> {
+  const recent = await loadRecent(admin);
+  return generateAndInsert(admin, recent, unansweredHuman(recent));
 }
