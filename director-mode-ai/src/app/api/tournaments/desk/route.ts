@@ -25,11 +25,15 @@ const TOURNAMENT_FORMATS = [
 
 type Admin = ReturnType<typeof getSupabaseAdmin>;
 
-// Short division tag from an event name, e.g.
-// "JTT 10U Season-End — Gold · Sleepy Hollow" → "Gold".
+// Short division tag from an event name. Prefer the DRAW name (Gold/Silver) when
+// present — it's what distinguishes two draws of the same age group — otherwise
+// fall back to the age/category. e.g. "JTT 10U Season-End — Gold …" → "Gold",
+// "JTT 12U …" → "12U".
 function divisionTag(name: string): string {
-  const m = name.match(/\b(Gold|Silver|Bronze|10U|12U|13U|13&O|14U|16U|18U|Open|Boys|Girls|A|B)\b/i);
-  if (m) return m[0];
+  const draw = name.match(/\b(Gold|Silver|Bronze)\b/i);
+  if (draw) return draw[0];
+  const cat = name.match(/\b(10U|12U|13&O|13U|14U|16U|18U|Open|Boys|Girls)\b/i);
+  if (cat) return cat[0];
   return name.split(/[—·|-]/)[0].trim().slice(0, 12) || name.slice(0, 12);
 }
 
