@@ -85,6 +85,16 @@ export default function ClubHubRoom({
     return () => { active = false; supabase.removeChannel(channel); };
   }, [addMessages]);
 
+  // Keep the room alive while someone's here: ping the throttled refresh on open
+  // and periodically. The server only actually generates when the room has gone
+  // quiet, so this can't spam regardless of how many people are watching.
+  useEffect(() => {
+    const ping = () => { fetch('/api/club-hub/refresh', { method: 'POST' }).catch(() => {}); };
+    ping();
+    const iv = setInterval(ping, 60_000);
+    return () => clearInterval(iv);
+  }, []);
+
   // Keep pinned to the newest message.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
