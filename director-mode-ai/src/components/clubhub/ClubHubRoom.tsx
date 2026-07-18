@@ -57,21 +57,26 @@ export default function ClubHubRoom({
     });
   }, []);
 
-  // One fresh fetch on mount (guards against an edge-cached stale first paint),
-  // then subscribe to live inserts. Mirrors the repo's realtime bracket pattern.
+  // Keep the room current via two paths: Supabase Realtime for instant inserts,
+  // plus a short poll as a fallback (realtime can miss a burst if it fires before
+  // the channel is subscribed, or isn't enabled). addMessages de-dupes by id, so
+  // the two coexist safely.
   useEffect(() => {
     const supabase = createClient();
     let active = true;
 
-    (async () => {
+    const refetch = async () => {
       try {
         const res = await fetch('/api/club-hub/messages?limit=60', { cache: 'no-store' });
         if (active && res.ok) {
           const { messages: latest } = await res.json();
           if (Array.isArray(latest)) addMessages(latest);
         }
-      } catch { /* keep SSR snapshot */ }
-    })();
+      } catch { /* keep what we have */ }
+    };
+
+    refetch();
+    const poll = setInterval(refetch, 10_000);
 
     const channel = supabase
       .channel('club-hub')
@@ -82,7 +87,7 @@ export default function ClubHubRoom({
       )
       .subscribe();
 
-    return () => { active = false; supabase.removeChannel(channel); };
+    return () => { active = false; clearInterval(poll); supabase.removeChannel(channel); };
   }, [addMessages]);
 
   // Keep the room alive while someone's here: ping the throttled refresh on open
