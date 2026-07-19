@@ -70,6 +70,17 @@ function parseCourtSpec(spec: string): string[] {
   return out;
 }
 
+// Ordinal + placement label for a placement-playoff match. Slot i decides the
+// (2i-1)/(2i) placements: slot 1 → "1st/2nd", slot 2 → "3rd/4th", etc.
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+function placeLabel(slot: number): string {
+  return `${ordinal(2 * slot - 1)}/${ordinal(2 * slot)}`;
+}
+
 // Compact label for the court set, e.g. "Courts 5–15 · 11" or "6 courts".
 function courtsLabel(courts: string[]): string {
   if (!courts.length) return 'no courts';
@@ -162,6 +173,11 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     () => (data?.matches || []).filter((m) => isOn(m.event_id)),
     [data, isOn],
   );
+  // Round-robin events — only these get placement-playoff ("1st/2nd") labels.
+  const rrEventIds = useMemo(
+    () => new Set((data?.events || []).filter((e) => e.match_format?.startsWith('rr-')).map((e) => e.id)),
+    [data],
+  );
   // Picker groups: only events that actually have a draw (skip registration-only),
   // bucketed by date so the list stays short even with many past tournaments.
   const pickerGroups = useMemo(() => {
@@ -184,7 +200,7 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
 
   // Court occupancy, waiting queue, and any match stranded on a court above the
   // current count (so lowering courts mid-day never hides a live match).
-  const { courtsView, queue, offBoard } = useMemo(() => {
+  const { courtsView, queue, offBoard, pending } = useMemo(() => {
     const courtSet = new Set(courts);
     const occByCourt = new Map<string, DeskMatch>();
     const offBoard: DeskMatch[] = [];
@@ -197,7 +213,13 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     const queue = shownMatches
       .filter((m) => m.ready && !m.court)
       .sort((a, b) => a.round - b.round || a.slot - b.slot);
-    return { courtsView, queue, offBoard };
+    // Matches that EXIST but can't be played yet because a player is still TBD
+    // (placement playoffs waiting on a pool, or elimination matches waiting on a
+    // feeder). Shown read-only so the director sees the full card count up front.
+    const pending = shownMatches
+      .filter((m) => !m.ready && !m.court && m.status !== 'completed' && m.status !== 'cancelled')
+      .sort((a, b) => a.round - b.round || a.slot - b.slot);
+    return { courtsView, queue, offBoard, pending };
   }, [shownMatches, courts]);
 
   const nextOpenCourt = useMemo(() => courtsView.find((c) => !c.match)?.court ?? null, [courtsView]);
@@ -267,6 +289,7 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
         <div className="flex-1" />
         <div className="text-sm text-slate-400 mr-2">
           {stats.done}/{stats.total} done · {stats.onCourt} on court · {stats.waiting} waiting
+          {pending.length > 0 && <> · {pending.length} to be seeded</>}
         </div>
         {/* Courts in use — edit any time (e.g. 5-15, or 1,3,5) */}
         {editingCourts ? (
@@ -361,31 +384,61 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
           ))}
         </div>
 
-        {/* Up next */}
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-          <div className="flex items-center justify-between mb-2">
-            <p className="font-semibold">Up next</p>
-            <span className="text-xs text-slate-500">{queue.length} waiting</span>
+        {/* Right column: Up next (playable) + Coming up (TBD) */}
+        <div className="flex flex-col gap-4">
+          {/* Up next */}
+          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div className="flex items-center justify-between mb-2">
+              <p className="font-semibold">Up next</p>
+              <span className="text-xs text-slate-500">{queue.length} waiting</span>
+            </div>
+            <div className="space-y-2 max-h-[70vh] overflow-y-auto">
+              {queue.length === 0 && (
+                <p className="text-sm text-slate-500 py-6 text-center">
+                  <Trophy size={18} className="inline mr-1 opacity-60" /> All matches assigned or done.
+                </p>
+              )}
+              {queue.map((m) => (
+                <button key={m.id} disabled={!nextOpenCourt || busy}
+                  onClick={() => nextOpenCourt && assign(m.id, nextOpenCourt)}
+                  className="w-full text-left rounded-lg bg-white/5 hover:bg-white/10 p-2.5 disabled:opacity-50">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-[#00131c]" style={{ backgroundColor: divColor(m.division) }}>{m.division}</span>
+                    <span className="text-[10px] text-slate-500">R{m.round}</span>
+                  </div>
+                  <div className="text-sm font-medium leading-tight">{m.sideA} <span className="text-slate-500">vs</span> {m.sideB}</div>
+                  {nextOpenCourt && <div className="text-[11px] text-[#D3FB52] mt-0.5">→ tap to put on Court {nextOpenCourt}</div>}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="space-y-2 max-h-[70vh] overflow-y-auto">
-            {queue.length === 0 && (
-              <p className="text-sm text-slate-500 py-6 text-center">
-                <Trophy size={18} className="inline mr-1 opacity-60" /> All matches assigned or done.
-              </p>
-            )}
-            {queue.map((m) => (
-              <button key={m.id} disabled={!nextOpenCourt || busy}
-                onClick={() => nextOpenCourt && assign(m.id, nextOpenCourt)}
-                className="w-full text-left rounded-lg bg-white/5 hover:bg-white/10 p-2.5 disabled:opacity-50">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-[#00131c]" style={{ backgroundColor: divColor(m.division) }}>{m.division}</span>
-                  <span className="text-[10px] text-slate-500">R{m.round}</span>
-                </div>
-                <div className="text-sm font-medium leading-tight">{m.sideA} <span className="text-slate-500">vs</span> {m.sideB}</div>
-                {nextOpenCourt && <div className="text-[11px] text-[#D3FB52] mt-0.5">→ tap to put on Court {nextOpenCourt}</div>}
-              </button>
-            ))}
-          </div>
+
+          {/* Coming up — matches that exist but are waiting on a player (TBD). */}
+          {pending.length > 0 && (
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <div className="flex items-center justify-between mb-1">
+                <p className="font-semibold">Coming up</p>
+                <span className="text-xs text-slate-500">{pending.length} to be seeded</span>
+              </div>
+              <p className="text-[11px] text-slate-500 mb-2">Playoff spots fill in automatically as each pool finishes.</p>
+              <div className="space-y-2 max-h-[45vh] overflow-y-auto">
+                {pending.map((m) => (
+                  <div key={m.id} className="w-full rounded-lg bg-white/[0.02] border border-dashed border-white/10 p-2.5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-[#00131c]" style={{ backgroundColor: divColor(m.division) }}>{m.division}</span>
+                      {rrEventIds.has(m.event_id) && (
+                        <span className="text-[10px] font-semibold text-[#D3FB52] inline-flex items-center gap-0.5">
+                          <Trophy size={10} /> {placeLabel(m.slot)}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-500 ml-auto">R{m.round}</span>
+                    </div>
+                    <div className="text-sm font-medium leading-tight text-slate-400">{m.sideA} <span className="text-slate-600">vs</span> {m.sideB}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
