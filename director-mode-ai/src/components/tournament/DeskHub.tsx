@@ -39,20 +39,35 @@ function groupEvents(events: DeskEvent[]): EventGroups {
 }
 
 // Parse a court spec into the actual list of court labels the venue is using.
-// Accepts ranges and lists and names: "5-15", "1,3,5", "1-3,7,9-11", "Center, 5-7".
+// Forgiving: separators can be commas, spaces, semicolons, or newlines; ranges
+// can be "5-15", "5 – 15", "5 to 15", or "5..15"; and named courts with spaces
+// (e.g. "Center Court") are kept intact. Examples that all work:
+//   "5-15"  ·  "5 6 7 8 9"  ·  "1,3,5"  ·  "5-8, 10, 12 13"  ·  "Center, 5-7"
 function parseCourtSpec(spec: string): string[] {
   const out: string[] = [];
-  for (const part of (spec || '').split(',').map((s) => s.trim()).filter(Boolean)) {
-    const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
-    if (m) {
-      let a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+  const push = (v: string) => { if (v && out.length < 100 && !out.includes(v)) out.push(v); };
+  // First split on the "hard" separators that always delimit courts.
+  for (const rawSeg of (spec || '').split(/[,;\n]+/)) {
+    const seg = rawSeg.trim();
+    if (!seg) continue;
+    // A numeric range → expand it.
+    const range = seg.match(/^(\d+)\s*(?:-|–|—|to|\.\.)\s*(\d+)$/i);
+    if (range) {
+      let a = parseInt(range[1], 10), b = parseInt(range[2], 10);
       if (a > b) [a, b] = [b, a];
-      for (let i = a; i <= b && out.length < 60; i++) out.push(String(i));
-    } else if (out.length < 60) {
-      out.push(part);
+      for (let i = a; i <= b && out.length < 100; i++) push(String(i));
+      continue;
     }
+    // Space-separated numbers within a segment → each is its own court.
+    const tokens = seg.split(/\s+/);
+    if (tokens.length > 1 && tokens.every((t) => /^\d+$/.test(t))) {
+      for (const t of tokens) push(t);
+      continue;
+    }
+    // Otherwise it's a single court (a lone number or a named court).
+    push(seg);
   }
-  return [...new Set(out)];
+  return out;
 }
 
 // Compact label for the court set, e.g. "Courts 5–15 · 11" or "6 courts".
@@ -258,7 +273,7 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
           <div className="flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1.5">
             <input autoFocus value={courtInput} onChange={(e) => setCourtInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') applyCourtSpec(courtInput); if (e.key === 'Escape') setEditingCourts(false); }}
-              placeholder="e.g. 5-15 or 1,3,5"
+              placeholder="e.g. 5-15  ·  5 6 7 8  ·  1,3,5"
               className="w-40 rounded bg-white/10 px-2 py-1 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none" />
             <button onClick={() => applyCourtSpec(courtInput)} className="text-[#D3FB52] text-xs font-bold px-1.5">Apply</button>
             <button onClick={() => setEditingCourts(false)} className="text-slate-500 hover:text-slate-300 px-0.5"><X size={14} /></button>
