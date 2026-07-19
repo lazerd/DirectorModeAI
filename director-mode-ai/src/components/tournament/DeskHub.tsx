@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Play, Trophy, X, Zap, RefreshCw, Minus, Plus, AlertTriangle, Check, MoreHorizontal } from 'lucide-react';
+import { Loader2, Play, Trophy, X, Zap, RefreshCw, Plus, AlertTriangle, Check, MoreHorizontal } from 'lucide-react';
 
 type DeskEvent = { id: string; name: string; division: string; num_courts: number; match_format: string; public_status: string; event_date: string | null };
 type DeskMatch = {
@@ -38,14 +38,46 @@ function groupEvents(events: DeskEvent[]): EventGroups {
   return g;
 }
 
+// Parse a court spec into the actual list of court labels the venue is using.
+// Accepts ranges and lists and names: "5-15", "1,3,5", "1-3,7,9-11", "Center, 5-7".
+function parseCourtSpec(spec: string): string[] {
+  const out: string[] = [];
+  for (const part of (spec || '').split(',').map((s) => s.trim()).filter(Boolean)) {
+    const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (m) {
+      let a = parseInt(m[1], 10), b = parseInt(m[2], 10);
+      if (a > b) [a, b] = [b, a];
+      for (let i = a; i <= b && out.length < 60; i++) out.push(String(i));
+    } else if (out.length < 60) {
+      out.push(part);
+    }
+  }
+  return [...new Set(out)];
+}
+
+// Compact label for the court set, e.g. "Courts 5–15 · 11" or "6 courts".
+function courtsLabel(courts: string[]): string {
+  if (!courts.length) return 'no courts';
+  const nums = courts.map(Number);
+  if (nums.every((n) => Number.isFinite(n)) && courts.length > 1) {
+    const s = [...nums].sort((x, y) => x - y);
+    const contiguous = s.every((n, i) => i === 0 || n === s[i - 1] + 1);
+    if (contiguous) return `Courts ${s[0]}–${s[s.length - 1]} · ${courts.length}`;
+  }
+  return `${courts.length} court${courts.length > 1 ? 's' : ''}`;
+}
+
 export default function DeskHub({ initialEvents }: { initialEvents: string[] }) {
   const eventsParam = initialEvents.length ? `?events=${initialEvents.join(',')}` : '';
   const [data, setData] = useState<DeskData | null>(null);
-  const [courtCount, setCourtCount] = useState<number>(8);
+  const [courtSpec, setCourtSpec] = useState<string>('1-8');
+  const [editingCourts, setEditingCourts] = useState(false);
+  const [courtInput, setCourtInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [scoring, setScoring] = useState<DeskMatch | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const courtOverride = useRef<number | null>(null);
+  const specInited = useRef(false);
+  const courts = useMemo(() => parseCourtSpec(courtSpec), [courtSpec]);
 
   const load = useCallback(async () => {
     try {
@@ -53,7 +85,6 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
       if (!res.ok) return;
       const d: DeskData = await res.json();
       setData(d);
-      if (courtOverride.current == null) setCourtCount(d.courtCount);
     } catch { /* keep last */ }
   }, [eventsParam]);
 
@@ -62,6 +93,15 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     const iv = setInterval(load, 5000);
     return () => clearInterval(iv);
   }, [load]);
+
+  // Initialize the court set once from saved prefs, else 1..(default count).
+  useEffect(() => {
+    if (!data || specInited.current) return;
+    specInited.current = true;
+    let saved = '';
+    try { saved = localStorage.getItem('deskhub.courts') || ''; } catch { /* ignore */ }
+    setCourtSpec(saved.trim() || `1-${Math.max(1, data.courtCount || 8)}`);
+  }, [data]);
 
   // Which events (divisions) the director is running on THIS desk. The desk only
   // shows the events they pick — so old or other-venue events (e.g. a stale
@@ -130,23 +170,20 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
   // Court occupancy, waiting queue, and any match stranded on a court above the
   // current count (so lowering courts mid-day never hides a live match).
   const { courtsView, queue, offBoard } = useMemo(() => {
+    const courtSet = new Set(courts);
     const occByCourt = new Map<string, DeskMatch>();
     const offBoard: DeskMatch[] = [];
     for (const m of shownMatches) {
       if (m.status === 'completed' || !m.court) continue;
-      const n = parseInt(String(m.court), 10);
-      if (Number.isFinite(n) && n >= 1 && n <= courtCount) occByCourt.set(String(n), m);
+      if (courtSet.has(String(m.court))) occByCourt.set(String(m.court), m);
       else offBoard.push(m);
     }
-    const courtsView = Array.from({ length: courtCount }, (_, i) => {
-      const n = String(i + 1);
-      return { court: n, match: occByCourt.get(n) || null };
-    });
+    const courtsView = courts.map((c) => ({ court: c, match: occByCourt.get(c) || null }));
     const queue = shownMatches
       .filter((m) => m.ready && !m.court)
       .sort((a, b) => a.round - b.round || a.slot - b.slot);
     return { courtsView, queue, offBoard };
-  }, [shownMatches, courtCount]);
+  }, [shownMatches, courts]);
 
   const nextOpenCourt = useMemo(() => courtsView.find((c) => !c.match)?.court ?? null, [courtsView]);
 
@@ -155,13 +192,15 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
     if (!queue.length) return;
     assign(queue[0].id, court);
   };
-  // Court count is a hub VIEW setting — change it any time during the day. It
-  // never writes the events' saved num_courts.
-  const setCourts = (num: number) => {
-    const clamped = Math.max(1, Math.min(24, num));
-    courtOverride.current = clamped; setCourtCount(clamped);
+  // The court set is a hub VIEW setting — change it any time during the day.
+  // It never writes the events' saved courts.
+  const applyCourtSpec = (spec: string) => {
+    setCourtSpec(spec);
+    try { localStorage.setItem('deskhub.courts', spec); } catch { /* ignore */ }
+    setEditingCourts(false);
   };
-  const autofill = () => post({ action: 'autofill', eventIds: activeEventIds, courtCount });
+  const openCourtEditor = () => { setCourtInput(courtSpec); setEditingCourts(true); };
+  const autofill = () => post({ action: 'autofill', eventIds: activeEventIds, courts });
 
   // Close out an event (mark completed/cancelled). It stops being "running", so
   // the next refetch drops it from the desk and the picker entirely.
@@ -214,13 +253,23 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
         <div className="text-sm text-slate-400 mr-2">
           {stats.done}/{stats.total} done · {stats.onCourt} on court · {stats.waiting} waiting
         </div>
-        {/* Courts — change any time during the event */}
-        <div className="flex items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5">
-          <span className="text-xs text-slate-400 uppercase tracking-wide">Courts</span>
-          <button onClick={() => setCourts(courtCount - 1)} className="rounded-md bg-white/10 hover:bg-white/20 p-1.5" aria-label="Fewer courts"><Minus size={14} /></button>
-          <span className="text-lg font-bold w-7 text-center tabular-nums">{courtCount}</span>
-          <button onClick={() => setCourts(courtCount + 1)} className="rounded-md bg-white/10 hover:bg-white/20 p-1.5" aria-label="More courts"><Plus size={14} /></button>
-        </div>
+        {/* Courts in use — edit any time (e.g. 5-15, or 1,3,5) */}
+        {editingCourts ? (
+          <div className="flex items-center gap-1 rounded-lg bg-white/5 px-2 py-1.5">
+            <input autoFocus value={courtInput} onChange={(e) => setCourtInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyCourtSpec(courtInput); if (e.key === 'Escape') setEditingCourts(false); }}
+              placeholder="e.g. 5-15 or 1,3,5"
+              className="w-40 rounded bg-white/10 px-2 py-1 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none" />
+            <button onClick={() => applyCourtSpec(courtInput)} className="text-[#D3FB52] text-xs font-bold px-1.5">Apply</button>
+            <button onClick={() => setEditingCourts(false)} className="text-slate-500 hover:text-slate-300 px-0.5"><X size={14} /></button>
+          </div>
+        ) : (
+          <button onClick={openCourtEditor} title="Edit which courts you're using (e.g. 5-15)"
+            className="flex items-center gap-2 rounded-lg bg-white/5 hover:bg-white/10 px-3 py-1.5">
+            <span className="text-xs text-slate-400 uppercase tracking-wide">Courts</span>
+            <span className="text-sm font-bold">{courtsLabel(courts)}</span>
+          </button>
+        )}
         <button onClick={autofill} disabled={busy || !queue.length}
           className="inline-flex items-center gap-2 rounded-lg bg-[#D3FB52] text-[#00131c] font-bold px-4 py-2 disabled:opacity-40">
           <Zap size={16} /> Fill courts
@@ -242,7 +291,7 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
       {offBoard.length > 0 && (
         <div className="mb-3 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3">
           <div className="flex items-center gap-2 text-amber-300 text-sm font-semibold mb-2">
-            <AlertTriangle size={16} /> {offBoard.length} match{offBoard.length > 1 ? 'es' : ''} on a court above your current {courtCount}-court setup — score or send back:
+            <AlertTriangle size={16} /> {offBoard.length} match{offBoard.length > 1 ? 'es' : ''} on a court that’s not in your current set ({courtsLabel(courts)}) — score or send back:
           </div>
           <div className="flex flex-wrap gap-2">
             {offBoard.map((m) => (

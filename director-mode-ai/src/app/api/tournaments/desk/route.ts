@@ -166,10 +166,11 @@ export async function POST(req: Request) {
 
   if (action === 'autofill') {
     const eventIds: string[] = Array.isArray(body.eventIds) ? body.eventIds.map(String) : [];
-    const courtCount = Math.max(1, Math.min(40, Number(body.courtCount) || 8));
+    // The actual courts in use (labels/numbers), e.g. ["5".."15"], not just a count.
+    const courts: string[] = Array.isArray(body.courts) ? body.courts.map(String) : [];
     const owned: string[] = [];
     for (const id of eventIds) if (await ownsEvent(id)) owned.push(id);
-    if (!owned.length) return NextResponse.json({ ok: true, assigned: 0 });
+    if (!owned.length || !courts.length) return NextResponse.json({ ok: true, assigned: 0 });
 
     const { data: matches } = await admin.from('tournament_matches')
       .select('id, event_id, round, slot, court, status, player1_id, player3_id')
@@ -179,8 +180,7 @@ export async function POST(req: Request) {
     // Courts currently taken by any non-completed assigned match.
     const taken = new Set<string>();
     for (const m of list) if (m.status !== 'completed' && m.court) taken.add(String(m.court));
-    const openCourts: string[] = [];
-    for (let c = 1; c <= courtCount; c++) if (!taken.has(String(c))) openCourts.push(String(c));
+    const openCourts: string[] = courts.filter((c) => !taken.has(String(c)));
 
     // Ready = pending, both players known, no court yet. Order by round then slot.
     const ready = list
