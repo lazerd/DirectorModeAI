@@ -354,25 +354,26 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
                         const on = isOn(e.id);
                         return (
                           <div key={e.id}
-                            className={`flex items-center justify-between rounded-lg px-3 py-2 border ${on ? 'bg-[#D3FB52]/15 border-[#D3FB52]/50' : 'bg-white/5 border-white/10'}`}>
-                            <button onClick={() => toggleDiv(e.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
-                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: divColor(e.division) }} />
-                              <span className="min-w-0">
-                                <span className="block font-medium text-slate-100 text-sm leading-tight">{e.division}</span>
-                                <span className="block text-[11px] text-slate-500 truncate leading-tight">{e.name}</span>
-                              </span>
-                            </button>
+                            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 border min-h-[46px] ${on ? 'bg-[#D3FB52]/15 border-[#D3FB52]/50' : 'bg-white/5 border-white/10'}`}>
                             {closingId === e.id ? (
-                              <span className="flex items-center gap-1 text-[11px] shrink-0">
-                                <button onClick={() => closeEvent(e.id, 'completed')} className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 font-medium">Completed</button>
-                                <button onClick={() => closeEvent(e.id, 'cancelled')} className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30 font-medium">Cancelled</button>
-                                <button onClick={() => setClosingId(null)} className="text-slate-500 hover:text-slate-300 p-0.5"><X size={12} /></button>
-                              </span>
+                              <>
+                                <span className="text-[11px] text-slate-400 mr-auto truncate">Close “{e.division}”?</span>
+                                <button onClick={() => closeEvent(e.id, 'completed')} className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 font-medium text-[11px] shrink-0">Completed</button>
+                                <button onClick={() => closeEvent(e.id, 'cancelled')} className="px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 hover:bg-red-500/30 font-medium text-[11px] shrink-0">Cancelled</button>
+                                <button onClick={() => setClosingId(null)} className="text-slate-500 hover:text-slate-300 p-0.5 shrink-0"><X size={12} /></button>
+                              </>
                             ) : (
-                              <span className="flex items-center gap-1.5 shrink-0">
-                                {on && <Check size={16} className="text-[#D3FB52]" />}
-                                <button onClick={() => setClosingId(e.id)} title="Close out this event (mark completed/cancelled)" className="text-slate-500 hover:text-slate-300 p-1"><MoreHorizontal size={16} /></button>
-                              </span>
+                              <>
+                                <button onClick={() => toggleDiv(e.id)} className="flex items-center gap-2 min-w-0 flex-1 text-left">
+                                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: divColor(e.division) }} />
+                                  <span className="min-w-0">
+                                    <span className="block font-medium text-slate-100 text-sm leading-tight">{e.division}</span>
+                                    <span className="block text-[11px] text-slate-500 truncate leading-tight">{e.name}</span>
+                                  </span>
+                                </button>
+                                {on && <Check size={16} className="text-[#D3FB52] shrink-0" />}
+                                <button onClick={() => setClosingId(e.id)} title="Close out this event (mark completed/cancelled)" className="text-slate-500 hover:text-slate-300 p-1 shrink-0"><MoreHorizontal size={16} /></button>
+                              </>
                             )}
                           </div>
                         );
