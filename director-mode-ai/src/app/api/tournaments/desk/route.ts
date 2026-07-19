@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { syncPlacementPlayoffs } from '@/lib/tournamentPlayoffs';
 
 const TOURNAMENT_FORMATS = [
   'rr-singles', 'rr-doubles', 'single-elim-singles', 'single-elim-doubles',
@@ -60,6 +61,11 @@ export async function GET(req: Request) {
   const admin = getSupabaseAdmin();
   const ids = await ownedRunningEventIds(admin, user.id, requested);
   if (ids.length === 0) return NextResponse.json({ events: [], matches: [], courtCount: 8 });
+
+  // Make sure every 2-pool RR event has its placement bracket built out (TBD
+  // until each pool finishes) BEFORE we read matches, so the desk shows the full
+  // count including playoffs. Idempotent + best-effort — never blocks the board.
+  await Promise.all(ids.map((id) => syncPlacementPlayoffs(admin, id).catch(() => null)));
 
   const [{ data: evs }, { data: entries }, { data: matches }] = await Promise.all([
     admin.from('events').select('id, name, num_courts, match_format, public_status, event_date').in('id', ids),
