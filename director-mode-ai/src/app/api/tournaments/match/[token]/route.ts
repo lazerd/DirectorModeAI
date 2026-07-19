@@ -204,9 +204,12 @@ async function reflowDownstream(
     .eq('event_id', eventId);
   const dbMatches = (matchesData as any[]) || [];
 
-  // Pending matches that need (re)scheduling = anything not completed.
-  // Completed matches are fixed and act as anchors for their players' rest.
-  const pending = dbMatches.filter((m) => m.status !== 'completed' && m.status !== 'cancelled');
+  // Only re-time matches that were already auto-scheduled onto a court but
+  // haven't started. NEVER touch a match that's on a court right now
+  // (in_progress) or one waiting in the queue (no court yet) — those are owned
+  // by whoever placed them (the desk / director). This is what stops scoring one
+  // match from yanking other live matches off their courts.
+  const pending = dbMatches.filter((m) => m.status === 'pending' && m.court != null);
   if (pending.length === 0) return;
 
   // Build predecessor map (same logic as auto-schedule endpoint)
