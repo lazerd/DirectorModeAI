@@ -25,6 +25,7 @@ import {
   Music,
   Download,
   LayoutGrid,
+  Trophy,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
@@ -714,6 +715,16 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? 'Copied!' : 'Copy'}
         </button>
+        {/season-end/i.test(event.name) && (
+          <Link
+            href="/tournaments/season-end"
+            target="_blank"
+            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold flex-shrink-0"
+          >
+            <Trophy size={12} />
+            Season-End Hub
+          </Link>
+        )}
         <Link
           href={`/mixer/events/${eventId}/dj`}
           target="_blank"
