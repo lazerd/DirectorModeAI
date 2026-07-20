@@ -1073,14 +1073,14 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
                   return (
                     <div
                       key={bracket}
-                      className="bg-white border border-gray-200 rounded-xl p-4 overflow-x-auto"
+                      className="bg-white border border-gray-200 rounded-xl p-4 overflow-auto max-h-[78vh] overscroll-contain"
                     >
-                      <div className="flex items-baseline justify-between mb-4">
+                      <div className="flex items-baseline justify-between mb-4 sticky top-0 z-10 bg-white pb-2 -mt-1 pt-1">
                         <h3 className="font-semibold text-gray-900">
                           {bracket === 'main' ? 'Main Draw' : 'Consolation Draw'}
                         </h3>
-                        <span className="text-xs text-gray-500">
-                          {bracketMatches.length} matches · {totalRounds} {totalRounds === 1 ? 'round' : 'rounds'}
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          {bracketMatches.length} matches · {totalRounds} {totalRounds === 1 ? 'round' : 'rounds'} · scroll ↔ ↕
                         </span>
                       </div>
                       <div
