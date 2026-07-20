@@ -21,7 +21,7 @@ import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
-  Waves, GraduationCap, ListOrdered, BarChart3, Sparkles, ExternalLink, Calendar,
+  Waves, GraduationCap, BarChart3, Sparkles, ExternalLink, Calendar,
   MessagesSquare, ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
@@ -40,9 +40,9 @@ type Item = {
 const ITEMS: Item[] = [
   { name: 'Home', href: '/', match: '/', icon: Home, color: '#D3FB52' },
   { name: 'CourtSheet', href: '/courtsheet/staff', match: '/courtsheet', icon: LayoutGrid, color: '#22d3ee' },
-  { name: 'Leagues & JTT', href: '/mixer/leagues', match: '/mixer/leagues', icon: Trophy, color: '#D3FB52' },
   { name: 'MixerMode', href: '/mixer/home', match: '/mixer/home', icon: Shuffle, color: '#fb923c' },
-  { name: 'FlexLeague', href: '/flex', match: '/flex', icon: ListOrdered, color: '#60a5fa' },
+  { name: 'LeagueMode', href: '/mixer/leagues', match: '/mixer/leagues', icon: Calendar, color: '#34d399' },
+  { name: 'TournamentMode', href: '/mixer/tournaments', match: '/mixer/tournaments', icon: Trophy, color: '#eab308' },
   { name: 'Lessons', href: '/lessons/dashboard', match: '/lessons/dashboard', icon: Clock, color: '#60a5fa' },
   { name: 'CoachMode', href: '/lessons/recap', match: '/lessons/recap', icon: GraduationCap, color: '#a78bfa' },
   { name: 'Members', href: '/club/members', match: '/club/members', icon: Users, color: '#38bdf8' },

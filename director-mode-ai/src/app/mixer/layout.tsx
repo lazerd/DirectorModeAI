@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Shuffle, Home, Calendar, Settings, CreditCard, Zap, Trophy } from 'lucide-react';
+import { Shuffle, Plus, Calendar, Settings, CreditCard, Zap, Trophy } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import MixerMobileNav from '@/components/mixer/MixerMobileNav';
@@ -36,8 +36,8 @@ export default async function MixerLayout({
               <Shuffle size={18} className="text-orange-400" />
             </div>
             <div>
-              <span className="font-display text-lg block leading-tight text-white">MixerMode</span>
-              <span className="text-xs text-white/40">Events AI</span>
+              <span className="font-display text-lg block leading-tight text-white">Events</span>
+              <span className="text-xs text-white/40">Mixers · Leagues · Draws</span>
             </div>
           </Link>
         </div>
@@ -65,14 +65,17 @@ export default async function MixerLayout({
         {/* Navigation */}
         <nav className="flex-1 p-3">
           <ul className="space-y-1">
-            <NavItem href="/mixer/home" icon={Home}>
-              My Events
+            <NavItem href="/mixer/home" icon={Shuffle}>
+              MixerMode
             </NavItem>
-            <NavItem href="/mixer/select-format" icon={Calendar}>
+            <NavItem href="/mixer/leagues" icon={Calendar}>
+              LeagueMode
+            </NavItem>
+            <NavItem href="/mixer/tournaments" icon={Trophy}>
+              TournamentMode
+            </NavItem>
+            <NavItem href="/mixer/select-format" icon={Plus}>
               Create Event
-            </NavItem>
-            <NavItem href="/mixer/leagues" icon={Trophy}>
-              Leagues
             </NavItem>
             <NavItem href="/mixer/subscription" icon={CreditCard}>
               Subscription

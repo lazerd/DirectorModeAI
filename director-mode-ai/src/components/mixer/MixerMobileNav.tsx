@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Shuffle, Home, Calendar, Settings, Zap, CreditCard, Menu, X, Trophy } from 'lucide-react';
+import { Shuffle, Plus, Calendar, Settings, Zap, CreditCard, Menu, X, Trophy } from 'lucide-react';
 
 interface MixerMobileNavProps {
   userName: string;
@@ -53,14 +53,17 @@ export default function MixerMobileNav({ userName, userInitial }: MixerMobileNav
 
             <nav className="p-3">
               <ul className="space-y-1">
-                <MobileNavItem href="/mixer/home" icon={Home} onClick={() => setIsOpen(false)}>
-                  My Events
+                <MobileNavItem href="/mixer/home" icon={Shuffle} onClick={() => setIsOpen(false)}>
+                  MixerMode
                 </MobileNavItem>
-                <MobileNavItem href="/mixer/select-format" icon={Calendar} onClick={() => setIsOpen(false)}>
+                <MobileNavItem href="/mixer/leagues" icon={Calendar} onClick={() => setIsOpen(false)}>
+                  LeagueMode
+                </MobileNavItem>
+                <MobileNavItem href="/mixer/tournaments" icon={Trophy} onClick={() => setIsOpen(false)}>
+                  TournamentMode
+                </MobileNavItem>
+                <MobileNavItem href="/mixer/select-format" icon={Plus} onClick={() => setIsOpen(false)}>
                   Create Event
-                </MobileNavItem>
-                <MobileNavItem href="/mixer/leagues" icon={Trophy} onClick={() => setIsOpen(false)}>
-                  Leagues
                 </MobileNavItem>
                 <MobileNavItem href="/mixer/subscription" icon={CreditCard} onClick={() => setIsOpen(false)}>
                   Subscription

@@ -53,12 +53,12 @@ export default function LeaguesListPage() {
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-semibold text-2xl sm:text-3xl mb-1">Leagues</h1>
-          <p className="text-gray-500">Run summer compass-draw leagues with public signup pages</p>
+          <h1 className="font-semibold text-2xl sm:text-3xl mb-1">LeagueMode</h1>
+          <p className="text-gray-500">Multi-week leagues — round-robin, JTT team tennis, and the adult Flex league.</p>
         </div>
         <Link
           href="/mixer/leagues/new"
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600"
+          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700"
         >
           <Plus size={18} />
           Create League

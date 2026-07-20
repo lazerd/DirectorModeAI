@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Plus, Calendar, Users, Trophy, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
+import { isMixerEvent } from '@/lib/eventCategory';
 
 type Event = {
   id: string;
@@ -14,6 +15,7 @@ type Event = {
   start_time: string | null;
   num_courts: number;
   match_format: string | null;
+  slug: string | null;
   created_at: string;
 };
 
@@ -41,7 +43,9 @@ export default function MixerHomePage() {
       .eq('user_id', user.id)
       .order('event_date', { ascending: false });
 
-    if (data) setEvents(data);
+    // MixerMode only shows casual socials. Tournament/quad draws live in
+    // TournamentMode, and Flex-league divisions live in LeagueMode.
+    if (data) setEvents((data as Event[]).filter(isMixerEvent));
     setLoading(false);
   };
 
@@ -105,8 +109,8 @@ export default function MixerHomePage() {
     <div className="p-4 sm:p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="font-semibold text-2xl sm:text-3xl mb-1">My Events</h1>
-          <p className="text-gray-500">Manage your mixers and tournaments</p>
+          <h1 className="font-semibold text-2xl sm:text-3xl mb-1">MixerMode</h1>
+          <p className="text-gray-500">Your casual socials &amp; mixers. Tournaments and leagues have their own tabs.</p>
         </div>
         <Link href="/mixer/select-format" className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600">
           <Plus size={18} />
@@ -151,8 +155,8 @@ export default function MixerHomePage() {
       {events.length === 0 ? (
         <div className="bg-white rounded-xl border p-12 text-center">
           <Trophy size={48} className="mx-auto text-gray-300 mb-4" />
-          <h3 className="font-semibold text-lg mb-2">No events yet</h3>
-          <p className="text-gray-500 mb-4">Create your first event to get started.</p>
+          <h3 className="font-semibold text-lg mb-2">No mixers yet</h3>
+          <p className="text-gray-500 mb-4">Set up a casual social or mixer to get started. Running a bracket instead? Head to TournamentMode.</p>
           <Link href="/mixer/select-format" className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600">
             <Plus size={18} />
             Create Event
