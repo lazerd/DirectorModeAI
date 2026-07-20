@@ -123,6 +123,13 @@ export default async function PrintDrawPage({
   // generic renderer if the compass structure isn't recognised.
   const compassGroups = isCompassFormat(e.match_format) ? buildCompassGroups(matches) : null;
 
+  // Round-robin draws are pool play, not an elimination bracket — their columns
+  // are simply "Round 1, 2, 3…", never "Round of 16 / Quarterfinals". Two-flight
+  // RR draws finish with a cross-flight placement round, labelled accordingly.
+  const isRR = e.match_format === 'rr-singles' || e.match_format === 'rr-doubles';
+  const twoFlightRR = isRR && matches.some((m) => m.slot >= 100);
+  const maxRound = matches.reduce((mx, m) => Math.max(mx, m.round), 0);
+
   return (
     <>
       {/* Print-only CSS — hide browser chrome / nav on print */}
@@ -238,7 +245,11 @@ export default async function PrintDrawPage({
                               className="flex flex-col min-w-[260px] print:min-w-[210px]"
                             >
                               <div className="text-center text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-3 pb-2 border-b border-gray-300 print:text-[10px]">
-                                {roundLabel(roundIdx + 1, totalRounds, bracket)}
+                                {isRR
+                                  ? twoFlightRR && round === maxRound
+                                    ? 'Crossover Playoff'
+                                    : `Round ${round}`
+                                  : roundLabel(roundIdx + 1, totalRounds, bracket)}
                               </div>
                               <div className="flex-1 flex flex-col justify-around gap-4 print:gap-2">
                                 {roundMatches.map((m) => (
