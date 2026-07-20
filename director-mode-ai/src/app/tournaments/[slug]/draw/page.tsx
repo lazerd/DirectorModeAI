@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { isCompassFormat, buildCompassGroups } from '@/lib/compassLayout';
 import PrintBar from './PrintBar';
 
 export const dynamic = 'force-dynamic';
@@ -116,6 +117,12 @@ export default async function PrintDrawPage({
     matches.some((m) => m.bracket === b)
   );
 
+  // Compass draws render as directional groups (East championship, West, the
+  // 3rd/4th corner playoffs, …) instead of a generic main/consolation bracket,
+  // so it's clear where a player goes based on their record. Falls back to the
+  // generic renderer if the compass structure isn't recognised.
+  const compassGroups = isCompassFormat(e.match_format) ? buildCompassGroups(matches) : null;
+
   return (
     <>
       {/* Print-only CSS — hide browser chrome / nav on print */}
@@ -153,6 +160,59 @@ export default async function PrintDrawPage({
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center text-gray-500">
               The draw has not been generated yet.
             </div>
+          ) : compassGroups ? (
+            <>
+              <p className="text-sm text-gray-600 mb-5 print:mb-3 print:text-xs max-w-2xl">
+                A compass draw keeps everyone playing: <b>win and you head East</b> toward the
+                championship, <b>lose and you head West</b>, fanning into North, South and the corner
+                playoffs so <b>every player earns a final placement</b>. Each draw below is labelled by
+                the place it decides and the record that lands a player there.
+              </p>
+              <div className="space-y-6 print:space-y-4">
+                {compassGroups.map((g) => (
+                  <section
+                    key={g.id}
+                    className="bracket-card pl-3 border-l-4 print:pl-2"
+                    style={{ borderLeftColor: g.accent }}
+                  >
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <h2 className="text-xl font-bold print:text-base">{g.direction}</h2>
+                      <span
+                        className="px-2 py-0.5 rounded-full text-xs font-bold text-white"
+                        style={{ backgroundColor: g.accent }}
+                      >
+                        {g.place}
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-600 mb-3 print:text-xs">{g.subtitle}</p>
+                    <div className="overflow-auto max-h-[80vh] overscroll-contain rounded-lg border border-gray-100 print:overflow-visible print:max-h-none print:border-0">
+                      <div className="flex gap-6 min-w-max items-stretch print:gap-4">
+                        {g.stages.map((st) => {
+                          const stageMatches = matches
+                            .filter((m) => m.bracket === st.bracket && m.round === st.round)
+                            .sort((a, b) => a.slot - b.slot);
+                          return (
+                            <div
+                              key={`${st.bracket}:${st.round}`}
+                              className="flex flex-col min-w-[260px] print:min-w-[210px]"
+                            >
+                              <div className="text-center text-[11px] font-bold uppercase tracking-wider text-gray-700 mb-3 pb-2 border-b border-gray-300 print:text-[10px]">
+                                {st.roundName}
+                              </div>
+                              <div className="flex-1 flex flex-col justify-around gap-4 print:gap-2">
+                                {stageMatches.map((m) => (
+                                  <DrawMatchCard key={m.id} m={m} entryById={entryById} />
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </section>
+                ))}
+              </div>
+            </>
           ) : (
             <div className="space-y-8 print:space-y-4">
               {brackets.map((bracket) => {
@@ -168,7 +228,7 @@ export default async function PrintDrawPage({
                     <h2 className="text-xl font-bold mb-3 print:text-base">
                       {bracket === 'main' ? 'Main Draw' : 'Consolation Draw'}
                     </h2>
-                    <div className="overflow-x-auto print:overflow-visible">
+                    <div className="overflow-auto max-h-[80vh] overscroll-contain rounded-lg border border-gray-100 print:overflow-visible print:max-h-none print:border-0">
                       <div className="flex gap-6 min-w-max items-stretch print:gap-4">
                         {rounds.map((round, roundIdx) => {
                           const roundMatches = bMatches.filter((m) => m.round === round);
@@ -181,42 +241,9 @@ export default async function PrintDrawPage({
                                 {roundLabel(roundIdx + 1, totalRounds, bracket)}
                               </div>
                               <div className="flex-1 flex flex-col justify-around gap-4 print:gap-2">
-                                {roundMatches.map((m) => {
-                                  const teamA = m.player1_id ? entryById.get(m.player1_id) : undefined;
-                                  const teamB = m.player3_id ? entryById.get(m.player3_id) : undefined;
-                                  const aWon = m.winner_side === 'a';
-                                  const bWon = m.winner_side === 'b';
-                                  const parsed = parseScoreSets(m.score);
-                                  const marker = scoreMarker(m.score);
-                                  return (
-                                    <div
-                                      key={m.id}
-                                      className="border border-gray-400 rounded bg-white overflow-hidden print:border-gray-500"
-                                    >
-                                      <DrawTeamRow
-                                        entry={teamA}
-                                        won={aWon}
-                                        sets={parsed?.a ?? null}
-                                        marker={aWon ? marker : null}
-                                      />
-                                      <div className="border-t border-gray-300" />
-                                      <DrawTeamRow
-                                        entry={teamB}
-                                        won={bWon}
-                                        sets={parsed?.b ?? null}
-                                        marker={bWon ? marker : null}
-                                      />
-                                      {(m.court || m.scheduled_at) && (
-                                        <div className="border-t border-gray-200 px-2 py-0.5 text-[10px] text-gray-600 flex gap-2 print:text-[9px]">
-                                          {m.court && <span>Court {m.court}</span>}
-                                          {m.scheduled_at && (
-                                            <span>{m.scheduled_at.slice(0, 5)}</span>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })}
+                                {roundMatches.map((m) => (
+                                  <DrawMatchCard key={m.id} m={m} entryById={entryById} />
+                                ))}
                               </div>
                             </div>
                           );
@@ -235,6 +262,28 @@ export default async function PrintDrawPage({
         </main>
       </div>
     </>
+  );
+}
+
+function DrawMatchCard({ m, entryById }: { m: Match; entryById: Map<string, Entry> }) {
+  const teamA = m.player1_id ? entryById.get(m.player1_id) : undefined;
+  const teamB = m.player3_id ? entryById.get(m.player3_id) : undefined;
+  const aWon = m.winner_side === 'a';
+  const bWon = m.winner_side === 'b';
+  const parsed = parseScoreSets(m.score);
+  const marker = scoreMarker(m.score);
+  return (
+    <div className="border border-gray-400 rounded bg-white overflow-hidden print:border-gray-500">
+      <DrawTeamRow entry={teamA} won={aWon} sets={parsed?.a ?? null} marker={aWon ? marker : null} />
+      <div className="border-t border-gray-300" />
+      <DrawTeamRow entry={teamB} won={bWon} sets={parsed?.b ?? null} marker={bWon ? marker : null} />
+      {(m.court || m.scheduled_at) && (
+        <div className="border-t border-gray-200 px-2 py-0.5 text-[10px] text-gray-600 flex gap-2 print:text-[9px]">
+          {m.court && <span>Court {m.court}</span>}
+          {m.scheduled_at && <span>{m.scheduled_at.slice(0, 5)}</span>}
+        </div>
+      )}
+    </div>
   );
 }
 

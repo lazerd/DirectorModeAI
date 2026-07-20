@@ -1,6 +1,7 @@
 import Link from 'next/link';
-import { Trophy, ClipboardList, PencilLine, GitBranch, MapPin } from 'lucide-react';
+import { Trophy, ClipboardList, PencilLine, GitBranch, MapPin, QrCode } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { isCompassFormat } from '@/lib/compassLayout';
 
 export const dynamic = 'force-dynamic';
 
@@ -92,6 +93,15 @@ export default async function SeasonEndHubPage() {
             <div className="text-sm text-white/50">Tap any division to view standings, enter scores, or open the draw</div>
           </div>
         </div>
+        <div className="max-w-3xl mx-auto px-4 pb-6 -mt-2">
+          <Link
+            href="/tournaments/season-end/posters"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#D3FB52] text-[#00131c] text-sm font-bold hover:brightness-95 transition-all"
+          >
+            <QrCode size={16} />
+            Print QR posters
+          </Link>
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8">
@@ -104,6 +114,9 @@ export default async function SeasonEndHubPage() {
             {events.map((e) => {
               const { title, venue } = parseName(e.name);
               const slug = e.slug as string;
+              // Compass draws place players through the bracket itself — a
+              // standings table doesn't apply, so those cards show Enter + Draw only.
+              const compass = isCompassFormat(e.match_format);
               return (
                 <div key={e.id} className="bg-white/[0.04] border border-white/10 rounded-2xl p-5">
                   <div className="flex items-start justify-between gap-3 mb-4">
@@ -132,14 +145,16 @@ export default async function SeasonEndHubPage() {
                       </span>
                     )}
                   </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Link
-                      href={`/tournaments/${slug}/results`}
-                      className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] transition-colors text-center"
-                    >
-                      <Trophy size={18} className="text-[#D3FB52]" />
-                      <span className="text-xs font-semibold">Standings</span>
-                    </Link>
+                  <div className={`grid gap-2 ${compass ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                    {!compass && (
+                      <Link
+                        href={`/tournaments/${slug}/results`}
+                        className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] transition-colors text-center"
+                      >
+                        <Trophy size={18} className="text-[#D3FB52]" />
+                        <span className="text-xs font-semibold">Standings</span>
+                      </Link>
+                    )}
                     <Link
                       href={`/tournaments/${slug}/enter`}
                       className="flex flex-col items-center justify-center gap-1 py-3 rounded-xl bg-[#D3FB52] text-[#00131c] hover:brightness-95 transition-all text-center"
