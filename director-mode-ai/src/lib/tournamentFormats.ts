@@ -131,7 +131,11 @@ export function generateRRMatches(
   return matches;
 }
 
-/** Standings for an RR tournament: sort by match wins desc, then by point diff. */
+/**
+ * Standings for an RR tournament. Ranking: match wins desc → head-to-head (for
+ * 2-way ties) → game differential desc → games won desc. Games are credited to
+ * the actual winner, so scores entered winner-first tally correctly.
+ */
 export type RRStanding = {
   entry_id: string;
   rank: number;
@@ -163,6 +167,14 @@ export function computeRRStandings(
     });
   }
 
+  // Head-to-head record: beat.get(x) = the set of players x defeated directly.
+  const beat = new Map<string, Set<string>>();
+  const recordBeat = (winner: string, loser: string) => {
+    let s = beat.get(winner);
+    if (!s) { s = new Set(); beat.set(winner, s); }
+    s.add(loser);
+  };
+
   for (const m of matches) {
     if (m.status !== 'completed' || !m.player1_id || !m.player3_id) continue;
     const sa = stats.get(m.player1_id);
@@ -176,21 +188,35 @@ export function computeRRStandings(
       ga += parseInt(match[1], 10);
       gb += parseInt(match[2], 10);
     }
-    sa.games_won += ga;
-    sa.games_lost += gb;
-    sb.games_won += gb;
-    sb.games_lost += ga;
+    // Credit games to the actual WINNER, not to whoever is listed first. Scores
+    // are entered winner-first at the desk ("tap the winner, type the score"),
+    // so reading them positionally swaps games whenever side B won. The winner
+    // always has the higher game total in these single-set (Fast4) formats.
+    const hi = Math.max(ga, gb);
+    const lo = Math.min(ga, gb);
     if (m.winner_side === 'a') {
-      sa.match_wins++;
-      sb.match_losses++;
+      sa.games_won += hi; sa.games_lost += lo;
+      sb.games_won += lo; sb.games_lost += hi;
+      sa.match_wins++; sb.match_losses++;
+      recordBeat(m.player1_id, m.player3_id);
     } else if (m.winner_side === 'b') {
-      sb.match_wins++;
-      sa.match_losses++;
+      sb.games_won += hi; sb.games_lost += lo;
+      sa.games_won += lo; sa.games_lost += hi;
+      sb.match_wins++; sa.match_losses++;
+      recordBeat(m.player3_id, m.player1_id);
+    } else {
+      // No recorded winner — keep games positional; no head-to-head result.
+      sa.games_won += ga; sa.games_lost += gb;
+      sb.games_won += gb; sb.games_lost += ga;
     }
   }
 
   const sorted = [...stats.values()].sort((a, b) => {
     if (a.match_wins !== b.match_wins) return b.match_wins - a.match_wins;
+    // Head-to-head first: for a 2-way tie, whoever won their direct match ranks
+    // higher. (3-way ties can be circular; the game tiebreaks below settle those.)
+    if (beat.get(a.entry_id)?.has(b.entry_id)) return -1;
+    if (beat.get(b.entry_id)?.has(a.entry_id)) return 1;
     const aDiff = a.games_won - a.games_lost;
     const bDiff = b.games_won - b.games_lost;
     if (aDiff !== bDiff) return bDiff - aDiff;
