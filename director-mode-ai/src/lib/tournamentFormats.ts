@@ -133,8 +133,8 @@ export function generateRRMatches(
 
 /**
  * Standings for an RR tournament. Ranking: match wins desc → head-to-head (for
- * 2-way ties) → game differential desc → games won desc. Games are credited to
- * the actual winner, so scores entered winner-first tally correctly.
+ * 2-way ties) → game differential desc → fewest games lost. Games are credited
+ * to the actual winner, so scores entered winner-first tally correctly.
  */
 export type RRStanding = {
   entry_id: string;
@@ -220,7 +220,10 @@ export function computeRRStandings(
     const aDiff = a.games_won - a.games_lost;
     const bDiff = b.games_won - b.games_lost;
     if (aDiff !== bDiff) return bDiff - aDiff;
-    return b.games_won - a.games_won;
+    // Final split: fewest games lost. With differential already equal, this is
+    // the higher game-win % (the tennis standard) — rewards winning decisively
+    // rather than padding games in defeat.
+    return a.games_lost - b.games_lost;
   });
 
   sorted.forEach((s, i) => {
