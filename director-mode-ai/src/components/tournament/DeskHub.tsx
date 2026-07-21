@@ -1,15 +1,16 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2, Play, Trophy, X, Zap, RefreshCw, Plus, AlertTriangle, Check, MoreHorizontal } from 'lucide-react';
+import { Loader2, Play, Trophy, X, Zap, RefreshCw, Plus, AlertTriangle, Check, MoreHorizontal, UserCheck, Clock } from 'lucide-react';
 
 type DeskEvent = { id: string; name: string; division: string; num_courts: number; match_format: string; public_status: string; event_date: string | null };
 type DeskMatch = {
   id: string; event_id: string; division: string; round: number; slot: number;
   court: string | null; status: string; score: string | null; score_token: string;
-  sideA: string; sideB: string; ready: boolean;
+  sideA: string; sideB: string; ready: boolean; checkedIn: boolean;
 };
-type DeskData = { events: DeskEvent[]; matches: DeskMatch[]; courtCount: number };
+type DeskCheckin = { id: string; event_id: string; division: string; name: string; checked_in: boolean };
+type DeskData = { events: DeskEvent[]; matches: DeskMatch[]; checkins: DeskCheckin[]; courtCount: number };
 
 const DIVISION_COLORS: Record<string, string> = {
   Gold: '#eab308', Silver: '#94a3b8', Bronze: '#b45309',
@@ -101,6 +102,8 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
   const [courtInput, setCourtInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [scoring, setScoring] = useState<DeskMatch | null>(null);
+  const [checkinOpen, setCheckinOpen] = useState(false);
+  const [checkinFilter, setCheckinFilter] = useState('');
   const [err, setErr] = useState<string | null>(null);
   const specInited = useRef(false);
   const courts = useMemo(() => parseCourtSpec(courtSpec), [courtSpec]);
@@ -200,7 +203,7 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
 
   // Court occupancy, waiting queue, and any match stranded on a court above the
   // current count (so lowering courts mid-day never hides a live match).
-  const { courtsView, queue, offBoard, pending } = useMemo(() => {
+  const { courtsView, queue, awaitingCheckin, offBoard, pending } = useMemo(() => {
     const courtSet = new Set(courts);
     const occByCourt = new Map<string, DeskMatch>();
     const offBoard: DeskMatch[] = [];
@@ -210,21 +213,37 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
       else offBoard.push(m);
     }
     const courtsView = courts.map((c) => ({ court: c, match: occByCourt.get(c) || null }));
+    const byOrder = (a: DeskMatch, b: DeskMatch) => a.round - b.round || a.slot - b.slot;
+    // Only matches whose players are all checked in can go on a court.
     const queue = shownMatches
-      .filter((m) => m.ready && !m.court)
-      .sort((a, b) => a.round - b.round || a.slot - b.slot);
+      .filter((m) => m.ready && !m.court && m.checkedIn)
+      .sort(byOrder);
+    // Ready but a player hasn't checked in yet — held back until they do.
+    const awaitingCheckin = shownMatches
+      .filter((m) => m.ready && !m.court && !m.checkedIn)
+      .sort(byOrder);
     // Matches that EXIST but can't be played yet because a player is still TBD
     // (placement playoffs waiting on a pool, or elimination matches waiting on a
     // feeder). Shown read-only so the director sees the full card count up front.
     const pending = shownMatches
       .filter((m) => !m.ready && !m.court && m.status !== 'completed' && m.status !== 'cancelled')
       .sort((a, b) => a.round - b.round || a.slot - b.slot);
-    return { courtsView, queue, offBoard, pending };
+    return { courtsView, queue, awaitingCheckin, offBoard, pending };
   }, [shownMatches, courts]);
 
   const nextOpenCourt = useMemo(() => courtsView.find((c) => !c.match)?.court ?? null, [courtsView]);
 
   const assign = (matchId: string, court: string | null) => post({ action: 'assign', matchId, court });
+  const checkIn = (entryId: string, value: boolean) => post({ action: 'check_in', entryId, value });
+  // Check-in roster for the events on this desk.
+  const shownCheckins = useMemo(
+    () => (data?.checkins || []).filter((c) => isOn(c.event_id)),
+    [data, isOn],
+  );
+  const checkinStats = useMemo(() => ({
+    in: shownCheckins.filter((c) => c.checked_in).length,
+    total: shownCheckins.length,
+  }), [shownCheckins]);
   const startNextOn = (court: string) => {
     if (!queue.length) return;
     assign(queue[0].id, court);
@@ -308,6 +327,11 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
             <span className="text-sm font-bold">{courtsLabel(courts)}</span>
           </button>
         )}
+        <button onClick={() => setCheckinOpen(true)}
+          className="inline-flex items-center gap-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2 font-semibold text-sm">
+          <UserCheck size={16} className={checkinStats.in === checkinStats.total && checkinStats.total > 0 ? 'text-[#D3FB52]' : 'text-slate-300'} />
+          Check-in <span className="text-slate-400 font-normal">{checkinStats.in}/{checkinStats.total}</span>
+        </button>
         <button onClick={autofill} disabled={busy || !queue.length}
           className="inline-flex items-center gap-2 rounded-lg bg-[#D3FB52] text-[#00131c] font-bold px-4 py-2 disabled:opacity-40">
           <Zap size={16} /> Fill courts
@@ -413,6 +437,32 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
             </div>
           </div>
 
+          {/* Awaiting check-in — ready to play, but a player isn't checked in yet. */}
+          {awaitingCheckin.length > 0 && (
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-3">
+              <div className="flex items-center justify-between mb-1">
+                <p className="font-semibold text-amber-200 inline-flex items-center gap-1.5">
+                  <Clock size={14} /> Awaiting check-in
+                </p>
+                <button onClick={() => setCheckinOpen(true)} className="text-[11px] text-[#D3FB52] font-semibold">
+                  Check players in →
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 mb-2">These can’t go on a court until every player is checked in.</p>
+              <div className="space-y-2 max-h-[38vh] overflow-y-auto">
+                {awaitingCheckin.map((m) => (
+                  <div key={m.id} className="w-full rounded-lg bg-white/[0.03] border border-dashed border-amber-400/20 p-2.5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-[#00131c]" style={{ backgroundColor: divColor(m.division) }}>{m.division}</span>
+                      <span className="text-[10px] text-slate-500 ml-auto">R{m.round}</span>
+                    </div>
+                    <div className="text-sm font-medium leading-tight text-slate-300">{m.sideA} <span className="text-slate-600">vs</span> {m.sideB}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Coming up — matches that exist but are waiting on a player (TBD). */}
           {pending.length > 0 && (
             <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
@@ -506,6 +556,71 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
             )}
 
             <button onClick={() => setPickerOpen(false)} className="w-full mt-4 rounded-xl bg-[#D3FB52] text-[#00131c] font-bold py-2.5">Done</button>
+          </div>
+        </div>
+      )}
+
+      {checkinOpen && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setCheckinOpen(false)}>
+          <div className="bg-[#062733] border border-white/10 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-5 pb-3 border-b border-white/10">
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-bold text-slate-100 inline-flex items-center gap-2">
+                  <UserCheck size={18} className="text-[#D3FB52]" /> Player check-in
+                </p>
+                <button onClick={() => setCheckinOpen(false)} className="text-slate-400 hover:text-slate-200"><X size={18} /></button>
+              </div>
+              <p className="text-xs text-slate-400 mb-3">
+                Tap a player as they arrive. A match only becomes playable once <b>both sides</b> are checked in —{' '}
+                <span className="text-[#D3FB52] font-semibold">{checkinStats.in}/{checkinStats.total} in</span>.
+              </p>
+              <input
+                autoFocus
+                value={checkinFilter}
+                onChange={(e) => setCheckinFilter(e.target.value)}
+                placeholder="Search players…"
+                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-[#D3FB52]/40"
+              />
+            </div>
+            <div className="p-3 overflow-y-auto">
+              {shownCheckins.length === 0 && (
+                <p className="text-sm text-slate-500 py-6 text-center">No players in the draw yet.</p>
+              )}
+              {shownCheckins
+                .filter((c) => c.name.toLowerCase().includes(checkinFilter.trim().toLowerCase()))
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => checkIn(c.id, !c.checked_in)}
+                    disabled={busy}
+                    className={`w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 mb-1.5 border text-left disabled:opacity-60 ${
+                      c.checked_in ? 'bg-[#D3FB52]/12 border-[#D3FB52]/40' : 'bg-white/5 border-white/10 hover:bg-white/10'
+                    }`}
+                  >
+                    <span
+                      className={`w-6 h-6 rounded-full inline-flex items-center justify-center flex-shrink-0 ${
+                        c.checked_in ? 'bg-[#D3FB52] text-[#00131c]' : 'border border-white/20 text-transparent'
+                      }`}
+                    >
+                      <Check size={14} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-medium text-slate-100 truncate">{c.name}</span>
+                    </span>
+                    {c.division && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-[#00131c] flex-shrink-0" style={{ backgroundColor: divColor(c.division) }}>
+                        {c.division}
+                      </span>
+                    )}
+                    <span className={`text-[11px] font-semibold flex-shrink-0 ${c.checked_in ? 'text-[#D3FB52]' : 'text-slate-500'}`}>
+                      {c.checked_in ? 'In' : 'Tap'}
+                    </span>
+                  </button>
+                ))}
+            </div>
+            <div className="p-3 border-t border-white/10">
+              <button onClick={() => setCheckinOpen(false)} className="w-full rounded-xl bg-[#D3FB52] text-[#00131c] font-bold py-2.5">Done</button>
+            </div>
           </div>
         </div>
       )}

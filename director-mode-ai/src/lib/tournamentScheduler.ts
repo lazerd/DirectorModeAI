@@ -50,6 +50,13 @@ export type SchedulerInput = {
    * better packing but more compute.
    */
   slotGranularityMinutes?: number;
+  /**
+   * Optional per-court availability windows, aligned index-for-index with
+   * `courts`. A court is only used between its own start/end each day. Any
+   * entry left undefined (or the whole array omitted) falls back to the
+   * global daily window — so this is fully backward compatible.
+   */
+  courtWindows?: Array<{ startMin: number; endMin: number } | undefined>;
 };
 
 export type ScheduledAssignment = {
@@ -174,6 +181,7 @@ export function optimizeTournamentSchedule(input: SchedulerInput): SchedulerOutp
     playerRestMinutes,
     matchBufferMinutes,
     slotGranularityMinutes = 15,
+    courtWindows,
   } = input;
 
   if (courts.length === 0 || matches.length === 0) {
@@ -188,11 +196,18 @@ export function optimizeTournamentSchedule(input: SchedulerInput): SchedulerOutp
   const dailyStartMin = timeToMinutes(dailyStartTime);
   const dailyEndMin = timeToMinutes(dailyEndTime);
 
+  // Per-court availability windows: each court opens/closes on its own schedule,
+  // defaulting to the global daily window when not specified.
+  const courtStartMins = courts.map((_, i) => courtWindows?.[i]?.startMin ?? dailyStartMin);
+  const courtEndMins = courts.map((_, i) => courtWindows?.[i]?.endMin ?? dailyEndMin);
+  const minCourtStart = Math.min(...courtStartMins);
+  const maxCourtEnd = Math.max(...courtEndMins);
+
   // For each (day, court), track when that court is next available (in HH:MM minutes within that day).
-  // Initialize each court to the daily start.
+  // Initialize each court to its own opening time.
   const courtNextFreeByDay = new Map<string, number[]>(); // dayYmd → court index → next free min within day
   for (const day of days) {
-    courtNextFreeByDay.set(day, new Array(courts.length).fill(dailyStartMin));
+    courtNextFreeByDay.set(day, courtStartMins.slice());
   }
 
   // For each player id, the absolute end-time minute of their last scheduled match.
@@ -238,11 +253,11 @@ export function optimizeTournamentSchedule(input: SchedulerInput): SchedulerOutp
       const dayBaseAbs = dayIdx * 24 * 60;
 
       // Compute the min start within this day given the earliest constraint
-      const minWithinDay = Math.max(dailyStartMin, earliestAbs - dayBaseAbs);
+      const minWithinDay = Math.max(minCourtStart, earliestAbs - dayBaseAbs);
       // Round up to slot granularity
       const startWithinDay =
         Math.ceil(minWithinDay / slotGranularityMinutes) * slotGranularityMinutes;
-      if (startWithinDay + matchLengthMinutes > dailyEndMin) continue;
+      if (startWithinDay + matchLengthMinutes > maxCourtEnd) continue;
 
       // Build candidate court list, sorted by load (fewest first), then index
       const courtOrder = courts
@@ -254,7 +269,7 @@ export function optimizeTournamentSchedule(input: SchedulerInput): SchedulerOutp
       for (const courtIdx of courtOrder) {
         const courtFree = courtFreeMins[courtIdx];
         const candidateStart = Math.max(startWithinDay, courtFree);
-        if (candidateStart + matchLengthMinutes > dailyEndMin) continue;
+        if (candidateStart + matchLengthMinutes > courtEndMins[courtIdx]) continue;
 
         // Found a slot — assign
         const scheduled_at = minutesToTime(candidateStart);

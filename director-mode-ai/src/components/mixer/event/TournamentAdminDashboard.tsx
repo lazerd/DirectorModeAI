@@ -22,13 +22,14 @@ import {
   UserPlus,
   ArrowUp,
   ArrowDown,
-  Tv,
   Printer,
   Music,
   Download,
   LayoutGrid,
   X,
   Layers,
+  Plus,
+  CalendarClock,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
@@ -59,10 +60,13 @@ type EventRow = {
   max_players: number | null;
   num_courts: number | null;
   court_names: string[] | null;
+  court_windows: Record<string, { from?: string; to?: string }> | null;
   event_date: string | null;
+  end_date: string | null;
   daily_start_time: string | null;
   daily_end_time: string | null;
   default_match_length_minutes: number | null;
+  player_rest_minutes: number | null;
   hub_slug: string | null;
   hub_title: string | null;
 };
@@ -279,7 +283,6 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
     utr: '',
     partner_name: '',
   });
-  const [scheduling, setScheduling] = useState(false);
   const [emailMode, setEmailMode] = useState<'scoring' | 'schedule' | null>(null);
   // Sibling divisions in the same tournament hub (for the division switcher).
   const [siblings, setSiblings] = useState<Sibling[]>([]);
@@ -290,7 +293,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
     const { data: ev, error: evErr } = await supabase
       .from('events')
       .select(
-        'id, name, slug, match_format, public_status, entry_fee_cents, max_players, num_courts, court_names, event_date, daily_start_time, daily_end_time, default_match_length_minutes, hub_slug, hub_title'
+        'id, name, slug, match_format, public_status, entry_fee_cents, max_players, num_courts, court_names, court_windows, event_date, end_date, daily_start_time, daily_end_time, default_match_length_minutes, player_rest_minutes, hub_slug, hub_title'
       )
       .eq('id', eventId)
       .maybeSingle();
@@ -418,17 +421,6 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
     setBusy(null);
   };
 
-  const autoSchedule = async () => {
-    if (
-      matches.some((m) => m.scheduled_at) &&
-      !confirm('Auto-schedule will overwrite existing court + time assignments. Continue?')
-    )
-      return;
-    setScheduling(true);
-    await fetch(`/api/tournaments/events/${eventId}/auto-schedule`, { method: 'POST' });
-    await fetchAll();
-    setScheduling(false);
-  };
 
   const updateMatchSchedule = async (
     matchId: string,
@@ -730,7 +722,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
 
       <div className="bg-orange-50 border border-orange-200 rounded-xl p-3 mb-6 flex items-center gap-3 flex-wrap">
         <Share2 size={16} className="text-orange-600 flex-shrink-0" />
-        <div className="text-sm text-orange-900 flex-1 truncate">
+        <div className="text-sm text-orange-900 flex-1 truncate" title="The public link players use to sign up for this event">
           Public signup:{' '}
           <a href={publicUrl} target="_blank" className="font-mono underline">
             {publicUrl}
@@ -738,64 +730,47 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
         </div>
         <button
           onClick={copyLink}
+          title="Copy the public signup link to share with players"
           className="inline-flex items-center gap-1 px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-xs font-semibold flex-shrink-0"
         >
           {copied ? <Check size={12} /> : <Copy size={12} />}
-          {copied ? 'Copied!' : 'Copy'}
+          {copied ? 'Copied!' : 'Copy link'}
         </button>
-        <HubButton
-          eventId={event.id}
-          hubSlug={event.hub_slug}
-          hubTitle={event.hub_title}
-          eventName={event.name}
-        />
-        <SquareSyncButton hubSlug={event.hub_slug} eventName={event.name} />
-        <Link
-          href={`/mixer/events/${eventId}/dj`}
-          target="_blank"
-          className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-300 hover:bg-yellow-200 text-[#001820] rounded text-xs font-bold flex-shrink-0"
-        >
-          <Music size={12} />
-          DJ Console
-        </Link>
-        <Link
-          href="/mixer/tournaments/desk"
-          target="_blank"
-          className="inline-flex items-center gap-1 px-2 py-1 bg-[#D3FB52] hover:brightness-95 text-[#00131c] rounded text-xs font-bold flex-shrink-0"
-        >
-          <LayoutGrid size={12} />
-          Desk Hub
-        </Link>
+        <span title="Group this event with its other divisions (Gold/Silver, 12U…) so they share one tournament and the division switcher at the top">
+          <HubButton
+            eventId={event.id}
+            hubSlug={event.hub_slug}
+            hubTitle={event.hub_title}
+            eventName={event.name}
+          />
+        </span>
+        <span title="Pull in payments made through Square for this tournament's entry fees">
+          <SquareSyncButton hubSlug={event.hub_slug} eventName={event.name} />
+        </span>
         <Link
           href={`/mixer/events/${eventId}/console`}
           target="_blank"
+          title="Open the DJ & announcer console — walk-up music and PA voice announcements to call matches to court"
           className="inline-flex items-center gap-1 px-2 py-1 bg-[#001820] hover:bg-black text-white rounded text-xs font-semibold flex-shrink-0"
         >
-          <Tv size={12} />
-          Live Console
-        </Link>
-        <Link
-          href={`/tournaments/${event.slug}/draw`}
-          target="_blank"
-          className="inline-flex items-center gap-1 px-2 py-1 bg-white hover:bg-gray-50 border border-gray-300 text-gray-700 rounded text-xs font-semibold flex-shrink-0"
-        >
-          <Printer size={12} />
-          Print Draw
+          <Music size={12} />
+          DJ / Announcer
         </Link>
       </div>
 
       <div className="border-b border-gray-200 mb-6 flex gap-1 overflow-x-auto">
         {([
-          ['entries', 'Entries'],
-          ['draw', 'Draw'],
-          ['schedule', 'Schedule'],
-          ['matches', 'Matches'],
-          ['desk', 'Desk'],
-          ['settings', 'Settings'],
-        ] as const).map(([t, label]) => (
+          ['entries', 'Entries', '1. Who signed up. Add players, set seeds, promote off the waitlist.'],
+          ['draw', 'Draw', '2. Build the bracket / round-robin grid. This is the shape of the event — print it or share it.'],
+          ['schedule', 'Schedule', '3. Set courts + times. One click builds the full order of play, then emails everyone their times.'],
+          ['matches', 'Matches', '4. Enter or fix scores. Every match, any time. Winners advance automatically.'],
+          ['desk', 'Desk', '5. Match day. Check players in, put matches on courts, score them fast.'],
+          ['settings', 'Settings', 'Event details: name, dates, entry fee, format.'],
+        ] as const).map(([t, label, tip]) => (
           <button
             key={t}
             onClick={() => setTab(t)}
+            title={tip}
             className={`px-4 py-2 border-b-2 font-medium text-sm whitespace-nowrap ${
               tab === t
                 ? 'border-orange-500 text-orange-600'
@@ -1329,9 +1304,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           matches={matches}
           entries={entries}
           onUpdate={fetchAll}
-          onAutoSchedule={autoSchedule}
           onEmailSchedules={emailSchedules}
-          scheduling={scheduling}
           emailMode={emailMode}
           emailResult={emailResult}
         />
@@ -1494,24 +1467,43 @@ function ScoreEntryModal({
   );
 }
 
+const SCHED_INPUT =
+  'rounded-lg bg-white/5 border border-white/10 px-2.5 py-1.5 text-sm text-slate-100 [color-scheme:dark] focus:outline-none focus:ring-2 focus:ring-[#D3FB52]/40';
+
+function SchedField({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400" title={hint}>
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
 /**
- * Order-of-Play tab — drag-and-drop scheduling onto a Court × Time grid.
+ * Schedule tab — the tournament's scheduling engine.
  *
- * - Left column: unscheduled matches (no court OR no scheduled_at).
- * - Right: a column per court showing scheduled matches sorted by time.
- * - Drag any match between columns to reassign court. Dropping on a court
- *   column without specifying time auto-picks the next free slot
- *   (latest scheduled_at + default_match_length_minutes, or daily start).
- * - Inline time editor on each scheduled card; drag to Unscheduled to clear.
+ * The director sets the day window, match length, rest, and the courts (with
+ * optional per-court hours), then one "Build schedule" runs the auto-scheduler
+ * (respecting bracket dependencies + player conflicts) and produces a master
+ * order of play: every match with its date, time, and court. From there they
+ * email each player their personal times. No manual drag-and-drop.
  */
 function ScheduleTab({
   event,
   matches,
   entries,
   onUpdate,
-  onAutoSchedule,
   onEmailSchedules,
-  scheduling,
   emailMode,
   emailResult,
 }: {
@@ -1519,333 +1511,307 @@ function ScheduleTab({
   matches: Match[];
   entries: Entry[];
   onUpdate: () => void;
-  onAutoSchedule: () => void;
   onEmailSchedules: () => void;
-  scheduling: boolean;
   emailMode: 'scoring' | 'schedule' | null;
   emailResult: { sent: number; total: number } | null;
 }) {
-  const [dragOverCourt, setDragOverCourt] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  type CourtRow = { name: string; from: string; to: string };
+  const dayStartInit = (event.daily_start_time ?? '09:00').slice(0, 5);
+  const dayEndInit = (event.daily_end_time ?? '18:00').slice(0, 5);
+
+  const [dayStart, setDayStart] = useState(dayStartInit);
+  const [dayEnd, setDayEnd] = useState(dayEndInit);
+  const [matchLen, setMatchLen] = useState(String(event.default_match_length_minutes ?? 90));
+  const [rest, setRest] = useState(String(event.player_rest_minutes ?? 60));
+  const [perCourt, setPerCourt] = useState(
+    () => !!event.court_windows && Object.keys(event.court_windows).length > 0
+  );
+  const [building, setBuilding] = useState(false);
+  const [buildResult, setBuildResult] = useState<{ scheduled: number; unscheduled: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const [courtRows, setCourtRows] = useState<CourtRow[]>(() => {
+    const names =
+      event.court_names && event.court_names.length
+        ? event.court_names
+        : Array.from({ length: Math.max(1, event.num_courts ?? 4) }, (_, i) => String(i + 1));
+    const w = event.court_windows ?? {};
+    return names.map((n) => ({
+      name: String(n),
+      from: (w[n]?.from ?? dayStartInit).slice(0, 5),
+      to: (w[n]?.to ?? dayEndInit).slice(0, 5),
+    }));
+  });
+
+  const setCourt = (i: number, patch: Partial<CourtRow>) =>
+    setCourtRows((rows) => rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addCourt = () =>
+    setCourtRows((rows) => {
+      const nums = rows.map((r) => parseInt(r.name, 10)).filter((n) => Number.isFinite(n));
+      const next = nums.length ? Math.max(...nums) + 1 : rows.length + 1;
+      return [...rows, { name: String(next), from: dayStart, to: dayEnd }];
+    });
+  const removeCourt = (i: number) => setCourtRows((rows) => rows.filter((_, idx) => idx !== i));
+
   const entryById = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
+  const labelSide = (id: string | null) => {
+    if (!id) return 'TBD';
+    const e = entryById.get(id);
+    return e ? formatTeamName(e) : '—';
+  };
 
-  const courts = useMemo(
+  const build = async () => {
+    const courts = courtRows
+      .map((c) => ({ name: c.name.trim(), from: perCourt ? c.from : dayStart, to: perCourt ? c.to : dayEnd }))
+      .filter((c) => c.name);
+    if (!courts.length) {
+      setErr('Add at least one court.');
+      return;
+    }
+    setBuilding(true);
+    setErr(null);
+    setBuildResult(null);
+    try {
+      const res = await fetch(`/api/tournaments/events/${event.id}/auto-schedule`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: {
+            dailyStartTime: dayStart,
+            dailyEndTime: dayEnd,
+            matchLengthMinutes: parseInt(matchLen, 10) || 90,
+            playerRestMinutes: parseInt(rest, 10) || 0,
+            courts,
+          },
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) setErr(j?.error || 'Could not build the schedule.');
+      else
+        setBuildResult({
+          scheduled: j.matches_scheduled ?? 0,
+          unscheduled: Array.isArray(j.unscheduled) ? j.unscheduled.length : 0,
+        });
+      await onUpdate();
+    } catch {
+      setErr('Network error building the schedule.');
+    }
+    setBuilding(false);
+  };
+
+  const scheduled = useMemo(
     () =>
-      resolveCourtList({
-        courtNames: event.court_names ?? null,
-        numCourts: event.num_courts ?? 0,
-      }),
-    [event.court_names, event.num_courts]
+      matches
+        .filter((m) => m.scheduled_at)
+        .slice()
+        .sort(
+          (a, b) =>
+            (a.scheduled_date ?? '').localeCompare(b.scheduled_date ?? '') ||
+            (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? '') ||
+            String(a.court ?? '').localeCompare(String(b.court ?? ''), undefined, { numeric: true })
+        ),
+    [matches]
   );
-  const matchLengthMin = event.default_match_length_minutes ?? 90;
-  const dailyStart = (event.daily_start_time ?? '09:00').slice(0, 5);
+  const unscheduled = useMemo(() => matches.filter((m) => !m.scheduled_at), [matches]);
+  const byDate = useMemo(() => {
+    const map = new Map<string, Match[]>();
+    for (const m of scheduled) {
+      const d = m.scheduled_date ?? 'Undated';
+      const list = map.get(d) ?? [];
+      list.push(m);
+      map.set(d, list);
+    }
+    return [...map.entries()];
+  }, [scheduled]);
 
-  const isUnscheduled = (m: Match) => !m.court || !m.scheduled_at;
-  const unscheduled = matches.filter(isUnscheduled);
-
-  const matchesOnCourt = (court: string) =>
-    matches
-      .filter((m) => m.court === court && !!m.scheduled_at)
-      .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''));
-
-  /** Add `minutes` to an HH:MM string, returning HH:MM. */
-  const addMinutes = (hhmm: string, minutes: number): string => {
-    const [h, m] = hhmm.split(':').map((x) => parseInt(x, 10));
-    const total = h * 60 + m + minutes;
-    const nh = Math.floor((total % (24 * 60)) / 60);
-    const nm = total % 60;
-    return `${String(nh).padStart(2, '0')}:${String(nm).padStart(2, '0')}`;
+  const fmtDate = (d: string) => {
+    if (d === 'Undated') return 'Scheduled';
+    try {
+      return new Date(d + 'T00:00:00').toLocaleDateString(undefined, {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      });
+    } catch {
+      return d;
+    }
   };
-
-  const nextFreeTimeOnCourt = (court: string): string => {
-    const scheduled = matchesOnCourt(court);
-    if (scheduled.length === 0) return dailyStart;
-    const last = scheduled[scheduled.length - 1].scheduled_at ?? dailyStart;
-    return addMinutes(last.slice(0, 5), matchLengthMin);
-  };
-
-  const updateMatch = async (
-    matchId: string,
-    updates: { court?: string | null; scheduled_at?: string | null; scheduled_date?: string | null }
-  ) => {
-    setBusy(true);
-    const supabase = createClient();
-    await supabase.from('tournament_matches').update(updates).eq('id', matchId);
-    await onUpdate();
-    setBusy(false);
-  };
-
-  const handleDragStart = (e: React.DragEvent, matchId: string) => {
-    e.dataTransfer.setData('text/match-id', matchId);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleDropOnCourt = async (e: React.DragEvent, court: string) => {
-    e.preventDefault();
-    setDragOverCourt(null);
-    const matchId = e.dataTransfer.getData('text/match-id');
-    if (!matchId) return;
-    const m = matches.find((x) => x.id === matchId);
-    if (!m) return;
-    // If the match is already on this court with a time, no-op.
-    if (m.court === court && m.scheduled_at) return;
-    // Keep existing time if dragged from another court; otherwise auto-pick.
-    const scheduled_at = m.scheduled_at ?? nextFreeTimeOnCourt(court);
-    const scheduled_date = m.scheduled_date ?? event.event_date ?? null;
-    await updateMatch(matchId, { court, scheduled_at, scheduled_date });
-  };
-
-  const handleDropOnUnscheduled = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOverCourt(null);
-    const matchId = e.dataTransfer.getData('text/match-id');
-    if (!matchId) return;
-    await updateMatch(matchId, { court: null, scheduled_at: null });
-  };
-
-  const labelMatch = (m: Match): { a: string; b: string; round: string } => {
-    const teamA = m.player1_id ? entryById.get(m.player1_id) : null;
-    const teamB = m.player3_id ? entryById.get(m.player3_id) : null;
-    return {
-      a: teamA ? formatTeamName(teamA) : 'TBD',
-      b: teamB ? formatTeamName(teamB) : 'TBD',
-      round: `${m.bracket === 'consolation' ? 'C ' : ''}R${m.round}M${m.slot}`,
-    };
-  };
-
-  if (courts.length === 0) {
-    return (
-      <div className="rounded-2xl bg-[#00131c] p-4 sm:p-5">
-        <div className="rounded-xl border border-amber-400/40 bg-amber-400/10 text-amber-200 p-5">
-          <p className="font-semibold">No courts configured.</p>
-          <p className="text-sm mt-1 text-amber-200/80">
-            Set the number of courts (or court names) on the Settings tab to enable order-of-play scheduling.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="rounded-2xl bg-[#00131c] text-slate-100 p-4 sm:p-5 space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="min-w-0">
-          <h3 className="text-lg font-bold">Order of play</h3>
-          <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
-            <Calendar size={13} className="text-[#D3FB52] flex-shrink-0" />
-            Drag matches onto a court — auto-picks the next free slot. Match length{' '}
-            <strong className="text-slate-300">{matchLengthMin}m</strong> · start{' '}
-            <strong className="text-slate-300">{dailyStart}</strong>.
+    <div className="rounded-2xl bg-[#00131c] text-slate-100 p-4 sm:p-5 space-y-5">
+      {/* Setup */}
+      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4 space-y-4">
+        <div>
+          <h3 className="text-lg font-bold">Schedule the event</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            Set your day window, match length, and courts — one click builds the full order of play,
+            then emails every player their times.
           </p>
         </div>
-        <div className="flex-1" />
-        {busy && <Loader2 size={16} className="animate-spin text-[#D3FB52]" />}
-        {emailResult && emailMode === 'schedule' && (
-          <span className="text-xs text-emerald-300 font-medium">
-            ✓ Sent {emailResult.sent}/{emailResult.total} schedule emails
-          </span>
-        )}
-        <button
-          onClick={onAutoSchedule}
-          disabled={scheduling || matches.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-[#D3FB52] text-[#00131c] font-bold px-3 py-2 text-sm disabled:opacity-40 hover:brightness-95"
-          title="Auto-place every match across the courts and time slots"
-        >
-          {scheduling ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-          {scheduling ? 'Scheduling…' : 'Auto-schedule'}
-        </button>
-        <button
-          onClick={onEmailSchedules}
-          disabled={emailMode !== null || matches.every((m) => !m.scheduled_at)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2 text-sm font-semibold disabled:opacity-40"
-          title="Email each confirmed player their personal match schedule"
-        >
-          {emailMode === 'schedule' ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
-          Email schedules
-        </button>
-      </div>
 
-      <div className="flex gap-3 overflow-x-auto pb-2 items-start">
-        {/* Unscheduled queue */}
-        <ScheduleColumn
-          title="Unscheduled"
-          subtitle={`${unscheduled.length} match${unscheduled.length === 1 ? '' : 'es'}`}
-          accent="gray"
-          isDragOver={dragOverCourt === '__unscheduled__'}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragOverCourt('__unscheduled__');
-          }}
-          onDragLeave={() => setDragOverCourt(null)}
-          onDrop={handleDropOnUnscheduled}
-        >
-          {unscheduled.length === 0 ? (
-            <div className="text-xs text-slate-500 italic text-center py-6">
-              All matches scheduled
-            </div>
-          ) : (
-            unscheduled.map((m) => {
-              const lab = labelMatch(m);
-              return (
-                <ScheduleCard
-                  key={m.id}
-                  matchId={m.id}
-                  onDragStart={handleDragStart}
-                  pillLabel={lab.round}
-                  teamA={lab.a}
-                  teamB={lab.b}
-                  time={null}
-                  status={m.status}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <SchedField label="Day start">
+            <input type="time" value={dayStart} onChange={(e) => setDayStart(e.target.value)} className={`${SCHED_INPUT} w-full`} />
+          </SchedField>
+          <SchedField label="Day end">
+            <input type="time" value={dayEnd} onChange={(e) => setDayEnd(e.target.value)} className={`${SCHED_INPUT} w-full`} />
+          </SchedField>
+          <SchedField label="Match length" hint="Anticipated minutes per match">
+            <input type="number" min={10} step={5} value={matchLen} onChange={(e) => setMatchLen(e.target.value)} className={`${SCHED_INPUT} w-full`} />
+          </SchedField>
+          <SchedField label="Rest (min)" hint="Minimum gap between a player's own matches">
+            <input type="number" min={0} step={5} value={rest} onChange={(e) => setRest(e.target.value)} className={`${SCHED_INPUT} w-full`} />
+          </SchedField>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              Courts ({courtRows.length})
+            </span>
+            <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
+              <input type="checkbox" checked={perCourt} onChange={(e) => setPerCourt(e.target.checked)} className="accent-[#D3FB52]" />
+              Different hours per court
+            </label>
+          </div>
+          <div className="space-y-1.5">
+            {courtRows.map((c, i) => (
+              <div key={i} className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] text-slate-500 w-5 text-right">{i + 1}</span>
+                <input
+                  value={c.name}
+                  onChange={(e) => setCourt(i, { name: e.target.value })}
+                  placeholder="Court"
+                  className={`${SCHED_INPUT} w-24`}
                 />
-              );
-            })
+                {perCourt && (
+                  <>
+                    <span className="text-[11px] text-slate-500">from</span>
+                    <input type="time" value={c.from} onChange={(e) => setCourt(i, { from: e.target.value })} className={`${SCHED_INPUT} w-28`} />
+                    <span className="text-[11px] text-slate-500">to</span>
+                    <input type="time" value={c.to} onChange={(e) => setCourt(i, { to: e.target.value })} className={`${SCHED_INPUT} w-28`} />
+                  </>
+                )}
+                <button
+                  onClick={() => removeCourt(i)}
+                  disabled={courtRows.length <= 1}
+                  className="ml-auto text-slate-500 hover:text-red-400 p-1 disabled:opacity-30"
+                  title="Remove court"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button onClick={addCourt} className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-[#D3FB52] hover:brightness-110">
+            <Plus size={14} /> Add court
+          </button>
+        </div>
+
+        {err && <p className="text-sm text-red-400">{err}</p>}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={build}
+            disabled={building || matches.length === 0}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#D3FB52] text-[#00131c] font-bold px-4 py-2.5 disabled:opacity-40 hover:brightness-95"
+          >
+            {building ? <Loader2 size={16} className="animate-spin" /> : <CalendarClock size={16} />}
+            {building ? 'Building…' : scheduled.length ? 'Rebuild schedule' : 'Build schedule'}
+          </button>
+          {matches.length === 0 && (
+            <span className="text-xs text-slate-500">Build the draw first (Draw tab), then schedule it.</span>
           )}
-        </ScheduleColumn>
+          {buildResult && (
+            <span className="text-xs text-emerald-300 font-medium">
+              ✓ Scheduled {buildResult.scheduled}
+              {buildResult.unscheduled ? ` · ${buildResult.unscheduled} didn’t fit` : ''}
+            </span>
+          )}
+        </div>
+      </div>
 
-        {/* One column per court */}
-        {courts.map((court) => {
-          const scheduledHere = matchesOnCourt(court);
-          return (
-            <ScheduleColumn
-              key={court}
-              title={`Court ${court}`}
-              subtitle={`${scheduledHere.length} match${scheduledHere.length === 1 ? '' : 'es'}`}
-              accent="orange"
-              isDragOver={dragOverCourt === court}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOverCourt(court);
-              }}
-              onDragLeave={() => setDragOverCourt(null)}
-              onDrop={(e) => handleDropOnCourt(e, court)}
+      {/* Master schedule */}
+      {scheduled.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold">Master schedule</h3>
+              <p className="text-xs text-slate-400">
+                {scheduled.length} match{scheduled.length === 1 ? '' : 'es'} scheduled
+                {unscheduled.length ? ` · ${unscheduled.length} unscheduled` : ''}
+              </p>
+            </div>
+            {emailResult && emailMode !== 'scoring' && (
+              <span className="text-xs text-emerald-300 font-medium">
+                ✓ Sent {emailResult.sent}/{emailResult.total} schedule emails
+              </span>
+            )}
+            <button
+              onClick={onEmailSchedules}
+              disabled={emailMode !== null}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#D3FB52] text-[#00131c] font-bold px-3 py-2 text-sm disabled:opacity-40 hover:brightness-95"
+              title="Email each confirmed player their personal match times"
             >
-              {scheduledHere.length === 0 ? (
-                <div className="text-xs text-slate-500 italic text-center py-6">
-                  Drop a match here
-                </div>
-              ) : (
-                scheduledHere.map((m) => {
-                  const lab = labelMatch(m);
-                  return (
-                    <ScheduleCard
-                      key={m.id}
-                      matchId={m.id}
-                      onDragStart={handleDragStart}
-                      pillLabel={lab.round}
-                      teamA={lab.a}
-                      teamB={lab.b}
-                      time={m.scheduled_at?.slice(0, 5) ?? null}
-                      onTimeChange={(v) =>
-                        updateMatch(m.id, { scheduled_at: v || null })
-                      }
-                      status={m.status}
-                    />
-                  );
-                })
-              )}
-            </ScheduleColumn>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+              {emailMode === 'schedule' ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+              Email times to players
+            </button>
+          </div>
 
-function ScheduleColumn({
-  title,
-  subtitle,
-  accent,
-  isDragOver,
-  onDragOver,
-  onDragLeave,
-  onDrop,
-  children,
-}: {
-  title: string;
-  subtitle: string;
-  accent: 'gray' | 'orange';
-  isDragOver: boolean;
-  onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
-  onDrop: (e: React.DragEvent) => void;
-  children: React.ReactNode;
-}) {
-  const accentClasses =
-    accent === 'orange'
-      ? 'border-white/10 bg-[#062733]'
-      : 'border-white/10 bg-white/[0.03]';
-  return (
-    <div
-      onDragOver={onDragOver}
-      onDragLeave={onDragLeave}
-      onDrop={onDrop}
-      className={`flex flex-col min-w-[240px] w-[240px] rounded-xl border-2 transition-colors ${
-        isDragOver ? 'border-[#D3FB52] bg-[#D3FB52]/10' : accentClasses
-      }`}
-    >
-      <div className="p-3 border-b border-white/10">
-        <div className="font-semibold text-slate-100 text-sm">{title}</div>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider">{subtitle}</div>
-      </div>
-      <div className="flex-1 p-2 space-y-2 min-h-[200px]">{children}</div>
-    </div>
-  );
-}
+          {byDate.map(([date, ms]) => (
+            <div key={date} className="rounded-xl border border-white/10 overflow-hidden">
+              <div className="bg-white/[0.04] px-3 py-2 text-sm font-semibold text-slate-200">{fmtDate(date)}</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[420px]">
+                  <thead className="text-[11px] uppercase tracking-wider text-slate-500">
+                    <tr className="border-t border-white/5">
+                      <th className="text-left font-semibold px-3 py-1.5 w-20">Time</th>
+                      <th className="text-left font-semibold px-3 py-1.5 w-24">Court</th>
+                      <th className="text-left font-semibold px-3 py-1.5">Match</th>
+                      <th className="text-left font-semibold px-3 py-1.5 w-14">Rd</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ms.map((m) => (
+                      <tr key={m.id} className="border-t border-white/5">
+                        <td className="px-3 py-2 font-mono text-slate-200 whitespace-nowrap">
+                          {formatTimeDisplay(m.scheduled_at)}
+                        </td>
+                        <td className="px-3 py-2 text-slate-300 whitespace-nowrap">
+                          {m.court ? `Court ${m.court}` : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-slate-100">
+                          <span className={m.winner_side === 'a' ? 'font-bold' : ''}>{labelSide(m.player1_id)}</span>
+                          <span className="text-slate-500"> vs </span>
+                          <span className={m.winner_side === 'b' ? 'font-bold' : ''}>{labelSide(m.player3_id)}</span>
+                          {m.status === 'completed' && (
+                            <span className="ml-2 text-[10px] text-[#D3FB52] font-bold">DONE</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">
+                          {m.bracket === 'consolation' ? 'C' : ''}R{m.round}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
 
-function ScheduleCard({
-  matchId,
-  onDragStart,
-  pillLabel,
-  teamA,
-  teamB,
-  time,
-  onTimeChange,
-  status,
-}: {
-  matchId: string;
-  onDragStart: (e: React.DragEvent, matchId: string) => void;
-  pillLabel: string;
-  teamA: string;
-  teamB: string;
-  time: string | null;
-  onTimeChange?: (v: string) => void;
-  status: string;
-}) {
-  const isCompleted = status === 'completed';
-  return (
-    <div
-      draggable={!isCompleted}
-      onDragStart={(e) => onDragStart(e, matchId)}
-      className={`border rounded-lg p-2 ${
-        isCompleted
-          ? 'border-white/5 bg-white/[0.02] opacity-60 cursor-default'
-          : 'border-white/10 bg-white/[0.04] cursor-grab active:cursor-grabbing hover:border-[#D3FB52]/50 hover:bg-white/[0.07]'
-      }`}
-    >
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 bg-white/10 px-1.5 py-0.5 rounded">
-          {pillLabel}
-        </span>
-        {time !== null && onTimeChange && (
-          <input
-            type="time"
-            defaultValue={time}
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            onBlur={(e) => {
-              const v = e.target.value;
-              if (v !== time) onTimeChange(v);
-            }}
-            className="text-[10px] px-1 py-0.5 border border-white/10 rounded bg-white/5 text-slate-200 [color-scheme:dark]"
-          />
-        )}
-        {isCompleted && (
-          <span className="text-[9px] text-[#D3FB52] font-bold">DONE</span>
-        )}
-      </div>
-      <div className="text-xs text-slate-100 leading-tight truncate">{teamA}</div>
-      <div className="text-[10px] text-slate-500 leading-tight">vs</div>
-      <div className="text-xs text-slate-100 leading-tight truncate">{teamB}</div>
+          {unscheduled.length > 0 && (
+            <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-3">
+              <p className="text-sm font-semibold text-amber-200 mb-1">
+                {unscheduled.length} match{unscheduled.length === 1 ? '' : 'es'} not scheduled
+              </p>
+              <p className="text-[11px] text-slate-400">
+                They didn’t fit the window/courts, or depend on results still pending. Widen the day,
+                add courts, or shorten the match length and rebuild.
+              </p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

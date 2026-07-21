@@ -69,7 +69,7 @@ export async function GET(req: Request) {
 
   const [{ data: evs }, { data: entries }, { data: matches }] = await Promise.all([
     admin.from('events').select('id, name, num_courts, match_format, public_status, event_date').in('id', ids),
-    admin.from('tournament_entries').select('id, event_id, player_name, partner_name').in('event_id', ids),
+    admin.from('tournament_entries').select('id, event_id, player_name, partner_name, checked_in_at, position').in('event_id', ids),
     admin.from('tournament_matches')
       .select('id, event_id, bracket, round, slot, court, status, score, score_token, match_type, player1_id, player2_id, player3_id, player4_id')
       .in('event_id', ids),
@@ -77,6 +77,24 @@ export async function GET(req: Request) {
 
   const nameById = new Map<string, { player_name: string; partner_name: string | null }>();
   for (const e of entries || []) nameById.set((e as any).id, e as any);
+  const checkedInIds = new Set<string>();
+  // Check-in is OPT-IN per event: it only gates court assignment once the
+  // director has checked in at least one player for that event. Until then
+  // every match flows as before (nothing is held back) — so turning this on
+  // never disrupts an event already in progress.
+  const eventUsesCheckin = new Set<string>();
+  for (const e of entries || []) {
+    if ((e as any).checked_in_at) {
+      checkedInIds.add((e as any).id);
+      eventUsesCheckin.add((e as any).event_id);
+    }
+  }
+  const matchCheckedIn = (m: any): boolean => {
+    if (!eventUsesCheckin.has(m.event_id)) return true; // check-in not in use yet
+    const slots = [m.player1_id, m.player2_id, m.player3_id, m.player4_id].filter(Boolean) as string[];
+    if (slots.length === 0) return false;
+    return slots.every((id) => checkedInIds.has(id));
+  };
   const side = (p1: string | null, p2: string | null): string => {
     const a = p1 ? nameById.get(p1) : null;
     const b = p2 ? nameById.get(p2) : null;
@@ -116,10 +134,24 @@ export async function GET(req: Request) {
     sideA: side(m.player1_id, m.player2_id),
     sideB: side(m.player3_id, m.player4_id),
     ready: m.status !== 'completed' && !!m.player1_id && !!m.player3_id,
+    checkedIn: matchCheckedIn(m),
   }));
 
+  // Check-in roster for the desk — every entry that's actually in the draw, so
+  // the director can mark players present as they arrive.
+  const checkins = (entries || [])
+    .filter((e: any) => e.position === 'in_draw' || e.position == null)
+    .map((e: any) => ({
+      id: e.id,
+      event_id: e.event_id,
+      division: divByEvent.get(e.event_id) ?? '',
+      name: e.partner_name ? `${e.player_name} / ${e.partner_name}` : e.player_name,
+      checked_in: !!e.checked_in_at,
+    }))
+    .sort((a, b) => a.division.localeCompare(b.division) || a.name.localeCompare(b.name));
+
   const courtCount = Math.max(8, ...eventList.map((e) => e.num_courts || 0));
-  return NextResponse.json({ events: eventList, matches: matchList, courtCount });
+  return NextResponse.json({ events: eventList, matches: matchList, checkins, courtCount });
 }
 
 export async function POST(req: Request) {
@@ -144,6 +176,26 @@ export async function POST(req: Request) {
     if (!(await ownsEvent((m as any).event_id))) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
     const status = court === null ? 'pending' : ((m as any).status === 'completed' ? 'completed' : 'in_progress');
     const { error } = await admin.from('tournament_matches').update({ court, status }).eq('id', matchId);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === 'check_in') {
+    const entryId = String(body.entryId ?? '');
+    const value = body.value !== false; // default → check in
+    const { data: en } = await admin
+      .from('tournament_entries')
+      .select('id, event_id')
+      .eq('id', entryId)
+      .maybeSingle();
+    if (!en) return NextResponse.json({ error: 'Entry not found' }, { status: 404 });
+    if (!(await ownsEvent((en as any).event_id))) {
+      return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    }
+    const { error } = await admin
+      .from('tournament_entries')
+      .update({ checked_in_at: value ? new Date().toISOString() : null })
+      .eq('id', entryId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }
@@ -178,19 +230,31 @@ export async function POST(req: Request) {
     for (const id of eventIds) if (await ownsEvent(id)) owned.push(id);
     if (!owned.length || !courts.length) return NextResponse.json({ ok: true, assigned: 0 });
 
-    const { data: matches } = await admin.from('tournament_matches')
-      .select('id, event_id, round, slot, court, status, player1_id, player3_id')
-      .in('event_id', owned);
+    const [{ data: matches }, { data: ents }] = await Promise.all([
+      admin.from('tournament_matches')
+        .select('id, event_id, round, slot, court, status, player1_id, player2_id, player3_id, player4_id')
+        .in('event_id', owned),
+      admin.from('tournament_entries').select('id, event_id, checked_in_at').in('event_id', owned),
+    ]);
     const list = (matches || []) as any[];
+    const checkedIn = new Set<string>();
+    const usesCheckin = new Set<string>();
+    for (const e of (ents || []) as any[]) if (e.checked_in_at) { checkedIn.add(e.id); usesCheckin.add(e.event_id); }
+    // Opt-in per event: only gate once someone's been checked in for that event.
+    const allPresent = (m: any): boolean => {
+      if (!usesCheckin.has(m.event_id)) return true;
+      const slots = [m.player1_id, m.player2_id, m.player3_id, m.player4_id].filter(Boolean) as string[];
+      return slots.length > 0 && slots.every((id) => checkedIn.has(id));
+    };
 
     // Courts currently taken by any non-completed assigned match.
     const taken = new Set<string>();
     for (const m of list) if (m.status !== 'completed' && m.court) taken.add(String(m.court));
     const openCourts: string[] = courts.filter((c) => !taken.has(String(c)));
 
-    // Ready = pending, both players known, no court yet. Order by round then slot.
+    // Ready = pending, both players known AND checked in, no court yet. Order by round then slot.
     const ready = list
-      .filter((m) => m.status === 'pending' && !m.court && m.player1_id && m.player3_id)
+      .filter((m) => m.status === 'pending' && !m.court && m.player1_id && m.player3_id && allPresent(m))
       .sort((a, b) => a.round - b.round || a.slot - b.slot);
 
     let assigned = 0;

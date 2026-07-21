@@ -18,11 +18,21 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveCourtList } from '@/lib/quads';
 import {
   optimizeTournamentSchedule,
+  timeToMinutes,
   type SchedulerMatch,
 } from '@/lib/tournamentScheduler';
 import { syncTournamentEvent } from '@/lib/courtsheet/adapters/tournaments';
 
-export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+type CourtConfig = { name: string; from?: string | null; to?: string | null };
+type ScheduleConfig = {
+  dailyStartTime?: string;
+  dailyEndTime?: string;
+  matchLengthMinutes?: number;
+  playerRestMinutes?: number;
+  courts?: CourtConfig[];
+};
+
+export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: eventId } = await params;
 
   const userClient = await createClient();
@@ -36,7 +46,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const { data: ev } = await admin
     .from('events')
     .select(
-      'id, user_id, event_date, end_date, start_time, daily_start_time, daily_end_time, num_courts, court_names, default_match_length_minutes, player_rest_minutes, match_buffer_minutes, round_duration_minutes'
+      'id, user_id, event_date, end_date, start_time, daily_start_time, daily_end_time, num_courts, court_names, court_windows, default_match_length_minutes, player_rest_minutes, match_buffer_minutes, round_duration_minutes'
     )
     .eq('id', eventId)
     .maybeSingle();
@@ -46,6 +56,44 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   }
 
   const e: any = ev;
+
+  // The Schedule tab posts the director's config so "Build schedule" both SAVES
+  // the setup and runs the scheduler in one call. Persist it before scheduling.
+  const body = (await req.json().catch(() => ({}))) as { config?: ScheduleConfig };
+  const cfg = body?.config;
+  if (cfg && Array.isArray(cfg.courts)) {
+    const courtNames = cfg.courts.map((c) => String(c.name).trim()).filter(Boolean);
+    const windows: Record<string, { from?: string; to?: string }> = {};
+    for (const c of cfg.courts) {
+      const name = String(c.name).trim();
+      if (!name) continue;
+      const w: { from?: string; to?: string } = {};
+      if (c.from) w.from = String(c.from).slice(0, 5);
+      if (c.to) w.to = String(c.to).slice(0, 5);
+      if (w.from || w.to) windows[name] = w;
+    }
+    const patch: Record<string, unknown> = {
+      court_names: courtNames.length ? courtNames : null,
+      num_courts: courtNames.length || e.num_courts,
+      court_windows: Object.keys(windows).length ? windows : null,
+    };
+    if (cfg.dailyStartTime) patch.daily_start_time = cfg.dailyStartTime;
+    if (cfg.dailyEndTime) patch.daily_end_time = cfg.dailyEndTime;
+    if (cfg.matchLengthMinutes) patch.default_match_length_minutes = cfg.matchLengthMinutes;
+    if (cfg.playerRestMinutes != null) patch.player_rest_minutes = cfg.playerRestMinutes;
+    await admin.from('events').update(patch).eq('id', eventId);
+    // Reflect the saved values locally so scheduling below uses them.
+    Object.assign(e, {
+      court_names: patch.court_names,
+      num_courts: patch.num_courts,
+      court_windows: patch.court_windows,
+      daily_start_time: patch.daily_start_time ?? e.daily_start_time,
+      daily_end_time: patch.daily_end_time ?? e.daily_end_time,
+      default_match_length_minutes:
+        patch.default_match_length_minutes ?? e.default_match_length_minutes,
+      player_rest_minutes: patch.player_rest_minutes ?? e.player_rest_minutes,
+    });
+  }
   const startDate = e.event_date;
   const endDate = e.end_date || e.event_date;
   const dailyStartTime = (e.daily_start_time || e.start_time || '09:00').slice(0, 5);
@@ -59,6 +107,18 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   if (courts.length === 0) {
     return NextResponse.json({ error: 'No courts configured' }, { status: 400 });
   }
+
+  // Per-court availability windows (from court_windows jsonb), aligned to the
+  // resolved court list. Undefined entries fall back to the daily window.
+  const savedWindows = (e.court_windows ?? {}) as Record<string, { from?: string; to?: string }>;
+  const courtWindows = courts.map((label) => {
+    const w = savedWindows[label];
+    if (!w) return undefined;
+    return {
+      startMin: w.from ? timeToMinutes(w.from.slice(0, 5)) : timeToMinutes(dailyStartTime),
+      endMin: w.to ? timeToMinutes(w.to.slice(0, 5)) : timeToMinutes(dailyEndTime),
+    };
+  });
   if (!startDate) {
     return NextResponse.json({ error: 'Tournament start date not set' }, { status: 400 });
   }
@@ -116,6 +176,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     matchLengthMinutes,
     playerRestMinutes,
     matchBufferMinutes,
+    courtWindows,
   });
 
   // Persist
