@@ -5,6 +5,7 @@ import { RefreshCw, X, Loader2, CheckCircle2 } from 'lucide-react';
 
 type Result = {
   marked_paid: number;
+  matched_payments?: number;
   total_entries: number;
   unresolved: { division: string; player: string; draw: string }[];
   extra_payments: { division: string; email: string; name: string | null }[];
@@ -68,6 +69,9 @@ export default function SquareSyncButton({ hubSlug, eventName }: { hubSlug: stri
               <div className="flex items-center gap-1.5 text-emerald-700 font-semibold">
                 <CheckCircle2 size={14} /> Marked {res.marked_paid} paid · {res.total_entries} entries total
               </div>
+              {typeof res.matched_payments === 'number' && (
+                <div className="text-xs text-gray-600">{res.matched_payments} Square payment{res.matched_payments === 1 ? '' : 's'} matched to players</div>
+              )}
               {res.unresolved.length > 0 && (
                 <div>
                   <div className="text-[11px] font-bold text-amber-700 uppercase tracking-wide">Still unpaid ({res.unresolved.length})</div>

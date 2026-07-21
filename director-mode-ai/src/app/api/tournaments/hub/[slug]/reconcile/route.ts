@@ -127,34 +127,44 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
 
   const used = new Array(recs.length).fill(false);
   const toPay = new Set<string>();
+  let matchedCount = 0;
   const find = (pred: (r: any) => boolean) => recs.findIndex((r, i) => !used[i] && pred(r));
+  const claim = (i: number, e: any) => {
+    used[i] = true; e._matched = true; matchedCount++;
+    if (e.payment_status !== 'paid' && e.payment_status !== 'waived') toPay.add(e.id);
+  };
 
-  // First, CONSUME the payments belonging to already paid/waived entries so
-  // their payment can't be reused to settle a different open player.
-  for (const e of entries.filter((x) => x.payment_status === 'paid' || x.payment_status === 'waived')) {
-    let i = e._email ? find((r) => r.div === e._div && r.email === e._email) : -1;
-    if (i < 0) i = find((r) => r.div === e._div && r.name && lastName(r.name) === lastName(e.player_name));
-    if (i >= 0) used[i] = true;
+  // Attribute each completed payment to a player across ALL entries (paid or
+  // not) — a payment landing on an already-paid/waived player still counts as
+  // matched, so it isn't mislabelled an orphan "extra payment". Priority:
+  //   1) email + division   2) division + last name   3) email only (the
+  //   division couldn't be read from the Square line item).
+  for (const e of entries) {
+    if (e._matched || !e._email) continue;
+    const i = find((r) => r.div === e._div && r.email === e._email);
+    if (i >= 0) claim(i, e);
+  }
+  for (const e of entries) {
+    if (e._matched) continue;
+    const i = find((r) => r.div === e._div && r.name && lastName(r.name) === lastName(e.player_name));
+    if (i >= 0) claim(i, e);
+  }
+  for (const e of entries) {
+    if (e._matched || !e._email) continue;
+    const i = find((r) => r.email === e._email);
+    if (i >= 0) claim(i, e);
   }
 
-  // Then match the still-open entries against the remaining payments.
-  const open = entries.filter((e) => e.payment_status !== 'paid' && e.payment_status !== 'waived');
-  for (const e of open) {
-    let i = e._email ? find((r) => r.div === e._div && r.email === e._email) : -1;
-    if (i < 0) i = find((r) => r.div === e._div && r.name && lastName(r.name) === lastName(e.player_name));
-    if (i >= 0) { used[i] = true; e._matched = true; toPay.add(e.id); }
-  }
-  // Division full-settlement for the rest.
-  const stillOpen = open.filter((e) => !e._matched);
+  // Division full-settlement: if a division's leftover payments cover its
+  // still-unpaid players 1:1, mark them paid (covers players with no email).
+  const stillOpen = entries.filter((e) => !e._matched && e.payment_status !== 'paid' && e.payment_status !== 'waived');
   const byDiv: Record<string, any[]> = {};
   for (const e of stillOpen) (byDiv[e._div] ??= []).push(e);
   const leftoverByDiv: Record<string, number[]> = {};
   recs.forEach((r, i) => { if (!used[i]) (leftoverByDiv[r.div] ??= []).push(i); });
-  const unresolved: any[] = [];
   for (const [dv, es] of Object.entries(byDiv)) {
     const lo = leftoverByDiv[dv] || [];
-    if (lo.length >= es.length) { es.forEach((e, k) => { used[lo[k]] = true; toPay.add(e.id); }); }
-    else es.forEach((e) => unresolved.push(e));
+    if (lo.length >= es.length) es.forEach((e, k) => { used[lo[k]] = true; e._matched = true; toPay.add(e.id); });
   }
 
   // Apply.
@@ -163,12 +173,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
   }
 
   const nameOf = (id: string) => events.find((e) => e.id === id)?.name || '';
-  const leftover = recs.filter((_, i) => !used[i]);
   return NextResponse.json({
     ok: true,
     marked_paid: toPay.size,
+    matched_payments: matchedCount,
     total_entries: entries.length,
-    unresolved: unresolved.map((e) => ({ division: e._div, player: e.player_name, draw: nameOf(e.event_id) })),
-    extra_payments: leftover.map((r) => ({ division: r.div, email: r.email, name: r.name })),
+    unresolved: entries
+      .filter((e) => !e._matched && e.payment_status !== 'paid' && e.payment_status !== 'waived')
+      .map((e) => ({ division: e._div, player: e.player_name, draw: nameOf(e.event_id) })),
+    extra_payments: recs
+      .filter((_, i) => !used[i])
+      .map((r) => ({ division: r.div, email: r.email, name: r.name })),
   });
 }
