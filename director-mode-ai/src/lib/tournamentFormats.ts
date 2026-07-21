@@ -132,9 +132,13 @@ export function generateRRMatches(
 }
 
 /**
- * Standings for an RR tournament. Ranking: match wins desc → head-to-head (for
- * 2-way ties) → game differential desc → fewest games lost. Games are credited
- * to the actual winner, so scores entered winner-first tally correctly.
+ * Standings for an RR tournament. Ranking: match wins desc → game differential
+ * desc → fewest games lost. Deliberately NOT head-to-head: with 3+ players tied
+ * on wins their head-to-head is often a rock-paper-scissors cycle, which makes
+ * the order non-deterministic (it depends on input order) and disagrees between
+ * views. Game differential is transitive, so every view ranks them identically.
+ * Games are credited to the actual winner, so scores entered winner-first tally
+ * correctly.
  */
 export type RRStanding = {
   entry_id: string;
@@ -167,14 +171,6 @@ export function computeRRStandings(
     });
   }
 
-  // Head-to-head record: beat.get(x) = the set of players x defeated directly.
-  const beat = new Map<string, Set<string>>();
-  const recordBeat = (winner: string, loser: string) => {
-    let s = beat.get(winner);
-    if (!s) { s = new Set(); beat.set(winner, s); }
-    s.add(loser);
-  };
-
   for (const m of matches) {
     if (m.status !== 'completed' || !m.player1_id || !m.player3_id) continue;
     const sa = stats.get(m.player1_id);
@@ -198,14 +194,12 @@ export function computeRRStandings(
       sa.games_won += hi; sa.games_lost += lo;
       sb.games_won += lo; sb.games_lost += hi;
       sa.match_wins++; sb.match_losses++;
-      recordBeat(m.player1_id, m.player3_id);
     } else if (m.winner_side === 'b') {
       sb.games_won += hi; sb.games_lost += lo;
       sa.games_won += lo; sa.games_lost += hi;
       sb.match_wins++; sa.match_losses++;
-      recordBeat(m.player3_id, m.player1_id);
     } else {
-      // No recorded winner — keep games positional; no head-to-head result.
+      // No recorded winner — keep games positional.
       sa.games_won += ga; sa.games_lost += gb;
       sb.games_won += gb; sb.games_lost += ga;
     }
@@ -213,16 +207,10 @@ export function computeRRStandings(
 
   const sorted = [...stats.values()].sort((a, b) => {
     if (a.match_wins !== b.match_wins) return b.match_wins - a.match_wins;
-    // Head-to-head first: for a 2-way tie, whoever won their direct match ranks
-    // higher. (3-way ties can be circular; the game tiebreaks below settle those.)
-    if (beat.get(a.entry_id)?.has(b.entry_id)) return -1;
-    if (beat.get(b.entry_id)?.has(a.entry_id)) return 1;
     const aDiff = a.games_won - a.games_lost;
     const bDiff = b.games_won - b.games_lost;
     if (aDiff !== bDiff) return bDiff - aDiff;
-    // Final split: fewest games lost. With differential already equal, this is
-    // the higher game-win % (the tennis standard) — rewards winning decisively
-    // rather than padding games in defeat.
+    // Final split: fewest games lost (equivalently, higher game-win %).
     return a.games_lost - b.games_lost;
   });
 
