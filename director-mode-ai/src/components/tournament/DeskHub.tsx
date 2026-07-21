@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Play, Trophy, X, Zap, RefreshCw, Plus, AlertTriangle, Check, MoreHorizontal, UserCheck, Clock } from 'lucide-react';
 
-type DeskEvent = { id: string; name: string; division: string; num_courts: number; match_format: string; public_status: string; event_date: string | null };
+type DeskEvent = { id: string; name: string; slug: string | null; division: string; num_courts: number; match_format: string; public_status: string; event_date: string | null };
 type DeskMatch = {
   id: string; event_id: string; division: string; round: number; slot: number;
   court: string | null; status: string; score: string | null; score_token: string;
@@ -233,6 +233,17 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
 
   const nextOpenCourt = useMemo(() => courtsView.find((c) => !c.match)?.court ?? null, [courtsView]);
 
+  // Players currently on a court (mid-match). Their name is dimmed in the "Up
+  // next" queue so the desk sees at a glance that a waiting match can't go out
+  // yet — that player has to finish their current match first.
+  const busyPlayers = useMemo(() => {
+    const s = new Set<string>();
+    for (const m of shownMatches) {
+      if (m.court && m.status !== 'completed') { s.add(m.sideA); s.add(m.sideB); }
+    }
+    return s;
+  }, [shownMatches]);
+
   const assign = (matchId: string, court: string | null) => post({ action: 'assign', matchId, court });
   const checkIn = (entryId: string, value: boolean) => post({ action: 'check_in', entryId, value });
   // Check-in roster for the events on this desk.
@@ -341,6 +352,23 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
         </button>
       </div>
 
+      {/* Quick links to each division's public Draw + Standings. Open in a new
+          tab so the court board on this desk stays put. */}
+      {data.events.filter((e) => isOn(e.id) && e.slug).length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 mb-3 text-xs">
+          <span className="text-slate-500 uppercase tracking-wide mr-0.5">View</span>
+          {data.events.filter((e) => isOn(e.id) && e.slug).map((e) => (
+            <span key={e.id} className="inline-flex items-center gap-1.5 rounded-lg bg-white/5 px-2.5 py-1">
+              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: divColor(e.division) }} />
+              <span className="text-slate-300 font-semibold">{e.division}</span>
+              <a href={`/tournaments/${e.slug}/draw`} target="_blank" rel="noopener noreferrer" className="text-[#D3FB52] hover:underline">Draw ↗</a>
+              <span className="text-slate-600">·</span>
+              <a href={`/tournaments/${e.slug}/results`} target="_blank" rel="noopener noreferrer" className="text-[#D3FB52] hover:underline">Standings ↗</a>
+            </span>
+          ))}
+        </div>
+      )}
+
       {err && <div className="mb-3 text-sm text-red-400">{err}</div>}
 
       {activeEventIds.length === 0 && !pickerOpen && (
@@ -422,7 +450,11 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
                   <Trophy size={18} className="inline mr-1 opacity-60" /> All matches assigned or done.
                 </p>
               )}
-              {queue.map((m) => (
+              {queue.map((m) => {
+                const aBusy = busyPlayers.has(m.sideA);
+                const bBusy = busyPlayers.has(m.sideB);
+                const anyBusy = aBusy || bBusy;
+                return (
                 <button key={m.id} disabled={!nextOpenCourt || busy}
                   onClick={() => nextOpenCourt && assign(m.id, nextOpenCourt)}
                   className="w-full text-left rounded-lg bg-white/5 hover:bg-white/10 p-2.5 disabled:opacity-50">
@@ -430,10 +462,21 @@ export default function DeskHub({ initialEvents }: { initialEvents: string[] }) 
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-[#00131c]" style={{ backgroundColor: divColor(m.division) }}>{m.division}</span>
                     <span className="text-[10px] text-slate-500">R{m.round}</span>
                   </div>
-                  <div className="text-sm font-medium leading-tight">{m.sideA} <span className="text-slate-500">vs</span> {m.sideB}</div>
-                  {nextOpenCourt && <div className="text-[11px] text-[#D3FB52] mt-0.5">→ tap to put on Court {nextOpenCourt}</div>}
+                  <div className="text-sm font-medium leading-tight">
+                    <span className={aBusy ? 'text-slate-500' : ''}>{m.sideA}</span>
+                    <span className="text-slate-500"> vs </span>
+                    <span className={bBusy ? 'text-slate-500' : ''}>{m.sideB}</span>
+                  </div>
+                  {anyBusy ? (
+                    <div className="text-[11px] text-amber-400/90 mt-0.5">
+                      ⏳ {aBusy && bBusy ? 'both still on court' : `${aBusy ? m.sideA : m.sideB} still on court`}
+                    </div>
+                  ) : (
+                    nextOpenCourt && <div className="text-[11px] text-[#D3FB52] mt-0.5">→ tap to put on Court {nextOpenCourt}</div>
+                  )}
                 </button>
-              ))}
+                );
+              })}
             </div>
           </div>
 
