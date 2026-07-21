@@ -33,6 +33,8 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
 import EventSettingsPanel from './EventSettingsPanel';
+import DrawView from '@/components/tournament/DrawView';
+import DeskHub from '@/components/tournament/DeskHub';
 
 const FORMAT_LABELS: Record<string, string> = {
   'rr-singles': 'Round Robin — Singles',
@@ -107,7 +109,7 @@ const POSITION_LABELS: Record<Entry['position'], { label: string; color: string 
   withdrawn: { label: 'Withdrawn', color: 'bg-red-100 text-red-700' },
 };
 
-type Tab = 'entries' | 'matches' | 'schedule' | 'settings';
+type Tab = 'entries' | 'draw' | 'schedule' | 'matches' | 'desk' | 'settings';
 type ScoreOutcome = 'played' | 'walkover' | 'retired' | 'default';
 
 /** A sibling division inside the same tournament hub. */
@@ -783,20 +785,116 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
       </div>
 
       <div className="border-b border-gray-200 mb-6 flex gap-1 overflow-x-auto">
-        {(['entries', 'matches', 'schedule', 'settings'] as const).map((t) => (
+        {([
+          ['entries', 'Entries'],
+          ['draw', 'Draw'],
+          ['schedule', 'Schedule'],
+          ['matches', 'Matches'],
+          ['desk', 'Desk'],
+          ['settings', 'Settings'],
+        ] as const).map(([t, label]) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`px-4 py-2 border-b-2 font-medium text-sm whitespace-nowrap capitalize ${
+            className={`px-4 py-2 border-b-2 font-medium text-sm whitespace-nowrap ${
               tab === t
                 ? 'border-orange-500 text-orange-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
-            {t}
+            {label}
           </button>
         ))}
       </div>
+
+      {tab === 'draw' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-gray-900">Draw sheet</h3>
+              <p className="text-sm text-gray-600">
+                The shape of the {FORMAT_LABELS[event.match_format] ?? 'tournament'}. Read-only —
+                enter results on the Matches tab or the live Desk.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <a
+                href={`/tournaments/${event.slug}/draw`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50"
+              >
+                <Printer size={14} />
+                Print
+              </a>
+              {matches.length > 0 && (
+                <button
+                  onClick={generateBracket}
+                  disabled={busy === 'generate'}
+                  className="inline-flex items-center gap-2 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+                  title="Wipe and re-seed the draw from the current confirmed entries"
+                >
+                  {busy === 'generate' ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                  Regenerate
+                </button>
+              )}
+            </div>
+          </div>
+          {matches.length === 0 && inDraw < 2 ? (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center text-sm text-gray-500">
+              Confirm at least 2 players on the Entries tab, then generate the draw.
+            </div>
+          ) : matches.length === 0 ? (
+            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 sm:p-5 flex items-center justify-between gap-3">
+              <div>
+                <div className="font-semibold text-emerald-900 flex items-center gap-2">
+                  <Wand2 size={16} /> Ready to draw
+                </div>
+                <p className="text-sm text-emerald-800 mt-0.5">
+                  {inDraw} confirmed players. Generate to seed by rating and build the draw.
+                </p>
+              </div>
+              <button
+                onClick={generateBracket}
+                disabled={busy === 'generate'}
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm flex-shrink-0 disabled:opacity-50"
+              >
+                {busy === 'generate' ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                Generate Draw
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white border border-gray-200 rounded-xl p-4 sm:p-5">
+              <DrawView
+                format={event.match_format}
+                entries={entries}
+                matches={matches}
+                revealAllSeeds
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'desk' && (
+        <div className="space-y-3">
+          <div className="rounded-xl border border-[#D3FB52]/30 bg-[#00131c] text-slate-200 p-3 flex flex-wrap items-center gap-2 text-sm">
+            <LayoutGrid size={15} className="text-[#D3FB52]" />
+            <span className="font-semibold text-slate-100">Live desk — this division.</span>
+            <span className="text-slate-400">Put matches on courts and score them fast on match day.</span>
+            <Link
+              href="/mixer/tournaments/desk"
+              target="_blank"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-[#D3FB52] text-[#00131c] font-bold px-3 py-1.5 text-xs"
+            >
+              <LayoutGrid size={13} /> Open all-divisions board ↗
+            </Link>
+          </div>
+          <div className="rounded-2xl overflow-hidden border border-white/10">
+            <DeskHub initialEvents={[eventId]} />
+          </div>
+        </div>
+      )}
 
       {tab === 'entries' && (
         <div className="space-y-4">
@@ -1013,25 +1111,23 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           )}
 
           {inDraw >= 2 && matches.length === 0 && (
-            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 sm:p-5 flex items-center justify-between gap-3">
+            <button
+              onClick={() => setTab('draw')}
+              className="w-full text-left bg-emerald-50 border-2 border-emerald-300 rounded-xl p-4 sm:p-5 flex items-center justify-between gap-3 hover:bg-emerald-100/70"
+            >
               <div>
                 <div className="font-semibold text-emerald-900 flex items-center gap-2">
                   <Wand2 size={16} />
                   Ready to draw
                 </div>
                 <p className="text-sm text-emerald-800 mt-0.5">
-                  {inDraw} confirmed players. Generate the bracket to seed by rating and create matches.
+                  {inDraw} confirmed players. Head to the Draw tab to seed by rating and build the draw.
                 </p>
               </div>
-              <button
-                onClick={generateBracket}
-                disabled={busy === 'generate'}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-semibold text-sm flex-shrink-0 disabled:opacity-50"
-              >
-                {busy === 'generate' ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                {busy === 'generate' ? 'Generating…' : 'Generate Bracket'}
-              </button>
-            </div>
+              <span className="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-lg font-semibold text-sm flex-shrink-0">
+                Go to Draw →
+              </span>
+            </button>
           )}
         </div>
       )}
@@ -1041,60 +1137,35 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           {/* Toolbar */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="min-w-0">
-              <h3 className="text-lg font-bold">Matches</h3>
+              <h3 className="text-lg font-bold">Matches — results ledger</h3>
               <p className="text-xs text-slate-400 mt-0.5">
                 {matches.length === 0
-                  ? 'Generate the bracket from the Entries tab to create matches.'
-                  : `${matches.filter((m) => m.status === 'completed').length}/${matches.length} scored · winners auto-advance`}
+                  ? 'Generate the draw first, then enter results here.'
+                  : `${matches.filter((m) => m.status === 'completed').length}/${matches.length} scored · enter or fix any result · winners auto-advance`}
               </p>
             </div>
             <div className="flex-1" />
-            {emailResult && (
+            {emailResult && emailMode !== 'schedule' && (
               <span className="text-xs text-emerald-300 font-medium">
-                ✓ Sent {emailResult.sent}/{emailResult.total}{' '}
-                {emailMode === 'schedule' ? 'schedule' : 'scoring-link'} emails
+                ✓ Sent {emailResult.sent}/{emailResult.total} scoring-link emails
               </span>
             )}
             <div className="flex gap-2 flex-wrap">
               <button
-                onClick={autoSchedule}
-                disabled={scheduling || matches.length === 0}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2 text-sm font-semibold disabled:opacity-40"
-              >
-                {scheduling ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
-                {scheduling ? 'Scheduling…' : 'Auto-schedule'}
-              </button>
-              <button
-                onClick={emailSchedules}
-                disabled={emailMode !== null || matches.every((m) => !m.scheduled_at)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2 text-sm font-semibold disabled:opacity-40"
-              >
-                {emailMode === 'schedule' ? <Loader2 size={14} className="animate-spin" /> : <Calendar size={14} />}
-                Email schedules
-              </button>
-              <button
                 onClick={emailScoringLinks}
                 disabled={emailMode !== null || matches.length === 0}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2 text-sm font-semibold disabled:opacity-40"
+                title="Email each confirmed player a personal link to report their own scores"
               >
                 {emailMode === 'scoring' ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
                 Email scoring links
               </button>
-              {matches.length > 0 && (
-                <button
-                  onClick={generateBracket}
-                  disabled={busy === 'generate'}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2 text-sm font-medium text-slate-300 disabled:opacity-40"
-                >
-                  <Wand2 size={14} /> Regenerate
-                </button>
-              )}
             </div>
           </div>
 
           {matches.length === 0 ? (
             <div className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] p-10 text-center text-sm text-slate-400">
-              No matches yet — generate the bracket from the Entries tab.
+              No matches yet — build the draw on the Draw tab.
             </div>
           ) : (
             <div className="space-y-7">
@@ -1258,6 +1329,11 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           matches={matches}
           entries={entries}
           onUpdate={fetchAll}
+          onAutoSchedule={autoSchedule}
+          onEmailSchedules={emailSchedules}
+          scheduling={scheduling}
+          emailMode={emailMode}
+          emailResult={emailResult}
         />
       )}
 
@@ -1433,11 +1509,21 @@ function ScheduleTab({
   matches,
   entries,
   onUpdate,
+  onAutoSchedule,
+  onEmailSchedules,
+  scheduling,
+  emailMode,
+  emailResult,
 }: {
   event: EventRow;
   matches: Match[];
   entries: Entry[];
   onUpdate: () => void;
+  onAutoSchedule: () => void;
+  onEmailSchedules: () => void;
+  scheduling: boolean;
+  emailMode: 'scoring' | 'schedule' | null;
+  emailResult: { sent: number; total: number } | null;
 }) {
   const [dragOverCourt, setDragOverCourt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1554,6 +1640,29 @@ function ScheduleTab({
         </div>
         <div className="flex-1" />
         {busy && <Loader2 size={16} className="animate-spin text-[#D3FB52]" />}
+        {emailResult && emailMode === 'schedule' && (
+          <span className="text-xs text-emerald-300 font-medium">
+            ✓ Sent {emailResult.sent}/{emailResult.total} schedule emails
+          </span>
+        )}
+        <button
+          onClick={onAutoSchedule}
+          disabled={scheduling || matches.length === 0}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[#D3FB52] text-[#00131c] font-bold px-3 py-2 text-sm disabled:opacity-40 hover:brightness-95"
+          title="Auto-place every match across the courts and time slots"
+        >
+          {scheduling ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+          {scheduling ? 'Scheduling…' : 'Auto-schedule'}
+        </button>
+        <button
+          onClick={onEmailSchedules}
+          disabled={emailMode !== null || matches.every((m) => !m.scheduled_at)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-2 text-sm font-semibold disabled:opacity-40"
+          title="Email each confirmed player their personal match schedule"
+        >
+          {emailMode === 'schedule' ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+          Email schedules
+        </button>
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-2 items-start">
