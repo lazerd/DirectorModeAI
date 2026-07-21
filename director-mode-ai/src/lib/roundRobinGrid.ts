@@ -63,6 +63,9 @@ export type RRFlight = {
 
 export type RRCrossMatch = {
   id: string;
+  slot: number;
+  /** What this playoff decides, e.g. "1st / 2nd Place" (slot i → 2i-1 / 2i). */
+  label: string;
   aName: string;
   bName: string;
   score: string | null;
@@ -103,6 +106,12 @@ function scoreMarker(score: string | null): string | null {
   if (s === 'DEF') return 'DEF';
   if (s.endsWith(', RET') || s === 'RET') return 'RET';
   return null;
+}
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd'];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
 const flightOf = (slot: number): number => (slot >= 100 ? Math.floor(slot / 100) : 0);
@@ -153,8 +162,12 @@ export function buildRoundRobinGrid(
       list.push(m);
       withinByFlight.set(fa, list);
     } else {
+      // Cross-pool = placement playoff. Slot i decides placements (2i-1)/(2i):
+      // slot 1 → 1st/2nd, slot 2 → 3rd/4th, and so on.
       crossover.push({
         id: m.id,
+        slot: m.slot,
+        label: `${ordinal(2 * m.slot - 1)} / ${ordinal(2 * m.slot)} Place`,
         aName: teamName(entryById.get(m.player1_id!)),
         bName: teamName(entryById.get(m.player3_id!)),
         score: m.score,
@@ -268,6 +281,9 @@ export function buildRoundRobinGrid(
       complete,
     };
   });
+
+  // Order the placement playoffs top-down: 1st/2nd, 3rd/4th, …
+  crossover.sort((a, b) => a.slot - b.slot);
 
   return { flights, crossover };
 }

@@ -189,6 +189,9 @@ export default function DrawView({
                     key={c.id}
                     className="border border-gray-300 rounded-lg overflow-hidden text-sm"
                   >
+                    <div className="px-2 py-1 bg-gray-100 border-b border-gray-200 text-[11px] font-bold uppercase tracking-wide text-gray-700 print:bg-gray-200">
+                      {c.label}
+                    </div>
                     <CrossRow name={c.aName} won={c.winner === 'a'} sets={sets?.a ?? null} marker={c.winner === 'a' ? marker : null} pending={c.pending} />
                     <div className="border-t border-gray-200" />
                     <CrossRow name={c.bName} won={c.winner === 'b'} sets={sets?.b ?? null} marker={c.winner === 'b' ? marker : null} pending={c.pending} />
