@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { Trophy, ArrowLeft, Crown } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { computeRRStandings } from '@/lib/tournamentFormats';
+import DrawView from '@/components/tournament/DrawView';
 import ShareBar from './ShareBar';
 
 export const dynamic = 'force-dynamic';
@@ -141,13 +142,6 @@ export default async function PublicResultsPage({
     champion = entryById.get(flightGroups[0].standings[0].entry_id);
   }
 
-  // Build match-list grouped by bracket+round for display
-  const matchesByBracket = new Map<string, any[]>();
-  for (const m of matchesList) {
-    if (!matchesByBracket.has(m.bracket)) matchesByBracket.set(m.bracket, []);
-    matchesByBracket.get(m.bracket)!.push(m);
-  }
-
   return (
     <div className="min-h-screen bg-[#001820] text-white print:bg-white print:text-black">
       <header className="border-b border-white/10 print:border-gray-300">
@@ -228,55 +222,22 @@ export default async function PublicResultsPage({
             </div>
           ))}
 
-        {!isRR &&
-          Array.from(matchesByBracket.entries()).map(([bracket, ms]) => (
-            <div key={bracket} className="bg-white text-gray-900 rounded-2xl p-5">
-              <h2 className="font-semibold text-lg mb-3 capitalize" style={{ color: '#000000' }}>
-                {bracket} bracket
-              </h2>
-              {Array.from(new Set(ms.map((m) => m.round)))
-                .sort((a, b) => a - b)
-                .map((round) => (
-                  <div key={round} className="mb-4">
-                    <div className="text-xs uppercase text-gray-500 font-semibold mb-2">
-                      Round {round}
-                    </div>
-                    <div className="space-y-1.5">
-                      {ms
-                        .filter((m) => m.round === round)
-                        .sort((a, b) => a.slot - b.slot)
-                        .map((m) => {
-                          const aWon = m.winner_side === 'a';
-                          const bWon = m.winner_side === 'b';
-                          return (
-                            <div
-                              key={m.id}
-                              className="border border-gray-200 rounded-lg p-2 grid grid-cols-[1fr_auto_1fr_auto] gap-2 items-center text-sm"
-                            >
-                              <div
-                                className={aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}
-                                style={!aWon ? { color: '#000000' } : undefined}
-                              >
-                                {labelEntry(m.player1_id)}
-                              </div>
-                              <div className="text-xs text-gray-600">vs</div>
-                              <div
-                                className={bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}
-                                style={!bWon ? { color: '#000000' } : undefined}
-                              >
-                                {labelEntry(m.player3_id)}
-                              </div>
-                              <div className="text-xs font-mono text-gray-700 w-20 text-right truncate">
-                                {m.score || (m.status === 'completed' ? '—' : '')}
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          ))}
+        {/* The draw — same view parents get from the hub's Draw link, now right
+            here on the standings page so one QR scan shows both. Reveals only the
+            top-4 seeds, like every other public draw. */}
+        {matchesList.length > 0 && (
+          <div id="draw" className="bg-white text-gray-900 rounded-2xl p-5">
+            <h2 className="font-semibold text-lg mb-3" style={{ color: '#000000' }}>
+              {isRR ? 'Draw sheet' : 'Draw'}
+            </h2>
+            <DrawView
+              format={e.match_format}
+              entries={entriesList}
+              matches={matchesList}
+              revealAllSeeds={false}
+            />
+          </div>
+        )}
 
         {matchesList.length === 0 && (
           <div className="bg-white/5 rounded-xl p-8 text-center text-white/60">
