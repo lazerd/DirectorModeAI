@@ -122,8 +122,9 @@ export function buildRoundRobinGrid(
 ): RRGrid {
   const entryById = new Map(entries.map((e) => [e.id, e]));
 
-  // Only fully-populated matches count toward the draw sheet.
-  const playable = matches.filter((m) => m.player1_id && m.player3_id);
+  // Only fully-populated, real matches count toward the draw sheet — a phantom
+  // self-match (a player vs itself) is ignored so it can't jam a flight's record.
+  const playable = matches.filter((m) => m.player1_id && m.player3_id && m.player1_id !== m.player3_id);
 
   // 1. Home flight per player = the slot-bucket they appear in most.
   const flightVotes = new Map<string, Map<number, number>>();

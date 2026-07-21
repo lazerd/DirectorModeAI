@@ -69,7 +69,10 @@ export function detectPools(entryIds: string[], mainMatches: PoolMatch[]): strin
 function withinPool(pool: string[], mainMatches: PoolMatch[]): PoolMatch[] {
   const set = new Set(pool);
   return mainMatches.filter(
-    (m) => m.player1_id && m.player3_id && set.has(m.player1_id) && set.has(m.player3_id)
+    (m) =>
+      m.player1_id && m.player3_id &&
+      m.player1_id !== m.player3_id && // ignore phantom self-matches
+      set.has(m.player1_id) && set.has(m.player3_id)
   );
 }
 

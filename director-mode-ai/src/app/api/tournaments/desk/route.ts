@@ -17,6 +17,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { syncPlacementPlayoffs } from '@/lib/tournamentPlayoffs';
+import { detectPools } from '@/lib/tournamentPools';
 
 const TOURNAMENT_FORMATS = [
   'rr-singles', 'rr-doubles', 'single-elim-singles', 'single-elim-doubles',
@@ -210,6 +211,54 @@ export async function POST(req: Request) {
     const { error } = await admin.from('events').update({ public_status: status }).eq('id', eventId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
+  }
+
+  if (action === 'cleanup_placements') {
+    // Repair a round-robin event whose placement rounds got corrupted (e.g. a
+    // regeneration left phantom self-matches or a duplicate placement round).
+    // Safe: only ever removes UNSCORED junk — self-matches (a player vs itself)
+    // and unscored cross-pool / TBD placement rows — never a completed match or
+    // a genuine pending WITHIN-pool match. Then rebuilds the placement cleanly.
+    const eventId = String(body.eventId ?? '');
+    if (!(await ownsEvent(eventId))) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
+    const { data: mr } = await admin
+      .from('tournament_matches')
+      .select('id, round, slot, player1_id, player3_id, status')
+      .eq('event_id', eventId)
+      .eq('bracket', 'main');
+    const rows = (mr || []) as any[];
+    // Derive the true pools from COMPLETED two-distinct-player matches — the real
+    // round-robin. (Placement/self rows are unscored, so they can't skew this.)
+    const real = rows.filter(
+      (m) => m.status === 'completed' && m.player1_id && m.player3_id && m.player1_id !== m.player3_id
+    );
+    const entryIds = [...new Set(real.flatMap((m) => [m.player1_id, m.player3_id]))] as string[];
+    const pools = detectPools(
+      entryIds,
+      real.map((m) => ({
+        player1_id: m.player1_id, player3_id: m.player3_id,
+        score: null, winner_side: null, status: m.status,
+        bracket: 'main', round: m.round, slot: m.slot,
+      }))
+    );
+    const poolOf = new Map<string, number>();
+    pools.forEach((p, i) => p.forEach((id) => poolOf.set(id, i)));
+    const toDelete = rows
+      .filter((m) => {
+        if (m.player1_id && m.player1_id === m.player3_id) return true; // self-match — always junk
+        if (m.status === 'completed') return false;                    // never remove a scored match
+        const a = m.player1_id ? poolOf.get(m.player1_id) : undefined;
+        const b = m.player3_id ? poolOf.get(m.player3_id) : undefined;
+        if (a === undefined || b === undefined) return true;           // TBD placement skeleton
+        return a !== b;                                                // cross-pool placement row
+      })
+      .map((m) => m.id as string);
+    if (toDelete.length) {
+      const { error } = await admin.from('tournament_matches').delete().in('id', toDelete);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    const sync = await syncPlacementPlayoffs(admin, eventId).catch(() => null);
+    return NextResponse.json({ ok: true, deleted: toDelete.length, pools: pools.map((p) => p.length), sync });
   }
 
   if (action === 'set_courts') {
