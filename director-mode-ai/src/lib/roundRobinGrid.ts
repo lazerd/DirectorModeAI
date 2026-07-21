@@ -17,6 +17,8 @@
  * makes exactly one flight) — collapses to one grid with everyone in it.
  */
 
+import { computeRRStandings } from './tournamentFormats';
+
 export type RRMatchInput = {
   id: string;
   round: number;
@@ -192,13 +194,17 @@ export function buildRoundRobinGrid(
     }
     const complete = fMatches.length > 0 && completed === fMatches.length;
 
-    // Finish order: wins desc, then losses asc, then seed asc. Only assigned
-    // once every match in the flight is scored.
+    // Finish order uses the SAME ranking as the standings table and the
+    // placement-playoff seeding (match wins → head-to-head → game differential →
+    // fewest games lost), so "Fin" never disagrees with who actually advances.
+    // Ties beyond that fall back to seed for a stable order. Only assigned once
+    // every match in the flight is scored.
+    const standing = computeRRStandings(players, fMatches);
+    const rankByEntry = new Map(standing.map((s) => [s.entry_id, s.rank]));
     const ranked = [...players].sort((a, b) => {
-      const ra = rec.get(a.id)!;
-      const rb = rec.get(b.id)!;
-      if (rb.w !== ra.w) return rb.w - ra.w;
-      if (ra.l !== rb.l) return ra.l - rb.l;
+      const ra = rankByEntry.get(a.id) ?? 999;
+      const rb = rankByEntry.get(b.id) ?? 999;
+      if (ra !== rb) return ra - rb;
       return (a.seed ?? 999) - (b.seed ?? 999);
     });
     const finishById = new Map<string, number>();
