@@ -125,11 +125,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ slu
     else recs.push({ email, div: divOf(items.join(' ')), name: null });
   }
 
-  // Match — skip entries already paid/waived.
   const used = new Array(recs.length).fill(false);
   const toPay = new Set<string>();
-  const open = entries.filter((e) => e.payment_status !== 'paid' && e.payment_status !== 'waived');
   const find = (pred: (r: any) => boolean) => recs.findIndex((r, i) => !used[i] && pred(r));
+
+  // First, CONSUME the payments belonging to already paid/waived entries so
+  // their payment can't be reused to settle a different open player.
+  for (const e of entries.filter((x) => x.payment_status === 'paid' || x.payment_status === 'waived')) {
+    let i = e._email ? find((r) => r.div === e._div && r.email === e._email) : -1;
+    if (i < 0) i = find((r) => r.div === e._div && r.name && lastName(r.name) === lastName(e.player_name));
+    if (i >= 0) used[i] = true;
+  }
+
+  // Then match the still-open entries against the remaining payments.
+  const open = entries.filter((e) => e.payment_status !== 'paid' && e.payment_status !== 'waived');
   for (const e of open) {
     let i = e._email ? find((r) => r.div === e._div && r.email === e._email) : -1;
     if (i < 0) i = find((r) => r.div === e._div && r.name && lastName(r.name) === lastName(e.player_name));
