@@ -38,8 +38,18 @@ export function detectPools(entryIds: string[], mainMatches: PoolMatch[]): strin
   };
   const union = (a: string, b: string) => { parent.set(find(a), find(b)); };
 
+  // The cross-pool PLACEMENT playoff sits at the single highest round. If we let
+  // its matches into the union-find they fuse Pool A and Pool B into one (a Pool
+  // A player is joined to a Pool B player), which then breaks re-seeding. The
+  // round robin lives strictly below the placement round, so detect pools from
+  // everything EXCEPT the top round. (Self-matches are skipped too — no-op union.)
+  const maxRound = mainMatches.reduce((mx, m) => Math.max(mx, m.round ?? 0), 0);
   for (const m of mainMatches) {
-    if (m.player1_id && m.player3_id && parent.has(m.player1_id) && parent.has(m.player3_id)) {
+    if ((m.round ?? 0) === maxRound) continue;
+    if (
+      m.player1_id && m.player3_id && m.player1_id !== m.player3_id &&
+      parent.has(m.player1_id) && parent.has(m.player3_id)
+    ) {
       union(m.player1_id, m.player3_id);
     }
   }
