@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import HubButton from './HubButton';
+import SquareSyncButton from './SquareSyncButton';
 import {
   ArrowLeft,
   Users,
@@ -25,7 +27,6 @@ import {
   Music,
   Download,
   LayoutGrid,
-  Trophy,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
@@ -58,6 +59,8 @@ type EventRow = {
   daily_start_time: string | null;
   daily_end_time: string | null;
   default_match_length_minutes: number | null;
+  hub_slug: string | null;
+  hub_title: string | null;
 };
 
 type Entry = {
@@ -272,7 +275,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
     const { data: ev, error: evErr } = await supabase
       .from('events')
       .select(
-        'id, name, slug, match_format, public_status, entry_fee_cents, max_players, num_courts, court_names, event_date, daily_start_time, daily_end_time, default_match_length_minutes'
+        'id, name, slug, match_format, public_status, entry_fee_cents, max_players, num_courts, court_names, event_date, daily_start_time, daily_end_time, default_match_length_minutes, hub_slug, hub_title'
       )
       .eq('id', eventId)
       .maybeSingle();
@@ -715,16 +718,13 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? 'Copied!' : 'Copy'}
         </button>
-        {/season-end/i.test(event.name) && (
-          <Link
-            href="/tournaments/season-end"
-            target="_blank"
-            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs font-bold flex-shrink-0"
-          >
-            <Trophy size={12} />
-            Season-End Hub
-          </Link>
-        )}
+        <HubButton
+          eventId={event.id}
+          hubSlug={event.hub_slug}
+          hubTitle={event.hub_title}
+          eventName={event.name}
+        />
+        <SquareSyncButton hubSlug={event.hub_slug} eventName={event.name} />
         <Link
           href={`/mixer/events/${eventId}/dj`}
           target="_blank"

@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import QRCode from 'qrcode';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import HubPosters, { type HubPoster } from '@/components/tournaments/HubPosters';
@@ -5,20 +6,22 @@ import { HUB_FORMAT_LABELS, hubSortKey, hubParseName, type HubEvent } from '@/co
 
 export const dynamic = 'force-dynamic';
 
-const DIRECTOR_ID = '7ff5078a-ee6d-46b7-9af7-20b35f62729d';
 const BASE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai').replace(/\/$/, '');
 
-export default async function SeasonEndPostersPage() {
+export default async function TournamentHubPostersPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
   const supabase = getSupabaseAdmin();
   const { data } = await supabase
     .from('events')
-    .select('id, name, slug, match_format, public_status')
-    .eq('user_id', DIRECTOR_ID)
-    .ilike('name', '%season-end%')
+    .select('id, name, slug, match_format, public_status, hub_title')
+    .eq('hub_slug', slug)
     .in('public_status', ['open', 'running', 'completed'])
     .order('event_date');
 
-  const events = ((data as HubEvent[]) || []).filter((e) => e.slug);
+  const events = ((data as (HubEvent & { hub_title: string | null })[]) || []).filter((e) => e.slug);
+  if (events.length === 0) return notFound();
+
+  const eyebrow = events.find((e) => e.hub_title)?.hub_title || 'Tournament Hub';
 
   const posters: HubPoster[] = await Promise.all(
     events
@@ -31,5 +34,5 @@ export default async function SeasonEndPostersPage() {
       })
   );
 
-  return <HubPosters eyebrow="Lamorinda JTT · Season-End Championships" posters={posters} />;
+  return <HubPosters eyebrow={eyebrow} posters={posters} />;
 }
