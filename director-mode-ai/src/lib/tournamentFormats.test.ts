@@ -9,6 +9,39 @@ import {
   generateTournamentMatches,
 } from './tournamentFormats';
 
+describe('computeRRStandings — deterministic ranking (regression)', () => {
+  // Three players tied on wins whose head-to-head is a rock-paper-scissors cycle
+  // (a beat b, b beat c, c beat a). Ranking MUST fall to game differential, which
+  // is transitive, so the result is identical no matter what order the entries
+  // are fed in. This guards against ever reintroducing a head-to-head tiebreak —
+  // that sorted 3-way ties non-deterministically and scrambled a live playoff
+  // (the standings table, the draw's Fin column, and the seeding each disagreed).
+  const cyc = (p1: string, p3: string, score: string) => ({
+    player1_id: p1, player3_id: p3, winner_side: 'a' as const, score, status: 'completed',
+  });
+  // a: 1-1, games 6-4 (+2) · b: 1-1, games 4-5 (-1, lost 5) · c: 1-1, games 5-6 (-1, lost 6)
+  const matches = [cyc('a', 'b', '4-0'), cyc('b', 'c', '4-1'), cyc('c', 'a', '4-2')];
+  const expected = ['a', 'b', 'c'];
+  for (const order of [['a', 'b', 'c'], ['c', 'b', 'a'], ['b', 'a', 'c'], ['c', 'a', 'b']]) {
+    it(`ranks identically regardless of input order [${order.join(',')}]`, () => {
+      const standings = computeRRStandings(order.map((id) => ({ id })), matches);
+      expect(standings.map((s) => s.entry_id)).toEqual(expected);
+    });
+  }
+
+  it('credits games to the actual winner even when the loser is listed first', () => {
+    // Score stored side-A-first "2-4" but winner is side B: side B must get 4 games.
+    const s = computeRRStandings(
+      [{ id: 'x' }, { id: 'y' }],
+      [{ player1_id: 'x', player3_id: 'y', winner_side: 'b', score: '2-4', status: 'completed' }]
+    );
+    const y = s.find((r) => r.entry_id === 'y')!;
+    expect(y.games_won).toBe(4);
+    expect(y.games_lost).toBe(2);
+    expect(y.rank).toBe(1);
+  });
+});
+
 describe('generateRRMatches', () => {
   it('returns 6 matches for 4 players (3 rounds × 2 matches)', () => {
     const m = generateRRMatches(['a', 'b', 'c', 'd']);

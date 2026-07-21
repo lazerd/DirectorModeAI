@@ -75,4 +75,33 @@ describe('tournamentPools', () => {
     const pools = detectPools(entries, partial);
     expect(readyForPlayoffs(pools, partial)).toBe(false);
   });
+
+  // Regression: once cross-pool placement matches are seated/scored they used to
+  // fuse Pool A and Pool B into one (a1 joined to b1), so re-seeding could no
+  // longer tell the pools apart and scrambled a live playoff. Pool detection must
+  // ignore the placement round (it always sits above the round robin).
+  it('does NOT fuse the pools when cross-pool placement matches exist', () => {
+    const placement: PoolMatch[] = A.map((a, i) => ({
+      player1_id: a, player3_id: B[i], score: '4-2', winner_side: 'a',
+      status: 'completed', bracket: 'main', round: 99, slot: i + 1,
+    }));
+    const withPlacement = [...matches, ...placement];
+    const pools = detectPools(entries, withPlacement);
+    expect(pools.length).toBe(2);
+    expect(pools[0].sort()).toEqual([...A].sort());
+    expect(pools[1].sort()).toEqual([...B].sort());
+  });
+
+  // Regression: a phantom "self" match (a player vs itself) can't be scored, so it
+  // must never count toward — or block — a pool's completion.
+  it('ignores a phantom self-match when judging pool completion', () => {
+    const selfMatch: PoolMatch = {
+      player1_id: 'a1', player3_id: 'a1', score: null, winner_side: null,
+      status: 'pending', bracket: 'main', round: 3, slot: 1,
+    };
+    const withSelf = [...matches, selfMatch];
+    const pools = detectPools(entries, withSelf);
+    expect(pools.length).toBe(2);
+    expect(isPoolComplete(pools[0], withSelf)).toBe(true);
+  });
 });
