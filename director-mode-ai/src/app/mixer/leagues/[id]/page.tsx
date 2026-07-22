@@ -23,6 +23,7 @@ import {
   Trophy,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import NudgePanel from '@/components/campaigns/NudgePanel';
 import { format } from 'date-fns';
 import QRCode from 'qrcode';
 import { CATEGORY_LABELS, formatMoney, isDoubles, type CategoryKey } from '@/lib/leagueUtils';
@@ -740,6 +741,17 @@ export default function LeagueDetailPage() {
                 {generating ? <Loader2 size={16} className="animate-spin" /> : <Bell size={16} />}
                 Send reminders
               </button>
+            </section>
+          )}
+
+          {(league.status === 'running' || league.status === 'completed') && (
+            <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6">
+              <h2 className="font-semibold text-base mb-1 text-gray-900">Broadcast &amp; nudge</h2>
+              <p className="text-xs text-gray-500 mb-3">
+                Send a status update to everyone, or a personalized nudge to only the players who still have a match ready to
+                play (each with their opponent&apos;s contact info). Preview and test to yourself first.
+              </p>
+              <NudgePanel surface="league" targetId={league.id} />
             </section>
           )}
 

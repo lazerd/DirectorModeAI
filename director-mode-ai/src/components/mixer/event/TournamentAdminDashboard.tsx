@@ -36,6 +36,7 @@ import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/qua
 import EventSettingsPanel from './EventSettingsPanel';
 import DrawView from '@/components/tournament/DrawView';
 import DeskHub from '@/components/tournament/DeskHub';
+import NudgePanel from '@/components/campaigns/NudgePanel';
 
 const FORMAT_LABELS: Record<string, string> = {
   'rr-singles': 'Round Robin — Singles',
@@ -113,7 +114,7 @@ const POSITION_LABELS: Record<Entry['position'], { label: string; color: string 
   withdrawn: { label: 'Withdrawn', color: 'bg-red-100 text-red-700' },
 };
 
-type Tab = 'entries' | 'draw' | 'schedule' | 'matches' | 'desk' | 'settings';
+type Tab = 'entries' | 'draw' | 'schedule' | 'matches' | 'desk' | 'notify' | 'settings';
 type ScoreOutcome = 'played' | 'walkover' | 'retired' | 'default';
 
 /** A sibling division inside the same tournament hub. */
@@ -765,6 +766,7 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           ['schedule', 'Schedule', '3. Set courts + times. One click builds the full order of play, then emails everyone their times.'],
           ['matches', 'Matches', '4. Enter or fix scores. Every match, any time. Winners advance automatically.'],
           ['desk', 'Desk', '5. Match day. Check players in, put matches on courts, score them fast.'],
+          ['notify', 'Notify', 'Email players: a status update to everyone, or a gentle nudge to whoever still owes a match.'],
           ['settings', 'Settings', 'Event details: name, dates, entry fee, format.'],
         ] as const).map(([t, label, tip]) => (
           <button
@@ -1308,6 +1310,19 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           emailMode={emailMode}
           emailResult={emailResult}
         />
+      )}
+
+      {tab === 'notify' && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-gray-900">Notify players</h3>
+            <p className="text-sm text-gray-600">
+              Send a status update to everyone, or a personalized nudge to only the players who still have a match ready to
+              play. Preview and send a test to yourself first — nothing goes out until you click “Send to all.”
+            </p>
+          </div>
+          <NudgePanel surface="tournament" targetId={eventId} />
+        </div>
       )}
 
       {tab === 'settings' && event && (
