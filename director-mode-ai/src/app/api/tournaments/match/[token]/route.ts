@@ -101,6 +101,37 @@ async function placePlayersInSlot(
   await admin.from('tournament_matches').update(update).eq('id', destMatchId);
 }
 
+/**
+ * Canonicalize a score to PLAYER1-FIRST order (side a's games first, side b's
+ * second) — the order every standings/draw reader assumes.
+ *
+ * The score is free-text and people type it however they like: coaches on the
+ * public /enter page tend to type the WINNER's score first ("I won 4-2"), while
+ * the admin desk tends to type it in displayed (player1-first) order. Stored
+ * verbatim, those two conventions disagree and corrupt the game-differential
+ * tiebreaker. For a single set the winner (known from winner_side) always holds
+ * the higher game count, so we can put the games back in a→b order no matter how
+ * they were typed. Idempotent: a score already in player1-first order is
+ * returned unchanged. Multi-set and marker scores (e.g. "6-4, 3-6, 10-7",
+ * "W/O", "RET") are left as entered — those come from the admin desk in
+ * player1-first order, and per-set magnitude can't identify the match winner.
+ */
+function canonicalScore(raw: string, winnerSide: 'a' | 'b'): string {
+  const trimmed = raw.trim();
+  const sets = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
+  if (sets.length !== 1) return trimmed;
+  const m = sets[0].match(/^(\d+)\s*-\s*(\d+)$/);
+  if (!m) return trimmed;
+  const x = parseInt(m[1], 10);
+  const y = parseInt(m[2], 10);
+  if (x === y) return trimmed;
+  const hi = Math.max(x, y);
+  const lo = Math.min(x, y);
+  const aGames = winnerSide === 'a' ? hi : lo; // side a = player1
+  const bGames = winnerSide === 'a' ? lo : hi; // side b = player3
+  return `${aGames}-${bGames}`;
+}
+
 export async function POST(req: Request, { params }: { params: { token: string } }) {
   const token = params.token;
   if (!token || token.length < 8) {
@@ -133,7 +164,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
     .from('tournament_matches')
     .update({
       winner_side: body.winner_side,
-      score: body.score.trim(),
+      score: canonicalScore(body.score, body.winner_side),
       status: 'completed',
       reported_at: new Date().toISOString(),
       reported_by_token: token,
