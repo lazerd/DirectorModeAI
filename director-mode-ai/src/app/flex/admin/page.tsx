@@ -27,8 +27,11 @@ export default function FlexAdminPage() {
   const [state, setState] = useState<FlexState | null>(null);
   const [round, setRound] = useState<Round | null>(null);
 
+  // Always require a password entry this session — the admin token store is
+  // in-memory per serverless instance, so we can't trust a cookie across
+  // instances. We keep the typed password in state and send it as X-Admin-Key.
   useEffect(() => {
-    fetch('/api/admin/auth').then((r) => setAuthed(r.ok)).catch(() => setAuthed(false));
+    setAuthed(false);
   }, []);
 
   useEffect(() => {
@@ -42,7 +45,7 @@ export default function FlexAdminPage() {
     else alert('Wrong password');
   }
   async function loadStatus() {
-    const r = await fetch('/api/flex/status');
+    const r = await fetch('/api/flex/status', { headers: { 'X-Admin-Key': pw } });
     if (r.ok) {
       const d = await r.json();
       setState(d.state);
@@ -104,12 +107,14 @@ export default function FlexAdminPage() {
       <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))' }}>
         <ActionCard
           kind="update"
+          adminKey={pw}
           title="📣 Mid-Summer Update"
           desc="One warm status email to every player — where the season stands, standings are live, and a reminder they can play ahead. Goes to all players."
           confirmVerb="Send the mid-summer update to ALL players"
         />
         <ActionCard
           kind="nudge"
+          adminKey={pw}
           title="🎾 Gentle Nudge"
           desc="Personalized reminder to only the players who still have matches ready to play — lists each outstanding opponent + their contact info. Reusable any week to stay on track."
           confirmVerb="Send the gentle nudge to players who owe matches"
@@ -119,7 +124,7 @@ export default function FlexAdminPage() {
   );
 }
 
-function ActionCard({ kind, title, desc, confirmVerb }: { kind: 'update' | 'nudge'; title: string; desc: string; confirmVerb: string }) {
+function ActionCard({ kind, adminKey, title, desc, confirmVerb }: { kind: 'update' | 'nudge'; adminKey: string; title: string; desc: string; confirmVerb: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ count: number; subject?: string; sampleHtml?: string; recipients: unknown[] } | null>(null);
   const [result, setResult] = useState<string | null>(null);
@@ -129,7 +134,7 @@ function ActionCard({ kind, title, desc, confirmVerb }: { kind: 'update' | 'nudg
     setBusy(mode);
     setResult(null);
     try {
-      const r = await fetch('/api/flex/send', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, mode }) });
+      const r = await fetch('/api/flex/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey }, body: JSON.stringify({ kind, mode }) });
       const d = await r.json();
       if (mode === 'preview') setPreview(d);
       else if (mode === 'test') setResult(d?.result?.sent ? `Test sent to darrinjco@gmail.com${d.sampleFor ? ` (sample for ${d.sampleFor})` : ''}.` : `Test: ${JSON.stringify(d)}`);

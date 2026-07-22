@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Resend } from 'resend';
-import { isAdminAuthenticated } from '@/lib/adminAuth';
+import { isAdminRequest } from '@/lib/adminAuth';
 import { safeResendSend } from '@/lib/emailUnsubscribe';
 import {
   getFlexState,
@@ -19,7 +19,7 @@ const TEST_TO = 'darrinjco@gmail.com';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export async function POST(req: NextRequest) {
-  if (!(await isAdminAuthenticated())) {
+  if (!(await isAdminRequest(req))) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   const { kind, mode } = (await req.json().catch(() => ({}))) as {
