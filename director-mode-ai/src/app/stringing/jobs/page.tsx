@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Clock, Wrench, CheckCircle, Package, RefreshCw, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import NudgePanel from '@/components/campaigns/NudgePanel';
 import { formatDistanceToNow } from 'date-fns';
 
 type Job = {
@@ -192,6 +193,13 @@ export default function StringingJobsPage() {
             color="success"
           />
         </div>
+
+        {/* Pickup reminders */}
+        <section className="mb-6">
+          <h2 className="font-semibold text-base mb-1 text-gray-900">Pickup reminders</h2>
+          <p className="text-xs text-gray-500 mb-3">Send a “your racket is ready” nudge to every customer whose finished job hasn&apos;t been picked up. Preview and test to yourself first.</p>
+          <NudgePanel surface="stringing" targetId="me" />
+        </section>
 
         {/* Filter Tabs */}
         <div className="tabs mb-6 inline-flex">

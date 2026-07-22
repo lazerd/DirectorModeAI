@@ -20,6 +20,7 @@ import StandingsTab from '@/components/leagues/jtt/StandingsTab';
 import SettingsTab from '@/components/leagues/jtt/SettingsTab';
 import ResultsEmailModal from '@/components/leagues/jtt/ResultsEmailModal';
 import TournamentEmailModal from '@/components/leagues/jtt/TournamentEmailModal';
+import NudgePanel from '@/components/campaigns/NudgePanel';
 
 type League = {
   id: string;
@@ -107,7 +108,7 @@ export type JTTLine = {
   score_token: string | null;
 };
 
-type Tab = 'matchups' | 'rosters' | 'standings' | 'settings';
+type Tab = 'matchups' | 'rosters' | 'standings' | 'notify' | 'settings';
 
 type SeasonEndDraw = {
   id: string;
@@ -347,6 +348,7 @@ export default function JTTLeaguePage() {
           { id: 'matchups' as const, label: 'Matchups', icon: Calendar },
           { id: 'rosters' as const, label: 'Rosters', icon: Users },
           { id: 'standings' as const, label: 'Standings', icon: Trophy },
+          { id: 'notify' as const, label: 'Notify', icon: Mail },
           { id: 'settings' as const, label: 'Settings', icon: ListChecks },
         ].map(t => {
           const Icon = t.icon;
@@ -410,6 +412,15 @@ export default function JTTLeaguePage() {
           clubs={clubs}
           onRefresh={() => fetchAll({ silent: true })}
         />
+      )}
+      {tab === 'notify' && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-gray-900">Notify the league</h3>
+            <p className="text-sm text-gray-600">Send a season update to every player and parent, or nudge coaches whose team still has an unreported match-day. Preview and test to yourself first.</p>
+          </div>
+          <NudgePanel surface="jtt" targetId={id} />
+        </div>
       )}
     </div>
   );

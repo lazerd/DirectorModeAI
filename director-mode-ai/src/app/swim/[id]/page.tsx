@@ -13,7 +13,9 @@ import {
   Settings as SettingsIcon,
   AlertCircle,
   CalendarDays,
+  Mail,
 } from 'lucide-react';
+import NudgePanel from '@/components/campaigns/NudgePanel';
 import { supabase } from '@/lib/supabase';
 import SwimJobsTab from '@/components/swim/SwimJobsTab';
 import SwimFamiliesTab from '@/components/swim/SwimFamiliesTab';
@@ -85,7 +87,7 @@ export type FamilyProgress = {
   pendingPercent: number;
 };
 
-type Tab = 'tracker' | 'meets' | 'jobs' | 'families' | 'settings';
+type Tab = 'tracker' | 'meets' | 'jobs' | 'families' | 'notify' | 'settings';
 
 export default function SwimSeasonDashboard() {
   const params = useParams();
@@ -230,6 +232,7 @@ export default function SwimSeasonDashboard() {
                 { id: 'meets' as const, label: 'Meets', icon: CalendarDays, badge: 0 },
                 { id: 'jobs' as const, label: 'Jobs', icon: Briefcase, badge: 0 },
                 { id: 'families' as const, label: 'Families', icon: Users, badge: 0 },
+                { id: 'notify' as const, label: 'Notify', icon: Mail, badge: 0 },
                 { id: 'settings' as const, label: 'Settings', icon: SettingsIcon, badge: 0 },
               ].map((t) => {
                 const Icon = t.icon;
@@ -284,6 +287,15 @@ export default function SwimSeasonDashboard() {
           />
         )}
         {tab === 'settings' && <SwimSettingsTab season={season} onRefresh={fetchAll} />}
+        {tab === 'notify' && (
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold text-gray-900">Notify families</h3>
+              <p className="text-sm text-gray-600">Send a season update to every family, or a personalized nudge to only the families who still owe volunteer points. Preview and test to yourself first.</p>
+            </div>
+            <NudgePanel surface="swim" targetId={season.id} />
+          </div>
+        )}
       </main>
     </div>
   );

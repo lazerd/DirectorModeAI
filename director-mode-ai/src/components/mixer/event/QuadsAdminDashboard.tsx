@@ -13,7 +13,9 @@ import {
   Copy,
   Check,
   AlertCircle,
+  Mail,
 } from 'lucide-react';
+import NudgePanel from '@/components/campaigns/NudgePanel';
 import { createClient } from '@/lib/supabase/client';
 import QuadsEntriesTab from './quads/QuadsEntriesTab';
 import QuadsFlightsTab from './quads/QuadsFlightsTab';
@@ -87,7 +89,7 @@ export type QuadMatch = {
   score_token: string;
 };
 
-type Tab = 'entries' | 'flights' | 'matches' | 'settings';
+type Tab = 'entries' | 'flights' | 'matches' | 'notify' | 'settings';
 
 export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
   const [event, setEvent] = useState<QuadEvent | null>(null);
@@ -253,6 +255,7 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
           { id: 'entries' as const, label: 'Entries', icon: Users },
           { id: 'flights' as const, label: 'Flights', icon: Trophy },
           { id: 'matches' as const, label: 'Matches', icon: ListChecks },
+          { id: 'notify' as const, label: 'Notify', icon: Mail },
           { id: 'settings' as const, label: 'Settings', icon: SettingsIcon },
         ].map((t) => {
           const Icon = t.icon;
@@ -297,6 +300,15 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
         <QuadsMatchesTab event={event} entries={entries} flights={flights} matches={matches} onRefresh={fetchAll} />
       )}
       {tab === 'settings' && <QuadsSettingsTab event={event} onRefresh={fetchAll} />}
+      {tab === 'notify' && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="font-semibold text-gray-900">Notify players</h3>
+            <p className="text-sm text-gray-600">Send a status update to everyone, or a personalized nudge to only the players who still have a match ready to play. Preview and test to yourself first.</p>
+          </div>
+          <NudgePanel surface="quad" targetId={eventId} />
+        </div>
+      )}
     </div>
   );
 }

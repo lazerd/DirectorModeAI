@@ -14,7 +14,9 @@ type Status = {
   nudgeCount: number;
 };
 
-export default function NudgePanel({ surface, targetId }: { surface: 'tournament' | 'league'; targetId: string }) {
+export type CampaignSurface = 'tournament' | 'quad' | 'league' | 'jtt' | 'swim' | 'stringing' | 'courtconnect';
+
+export default function NudgePanel({ surface, targetId }: { surface: CampaignSurface; targetId: string }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -58,8 +60,8 @@ export default function NudgePanel({ surface, targetId }: { surface: 'tournament
           kind="update"
           count={status.everyoneCount}
           title="📣 Send an Update"
-          desc="One warm status email to everyone — where things stand, standings are live, play-ahead reminder."
-          confirmVerb={`Send an update to all ${status.everyoneCount} players`}
+          desc="One warm status email to everyone on the list — where things stand and what's next."
+          confirmVerb={`Send an update to all ${status.everyoneCount} recipients`}
         />
         <ActionCard
           surface={surface}
@@ -67,8 +69,8 @@ export default function NudgePanel({ surface, targetId }: { surface: 'tournament
           kind="nudge"
           count={status.nudgeCount}
           title="🎾 Send a Gentle Nudge"
-          desc="Personalized reminder to only players who still have a match ready to play — each with their opponent + contact info."
-          confirmVerb={`Send a nudge to the ${status.nudgeCount} players who owe matches`}
+          desc="Personalized reminder to only the people who still have something outstanding — with the specifics filled in for each one."
+          confirmVerb={`Send a nudge to the ${status.nudgeCount} who still have something outstanding`}
         />
       </div>
     </div>

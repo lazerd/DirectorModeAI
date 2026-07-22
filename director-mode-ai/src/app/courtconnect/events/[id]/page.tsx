@@ -7,6 +7,7 @@ import { trackEvent } from '@/lib/analytics';
 import { ArrowLeft, Calendar, MapPin, Users, Clock, Mail, UserPlus, CheckCircle, XCircle, Clock3, Send, X, MessageSquare, Shuffle, Flag } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import NudgePanel from '@/components/campaigns/NudgePanel';
 import { format } from 'date-fns';
 
 type Event = {
@@ -559,6 +560,14 @@ export default function EventDetailPage() {
           </div>
         )}
       </div>
+
+      {isCreator && (
+        <section className="mb-6">
+          <h2 className="font-semibold text-lg mb-1">Notify players</h2>
+          <p className="text-sm text-gray-500 mb-3">Send an event update to everyone on the list, or nudge just the players who haven&apos;t RSVP&apos;d yet. Preview and test to yourself first.</p>
+          <NudgePanel surface="courtconnect" targetId={eventId} />
+        </section>
+      )}
 
       {/* Players List */}
       <div className="card p-6">
