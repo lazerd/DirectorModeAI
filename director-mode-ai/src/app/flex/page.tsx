@@ -129,7 +129,11 @@ export default async function FlexPage() {
         A.gf += ga; A.ga += gb; B.gf += gb; B.ga += ga;
         if (mt.winner_side === 'a') { A.w++; B.l++; } else { B.w++; A.l++; }
       }
-      const standings = [...st.values()].sort((x, y) => y.w - x.w || (y.gf - y.ga) - (x.gf - x.ga) || y.gf - x.gf);
+      // Tiebreak by GAMES-WON PERCENTAGE (games won / games played), the
+      // standard RR tiebreaker — NOT game differential, which unfairly rewards
+      // whoever has simply played more games. Diff is only a last-resort fallback.
+      const gPct = (s: { gf: number; ga: number }) => { const t = s.gf + s.ga; return t ? s.gf / t : 0; };
+      const standings = [...st.values()].sort((x, y) => y.w - x.w || gPct(y) - gPct(x) || (y.gf - y.ga) - (x.gf - x.ga));
       return { title, matches: ms, standings };
     });
     divisions.push({ id: cfg.id, name: cfg.name, num: cfg.num, color: cfg.color, accent: cfg.accent, type: 'group', groups });

@@ -74,7 +74,7 @@ function Group({ g, accent }: { g: GroupT; accent: string }) {
           <thead>
             <tr style={{ textAlign: 'left', color: '#475569', textTransform: 'uppercase', fontFamily: "'Barlow Semi Condensed'", fontSize: 11, letterSpacing: '.06em' }}>
               <th style={{ padding: '4px 8px 4px 0', width: 26 }}>#</th><th style={{ padding: '4px 8px' }}>Player</th>
-              <th style={{ padding: '4px 8px', textAlign: 'center' }}>W-L</th><th style={{ padding: '4px 8px', textAlign: 'center' }}>Games</th>
+              <th style={{ padding: '4px 8px', textAlign: 'center' }}>W-L</th><th style={{ padding: '4px 8px', textAlign: 'center' }}>Games</th><th style={{ padding: '4px 8px', textAlign: 'center' }}>Games&nbsp;%</th>
             </tr>
           </thead>
           <tbody>
@@ -84,6 +84,7 @@ function Group({ g, accent }: { g: GroupT; accent: string }) {
                 <td style={{ padding: '6px 8px', color: '#1B2536', fontWeight: 500 }}>{s.name}</td>
                 <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#1B2536' }}>{s.w}-{s.l}</td>
                 <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569' }}>{s.gf}-{s.ga}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569', fontWeight: 600 }}>{s.gf + s.ga ? Math.round((s.gf / (s.gf + s.ga)) * 100) + '%' : '—'}</td>
               </tr>
             ))}
           </tbody>
