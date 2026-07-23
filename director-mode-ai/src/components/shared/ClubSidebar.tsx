@@ -22,7 +22,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
   Waves, GraduationCap, BarChart3, Sparkles, ExternalLink, Calendar,
-  MessagesSquare, ChevronLeft, ChevronRight, Menu, X,
+  CalendarDays, MessagesSquare, ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
 type Item = {
@@ -39,6 +39,7 @@ type Item = {
 // path prefix that should light this item up as active.
 const ITEMS: Item[] = [
   { name: 'Home', href: '/', match: '/', icon: Home, color: '#D3FB52' },
+  { name: 'CalendarMode', href: '/calendar', match: '/calendar', icon: CalendarDays, color: '#c084fc' },
   { name: 'CourtSheet', href: '/courtsheet/staff', match: '/courtsheet', icon: LayoutGrid, color: '#22d3ee' },
   { name: 'MixerMode', href: '/mixer/home', match: '/mixer/home', icon: Shuffle, color: '#fb923c' },
   { name: 'LeagueMode', href: '/mixer/leagues', match: '/mixer/leagues', icon: Calendar, color: '#34d399' },

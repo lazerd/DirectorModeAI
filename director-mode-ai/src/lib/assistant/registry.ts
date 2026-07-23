@@ -2,6 +2,7 @@ import type { BoundPack, DomainPack } from './framework';
 import { bindPack } from './framework';
 import { jttPack } from './packs/jtt';
 import { benchmarksPack } from './packs/benchmarks';
+import { calendarPack } from './packs/calendar';
 
 // The set of domain packs the assistant can draw on. To give a new page
 // conversational actions, write a pack (src/lib/assistant/packs/<domain>.ts)
@@ -9,6 +10,7 @@ import { benchmarksPack } from './packs/benchmarks';
 const PROVIDERS: DomainPack<any>[] = [
   jttPack,
   benchmarksPack,
+  calendarPack,
 ];
 
 /**

@@ -19,7 +19,11 @@ export type Feature =
   // Pro full-access CourtSheet (grid editing, AI command, signups, multi-day).
   // Free tier still sees today's sheet read-only — gated at the route/UI, not
   // by removing this from PRO_FEATURES. See /courtsheet for the implementation.
-  | 'court_sheet';
+  | 'court_sheet'
+  // Pro CalendarMode (year planning, AI year builder, calendar imports,
+  // board packet, ICS export). Free tier can browse the idea catalog and
+  // view a club's published calendar — gated at the route/UI, same as above.
+  | 'calendar_mode';
 
 export const TIER_LIMITS = {
   free: { emails: 25, sms: 0, photos_per_event: 5, vault_size: 25 },
@@ -40,6 +44,7 @@ const PRO_FEATURES: ReadonlyArray<Feature> = [
   'advanced_analytics',
   'sms',
   'court_sheet',
+  'calendar_mode',
 ];
 
 const FEATURES_BY_TIER: Record<PlanTier, ReadonlyArray<Feature>> = {
