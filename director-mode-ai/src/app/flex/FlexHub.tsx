@@ -9,6 +9,20 @@ export type Division = { id: string; name: string; num: string; color: string; a
 
 const FONT = "https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800;900&family=Barlow+Semi+Condensed:wght@600;700&display=swap";
 
+// Scores are stored player1-first (side a's games first). For display we show
+// them WINNER-first so they read naturally next to "winner def. loser" — i.e.
+// flip each set when side B won.
+function winnerFirstScore(score: string, winner: 'a' | 'b' | null): string {
+  if (!score || winner !== 'b') return score;
+  return score
+    .split(',')
+    .map((s) => {
+      const m = s.trim().match(/^(\d+)\s*-\s*(\d+)(.*)$/);
+      return m ? `${m[2]}-${m[1]}${m[3] ?? ''}` : s.trim();
+    })
+    .join(', ');
+}
+
 export default function FlexHub({ divisions }: { divisions: Division[] }) {
   return (
     <main style={{ fontFamily: "'Barlow', system-ui, sans-serif", background: '#ECEFF4', minHeight: '100vh', padding: '28px 14px 80px' }}>
@@ -74,7 +88,7 @@ function Group({ g, accent }: { g: GroupT; accent: string }) {
           <thead>
             <tr style={{ textAlign: 'left', color: '#475569', textTransform: 'uppercase', fontFamily: "'Barlow Semi Condensed'", fontSize: 11, letterSpacing: '.06em' }}>
               <th style={{ padding: '4px 8px 4px 0', width: 26 }}>#</th><th style={{ padding: '4px 8px' }}>Player</th>
-              <th style={{ padding: '4px 8px', textAlign: 'center' }}>W-L</th><th style={{ padding: '4px 8px', textAlign: 'center' }}>Games</th><th style={{ padding: '4px 8px', textAlign: 'center' }}>Games&nbsp;%</th>
+              <th style={{ padding: '4px 8px', textAlign: 'center' }}>W-L</th><th style={{ padding: '4px 8px', textAlign: 'center' }}>Games&nbsp;Won</th><th style={{ padding: '4px 8px', textAlign: 'center' }}>Games&nbsp;Lost</th><th style={{ padding: '4px 8px', textAlign: 'center' }}>Games&nbsp;%</th>
             </tr>
           </thead>
           <tbody>
@@ -83,7 +97,8 @@ function Group({ g, accent }: { g: GroupT; accent: string }) {
                 <td style={{ padding: '6px 8px 6px 0', color: '#475569', fontWeight: 700 }}>{i + 1}</td>
                 <td style={{ padding: '6px 8px', color: '#1B2536', fontWeight: 500 }}>{s.name}</td>
                 <td style={{ padding: '6px 8px', textAlign: 'center', fontWeight: 700, color: '#1B2536' }}>{s.w}-{s.l}</td>
-                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569' }}>{s.gf}-{s.ga}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569' }}>{s.gf}</td>
+                <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569' }}>{s.ga}</td>
                 <td style={{ padding: '6px 8px', textAlign: 'center', color: '#475569', fontWeight: 600 }}>{s.gf + s.ga ? Math.round((s.gf / (s.gf + s.ga)) * 100) + '%' : '—'}</td>
               </tr>
             ))}
@@ -98,7 +113,9 @@ function Group({ g, accent }: { g: GroupT; accent: string }) {
 function MatchRow({ m }: { m: MatchT }) {
   const router = useRouter();
   const [winner, setWinner] = useState<'a' | 'b' | ''>(m.winner_side || '');
-  const [score, setScore] = useState(m.score || '');
+  // Edit form is entered winner-first (matching how it's displayed + saved), so
+  // prefill the stored player1-first score flipped back to winner-first.
+  const [score, setScore] = useState(winnerFirstScore(m.score || '', m.winner_side));
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -141,7 +158,7 @@ function MatchRow({ m }: { m: MatchT }) {
           <span style={{ fontWeight: 500, color: '#1B2536' }}>{loserName}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontWeight: 700, color: '#0f172a' }}>{m.score}</span>
+          <span style={{ fontWeight: 700, color: '#0f172a' }}>{winnerFirstScore(m.score, m.winner_side)}</span>
           <button type="button" onClick={() => setEditing(true)} style={{ background: 'none', border: 'none', color: '#1d4ed8', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Edit</button>
         </div>
       </div>
@@ -210,7 +227,7 @@ function DrawCard({ m }: { m: MatchT }) {
       {row(m.a, aWon)}
       <div style={{ borderTop: '1px solid #EEF1F6' }} />
       {row(m.b, bWon)}
-      {m.score && <div style={{ padding: '2px 8px', fontSize: 11, fontWeight: 700, color: '#0f172a', background: '#F8FAFC', borderTop: '1px solid #EEF1F6' }}>{m.score}</div>}
+      {m.score && <div style={{ padding: '2px 8px', fontSize: 11, fontWeight: 700, color: '#0f172a', background: '#F8FAFC', borderTop: '1px solid #EEF1F6' }}>{winnerFirstScore(m.score, m.winner_side)}</div>}
     </div>
   );
 }

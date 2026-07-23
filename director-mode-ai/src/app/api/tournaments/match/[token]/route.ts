@@ -101,35 +101,65 @@ async function placePlayersInSlot(
   await admin.from('tournament_matches').update(update).eq('id', destMatchId);
 }
 
+/** Swap each set's two game counts ("6-3, 7-6" -> "3-6, 6-7"), preserving any
+ * trailing marker (e.g. a tiebreak note). Non-numeric sets pass through. */
+function flipSets(sets: string[]): string {
+  return sets
+    .map((s) => {
+      const m = s.match(/^(\d+)\s*-\s*(\d+)(.*)$/);
+      return m ? `${m[2]}-${m[1]}${m[3] ?? ''}` : s;
+    })
+    .join(', ');
+}
+
 /**
  * Canonicalize a score to PLAYER1-FIRST order (side a's games first, side b's
  * second) — the order every standings/draw reader assumes.
  *
- * The score is free-text and people type it however they like: coaches on the
- * public /enter page tend to type the WINNER's score first ("I won 4-2"), while
- * the admin desk tends to type it in displayed (player1-first) order. Stored
- * verbatim, those two conventions disagree and corrupt the game-differential
- * tiebreaker. For a single set the winner (known from winner_side) always holds
- * the higher game count, so we can put the games back in a→b order no matter how
- * they were typed. Idempotent: a score already in player1-first order is
- * returned unchanged. Multi-set and marker scores (e.g. "6-4, 3-6, 10-7",
- * "W/O", "RET") are left as entered — those come from the admin desk in
- * player1-first order, and per-set magnitude can't identify the match winner.
+ * Scores are entered WINNER-FIRST on the public /flex and desk score forms
+ * ("we won 6-3, 7-6"), so a side-B win is typed with side B's games first and
+ * must be reoriented before storage — otherwise the game-count columns read
+ * backwards (the 2026-07-23 "9-13 should be 13-9" bug: multi-set scores were
+ * being stored verbatim).
+ *
+ *  - Single set: the winner (known from winner_side) always holds the higher
+ *    game count, so orient by magnitude — robust no matter how it was typed.
+ *  - Multi set: per-set magnitude can't identify the winner (they may drop a
+ *    set), but they ALWAYS win the deciding (last) set. Read that set's
+ *    magnitude with winner_side to detect the current orientation, and flip
+ *    every set only when it's winner-first.
+ *
+ * Idempotent: a score already in player1-first order is returned unchanged, so
+ * it's safe to re-run on edits and on the one-time backfill. Marker scores
+ * ("W/O", "RET") and anything non-numeric are left as entered.
  */
 function canonicalScore(raw: string, winnerSide: 'a' | 'b'): string {
   const trimmed = raw.trim();
   const sets = trimmed.split(',').map((s) => s.trim()).filter(Boolean);
-  if (sets.length !== 1) return trimmed;
-  const m = sets[0].match(/^(\d+)\s*-\s*(\d+)$/);
-  if (!m) return trimmed;
-  const x = parseInt(m[1], 10);
-  const y = parseInt(m[2], 10);
-  if (x === y) return trimmed;
-  const hi = Math.max(x, y);
-  const lo = Math.min(x, y);
-  const aGames = winnerSide === 'a' ? hi : lo; // side a = player1
-  const bGames = winnerSide === 'a' ? lo : hi; // side b = player3
-  return `${aGames}-${bGames}`;
+  if (sets.length === 0) return trimmed;
+
+  if (sets.length === 1) {
+    const m = sets[0].match(/^(\d+)\s*-\s*(\d+)$/);
+    if (!m) return trimmed;
+    const x = parseInt(m[1], 10);
+    const y = parseInt(m[2], 10);
+    if (x === y) return trimmed;
+    const hi = Math.max(x, y);
+    const lo = Math.min(x, y);
+    return winnerSide === 'a' ? `${hi}-${lo}` : `${lo}-${hi}`;
+  }
+
+  // Multi-set: detect orientation from the deciding (last) set the winner took.
+  const last = sets[sets.length - 1].match(/^(\d+)\s*-\s*(\d+)/);
+  if (!last) return trimmed;
+  const lf = parseInt(last[1], 10);
+  const ls = parseInt(last[2], 10);
+  if (lf === ls) return trimmed;
+  const firstIsBigger = lf > ls;
+  // player1-first target: winner 'a' won the last set → side a's games (shown
+  // first) are the bigger of that set; winner 'b' → side a's games are smaller.
+  const alreadyPlayer1First = winnerSide === 'a' ? firstIsBigger : !firstIsBigger;
+  return alreadyPlayer1First ? sets.join(', ') : flipSets(sets);
 }
 
 export async function POST(req: Request, { params }: { params: { token: string } }) {
