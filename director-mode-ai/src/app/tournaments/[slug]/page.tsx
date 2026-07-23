@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { Trophy, Calendar, Users, AlertCircle } from 'lucide-react';
+import { Trophy, Calendar, Users, AlertCircle, ClipboardList, Network, ListOrdered } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { quadScoringLabel } from '@/lib/quads';
 import RegisterForm from './RegisterForm';
@@ -102,6 +102,34 @@ export default async function PublicTournamentLandingPage({
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+        {/* Standard action bar — present on EVERY event. Score entry, draw, and
+            standings are always one tap away for coaches/players, no login. */}
+        <div>
+          <div className="text-xs uppercase tracking-widest text-white/40 mb-2 flex items-center gap-1">
+            <ClipboardList size={12} /> Scoring &amp; results
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Link
+              href={`/tournaments/${e.slug}/enter`}
+              className="flex items-center justify-center gap-2 rounded-xl bg-[#D3FB52] text-[#002838] font-semibold py-3 px-3 hover:brightness-105 transition"
+            >
+              <ClipboardList size={17} /> Enter Scores
+            </Link>
+            <Link
+              href={`/tournaments/${e.slug}/draw`}
+              className="flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 text-white font-semibold py-3 px-3 hover:bg-white/10 transition"
+            >
+              <Network size={17} /> Draw
+            </Link>
+            <Link
+              href={`/tournaments/${e.slug}/results`}
+              className="flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 text-white font-semibold py-3 px-3 hover:bg-white/10 transition"
+            >
+              <ListOrdered size={17} /> Results
+            </Link>
+          </div>
+        </div>
+
         {isSeasonEndSlug(e.slug) && <DivisionToggle currentSlug={e.slug} />}
 
         {cancelled === '1' && (
