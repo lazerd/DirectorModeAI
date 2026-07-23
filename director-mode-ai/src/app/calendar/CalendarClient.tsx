@@ -6,6 +6,7 @@ import {
   CalendarDays, Sparkles, Plus, Upload, FileText, Loader2, X, Trophy, Users,
   AlertTriangle, CheckCircle2, ExternalLink, Trash2, Megaphone, LandPlot, Globe,
 } from 'lucide-react';
+import RemindersTab from './RemindersTab';
 
 // The year grid — CalendarMode's daily-driver surface.
 //
@@ -503,7 +504,7 @@ function ItemDrawer({
   item: Item; planId: string; onClose: () => void;
   onChange: (i: Item) => void; onRemove: () => void; onUnschedule: () => void; busy: boolean;
 }) {
-  const [tab, setTab] = useState<'why' | 'details' | 'promo'>('why');
+  const [tab, setTab] = useState<'why' | 'details' | 'reminders' | 'promo'>('why');
   const [recs, setRecs] = useState<any[] | null>(null);
   const [working, setWorking] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
@@ -603,13 +604,13 @@ function ItemDrawer({
         </div>
 
         <div className="flex gap-1 px-4 pt-3 text-sm">
-          {(['why', 'details', 'promo'] as const).map((t) => (
+          {(['why', 'details', 'reminders', 'promo'] as const).map((t) => (
             <button key={t} onClick={() => setTab(t)}
                     className="px-3 py-1 rounded-lg capitalize"
                     style={tab === t
                       ? { background: '#0d3d4d', color: '#e6f0f3' }
                       : { color: '#7f9aa5' }}>
-              {t === 'why' ? 'Why this date' : t === 'promo' ? 'Marketing' : 'Details'}
+              {t === 'why' ? 'Why this date' : t === 'promo' ? 'Marketing' : t === 'reminders' ? 'Reminders' : 'Details'}
             </button>
           ))}
         </div>
@@ -683,6 +684,8 @@ function ItemDrawer({
               <Row label="Runs" value={item.duration_minutes ? `${Math.round(item.duration_minutes / 60)} hrs` : '—'} />
             </div>
           )}
+
+          {tab === 'reminders' && <RemindersTab itemId={item.id} />}
 
           {tab === 'promo' && (
             <div className="space-y-3 text-sm">

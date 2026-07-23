@@ -45,6 +45,14 @@ export type CampaignData = {
   deadlineNote: string | null; // e.g. "Round 2 wraps up July 26"
   reminderWhen?: string | null; // human date/time for the pre-event reminder (null = no reminder)
   reminderWhere?: string | null; // optional location line for the reminder
+  /**
+   * Opening line for the reminder, when the caller wants tone-specific words.
+   * CalendarMode's cadence supplies this (see lib/calendar/reminders.ts) so a
+   * "save the date" 30 days out and a "see you at 7 tonight" don't arrive as
+   * the same generic sentence — sending identical copy four times is how a club
+   * teaches members to ignore its email. Omit for the default one-off reminder.
+   */
+  reminderLead?: string | null;
   stats: { label: string; value: string }[]; // status board for the update email
   everyone: Person[]; // broadcast recipients (empty = update disabled)
   nudge: NudgePerson[]; // only people who still owe an action
@@ -134,8 +142,11 @@ export function reminderEmailHtml(d: CampaignData, person: Person): { subject: s
           ${d.reminderWhere ? `<tr><td style="padding:8px 16px;font-weight:700;white-space:nowrap;vertical-align:top">Where</td><td style="padding:8px 16px 8px 0;color:#374151">${esc(d.reminderWhere)}</td></tr>` : ''}
         </table>`
       : '';
+  const lead = d.reminderLead
+    ? esc(d.reminderLead)
+    : `Just a friendly reminder that <strong>${esc(d.title)}</strong> is coming up${d.reminderWhen ? '' : ' soon'}. We're looking forward to seeing you on the court!`;
   const inner = `<p>Hi ${esc(person.firstName)} —</p>
-    <p>Just a friendly reminder that <strong>${esc(d.title)}</strong> is coming up${d.reminderWhen ? '' : ' soon'}. We're looking forward to seeing you on the court!</p>
+    <p>${lead}</p>
     ${details}
     ${button(url, d.liveUrlLabel || '🎾 View details')}
     <p>Questions, or need to make a change? Just reply to this email and we'll help.</p>
