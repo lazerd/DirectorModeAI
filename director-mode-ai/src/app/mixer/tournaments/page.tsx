@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Calendar, Trophy, Target, ExternalLink } from 'lucide-react';
+import { Plus, Calendar, Trophy, Target, ExternalLink, ClipboardList, ListOrdered } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format } from 'date-fns';
 import { isTournamentEvent } from '@/lib/eventCategory';
@@ -107,15 +107,34 @@ export default function TournamentModePage() {
             </span>
           )}
         </div>
-        <div className="flex items-center justify-between gap-2 text-sm text-gray-500">
-          <span className="flex items-center gap-3">
-            <span className="flex items-center gap-1"><Trophy size={14} />{event.num_courts} courts</span>
-            {event.match_format && (
-              <span className="text-xs">{FORMAT_LABELS[event.match_format] || event.match_format}</span>
-            )}
-          </span>
+        <div className="flex items-center gap-3 text-sm text-gray-500">
+          <span className="flex items-center gap-1"><Trophy size={14} />{event.num_courts} courts</span>
+          {event.match_format && (
+            <span className="text-xs">{FORMAT_LABELS[event.match_format] || event.match_format}</span>
+          )}
+        </div>
+        {/* Standard quick links on every event — score entry + results one tap away. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {event.slug && event.match_format !== 'quads' && (
+            <>
+              <Link
+                href={`/tournaments/${event.slug}/enter`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-yellow-500 text-white text-xs font-semibold hover:bg-yellow-600"
+              >
+                <ClipboardList size={14} /> Enter Scores
+              </Link>
+              <Link
+                href={`/tournaments/${event.slug}/results`}
+                target="_blank"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-300 text-gray-700 text-xs font-medium hover:bg-gray-50"
+              >
+                <ListOrdered size={14} /> Results
+              </Link>
+            </>
+          )}
           {pub && (
-            <Link href={pub} target="_blank" className="inline-flex items-center gap-1 text-xs text-yellow-700 hover:underline">
+            <Link href={pub} target="_blank" className="inline-flex items-center gap-1 text-xs text-yellow-700 hover:underline ml-auto">
               Public page <ExternalLink size={12} />
             </Link>
           )}

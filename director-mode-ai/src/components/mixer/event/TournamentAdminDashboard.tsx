@@ -30,6 +30,8 @@ import {
   Layers,
   Plus,
   CalendarClock,
+  ClipboardList,
+  ListOrdered,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { isValidQuadScore, formatTimeDisplay, resolveCourtList } from '@/lib/quads';
@@ -737,6 +739,24 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           {copied ? <Check size={12} /> : <Copy size={12} />}
           {copied ? 'Copied!' : 'Copy link'}
         </button>
+        <a
+          href={`/tournaments/${event.slug}/enter`}
+          target="_blank"
+          title="Score-entry page — share this with coaches/players to enter match scores (no login needed)"
+          className="inline-flex items-center gap-1 px-2 py-1 bg-yellow-500 hover:bg-yellow-600 text-white rounded text-xs font-semibold flex-shrink-0"
+        >
+          <ClipboardList size={12} />
+          Enter Scores
+        </a>
+        <a
+          href={`/tournaments/${event.slug}/results`}
+          target="_blank"
+          title="Public results & standings page"
+          className="inline-flex items-center gap-1 px-2 py-1 bg-white border border-orange-300 hover:bg-orange-100 text-orange-800 rounded text-xs font-semibold flex-shrink-0"
+        >
+          <ListOrdered size={12} />
+          Results
+        </a>
         <span title="Group this event with its other divisions (Gold/Silver, 12U…) so they share one tournament and the division switcher at the top">
           <HubButton
             eventId={event.id}
