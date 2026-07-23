@@ -12,6 +12,8 @@ type Status = {
   stats: { label: string; value: string }[];
   everyoneCount: number;
   nudgeCount: number;
+  reminderWhen: string | null;
+  reminderCount: number;
 };
 
 export type CampaignSurface = 'tournament' | 'quad' | 'league' | 'jtt' | 'swim' | 'stringing' | 'courtconnect';
@@ -53,6 +55,18 @@ export default function NudgePanel({ surface, targetId }: { surface: CampaignSur
         </p>
       </div>
 
+      {status.reminderWhen && (
+        <ActionCard
+          surface={surface}
+          targetId={targetId}
+          kind="reminder"
+          count={status.reminderCount}
+          title="📅 Send a Reminder"
+          desc={`A "see you soon" note to everyone with the details — ${status.reminderWhen}.`}
+          confirmVerb={`Send a reminder to all ${status.reminderCount} recipients`}
+        />
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2">
         <ActionCard
           surface={surface}
@@ -88,7 +102,7 @@ function ActionCard({
 }: {
   surface: string;
   targetId: string;
-  kind: 'update' | 'nudge';
+  kind: 'update' | 'nudge' | 'reminder';
   count: number;
   title: string;
   desc: string;

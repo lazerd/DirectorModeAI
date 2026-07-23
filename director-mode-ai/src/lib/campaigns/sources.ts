@@ -15,6 +15,20 @@ const APP = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
 const firstNameOf = (s: string) => (s || '').trim().split(/\s+/)[0] || 'there';
 const contactBits = (email?: string | null, phone?: string | null) => [email, phone].filter(Boolean).join(' · ');
 
+/** "Thursday, July 24 at 9:00 AM" for the pre-event reminder (null if no date). */
+function whenLabel(dateStr?: string | null, timeStr?: string | null): string | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr.slice(0, 10) + 'T00:00:00'); // tolerate date or full-timestamp input
+  if (Number.isNaN(d.getTime())) return null;
+  const datePart = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  if (!timeStr) return datePart;
+  const [h, m] = String(timeStr).split(':').map((x) => parseInt(x, 10));
+  if (Number.isNaN(h)) return datePart;
+  const dt = new Date(2000, 0, 1, h, Number.isNaN(m) ? 0 : m);
+  const timePart = dt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${datePart} at ${timePart}`;
+}
+
 async function branding(user: SessionUser) {
   const admin = getSupabaseAdmin();
   const { data: p } = await admin.from('profiles').select('organization_name, full_name, email').eq('id', user.id).maybeSingle();
@@ -107,10 +121,10 @@ function matchCopyFor(title: string, activityNoun: string): CampaignCopy {
 // ---------------- Tournament ----------------
 export async function tournamentCampaign(eventId: string, user: SessionUser): Promise<SourceResult> {
   const admin = getSupabaseAdmin();
-  const { data: ev } = await admin.from('events').select('id, name, slug, user_id').eq('id', eventId).maybeSingle();
+  const { data: ev } = await admin.from('events').select('id, name, slug, user_id, event_date, start_time').eq('id', eventId).maybeSingle();
   if (!ev) return { ok: false, status: 404, error: 'Event not found' };
   if ((ev as { user_id: string }).user_id !== user.id) return { ok: false, status: 403, error: 'Not authorized' };
-  const e = ev as { name: string; slug: string };
+  const e = ev as { name: string; slug: string; event_date: string | null; start_time: string | null };
 
   const { data: entryRows } = await admin
     .from('tournament_entries')
@@ -153,6 +167,7 @@ export async function tournamentCampaign(eventId: string, user: SessionUser): Pr
       liveUrl: `${APP}/tournaments/${e.slug}`,
       liveUrlLabel: '🎾 View standings & enter scores',
       deadlineNote: null,
+      reminderWhen: whenLabel(e.event_date, e.start_time),
       stats: [
         { label: 'Matches played', value: `${a.matchesCompleted} of ${a.matchesTotal}` },
         { label: 'Ready to play now', value: `${a.playable}` },
@@ -168,10 +183,10 @@ export async function tournamentCampaign(eventId: string, user: SessionUser): Pr
 // ---------------- Quad ----------------
 export async function quadCampaign(eventId: string, user: SessionUser): Promise<SourceResult> {
   const admin = getSupabaseAdmin();
-  const { data: ev } = await admin.from('events').select('id, name, slug, user_id').eq('id', eventId).maybeSingle();
+  const { data: ev } = await admin.from('events').select('id, name, slug, user_id, event_date, start_time').eq('id', eventId).maybeSingle();
   if (!ev) return { ok: false, status: 404, error: 'Event not found' };
   if ((ev as { user_id: string }).user_id !== user.id) return { ok: false, status: 403, error: 'Not authorized' };
-  const e = ev as { name: string; slug: string };
+  const e = ev as { name: string; slug: string; event_date: string | null; start_time: string | null };
 
   const { data: flightRows } = await admin.from('quad_flights').select('id').eq('event_id', eventId);
   const flightIds = ((flightRows as Array<{ id: string }>) || []).map((f) => f.id);
@@ -217,6 +232,7 @@ export async function quadCampaign(eventId: string, user: SessionUser): Promise<
       liveUrl: `${APP}/quads/${e.slug}/results`,
       liveUrlLabel: '🎾 View standings & enter scores',
       deadlineNote: null,
+      reminderWhen: whenLabel(e.event_date, e.start_time),
       stats: [
         { label: 'Matches played', value: `${a.matchesCompleted} of ${a.matchesTotal}` },
         { label: 'Ready to play now', value: `${a.playable}` },
@@ -640,6 +656,7 @@ export async function courtconnectCampaign(eventId: string, user: SessionUser): 
       liveUrl: `${APP}/courtconnect/events/${eventId}`,
       liveUrlLabel: '✅ RSVP now',
       deadlineNote: null,
+      reminderWhen: whenLabel(e.event_date, null),
       stats: [
         { label: 'On the list', value: `${everyoneMap.size}` },
         { label: 'Awaiting RSVP', value: `${nudgeMap.size}` },

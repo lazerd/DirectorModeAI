@@ -18,7 +18,7 @@ const RESEND_DOMAIN = 'noreply@mail.coachmode.ai'; // verified sending domain
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type SendMode = 'preview' | 'test' | 'live';
-export type CampaignKind = 'update' | 'nudge';
+export type CampaignKind = 'update' | 'nudge' | 'reminder';
 
 export type Person = { email: string; firstName: string; ctaUrl?: string };
 export type Outstanding = { label: string; contact: string; sub?: string };
@@ -31,6 +31,7 @@ export type CampaignCopy = {
   nudgeLead: (n: number, playedLine: string) => string; // per-recipient nudge sentence (HTML)
   nudgeTip?: (n: number) => string; // optional 💡 line
   reachOutLabel?: string; // default "Reach out:"; per-item, only shown when contact present
+  reminderSubject?: string; // optional override for the pre-event reminder subject
 };
 
 export type CampaignData = {
@@ -42,6 +43,8 @@ export type CampaignData = {
   liveUrl: string; // default public standings/results page ('' = no button)
   liveUrlLabel: string; // CTA button label
   deadlineNote: string | null; // e.g. "Round 2 wraps up July 26"
+  reminderWhen?: string | null; // human date/time for the pre-event reminder (null = no reminder)
+  reminderWhere?: string | null; // optional location line for the reminder
   stats: { label: string; value: string }[]; // status board for the update email
   everyone: Person[]; // broadcast recipients (empty = update disabled)
   nudge: NudgePerson[]; // only people who still owe an action
@@ -121,6 +124,26 @@ export function nudgeEmailHtml(d: CampaignData, p: NudgePerson): { subject: stri
   return { subject: d.copy.nudgeSubject, html: shell(d.clubName, inner) };
 }
 
+/** Pre-event "see you soon" reminder — goes to everyone on the list. */
+export function reminderEmailHtml(d: CampaignData, person: Person): { subject: string; html: string } {
+  const url = person.ctaUrl || d.liveUrl;
+  const details =
+    d.reminderWhen || d.reminderWhere
+      ? `<table style="border-collapse:collapse;margin:14px 0;background:#eff4fc;border:1px solid #cfe0fc;border-radius:10px">
+          ${d.reminderWhen ? `<tr><td style="padding:8px 16px;font-weight:700;white-space:nowrap">When</td><td style="padding:8px 16px 8px 0;color:#374151">${esc(d.reminderWhen)}</td></tr>` : ''}
+          ${d.reminderWhere ? `<tr><td style="padding:8px 16px;font-weight:700;white-space:nowrap;vertical-align:top">Where</td><td style="padding:8px 16px 8px 0;color:#374151">${esc(d.reminderWhere)}</td></tr>` : ''}
+        </table>`
+      : '';
+  const inner = `<p>Hi ${esc(person.firstName)} —</p>
+    <p>Just a friendly reminder that <strong>${esc(d.title)}</strong> is coming up${d.reminderWhen ? '' : ' soon'}. We're looking forward to seeing you on the court!</p>
+    ${details}
+    ${button(url, d.liveUrlLabel || '🎾 View details')}
+    <p>Questions, or need to make a change? Just reply to this email and we'll help.</p>
+    <p style="margin:2px 0 0">— ${esc(d.senderName)}</p>`;
+  const subject = d.copy.reminderSubject || `Reminder: ${d.title} is coming up 🎾`;
+  return { subject, html: shell(d.clubName, inner) };
+}
+
 export type CampaignResult =
   | { mode: 'preview'; kind: CampaignKind; count: number; recipients: unknown[]; subject?: string; sampleHtml?: string; sampleFor?: string }
   | { mode: 'test'; kind: CampaignKind; to: string; sent: boolean; sampleFor?: string; note?: string }
@@ -129,8 +152,13 @@ export type CampaignResult =
 /** Preview / test / live for a resolved campaign. */
 export async function runCampaign(d: CampaignData, kind: CampaignKind, mode: SendMode): Promise<CampaignResult> {
   const build = (person: Person | NudgePerson) =>
-    kind === 'update' ? updateEmailHtml(d, person) : nudgeEmailHtml(d, person as NudgePerson);
-  const list: (Person | NudgePerson)[] = kind === 'update' ? d.everyone : d.nudge;
+    kind === 'update'
+      ? updateEmailHtml(d, person)
+      : kind === 'reminder'
+        ? reminderEmailHtml(d, person)
+        : nudgeEmailHtml(d, person as NudgePerson);
+  // 'update' and 'reminder' both go to everyone; 'nudge' only to those who owe.
+  const list: (Person | NudgePerson)[] = kind === 'nudge' ? d.nudge : d.everyone;
   const from = fromLine(d.clubName);
 
   if (mode === 'preview') {
@@ -140,9 +168,9 @@ export async function runCampaign(d: CampaignData, kind: CampaignKind, mode: Sen
       kind,
       count: list.length,
       recipients:
-        kind === 'update'
-          ? (list as Person[]).map((r) => r.email)
-          : (list as NudgePerson[]).map((r) => ({ email: r.email, outstanding: r.outstanding.length })),
+        kind === 'nudge'
+          ? (list as NudgePerson[]).map((r) => ({ email: r.email, outstanding: r.outstanding.length }))
+          : (list as Person[]).map((r) => r.email),
       subject: sample?.subject,
       sampleHtml: sample?.html,
       sampleFor: list[0]?.email,

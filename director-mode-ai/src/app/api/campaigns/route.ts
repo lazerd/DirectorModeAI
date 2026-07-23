@@ -29,6 +29,8 @@ export async function GET(req: NextRequest) {
     stats: d.stats,
     everyoneCount: d.everyone.length,
     nudgeCount: d.nudge.length,
+    reminderWhen: d.reminderWhen ?? null,
+    reminderCount: d.reminderWhen ? d.everyone.length : 0,
   });
 }
 
@@ -44,7 +46,8 @@ export async function POST(req: NextRequest) {
     mode?: SendMode;
   };
   const { surface = '', targetId = '', kind, mode } = body;
-  if (kind !== 'update' && kind !== 'nudge') return NextResponse.json({ error: 'bad kind' }, { status: 400 });
+  if (kind !== 'update' && kind !== 'nudge' && kind !== 'reminder')
+    return NextResponse.json({ error: 'bad kind' }, { status: 400 });
   if (mode !== 'preview' && mode !== 'test' && mode !== 'live') return NextResponse.json({ error: 'bad mode' }, { status: 400 });
 
   const r = await resolveCampaign(surface, targetId, { id: user.id, email: user.email });
