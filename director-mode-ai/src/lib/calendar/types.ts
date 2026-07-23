@@ -65,12 +65,20 @@ export type ItemStatus = 'idea' | 'scheduled' | 'promoted' | 'done' | 'dropped';
  */
 export type ConstraintImpact = 'blocking' | 'heavy' | 'light' | 'favorable';
 
+/**
+ * Where a constraint came from. Doubles as the "what kind of calendar is this"
+ * picker on the importer — see CALENDAR_KINDS in classify.ts, which keys its
+ * vocabularies off these same values. Kept in sync with the CHECK constraint
+ * in supabase/migrations/calendar_constraint_sources.sql.
+ */
 export type ConstraintSource =
-  | 'school'
-  | 'club'
+  | 'school'    // district / school calendar
+  | 'swim'      // swim team meets, time trials, championships
+  | 'usta'      // USTA / JTT / interclub league play
+  | 'club'      // the club's own events: golf, dining, socials
+  | 'facility'  // closures, resurfacing, maintenance, private rentals
   | 'holiday'
-  | 'usta'
-  | 'clubmode'
+  | 'clubmode'  // swept from ClubMode itself
   | 'manual';
 
 /** Something that blocks or shades a range of dates. */

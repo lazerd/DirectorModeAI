@@ -6,9 +6,11 @@ import {
   ArrowLeft, Upload, FileText, Image as ImageIcon, Loader2, Check, X, Trash2,
   AlertTriangle, CheckCircle2, RefreshCw,
 } from 'lucide-react';
+import { CALENDAR_KINDS, type CalendarKind } from '@/lib/calendar/classify';
 
-// Feed the planner the real world: school calendars, club calendars, and the
-// club's own ClubMode events.
+// Feed the planner the real world: the school district's calendar, the swim
+// team's meet schedule, the USTA league grid, the golf and dining calendar,
+// the facility's closure list — and the club's own ClubMode events.
 //
 // Every path is two-step — parse, review, then commit. Nothing is written until
 // the director has looked at it, because an automatic import that misreads a
@@ -45,7 +47,7 @@ export default function ImportPage() {
   const [label, setLabel] = useState('');
   const [kind, setKind] = useState<string>('ics');
   const [filename, setFilename] = useState<string | null>(null);
-  const [source, setSource] = useState<'school' | 'club' | 'usta' | 'clubmode'>('school');
+  const [source, setSource] = useState<CalendarKind>('school');
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -87,7 +89,7 @@ export default function ImportPage() {
         setKind(file.type === 'application/pdf' ? 'pdf' : 'image');
         const res = await fetch('/api/calendar/import/vision', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mediaType: file.type, data: b64, year }),
+          body: JSON.stringify({ mediaType: file.type, data: b64, year, kind: source }),
         });
         const json = await res.json();
         if (!res.ok) throw new Error(json.error);
@@ -184,6 +186,33 @@ export default function ImportPage() {
 
         {!proposed && (
           <>
+            {/* Which calendar is this? Naming the type is what lets the reader
+                pull "Divisionals" off a swim grid instead of ignoring it, and
+                what stops a league match being filed as a light note. */}
+            <div>
+              <div className="text-sm font-medium mb-1">What are you uploading?</div>
+              <p className="text-xs opacity-60 mb-2">
+                Each kind of calendar speaks its own language. Telling us which one you have is the
+                difference between reading &ldquo;Divisionals&rdquo; as a club-wide blackout and filing it as a note.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {CALENDAR_KINDS.map((k) => (
+                  <button key={k.value} onClick={() => setSource(k.value)}
+                          className="text-left p-2.5 rounded-lg border"
+                          style={source === k.value
+                            ? { borderColor: '#c084fc', background: '#c084fc12' }
+                            : { borderColor: '#0d3d4d', background: '#002838' }}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm font-medium">{k.label}</span>
+                      {source === k.value && <Check className="w-3.5 h-3.5" style={{ color: '#c084fc' }} />}
+                    </div>
+                    <div className="text-[11px] opacity-60 mt-0.5">{k.hint}</div>
+                    <div className="text-[11px] opacity-40 mt-0.5 italic">e.g. {k.examples}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 onClick={() => fileRef.current?.click()}
@@ -196,8 +225,8 @@ export default function ImportPage() {
                   <span className="font-semibold">Upload a calendar</span>
                 </div>
                 <p className="text-sm opacity-70">
-                  A district <code>.ics</code> export, a CSV, or a photo or PDF of the school calendar on the fridge.
-                  Claude reads the picture ones.
+                  An <code>.ics</code> export, a CSV or spreadsheet paste, or a photo or PDF of the schedule
+                  stuck to the fridge. Claude reads the picture ones.
                 </p>
                 <div className="flex gap-2 mt-2 text-[11px] opacity-50">
                   <span className="flex items-center gap-1"><FileText className="w-3 h-3" /> .ics .csv</span>
