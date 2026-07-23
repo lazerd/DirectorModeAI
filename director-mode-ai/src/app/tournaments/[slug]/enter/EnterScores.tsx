@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 
-type Row = {
+export type Row = {
   token: string;
   a: string;
   b: string;
@@ -10,14 +10,33 @@ type Row = {
   status: string;
 };
 
+export type EnterGroup = {
+  key: string;
+  title: string;
+  description: string;
+  matches: Row[];
+};
+
+// Scores are stored player1-first; show them winner-first so they read naturally.
+function winnerFirstScore(score: string, winner: 'a' | 'b' | null): string {
+  if (!score || winner !== 'b') return score;
+  return score
+    .split(',')
+    .map((s) => {
+      const m = s.trim().match(/^(\d+)\s*-\s*(\d+)(.*)$/);
+      return m ? `${m[2]}-${m[1]}${m[3] ?? ''}` : s.trim();
+    })
+    .join(', ');
+}
+
 export default function EnterScores({
   eventName,
   notes,
-  matches,
+  groups,
 }: {
   eventName: string;
   notes: string;
-  matches: Row[];
+  groups: EnterGroup[];
 }) {
   return (
     <main
@@ -31,8 +50,9 @@ export default function EnterScores({
     >
       <h1 style={{ fontSize: 26, margin: '0 0 6px', color: '#0f172a' }}>{eventName}</h1>
       <p style={{ color: '#6b7280', margin: '0 0 10px', lineHeight: 1.5 }}>
-        Enter your match scores below. Find your match, tap the <strong>winner</strong>, type the{' '}
-        <strong>score</strong>, add your name, and hit Submit. Already played? You can update a score anytime.
+        Find your match, tap the <strong>winner</strong>, type the <strong>score</strong>, add your
+        name, and hit Submit. Rounds are grouped in order — later rounds fill in as earlier results
+        come in. Already played? You can update a score anytime.
       </p>
       {notes && (
         <p
@@ -48,10 +68,43 @@ export default function EnterScores({
           <strong>Scoring:</strong> {notes}
         </p>
       )}
-      <div style={{ marginTop: 16 }}>
-        {matches.map((m) => (
-          <MatchCard key={m.token} m={m} />
-        ))}
+      <div style={{ marginTop: 20 }}>
+        {groups.map((g) => {
+          const ready = g.matches.filter((m) => m.a !== 'TBD' && m.b !== 'TBD');
+          const allTBD = ready.length === 0;
+          return (
+            <section key={g.key} style={{ marginBottom: 30 }}>
+              <div
+                style={{
+                  borderBottom: '2px solid #0f172a',
+                  paddingBottom: 6,
+                  marginBottom: 12,
+                }}
+              >
+                <h2 style={{ fontSize: 18, margin: 0, color: '#0f172a' }}>{g.title}</h2>
+                {g.description && (
+                  <div style={{ fontSize: 13, color: '#6b7280', marginTop: 2 }}>{g.description}</div>
+                )}
+              </div>
+              {allTBD ? (
+                <div
+                  style={{
+                    border: '1px dashed #d1d5db',
+                    borderRadius: 10,
+                    padding: '12px 14px',
+                    color: '#9ca3af',
+                    fontSize: 14,
+                  }}
+                >
+                  Waiting on the previous round — these matchups fill in automatically once those
+                  scores are entered.
+                </div>
+              ) : (
+                g.matches.map((m, i) => <MatchCard key={m.token || `${g.key}-${i}`} m={m} />)
+              )}
+            </section>
+          );
+        })}
       </div>
     </main>
   );
@@ -59,7 +112,7 @@ export default function EnterScores({
 
 function MatchCard({ m }: { m: Row }) {
   const [winner, setWinner] = useState<'a' | 'b' | ''>(m.winner_side || '');
-  const [score, setScore] = useState(m.score || '');
+  const [score, setScore] = useState(winnerFirstScore(m.score || '', m.winner_side));
   const [name, setName] = useState('');
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>(
     m.status === 'completed' ? 'saved' : 'idle'
@@ -106,6 +159,23 @@ function MatchCard({ m }: { m: Row }) {
       {label}
     </button>
   );
+
+  if (m.a === 'TBD' || m.b === 'TBD') {
+    return (
+      <div
+        style={{
+          border: '1px dashed #d1d5db',
+          borderRadius: 12,
+          padding: '11px 14px',
+          marginBottom: 12,
+          color: '#9ca3af',
+          fontSize: 14,
+        }}
+      >
+        {m.a} <span style={{ fontWeight: 700 }}>vs</span> {m.b} — awaiting an earlier result
+      </div>
+    );
+  }
 
   return (
     <div
