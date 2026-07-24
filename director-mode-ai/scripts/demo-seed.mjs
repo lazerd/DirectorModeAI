@@ -30,6 +30,8 @@ import { readFileSync } from 'fs';
 const CLUB_NAME = 'Meridian Racquet Club';   // ← rename to the prospect's club
 const DEMO_EMAIL = 'demo@coachmode.ai';
 const DEMO_PASSWORD = 'ClubModeDemo!2027';   // throwaway pitch account, no real data
+const MEMBER_EMAIL = 'member@coachmode.ai';  // log in as this to show the MEMBER side
+const MEMBER_PASSWORD = 'ClubModeMember!2027';
 const CLUB_TZ = 'America/Los_Angeles';
 const TZ_OFFSET = '-07:00';                  // PDT; switch to -08:00 in winter
 
@@ -127,6 +129,24 @@ async function main() {
     console.log('· club ready →', CLUB_NAME);
   }
 
+  // ---- a demo MEMBER, to show the member-facing side of the product ----
+  {
+    const { data: list } = await db.auth.admin.listUsers({ page: 1, perPage: 200 });
+    let memberId = list?.users?.find((u) => u.email === MEMBER_EMAIL)?.id;
+    if (memberId) {
+      await db.auth.admin.updateUserById(memberId, { password: MEMBER_PASSWORD, email_confirm: true });
+    } else {
+      const { data, error } = await db.auth.admin.createUser({
+        email: MEMBER_EMAIL, password: MEMBER_PASSWORD, email_confirm: true,
+      });
+      if (error) throw error;
+      memberId = data.user.id;
+    }
+    await db.from('profiles').update({ full_name: 'Jordan Reeves' }).eq('id', memberId);
+    await db.from('cc_club_members').upsert({ club_id: clubId, user_id: memberId, role: 'member' }, { onConflict: 'club_id,user_id' });
+    console.log('· demo member →', MEMBER_EMAIL);
+  }
+
   // ---- RESET: wipe prior demo data (children first) ----
   {
     const { data: evs } = await db.from('events').select('id').eq('club_id', clubId);
@@ -170,9 +190,10 @@ async function main() {
   await seedCourtSheet(clubId, userId, courtIds);
   await seedCalendar(clubId, userId);
 
-  console.log(`\n✅ Demo ready. Log in for the pitch:\n`);
-  console.log(`     ${env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai'}/login`);
-  console.log(`     ${DEMO_EMAIL}  /  ${DEMO_PASSWORD}\n`);
+  const base = env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+  console.log(`\n✅ Demo ready. Log in for the pitch at ${base}/login\n`);
+  console.log(`     DIRECTOR view:  ${DEMO_EMAIL}  /  ${DEMO_PASSWORD}`);
+  console.log(`     MEMBER view:    ${MEMBER_EMAIL}  /  ${MEMBER_PASSWORD}  (lands on /member)\n`);
   console.log('   Re-run this script anytime to reset everything to mid-flight.\n');
 }
 

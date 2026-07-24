@@ -98,7 +98,7 @@ export default function ClubSidebar() {
         if (mem && (mem as any).role === 'member') {
           const slug = (mem as any).cc_clubs?.slug as string | undefined;
           setMemberNav([
-            { name: 'Home', href: '/', match: '/', icon: Home, color: '#D3FB52' },
+            { name: 'My Club', href: '/member', match: '/member', icon: Home, color: '#22d3ee' },
             ...(slug ? [{ name: 'Book a Court', href: `/courtsheet/${slug}`, match: '/courtsheet', icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
             { name: 'My Account', href: '/client/dashboard', match: '/client/dashboard', icon: Calendar, color: '#60a5fa' },
             { name: 'Find a Coach', href: '/find-coach', match: '/find-coach', icon: GraduationCap, color: '#a78bfa' },

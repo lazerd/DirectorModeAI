@@ -52,6 +52,7 @@ export async function middleware(request: NextRequest) {
     // the route distinguishes staff vs public surface).
     '/courtsheet/staff',
     '/calendar',
+    '/member',
   ];
   const isProtectedPath = protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path)
@@ -97,7 +98,7 @@ export async function middleware(request: NextRequest) {
         // left alone (they become a director on first use).
         if (anyMembership) {
           const url = request.nextUrl.clone();
-          url.pathname = '/client/dashboard';
+          url.pathname = '/member';
           url.search = '';
           return NextResponse.redirect(url);
         }
