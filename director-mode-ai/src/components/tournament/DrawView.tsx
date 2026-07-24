@@ -11,6 +11,7 @@
 
 import { isCompassFormat, buildCompassGroups } from '@/lib/compassLayout';
 import { buildRoundRobinGrid, type RRCell } from '@/lib/roundRobinGrid';
+import PanScroll from './PanScroll';
 
 type Entry = {
   id: string;
@@ -108,7 +109,7 @@ export default function DrawView({
                 {flight.complete ? 'complete' : 'in progress'}
               </span>
             </div>
-            <div className="overflow-x-auto rounded-lg border border-gray-200 print:overflow-visible print:border-gray-400">
+            <PanScroll maxHeightClass="max-h-none" className="rounded-lg border border-gray-200 print:border-gray-400">
               <table className="border-collapse text-sm w-full">
                 <thead>
                   <tr className="bg-gray-50 print:bg-gray-100">
@@ -173,7 +174,7 @@ export default function DrawView({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </PanScroll>
           </section>
         ))}
 
@@ -214,6 +215,7 @@ export default function DrawView({
           championship, <b>lose and you head West</b>, fanning into North, South and the corner
           playoffs so <b>every player earns a final placement</b>.
         </p>
+        <p className="text-xs text-gray-400 mb-2 print:hidden">↔ Click and drag (or scroll) to pan across each draw.</p>
         {compassGroups.map((g) => (
           <section
             key={g.id}
@@ -230,8 +232,8 @@ export default function DrawView({
               </span>
             </div>
             <p className="text-sm text-gray-600 mb-3 print:text-xs">{g.subtitle}</p>
-            <div className="overflow-auto max-h-[80vh] overscroll-contain rounded-lg border border-gray-100 print:overflow-visible print:max-h-none print:border-0">
-              <div className="flex gap-6 min-w-max items-stretch print:gap-4">
+            <PanScroll className="rounded-lg border border-gray-100 print:border-0">
+              <div className="flex gap-6 min-w-max items-stretch p-1 print:gap-4 print:p-0">
                 {g.stages.map((st) => {
                   const stageMatches = matches
                     .filter((m) => m.bracket === st.bracket && m.round === st.round)
@@ -253,7 +255,7 @@ export default function DrawView({
                   );
                 })}
               </div>
-            </div>
+            </PanScroll>
           </section>
         ))}
       </div>
@@ -266,6 +268,7 @@ export default function DrawView({
   );
   return (
     <div className="space-y-8 print:space-y-4">
+      <p className="text-xs text-gray-400 print:hidden">↔ Click and drag (or scroll) to pan across the bracket.</p>
       {brackets.map((bracket) => {
         const bMatches = matches
           .filter((m) => m.bracket === bracket)
@@ -277,8 +280,8 @@ export default function DrawView({
             <h2 className="text-xl font-bold mb-3 print:text-base">
               {bracket === 'main' ? 'Main Draw' : 'Consolation Draw'}
             </h2>
-            <div className="overflow-auto max-h-[80vh] overscroll-contain rounded-lg border border-gray-100 print:overflow-visible print:max-h-none print:border-0">
-              <div className="flex gap-6 min-w-max items-stretch print:gap-4">
+            <PanScroll className="rounded-lg border border-gray-100 print:border-0">
+              <div className="flex gap-6 min-w-max items-stretch p-1 print:gap-4 print:p-0">
                 {rounds.map((round, roundIdx) => {
                   const roundMatches = bMatches.filter((m) => m.round === round);
                   return (
@@ -295,7 +298,7 @@ export default function DrawView({
                   );
                 })}
               </div>
-            </div>
+            </PanScroll>
           </section>
         );
       })}

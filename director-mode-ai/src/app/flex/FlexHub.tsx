@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import PanScroll from '@/components/tournament/PanScroll';
 
 export type MatchT = { token: string; a: string; b: string; score: string; winner_side: 'a' | 'b' | null; status: string };
 export type StandingT = { name: string; w: number; l: number; gf: number; ga: number };
@@ -242,7 +243,8 @@ function DirectionRow({ dir, stages }: { dir: Dir; stages: Record<string, MatchT
         <span style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 18, textTransform: 'uppercase', color: '#111726' }}>{dir.title}</span>
         <span style={{ fontSize: 12, color: '#475569' }}>{dir.sub}</span>
       </div>
-      <div style={{ display: 'flex', gap: 28, overflowX: 'auto', paddingBottom: 6, alignItems: 'stretch' }}>
+      <PanScroll maxHeightClass="max-h-none">
+        <div style={{ display: 'flex', gap: 28, paddingBottom: 6, alignItems: 'stretch', minWidth: 'max-content' }}>
         {cols.map((c) => (
           <div key={c.stage} style={{ display: 'flex', flexDirection: 'column', minWidth: 150 }}>
             <div style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.08em', textTransform: 'uppercase', color: '#475569', marginBottom: 6, textAlign: 'center' }}>{c.label}</div>
@@ -251,7 +253,8 @@ function DirectionRow({ dir, stages }: { dir: Dir; stages: Record<string, MatchT
             </div>
           </div>
         ))}
-      </div>
+        </div>
+      </PanScroll>
     </div>
   );
 }
