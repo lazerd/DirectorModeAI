@@ -246,22 +246,51 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
       .eq("id", event.id);
   };
 
-  const setMode = (mode: 'singles' | 'doubles' | 'mixed') => {
-    let newConfig: CourtConfig;
-    if (mode === 'singles') {
-      newConfig = { mode, singlesCourts: event.num_courts, doublesCourts: 0 };
-    } else if (mode === 'doubles') {
-      newConfig = { mode, singlesCourts: 0, doublesCourts: event.num_courts };
-    } else {
-      newConfig = { mode, singlesCourts: Math.ceil(event.num_courts / 2), doublesCourts: Math.floor(event.num_courts / 2) };
-    }
-    saveCourtConfig(newConfig);
+  /** Mode follows from the counts — it is a label, never a constraint. */
+  const modeFor = (singles: number, doubles: number): 'singles' | 'doubles' | 'mixed' => {
+    if (singles > 0 && doubles > 0) return 'mixed';
+    if (doubles > 0) return 'doubles';
+    return 'singles';
   };
 
-  const setDoublesCourts = (doubles: number) => {
-    const singles = event.num_courts - doubles;
-    saveCourtConfig({ mode: 'mixed', singlesCourts: singles, doublesCourts: doubles });
+  const setMode = (mode: 'singles' | 'doubles' | 'mixed') => {
+    // Presets only. They seed sensible counts; the two inputs below stay
+    // authoritative, so a preset can always be overridden.
+    let singles: number;
+    let doubles: number;
+    if (mode === 'singles') {
+      singles = event.num_courts; doubles = 0;
+    } else if (mode === 'doubles') {
+      // Doubles takes 4 players a court, so default to what the field can
+      // actually fill rather than every court on the property.
+      doubles = Math.max(1, Math.min(event.num_courts, Math.floor(players.length / 4) || event.num_courts));
+      singles = 0;
+    } else {
+      singles = Math.ceil(event.num_courts / 2); doubles = Math.floor(event.num_courts / 2);
+    }
+    saveCourtConfig({ mode: modeFor(singles, doubles), singlesCourts: singles, doublesCourts: doubles });
   };
+
+  /**
+   * Singles and doubles counts are set INDEPENDENTLY.
+   *
+   * They used to be two ends of one slider (singles = num_courts - doubles),
+   * which made perfectly ordinary setups unreachable: 12 players wants 3
+   * doubles courts and no singles, and the slider could only offer 3 doubles
+   * + 1 singles. Court counts are a decision the director makes on the spot;
+   * the app's job is to record it, not to arithmetic it away.
+   */
+  const setSinglesCourts = (n: number) => {
+    const singles = clampCourts(n);
+    saveCourtConfig({ mode: modeFor(singles, courtConfig.doublesCourts), singlesCourts: singles, doublesCourts: courtConfig.doublesCourts });
+  };
+
+  const setDoublesCourts = (n: number) => {
+    const doubles = clampCourts(n);
+    saveCourtConfig({ mode: modeFor(courtConfig.singlesCourts, doubles), singlesCourts: courtConfig.singlesCourts, doublesCourts: doubles });
+  };
+
+  const clampCourts = (n: number) => (Number.isFinite(n) ? Math.max(0, Math.min(30, Math.round(n))) : 0);
 
   const fetchTeams = async () => {
     const { data, error } = await supabase
@@ -1081,27 +1110,57 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
             </button>
           </div>
 
-          {/* Mixed Mode Slider */}
-          {courtConfig.mode === 'mixed' && event.num_courts > 1 && (
-            <div className="p-4 bg-white rounded-xl border-2 border-gray-200">
-              <div className="flex justify-between text-sm mb-2" style={{ color: "#111827" }}>
-                <span>Singles Courts: {courtConfig.singlesCourts}</span>
-                <span>Doubles Courts: {courtConfig.doublesCourts}</span>
-              </div>
-              <input
-                type="range"
-                min={1}
-                max={event.num_courts - 1}
+          {/* Court counts — always editable, set independently. */}
+          <div className="p-4 bg-white rounded-xl border-2 border-gray-200">
+            <div className="grid grid-cols-2 gap-4">
+              <CourtStepper
+                label="Doubles courts"
+                sub={`${courtConfig.doublesCourts * 4} players`}
                 value={courtConfig.doublesCourts}
-                onChange={(e) => setDoublesCourts(parseInt(e.target.value))}
-                className="w-full"
+                onChange={setDoublesCourts}
               />
-              <div className="flex justify-between text-xs text-gray-400 mt-1">
-                <span>More Singles</span>
-                <span>More Doubles</span>
-              </div>
+              <CourtStepper
+                label="Singles courts"
+                sub={`${courtConfig.singlesCourts * 2} players`}
+                value={courtConfig.singlesCourts}
+                onChange={setSinglesCourts}
+              />
             </div>
-          )}
+
+            <div className="mt-3 text-sm text-center" style={{ color: "#111827" }}>
+              Seats <strong>{courtConfig.doublesCourts * 4 + courtConfig.singlesCourts * 2}</strong> players
+              on <strong>{courtConfig.doublesCourts + courtConfig.singlesCourts}</strong> courts
+              {players.length > 0 && (
+                <span className="text-gray-500"> · {players.length} checked in</span>
+              )}
+            </div>
+
+            {players.length > 0 && (() => {
+              const seats = courtConfig.doublesCourts * 4 + courtConfig.singlesCourts * 2;
+              if (seats === players.length) {
+                return <p className="mt-1 text-xs text-center text-green-600 font-medium">Exact fit.</p>;
+              }
+              if (seats > players.length) {
+                return (
+                  <p className="mt-1 text-xs text-center text-amber-600">
+                    {seats - players.length} empty {seats - players.length === 1 ? 'spot' : 'spots'}.
+                  </p>
+                );
+              }
+              return (
+                <p className="mt-1 text-xs text-center text-amber-600">
+                  {players.length - seats} {players.length - seats === 1 ? 'player sits' : 'players sit'} out each round.
+                </p>
+              );
+            })()}
+
+            {courtConfig.doublesCourts + courtConfig.singlesCourts > event.num_courts && (
+              <p className="mt-2 text-xs text-center text-amber-600">
+                That&apos;s more than the {event.num_courts} courts on the event — fine if you have them,
+                just checking.
+              </p>
+            )}
+          </div>
 
           {/* Stats */}
           <div className="grid grid-cols-3 gap-3 text-center">
@@ -1342,6 +1401,56 @@ export default function TeamBattleTab({ event, onSwitchToRounds }: TeamBattleTab
           })()}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+/**
+ * A big, thumb-sized +/- with a typable number in the middle.
+ *
+ * This gets used courtside on a phone, mid-event, often one-handed — so the
+ * targets are large and the number is directly editable rather than something
+ * you have to nudge to.
+ */
+function CourtStepper({
+  label, sub, value, onChange,
+}: { label: string; sub: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <div className="text-center">
+      <p className="text-sm font-semibold mb-2" style={{ color: "#111827" }}>{label}</p>
+      <div className="flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => onChange(value - 1)}
+          disabled={value <= 0}
+          aria-label={`One fewer ${label}`}
+          className="w-11 h-11 rounded-xl border-2 border-gray-300 bg-white text-2xl leading-none font-bold disabled:opacity-30 active:bg-gray-100"
+          style={{ color: "#111827" }}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={30}
+          value={value}
+          onChange={(e) => onChange(parseInt(e.target.value, 10))}
+          onFocus={(e) => e.currentTarget.select()}
+          className="w-16 h-11 text-center text-2xl font-bold rounded-xl border-2 border-gray-300 bg-white"
+          style={{ color: "#111827" }}
+        />
+        <button
+          type="button"
+          onClick={() => onChange(value + 1)}
+          aria-label={`One more ${label}`}
+          className="w-11 h-11 rounded-xl border-2 border-gray-300 bg-white text-2xl leading-none font-bold active:bg-gray-100"
+          style={{ color: "#111827" }}
+        >
+          +
+        </button>
+      </div>
+      <p className="text-xs text-gray-500 mt-1">{sub}</p>
     </div>
   );
 }
