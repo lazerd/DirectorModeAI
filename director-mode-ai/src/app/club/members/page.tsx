@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { Users, Copy, Check, Loader2, Crown, GraduationCap, User as UserIcon, Mail, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
-type Member = { role: string; name: string; email: string | null };
+type Member = { userId: string; role: string; isStaff: boolean; isOwner: boolean; name: string; email: string | null };
 type VaultPlayer = { id: string; full_name: string; email: string };
 
 export default function ClubMembersPage() {
@@ -56,6 +56,32 @@ export default function ClubMembersPage() {
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+
+  const [savingRole, setSavingRole] = useState<string | null>(null);
+
+  async function setRole(userId: string, role: string) {
+    setSavingRole(userId);
+    const previous = members;
+    // Optimistic — the select should feel instant.
+    setMembers((cur) => cur.map((m) => (m.userId === userId
+      ? { ...m, role, isStaff: role !== 'member' }
+      : m)));
+    try {
+      const res = await fetch('/api/clubs/members', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, role }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      toast.success(role === 'member' ? 'Staff access removed.' : 'Staff access granted.');
+    } catch (e: any) {
+      setMembers(previous);
+      toast.error(e?.message || 'Could not change that role.');
+    } finally {
+      setSavingRole(null);
+    }
+  }
 
   const roleIcon = (r: string) =>
     r === 'owner' || r === 'director' ? <Crown className="h-4 w-4 text-yellow-500" />
@@ -131,18 +157,50 @@ export default function ClubMembersPage() {
       )}
 
       <div className="rounded-2xl border p-1">
-        <div className="px-4 py-3 text-sm font-semibold text-gray-600">{members.length} member{members.length === 1 ? '' : 's'}</div>
+        <div className="px-4 py-3 flex items-baseline gap-2">
+          <span className="text-sm font-semibold text-gray-600">
+            {members.length} member{members.length === 1 ? '' : 's'}
+          </span>
+          <span className="text-xs text-gray-500">
+            · {members.filter((m) => m.isStaff).length} with staff access
+          </span>
+        </div>
+
+        <p className="px-4 pb-3 text-xs text-gray-500">
+          Your subscription covers your whole team. Give a director, coach or front-desk person
+          staff access and they can run events, enter scores and see entry lists — no extra charge.
+          Members keep player access only, because entry lists include other members&apos; contact details.
+        </p>
+
         <div className="divide-y">
-          {members.map((m, i) => (
-            <div key={i} className="flex items-center justify-between px-4 py-3">
-              <div className="flex items-center gap-3">
+          {members.map((m) => (
+            <div key={m.userId} className="flex items-center justify-between gap-3 px-4 py-3">
+              <div className="flex items-center gap-3 min-w-0">
                 {roleIcon(m.role)}
-                <div>
-                  <div className="text-sm font-medium text-gray-900">{m.name}</div>
-                  {m.email && <div className="text-xs text-gray-600">{m.email}</div>}
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-gray-900 truncate">{m.name}</div>
+                  {m.email && <div className="text-xs text-gray-600 truncate">{m.email}</div>}
                 </div>
               </div>
-              <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600 capitalize">{m.role}</span>
+
+              {m.isOwner ? (
+                <span className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-600 shrink-0">
+                  Owner · pays
+                </span>
+              ) : (
+                <select
+                  value={m.role}
+                  disabled={savingRole === m.userId}
+                  onChange={(e) => setRole(m.userId, e.target.value)}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 shrink-0"
+                  style={{ color: '#111827', backgroundColor: '#fff' }}
+                >
+                  <option value="director">Director — full access</option>
+                  <option value="coach">Coach / pro — run events</option>
+                  <option value="front_desk">Front desk — run events</option>
+                  <option value="member">Member — player access only</option>
+                </select>
+              )}
             </div>
           ))}
         </div>
