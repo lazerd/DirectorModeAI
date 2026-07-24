@@ -1,5 +1,6 @@
 'use client';
 
+import ResultsPoster from '@/components/shared/ResultsPoster';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -219,6 +220,12 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
             >
               {event.public_status}
             </span>
+            <ResultsPoster
+              url={`/quads/${event.slug}/results`}
+              title={event.name}
+              tagline="Scan for live results"
+              variant="dark"
+            />
           </div>
           <p className="text-gray-500 text-sm">
             {entriesInFlight} confirmed · {entriesWaitlisted} waitlist · {entriesPending} pending payment

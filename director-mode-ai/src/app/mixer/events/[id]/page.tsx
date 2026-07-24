@@ -16,6 +16,7 @@ import StandingsTab from "@/components/mixer/event/StandingsTab";
 import EventSummary from "@/components/mixer/event/EventSummary";
 import EditEventFormatDialog from "@/components/mixer/event/EditEventFormatDialog";
 import EventCodeQR from "@/components/mixer/event/EventCodeQR";
+import ResultsPoster from "@/components/shared/ResultsPoster";
 import TournamentBracket from "@/components/mixer/event/TournamentBracket";
 import TeamBattleTab from "@/components/mixer/event/TeamBattleTab";
 import QuadsAdminDashboard from "@/components/mixer/event/QuadsAdminDashboard";
@@ -259,7 +260,15 @@ export default function EventDashboard() {
             </div>
           </div>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold">{event.name}</h1>
+            <div className="flex items-start justify-between gap-3">
+              <h1 className="text-xl sm:text-2xl font-bold">{event.name}</h1>
+              <ResultsPoster
+                url={`/event/${event.event_code}`}
+                title={event.name}
+                subtitle={format(new Date(event.event_date), "EEEE, MMMM d")}
+                variant="dark"
+              />
+            </div>
             <p className="text-xs sm:text-sm text-muted-foreground">
               {format(new Date(event.event_date), "EEEE, MMMM d, yyyy")}
               {event.start_time && ` at ${event.start_time}`}

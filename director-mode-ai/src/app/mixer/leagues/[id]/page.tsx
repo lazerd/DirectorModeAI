@@ -1,5 +1,6 @@
 'use client';
 
+import ResultsPoster from '@/components/shared/ResultsPoster';
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -626,6 +627,12 @@ export default function LeagueDetailPage() {
             <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">{league.status}</span>
           </div>
         </div>
+        <ResultsPoster
+          url={`/leagues/${league.slug}`}
+          title={league.name}
+          tagline="Scan for standings & signup"
+          variant="dark"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">

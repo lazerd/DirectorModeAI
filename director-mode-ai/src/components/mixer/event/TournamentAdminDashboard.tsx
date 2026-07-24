@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import HubButton from './HubButton';
 import SquareSyncButton from './SquareSyncButton';
+import ResultsPoster from '@/components/shared/ResultsPoster';
 import {
   ArrowLeft,
   Users,
@@ -757,6 +758,13 @@ export default function TournamentAdminDashboard({ eventId }: { eventId: string 
           <ListOrdered size={12} />
           Results
         </a>
+        <span title="Printable QR poster — players scan to the live results page">
+          <ResultsPoster
+            url={`/tournaments/${event.slug}/results`}
+            title={event.name}
+            variant="dark"
+          />
+        </span>
         <span title="Group this event with its other divisions (Gold/Silver, 12U…) so they share one tournament and the division switcher at the top">
           <HubButton
             eventId={event.id}
