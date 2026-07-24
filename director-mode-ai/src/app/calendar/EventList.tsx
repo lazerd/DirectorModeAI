@@ -29,6 +29,7 @@ export type ListItem = {
   score_breakdown: { reasons?: Array<{ code?: string; points?: number; detail: string }> } | null;
   event_id: string | null;
   reminder_cadence?: unknown[] | null;
+  series_dates?: string[] | null;
 };
 
 export type ListConstraint = {
@@ -138,6 +139,7 @@ function Row({
   const favorable = conflicts.find((c) => c.impact === 'favorable');
   const why = item.score_breakdown?.reasons?.[0]?.detail;
   const reminders = Array.isArray(item.reminder_cadence) ? item.reminder_cadence.length : 0;
+  const series = Array.isArray(item.series_dates) ? item.series_dates : [];
 
   return (
     <button
@@ -151,9 +153,11 @@ function Row({
 
       <span className="text-xs tabular-nums shrink-0 w-[86px] pt-0.5" style={{ color: '#9fc0cb' }}>
         {item.target_date ? dayLabel(item.target_date) : '—'}
-        {item.target_end_date && item.target_end_date !== item.target_date && (
+        {series.length > 1 ? (
+          <span className="opacity-50"> → {dayLabel(series[series.length - 1]).replace(/^\w+ /, '')}</span>
+        ) : item.target_end_date && item.target_end_date !== item.target_date ? (
           <span className="opacity-50">–{Number(item.target_end_date.slice(8, 10))}</span>
-        )}
+        ) : null}
       </span>
 
       <span className="w-2 h-2 rounded-full mt-1.5 shrink-0" style={{ background: color }} />
@@ -161,6 +165,13 @@ function Row({
       <span className="flex-1 min-w-0">
         <span className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm">{item.title}</span>
+          {series.length > 1 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                  style={{ background: '#0d3d4d', color: '#9fc0cb' }}
+                  title={`Recurring — ${series.length} dates`}>
+              ×{series.length}
+            </span>
+          )}
           {item.event_id && (
             <Trophy className="w-3 h-3 opacity-60" aria-label="Promoted to a live event" />
           )}

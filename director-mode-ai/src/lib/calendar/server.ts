@@ -115,7 +115,7 @@ export const ITEM_COLUMNS =
   'target_date, target_end_date, start_time, duration_minutes, anchor_rule, courts_needed, ' +
   'staff_needed, expected_attendance, entry_fee_cents, expected_revenue_cents, ' +
   'expected_cost_cents, run_of_show, marketing, score, score_breakdown, event_id, ' +
-  'hold_series_id, notes';
+  'hold_series_id, notes, series_dates';
 
 /**
  * Columns safe to expose on the public member-facing calendar.

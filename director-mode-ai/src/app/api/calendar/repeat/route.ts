@@ -81,25 +81,29 @@ export async function POST(req: Request) {
       ? c.match_format
       : null;
 
-    // A series becomes one calendar item per occurrence, numbered, so the list
-    // view shows the cadence and each one can be moved independently.
-    dates.slice(0, 60).forEach((date, i) => {
-      rows.push({
-        plan_id: planId,
-        club_id: ctx.club.id,
-        title: dates.length > 1 ? `${title} #${i + 1}` : title,
-        catalog_key: null,
-        description: `Repeating from ${plan.year - 1}.`,
-        department: 'tennis',
-        audience: [],
-        format_hint: format,
-        status: 'scheduled',
-        target_date: date,
-        start_time: typeof c?.start_time === 'string' && /^\d{2}:\d{2}$/.test(c.start_time) ? c.start_time : null,
-        courts_needed: Number.isFinite(Number(c?.num_courts)) ? Math.max(0, Math.min(30, Number(c.num_courts))) : null,
-        entry_fee_cents: Number.isFinite(Number(c?.entry_fee_cents)) ? Math.max(0, Number(c.entry_fee_cents)) : null,
-        score_breakdown: { reasons: [{ detail: `You ran this in ${plan.year - 1}.` }] },
-      });
+    const trimmed = dates.slice(0, 60);
+    const isSeries = trimmed.length > 1;
+
+    // A recurring event is ONE row that carries all its dates, not one row per
+    // occurrence — the list stays clean and the whole series moves together.
+    rows.push({
+      plan_id: planId,
+      club_id: ctx.club.id,
+      title,
+      catalog_key: null,
+      description: isSeries
+        ? `${trimmed.length}-week series, repeating from ${plan.year - 1}.`
+        : `Repeating from ${plan.year - 1}.`,
+      department: 'tennis',
+      audience: [],
+      format_hint: format,
+      status: 'scheduled',
+      target_date: trimmed[0],
+      series_dates: isSeries ? trimmed : [],
+      start_time: typeof c?.start_time === 'string' && /^\d{2}:\d{2}$/.test(c.start_time) ? c.start_time : null,
+      courts_needed: Number.isFinite(Number(c?.num_courts)) ? Math.max(0, Math.min(30, Number(c.num_courts))) : null,
+      entry_fee_cents: Number.isFinite(Number(c?.entry_fee_cents)) ? Math.max(0, Number(c.entry_fee_cents)) : null,
+      score_breakdown: { reasons: [{ detail: `You ran this in ${plan.year - 1}.` }] },
     });
   }
 
