@@ -48,16 +48,58 @@ export async function requireStaffForClub(
   }
 
   const db = getSupabaseAdmin();
+  const CLUB_COLS = 'id, slug, name, timezone, operating_hours, is_public, owner_id';
 
-  // Find an owned club, or bootstrap one.
+  // Resolve the club this user runs, in order of authority. The order matters —
+  // a plain MEMBER must never fall through to the bootstrap branch, or a player
+  // poking at a director URL spawns a phantom club under their name.
+  let role: StaffRole | 'member' = 'member';
+
+  // 1. A club they own.
   let { data: club } = await db
     .from('cc_clubs')
-    .select('id, slug, name, timezone, operating_hours, is_public, owner_id')
+    .select(CLUB_COLS)
     .eq('owner_id', user.id)
     .order('name', { ascending: true })
     .limit(1)
     .maybeSingle();
+  if (club) role = 'owner';
 
+  // 2. Else a club where they're STAFF (director / coach / front desk) — this
+  //    is what makes "one subscription, whole team" reach CourtSheet & calendar.
+  if (!club) {
+    const { data: staffMem } = await db
+      .from('cc_club_members')
+      .select('club_id, role')
+      .eq('user_id', user.id)
+      .in('role', ['owner', 'director', 'coach', 'front_desk'])
+      .limit(1)
+      .maybeSingle();
+    if (staffMem) {
+      const { data: staffClub } = await db.from('cc_clubs').select(CLUB_COLS).eq('id', staffMem.club_id).maybeSingle();
+      if (staffClub) { club = staffClub; role = staffMem.role as StaffRole; }
+    }
+  }
+
+  // 3. Else, do they belong to a club as a plain MEMBER? If so they're a player,
+  //    not staff — deny, and send them to their member home. Never bootstrap.
+  if (!club) {
+    const { count: memberships } = await db
+      .from('cc_club_members')
+      .select('club_id', { count: 'exact', head: true })
+      .eq('user_id', user.id);
+    if ((memberships ?? 0) > 0) {
+      return {
+        error: NextResponse.json(
+          { error: 'Members-only account', detail: 'This is a staff area.', memberHome: '/client/dashboard' },
+          { status: 403 },
+        ),
+      };
+    }
+  }
+
+  // 4. Else a genuinely new user with no club at all → bootstrap one (the
+  //    first-run onboarding for a new director).
   if (!club) {
     const slug = await generateUniqueSlug(
       db,
@@ -75,7 +117,7 @@ export async function requireStaffForClub(
         timezone: 'America/Los_Angeles',
         operating_hours: {},
       })
-      .select('id, slug, name, timezone, operating_hours, is_public, owner_id')
+      .select(CLUB_COLS)
       .single();
     if (createErr || !created) {
       return {
@@ -86,20 +128,11 @@ export async function requireStaffForClub(
       };
     }
     club = created;
+    role = 'owner';
     await db
       .from('cc_club_members')
       .insert({ club_id: club!.id, user_id: user.id, role: 'owner' });
   }
-
-  const { data: membership } = await db
-    .from('cc_club_members')
-    .select('role')
-    .eq('club_id', club!.id)
-    .eq('user_id', user.id)
-    .maybeSingle();
-
-  const role = ((membership?.role as StaffRole | 'member') ??
-    (club!.owner_id === user.id ? 'owner' : 'member')) as StaffRole | 'member';
 
   // Pro gate for write actions.
   if (opts.requireWrite) {
