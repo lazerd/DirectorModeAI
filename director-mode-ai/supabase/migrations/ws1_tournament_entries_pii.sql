@@ -1,0 +1,42 @@
+-- ============================================
+-- SECURITY — stop exposing entrant contact details
+-- ============================================
+-- `tournament_entries` carried a blanket public-read policy:
+--
+--   "Public can view tournament entries"
+--     USING (event.public_status IN ('open','closed','running','completed'))
+--
+-- The intent was reasonable — public draw and results pages need to show who
+-- is playing. But RLS grants ROWS, not COLUMNS, so "show the draw" also handed
+-- out player_email, parent_name, parent_email, player_phone, parent_phone and
+-- date_of_birth to anyone holding the anon key, which ships in the browser
+-- bundle and is therefore public by definition.
+--
+-- Measured before this migration, as an anonymous (not signed-in) caller:
+--   69 entry rows readable
+--   53 parent email addresses readable
+-- Player emails, phones and dates of birth happened to be unpopulated, so the
+-- realised exposure was names plus parent emails of junior families.
+--
+-- The policy turns out to be load-bearing for nothing. Every public tournament
+-- surface already reads through the service-role client and selects its own
+-- columns:
+--   /tournaments/[slug]            /tournaments/[slug]/draw
+--   /tournaments/[slug]/registered /tournaments/[slug]/results
+--   /tournaments/[slug]/enter      /tournaments/player/[token]
+-- and every browser-side reader is a director surface covered by the
+-- "Directors manage tournament entries" policy.
+--
+-- So: drop it. Directors keep full access to their own events' entries.
+--
+-- If a future public page needs entrant names, add a route that selects an
+-- explicit safe column list through the service client — the pattern used by
+-- /api/calendar/public/[clubSlug] — rather than reopening row-level read.
+--
+-- Safe to re-run.
+-- ============================================
+
+DROP POLICY IF EXISTS "Public can view tournament entries" ON tournament_entries;
+
+-- Belt and braces: make sure RLS is actually switched on for this table.
+ALTER TABLE tournament_entries ENABLE ROW LEVEL SECURITY;
