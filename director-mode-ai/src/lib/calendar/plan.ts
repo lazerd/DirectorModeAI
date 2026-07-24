@@ -68,9 +68,16 @@ export function buildYearPlan(
   // ---- 1. Order by how little freedom each item has ----
   const ordered = [...toPlace].sort((a, b) => freedom(a, ctx.year) - freedom(b, ctx.year));
 
+  // Dates already spoken for. Auto-placement must never double-book: the
+  // scorer only penalises a collision, which is right for a director dragging
+  // two events onto one day on purpose, but wrong here — a greedy pass with a
+  // narrow anchor window will happily accept the penalty and stack two events
+  // on Memorial Day Saturday.
+  const taken = new Set<ISODate>(placed.map((p) => p.target_date!).filter(Boolean));
+
   // ---- 2. Greedy placement ----
   for (const item of ordered) {
-    const candidates = candidateSlots(item, allSlots);
+    const candidates = candidateSlots(item, allSlots).filter((s) => !taken.has(s.date));
     const ranked = rankSlots(item, candidates, { ...ctx, placed });
     const best = ranked.find((r) => !r.blocked);
 
@@ -86,6 +93,7 @@ export function buildYearPlan(
 
     results.set(item.id, { date: best.date, score: best.score, reasons: best.reasons });
     placed.push({ ...item, target_date: best.date });
+    taken.add(best.date);
   }
 
   // ---- 3. Local improvement ----
@@ -98,7 +106,8 @@ export function buildYearPlan(
 
       // Score this item against a calendar that doesn't include it.
       const without = placed.filter((p) => p.id !== item.id);
-      const candidates = candidateSlots(item, allSlots);
+      const otherDates = new Set(without.map((p) => p.target_date!).filter(Boolean));
+      const candidates = candidateSlots(item, allSlots).filter((s) => !otherDates.has(s.date));
       const ranked = rankSlots(item, candidates, { ...ctx, placed: without });
       const best = ranked.find((r) => !r.blocked);
       if (!best || best.date === current.date) continue;
@@ -115,6 +124,8 @@ export function buildYearPlan(
         results.set(item.id, { date: best.date, score: best.score, reasons: best.reasons });
         const idx = placed.findIndex((p) => p.id === item.id);
         if (idx >= 0) placed[idx] = { ...placed[idx], target_date: best.date };
+        taken.delete(current.date);
+        taken.add(best.date);
         moved = true;
       } else if (currentNow) {
         // Keep the date, but refresh the explanation against the finished

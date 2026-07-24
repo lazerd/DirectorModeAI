@@ -84,6 +84,11 @@ export async function POST(req: Request) {
 
   const slots = generateSlots(plan.year, {
     daysOfWeek: Array.isArray(body?.daysOfWeek) ? body.daysOfWeek : undefined,
+    // Restricting to a month is how the list view's drag gesture works: the
+    // director says "somewhere in March" and the engine picks the weekend.
+    months: Array.isArray(body?.months)
+      ? body.months.map(Number).filter((m: number) => m >= 1 && m <= 12)
+      : undefined,
   });
 
   // Single-date mode: what does THIS date look like? Used by the drag handler.

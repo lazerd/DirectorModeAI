@@ -73,12 +73,17 @@ export function scoreSlot(item: PlanItem, slot: Slot, ctx: ScoreContext): Scored
       const dist = daysApart(anchor.date, date);
       const inWindow = date >= anchor.start && date <= lastWithin(anchor.end);
       if (dist === 0) {
-        add('anchor', 40, `Lands exactly on ${anchor.label}.`);
+        // A month preference isn't a date, so it can't "land exactly" on one.
+        add('anchor', 40, anchor.kind === 'month'
+          ? `${anchor.label} is the right month for this, and this is the strongest weekend in it.`
+          : `Lands exactly on ${anchor.label}.`);
       } else if (inWindow) {
         // Decay across the window rather than a cliff at its edge.
         const radius = Math.max(1, Math.max(daysApart(anchor.start, anchor.date), daysApart(anchor.end, anchor.date)));
         const pts = Math.round(35 * (1 - dist / radius));
-        add('anchor', pts, `${dist} day${dist === 1 ? '' : 's'} from ${anchor.label} — still reads as the right weekend.`);
+        add('anchor', pts, anchor.kind === 'month'
+          ? `Well inside ${anchor.label}, which is where this event belongs.`
+          : `${dist} day${dist === 1 ? '' : 's'} from ${anchor.label} — still reads as the right weekend.`);
       } else {
         add('anchor', -30, `Outside the ${anchor.label} window, which is the point of this event.`);
       }

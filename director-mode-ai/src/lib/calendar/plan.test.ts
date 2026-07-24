@@ -94,6 +94,35 @@ describe('buildYearPlan', () => {
     expect(new Set(dates).size).toBe(dates.length);
   });
 
+  // Regression: two events anchored to the SAME holiday weekend both used to
+  // land on that Saturday. The scorer only penalises a collision, and with a
+  // four-day anchor window the greedy pass happily paid the penalty — so the
+  // plan came back with "Pool Opening Party is already on this date" as the
+  // stated reason for the second one.
+  it('separates two events anchored to the same weekend', () => {
+    const r = buildYearPlan(
+      [
+        item('pool', { title: 'Pool Opening Party', anchor_rule: 'holiday-weekend:memorial' }),
+        item('kickoff', { title: 'Memorial Day Kickoff', anchor_rule: 'holiday-weekend:memorial' }),
+      ],
+      ctx(),
+    );
+    const dates = r.placements.map((p) => p.date);
+    expect(r.placements).toHaveLength(2);
+    expect(new Set(dates).size).toBe(2);
+  });
+
+  it('never explains a placement by pointing at a collision it caused', () => {
+    const items = Array.from({ length: 16 }, (_, i) =>
+      item(`e${i}`, { anchor_rule: i % 2 ? 'holiday-weekend:memorial' : 'month:5' }));
+    const r = buildYearPlan(items, ctx());
+    for (const p of r.placements) {
+      for (const reason of p.reasons) {
+        expect(reason.detail).not.toMatch(/already on this date/i);
+      }
+    }
+  });
+
   it('spaces events out rather than clumping them', () => {
     const items = Array.from({ length: 8 }, (_, i) => item(`e${i}`));
     const r = buildYearPlan(items, ctx());

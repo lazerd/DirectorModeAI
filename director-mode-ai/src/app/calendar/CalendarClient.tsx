@@ -7,14 +7,21 @@ import {
   AlertTriangle, CheckCircle2, ExternalLink, Trash2, Megaphone, LandPlot, Globe,
 } from 'lucide-react';
 import RemindersTab from './RemindersTab';
+import SetupFlow from './SetupFlow';
+import EventList from './EventList';
 
-// The year grid — CalendarMode's daily-driver surface.
+// CalendarMode's daily-driver surface.
 //
-// Twelve month blocks, each a row of weekend cells. Events sit in the cell for
-// their weekend; conflicts shade it. Dragging an event to another weekend
-// re-scores it against the whole calendar and shows what changed, which is the
-// interaction the whole product is really about: a director asking "what if we
-// moved it?" and getting a real answer instead of a shrug.
+// A club runs 10-20 events a year, so this is a LIST, not a grid — the whole
+// year readable on one page, date-ordered, with the conflicts the planner
+// knows about surfaced against the rows they affect. Twelve month grids meant
+// scrolling past a lot of empty space to read something you could have taken
+// in at a glance.
+//
+// An empty plan gets the three-step setup instead: import what's already
+// booked, tick the events you want, then let the engine place them. That
+// order matters — until the planner knows about the school calendar and the
+// swim meets, every date it suggests is a guess.
 
 type Item = {
   id: string;
@@ -38,6 +45,7 @@ type Item = {
   marketing: Record<string, any> | null;
   event_id: string | null;
   notes: string | null;
+  reminder_cadence?: unknown[] | null;
 };
 
 type Constraint = {
@@ -82,6 +90,7 @@ export default function CalendarClient() {
   const [constraints, setConstraints] = useState<Constraint[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [club, setClub] = useState<{ name: string; slug: string } | null>(null);
+  const [importCount, setImportCount] = useState(0);
   const [isPro, setIsPro] = useState(true);
 
   const [loading, setLoading] = useState(true);
@@ -104,6 +113,7 @@ export default function CalendarClient() {
       setConstraints(json.constraints ?? []);
       setSummary(json.summary ?? null);
       setClub(json.club ?? null);
+      setImportCount((json.imports ?? []).length);
       setIsPro(json.isPro !== false);
     } catch (e: any) {
       setError(e.message);
@@ -114,36 +124,45 @@ export default function CalendarClient() {
 
   useEffect(() => { load(year); }, [year, load]);
 
-  // ---- weekend cells for the year ----
-  const weekends = useMemo(() => buildWeekends(year), [year]);
-
-  const itemsByDate = useMemo(() => {
-    const m = new Map<string, Item[]>();
-    for (const i of items) {
-      if (!i.target_date || i.status === 'dropped') continue;
-      const arr = m.get(i.target_date);
-      if (arr) arr.push(i); else m.set(i.target_date, [i]);
-    }
-    return m;
-  }, [items]);
-
-  const unscheduled = useMemo(
-    () => items.filter((i) => !i.target_date && i.status !== 'dropped'),
-    [items],
+  // Constraints the list checks each row against. Kept flat — the list does
+  // its own overlap test per row rather than exploding every span into days.
+  const listConstraints = useMemo(
+    () => constraints.map((c) => ({
+      id: c.id, title: c.title, starts_on: c.starts_on, ends_on: c.ends_on, impact: c.impact,
+    })),
+    [constraints],
   );
 
-  const constraintsByDate = useMemo(() => {
-    const m = new Map<string, Constraint[]>();
-    for (const c of constraints) {
-      for (const d of eachDay(c.starts_on, c.ends_on, 400)) {
-        const arr = m.get(d);
-        if (arr) arr.push(c); else m.set(d, [c]);
-      }
-    }
-    return m;
-  }, [constraints]);
+  const liveItems = useMemo(() => items.filter((i) => i.status !== 'dropped'), [items]);
 
   // ---- actions ----
+
+  /**
+   * Drop a row on a month heading. Without a grid there's no cell to aim at,
+   * so the gesture is "put this somewhere in March" and the engine picks the
+   * best weekend in that month — which is the decision it's better at anyway.
+   */
+  async function moveToMonth(itemId: string, month: number) {
+    if (!plan) return;
+    setBusy(itemId);
+    setError(null);
+    try {
+      const res = await fetch('/api/calendar/recommend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId: plan.id, itemId, months: [month], limit: 1 }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      const best = json.recommendations?.[0];
+      if (!best) throw new Error('No open date that month.');
+      await moveItem(itemId, best.date);
+    } catch (e: any) {
+      setError(e.message || 'Could not move that event.');
+      setBusy(null);
+    }
+  }
+
   async function moveItem(itemId: string, date: string | null) {
     setBusy(itemId);
     const prev = items;
@@ -262,7 +281,7 @@ export default function CalendarClient() {
               className="px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1.5"
               style={{ background: '#D3FB52', color: '#001820' }}
             >
-              <Sparkles className="w-4 h-4" /> Build my year
+              <Sparkles className="w-4 h-4" /> Suggest events
             </button>
 
             <Link href="/calendar/ideas" className="px-3 py-1.5 rounded-lg text-sm border flex items-center gap-1.5"
@@ -315,57 +334,24 @@ export default function CalendarClient() {
         </div>
       )}
 
-      {/* unscheduled tray */}
-      {unscheduled.length > 0 && (
-        <div className="max-w-[1600px] mx-auto px-4 pt-4">
-          <div className="rounded-xl border p-3" style={{ background: '#002838', borderColor: '#0d3d4d' }}>
-            <div className="text-xs uppercase tracking-wide opacity-60 mb-2">
-              Not yet scheduled — drag onto a weekend
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {unscheduled.map((i) => (
-                <EventChip key={i.id} item={i} onOpen={() => setSelected(i)}
-                           onDragStart={() => setDragging(i.id)} onDragEnd={() => setDragging(null)} />
-              ))}
-            </div>
-          </div>
+      {liveItems.length === 0 && plan ? (
+        <SetupFlow
+          planId={plan.id}
+          year={year}
+          importCount={importCount}
+          onDone={() => load(year)}
+        />
+      ) : (
+        <div className="pt-4">
+          <EventList
+            items={liveItems as any}
+            constraints={listConstraints as any}
+            onOpen={(i) => setSelected(i as any)}
+            onMoveToMonth={moveToMonth}
+            busyId={busy}
+          />
         </div>
       )}
-
-      {/* the year */}
-      <div className="max-w-[1600px] mx-auto px-4 pt-4 space-y-4">
-        {MONTHS.map((name, mi) => {
-          const monthWeekends = weekends.filter((w) => Number(w.saturday.slice(5, 7)) === mi + 1);
-          const count = summary?.byMonth[mi] ?? 0;
-          return (
-            <section key={name} className="rounded-xl border overflow-hidden"
-                     style={{ background: '#002838', borderColor: '#0d3d4d' }}>
-              <div className="px-4 py-2 flex items-center gap-3 border-b" style={{ borderColor: '#0d3d4d' }}>
-                <h2 className="font-semibold">{name}</h2>
-                <span className="text-xs opacity-50">
-                  {count === 0 ? 'nothing planned' : `${count} event${count === 1 ? '' : 's'}`}
-                </span>
-              </div>
-              <div className="grid gap-px p-px"
-                   style={{ gridTemplateColumns: `repeat(${Math.max(monthWeekends.length, 1)}, minmax(150px, 1fr))`, background: '#0d3d4d' }}>
-                {monthWeekends.map((w) => (
-                  <WeekendCell
-                    key={w.saturday}
-                    weekend={w}
-                    items={w.days.flatMap((d) => itemsByDate.get(d) ?? [])}
-                    constraints={dedupe(w.days.flatMap((d) => constraintsByDate.get(d) ?? []))}
-                    dragging={dragging}
-                    onOpen={setSelected}
-                    onDragStart={setDragging}
-                    onDragEnd={() => setDragging(null)}
-                    onDrop={(date) => { if (dragging) moveItem(dragging, date); setDragging(null); }}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
-      </div>
 
       {selected && (
         <ItemDrawer
@@ -414,86 +400,6 @@ function SummaryBar({ summary, constraints }: { summary: Summary; constraints: n
       {summary.emptyMonths.length > 0 &&
         stat('empty months', summary.emptyMonths.map((m) => MONTHS[m - 1].slice(0, 3)).join(' '), '#fbbf24')}
       {summary.crowdedWeeks > 0 && stat('crowded weekends', String(summary.crowdedWeeks), '#fb923c')}
-    </div>
-  );
-}
-
-function EventChip({
-  item, onOpen, onDragStart, onDragEnd,
-}: { item: Item; onOpen: () => void; onDragStart: () => void; onDragEnd: () => void }) {
-  const color = DEPT_COLOR[item.department] ?? DEPT_COLOR.other;
-  return (
-    <button
-      draggable
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      onClick={onOpen}
-      title={item.title}
-      className="text-left text-xs px-2 py-1 rounded-md border w-full truncate cursor-grab active:cursor-grabbing"
-      style={{ borderColor: `${color}55`, background: `${color}14`, color: '#e6f0f3' }}
-    >
-      <span className="inline-block w-1.5 h-1.5 rounded-full mr-1.5 align-middle" style={{ background: color }} />
-      {item.title}
-      {item.event_id && <Trophy className="w-3 h-3 inline ml-1 opacity-70" />}
-    </button>
-  );
-}
-
-function WeekendCell({
-  weekend, items, constraints, dragging, onOpen, onDragStart, onDragEnd, onDrop,
-}: {
-  weekend: Weekend;
-  items: Item[];
-  constraints: Constraint[];
-  dragging: string | null;
-  onOpen: (i: Item) => void;
-  onDragStart: (id: string) => void;
-  onDragEnd: () => void;
-  onDrop: (date: string) => void;
-}) {
-  const [over, setOver] = useState(false);
-  const blocking = constraints.find((c) => c.impact === 'blocking');
-  const heavy = constraints.find((c) => c.impact === 'heavy');
-  const favorable = constraints.find((c) => c.impact === 'favorable');
-
-  const shade = blocking ? '#3b1219' : heavy ? '#3a2a12' : favorable ? '#0f2e1d' : '#002838';
-
-  return (
-    <div
-      onDragOver={(e) => { if (dragging) { e.preventDefault(); setOver(true); } }}
-      onDragLeave={() => setOver(false)}
-      onDrop={(e) => { e.preventDefault(); setOver(false); onDrop(weekend.saturday); }}
-      className="p-2 min-h-[92px] flex flex-col gap-1.5 transition-colors"
-      style={{ background: over ? '#0d3d4d' : shade }}
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium opacity-70">
-          {Number(weekend.saturday.slice(8, 10))}
-        </span>
-        {weekend.holiday && (
-          <span className="text-[10px] px-1 rounded" style={{ background: '#3b2f0b', color: '#fde68a' }}
-                title={weekend.holiday}>
-            {weekend.holiday.length > 12 ? `${weekend.holiday.slice(0, 11)}…` : weekend.holiday}
-          </span>
-        )}
-      </div>
-
-      {constraints.slice(0, 2).map((c) => (
-        <div key={c.id} className="text-[10px] truncate flex items-center gap-1"
-             style={{ color: c.impact === 'blocking' ? '#fca5a5' : c.impact === 'favorable' ? '#86efac' : '#fcd34d' }}
-             title={`${c.title} (${c.impact})`}>
-          {c.impact === 'blocking' ? <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
-            : c.impact === 'favorable' ? <CheckCircle2 className="w-2.5 h-2.5 shrink-0" /> : null}
-          {c.title}
-        </div>
-      ))}
-
-      <div className="flex flex-col gap-1 mt-auto">
-        {items.map((i) => (
-          <EventChip key={i.id} item={i} onOpen={() => onOpen(i)}
-                     onDragStart={() => onDragStart(i.id)} onDragEnd={onDragEnd} />
-        ))}
-      </div>
     </div>
   );
 }
@@ -907,83 +813,8 @@ function BuildDialog({
 }
 
 // ============================================================
-// Date helpers — the grid needs the same weekend model the engine uses, but
-// without importing the server-side modules into the bundle.
+// Date helpers
 // ============================================================
-
-type Weekend = { saturday: string; days: string[]; holiday: string | null };
-
-function buildWeekends(year: number): Weekend[] {
-  const out: Weekend[] = [];
-  const holidays = holidayMap(year);
-  const d = new Date(Date.UTC(year, 0, 1));
-  // Advance to the first Saturday.
-  while (d.getUTCDay() !== 6) d.setUTCDate(d.getUTCDate() + 1);
-
-  while (d.getUTCFullYear() === year) {
-    const sat = iso(d);
-    const fri = shift(sat, -1);
-    const sun = shift(sat, 1);
-    const mon = shift(sat, 2);
-    const days = [fri, sat, sun];
-    // A holiday Monday belongs to the weekend before it.
-    if (holidays.has(mon)) days.push(mon);
-    out.push({
-      saturday: sat,
-      days,
-      holiday: days.map((x) => holidays.get(x)).find(Boolean) ?? null,
-    });
-    d.setUTCDate(d.getUTCDate() + 7);
-  }
-  return out;
-}
-
-/** The handful of holidays worth labelling in the grid. Display only. */
-function holidayMap(y: number): Map<string, string> {
-  const m = new Map<string, string>();
-  const nth = (month: number, dow: number, n: number) => {
-    const first = new Date(Date.UTC(y, month - 1, 1));
-    const offset = (dow - first.getUTCDay() + 7) % 7;
-    return iso(new Date(Date.UTC(y, month - 1, 1 + offset + (n - 1) * 7)));
-  };
-  const last = (month: number, dow: number) => {
-    const lastDay = new Date(Date.UTC(y, month, 0));
-    const offset = (lastDay.getUTCDay() - dow + 7) % 7;
-    return iso(new Date(Date.UTC(y, month - 1, lastDay.getUTCDate() - offset)));
-  };
-  m.set(`${y}-01-01`, "New Year's");
-  m.set(nth(1, 1, 3), 'MLK Day');
-  m.set(nth(2, 1, 3), 'Presidents Day');
-  m.set(last(5, 1), 'Memorial Day');
-  m.set(`${y}-07-04`, 'July 4th');
-  m.set(nth(9, 1, 1), 'Labor Day');
-  m.set(`${y}-10-31`, 'Halloween');
-  m.set(nth(11, 4, 4), 'Thanksgiving');
-  m.set(`${y}-12-25`, 'Christmas');
-  return m;
-}
-
-function iso(d: Date): string {
-  return d.toISOString().slice(0, 10);
-}
-
-function shift(isoDate: string, days: number): string {
-  const d = new Date(`${isoDate}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return iso(d);
-}
-
-function eachDay(start: string, end: string, cap: number): string[] {
-  const out: string[] = [];
-  let cur = start;
-  while (cur <= end && out.length < cap) { out.push(cur); cur = shift(cur, 1); }
-  return out;
-}
-
-function dedupe(cs: Constraint[]): Constraint[] {
-  const seen = new Set<string>();
-  return cs.filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
-}
 
 function longDate(isoDate: string): string {
   const [y, m, d] = isoDate.split('-').map(Number);

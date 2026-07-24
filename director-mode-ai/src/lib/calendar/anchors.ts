@@ -43,6 +43,12 @@ export interface ResolvedAnchor {
   strength: 'exact' | 'window';
   /** Human label, shown in the UI: "Independence Day". */
   label: string;
+  /**
+   * Which rule family produced this. The scorer phrases a reason differently
+   * for a date anchor than a month preference — "Lands exactly on October"
+   * reads like a bug, "October is the right month for this" reads like advice.
+   */
+  kind: 'fixed' | 'nearest' | 'nth' | 'holiday' | 'holiday-weekend' | 'grand-slam' | 'month';
 }
 
 /**
@@ -60,7 +66,7 @@ export function resolveAnchor(rule: string | null | undefined, year: number): Re
     case 'fixed': {
       const date = mmddToISO(parts[1], year);
       if (!date) return null;
-      return { date, start: date, end: date, strength: 'exact', label: prettyDate(date) };
+      return { date, start: date, end: date, strength: 'exact', label: prettyDate(date), kind: 'fixed' };
     }
 
     case 'nearest': {
@@ -75,6 +81,7 @@ export function resolveAnchor(rule: string | null | undefined, year: number): Re
         end: addDays(date, 7),
         strength: 'window',
         label: `${dowLabel(dow)} nearest ${prettyDate(base)}`,
+        kind: 'nearest',
       };
     }
 
@@ -91,6 +98,7 @@ export function resolveAnchor(rule: string | null | undefined, year: number): Re
         end: toISO(year, month, daysInMonth(year, month)),
         strength: 'window',
         label: `${ordinal(n)} ${dowLabel(dow)} of ${monthName(month)}`,
+        kind: 'nth',
       };
     }
 
@@ -98,7 +106,7 @@ export function resolveAnchor(rule: string | null | undefined, year: number): Re
       const key = (parts[1] || '').toLowerCase();
       const h = usHolidays(year).find((x) => x.key === key);
       if (!h) return null;
-      return { date: h.date, start: h.date, end: h.date, strength: 'exact', label: h.name };
+      return { date: h.date, start: h.date, end: h.date, strength: 'exact', label: h.name, kind: 'holiday' };
     }
 
     case 'holiday-weekend': {
@@ -114,6 +122,7 @@ export function resolveAnchor(rule: string | null | undefined, year: number): Re
         end: addDays(sat, 2),
         strength: 'window',
         label: `${h.name} weekend`,
+        kind: 'holiday-weekend',
       };
     }
 
@@ -131,6 +140,7 @@ export function resolveAnchor(rule: string | null | undefined, year: number): Re
         end: addDays(w.end, 3),
         strength: 'window',
         label: `${w.name} fortnight`,
+        kind: 'grand-slam',
       };
     }
 
@@ -141,7 +151,7 @@ export function resolveAnchor(rule: string | null | undefined, year: number): Re
       const end = toISO(year, month, daysInMonth(year, month));
       // Mid-month Saturday as the nominal ideal; the window is the whole month.
       const date = nearestWeekday(toISO(year, month, 15), 6);
-      return { date, start, end, strength: 'window', label: `${monthName(month)}` };
+      return { date, start, end, strength: 'window', label: monthName(month), kind: 'month' };
     }
 
     default:
