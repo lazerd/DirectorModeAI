@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseIcsUpload, parseDelimitedUpload, toISO, splitRow } from './importParse';
+import { parseIcsUpload, parseDelimitedUpload, toISO, splitRow, stripDatePrefix } from './importParse';
 
 // End-to-end over the pipeline the upload route actually runs: file text in,
 // classified constraints out. The samples below are shaped like the real files
@@ -257,6 +257,28 @@ describe('robustness', () => {
     expect(splitRow('a,b,c')).toEqual(['a', 'b', 'c']);
     expect(splitRow('a\tb\tc')).toEqual(['a', 'b', 'c']);
     expect(splitRow('"a,b",c')).toEqual(['a,b', 'c']);
+  });
+
+  // Vision extraction reads a grid cell whole, date and all.
+  describe('stripDatePrefix', () => {
+    it('drops a leading date echo', () => {
+      expect(stripDatePrefix('Aug 6-7: PD Day')).toBe('PD Day');
+      expect(stripDatePrefix('Sep 7: Labor Day')).toBe('Labor Day');
+      expect(stripDatePrefix('Feb 12/15: Presidents’ Day Weekend')).toBe('Presidents’ Day Weekend');
+      expect(stripDatePrefix('Nov 23-27 - Thanksgiving Break')).toBe('Thanksgiving Break');
+      expect(stripDatePrefix('12/25: Christmas')).toBe('Christmas');
+    });
+
+    it('leaves an ordinary title alone', () => {
+      expect(stripDatePrefix('March Madness Bracket')).toBe('March Madness Bracket');
+      expect(stripDatePrefix('Spring Break')).toBe('Spring Break');
+      expect(stripDatePrefix('Dual Meet vs Moraga')).toBe('Dual Meet vs Moraga');
+      expect(stripDatePrefix('May Day Social')).toBe('May Day Social');
+    });
+
+    it('never strips a title down to nothing', () => {
+      expect(stripDatePrefix('Aug 6-7:')).toBe('Aug 6-7:');
+    });
   });
 
   it('never returns a row without a title or a valid date', () => {

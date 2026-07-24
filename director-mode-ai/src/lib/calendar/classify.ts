@@ -275,16 +275,6 @@ const SCHOOL: Rule[] = [
     note: 'Fall break — juniors are free.',
   },
   {
-    test: /\bno\s*school\b|\bschool\s*closed\b|\bstudent\s*holiday\b|\bin[-\s]?service\b|\bprofessional\s*development\b|\bteacher\s*work\s*day\b|\bstaff\s*development\b|\bnon[-\s]?student\s*day\b/i,
-    impact: 'favorable', audience: ['junior', 'family'],
-    note: 'No school — a full day of available juniors. Prime camp or clinic date.',
-  },
-  {
-    test: /\b(minimum|early\s*release|half)\s*day\b|\bearly\s*dismissal\b|\bshortened\s*day\b/i,
-    impact: 'favorable', audience: ['junior'],
-    note: 'Early release — juniors free from mid-afternoon.',
-  },
-  {
     test: /\bfinals?\b|\bexams?\b|\bmidterms?\b|\bap\s*(testing|exams?)\b|\bstate\s*testing\b|\bsbac\b|\bstaar\b|\bregents\b|\bsat\b|\bact\s*test\b/i,
     impact: 'heavy', audience: ['junior'],
     note: 'Exams — do not schedule junior events against this.',
@@ -295,19 +285,53 @@ const SCHOOL: Rule[] = [
     note: 'A major school social event — juniors will not come.',
   },
   {
-    test: /\bgraduation\b|\bcommencement\b|\bbaccalaureate\b|\bpromotion\s*ceremony\b|\bmoving\s*up\b/i,
+    test: /\bgraduation\b|\bcommencement\b|\bbaccalaureate\b|\bpromotion\b|\bmoving\s*up\b/i,
     impact: 'blocking', audience: ['junior', 'family'],
     note: 'Graduation — families are committed all day.',
   },
+  // These MUST precede the minimum-day rule below.
+  //
+  // Real entries compound: "Elem Conf.; Elem Min. Days", "Elem. Open House;
+  // Elem Min. Day". Both halves are true — the kids get out early AND the
+  // parents are at school that evening — but the obligation is what decides
+  // whether the club can run something, so the obligation wins. Scoring a
+  // conference week as a great clinic opportunity is the expensive mistake.
   {
-    test: /\bback[-\s]?to[-\s]?school\b|\bfirst day of school\b|\bopen house\b|\bcurriculum night\b|\bschool\s*registration\b/i,
+    // BTSN = Back To School Night, near-universal on district calendars.
+    test: /\bback[-\s]?to[-\s]?school\b|\bbtsn\b|\bfirst day of school\b|\bopen house\b|\bcurriculum night\b|\bschool\s*registration\b/i,
     impact: 'heavy', audience: ['junior', 'family'],
-    note: 'Back-to-school — families are occupied and schedules are unsettled.',
+    note: 'A school evening — families are at school, not at the club.',
   },
   {
-    test: /\bparent[-\s]?teacher\b|\bconferences?\b/i,
+    // "Conf." is how conference weeks are almost always abbreviated.
+    test: /\bparent[-\s]?teacher\b|\bconferences?\b|\bconf\.?(?![a-z])/i,
     impact: 'heavy', audience: ['family', 'junior'],
-    note: 'Parent-teacher conferences — evenings are spoken for.',
+    note: 'Conference week — parents are at school in the afternoons and evenings.',
+  },
+  // Real district calendars abbreviate relentlessly: "PD Day", "Non-Stu. Day",
+  // "Cert. PD", "Min. Day". Matching only the spelled-out forms silently loses
+  // the single most valuable category on the whole calendar — the free
+  // weekday afternoons that make the best junior clinic dates of the year.
+  {
+    test: /\bno\s*school\b|\bschool\s*closed\b|\bstudent\s*holiday\b|\bin[-\s]?service\b|\bprofessional\s*development\b|\bteacher\s*work\s*day\b|\bstaff\s*development\b|\bnon[-\s]?stu(dent)?\.?\s*days?\b|\b(cert(ificated)?\.?\s*)?pd\s*days?\b|\bpupil[-\s]?free\b|\binstitute\s*day\b/i,
+    impact: 'favorable', audience: ['junior', 'family'],
+    note: 'No school — a full day of available juniors. Prime camp or clinic date.',
+  },
+  {
+    test: /\bmin\.?\s*days?\b|\b(minimum|early\s*release|half)\s*days?\b|\bearly\s*dismissal\b|\bshortened\s*days?\b|\bhalf[-\s]?day\b/i,
+    impact: 'favorable', audience: ['junior'],
+    note: 'Minimum / early-release day — juniors are free from mid-afternoon. Good clinic slot.',
+  },
+  // A holiday only appears on a district calendar because school is CLOSED, so
+  // on this calendar it means a free weekday full of juniors. The scorer
+  // applies holiday travel drag separately, so both effects land — which is an
+  // honest picture of a long weekend: quieter overall, but whoever is in town
+  // has the whole day.
+  {
+    test: /\bmartin\s*luther\s*king\b|\bmlk\b|\bpresidents?'?s?\s*day\b|\bveterans?'?s?\s*day\b|\blincoln'?s?\s*(birthday|day)\b|\bcesar\s*chavez\b|\bindigenous\s*peoples?\b|\bcolumbus\s*day\b|\bjuneteenth\b|\blabor\s*day\b|\bmemorial\s*day\b/i,
+    impact: 'favorable', audience: ['junior', 'family'],
+    note: 'School holiday — no school, so juniors are free all day.',
+    kinds: ['school'],
   },
 ];
 

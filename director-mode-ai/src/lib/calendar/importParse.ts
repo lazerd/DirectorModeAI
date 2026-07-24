@@ -128,6 +128,25 @@ function fmt(y: number, m: number, d: number): string | null {
   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
+/**
+ * Strip a leading date echo from an extracted title.
+ *
+ * Vision extraction reliably reads a grid cell like "Aug 6-7: PD Day" and hands
+ * back the whole string, because on the page the date IS part of the cell.
+ * Prompting against it works only sometimes; a regex works every time, and the
+ * real date is already in the start/end fields. Only strips a prefix that is
+ * unambiguously a date, so "March Madness Bracket" survives intact.
+ */
+export function stripDatePrefix(title: string): string {
+  const MON = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
+  const DAYS = '\\d{1,2}(?:\\s*[-–/]\\s*(?:' + MON + '\\s*)?\\d{1,2})?';
+  // "Aug 6-7:", "Feb 12/15 -", "12/25:", "Dec 21 – Jan 1:"
+  const re = new RegExp(`^\\s*(?:${MON}\\s*${DAYS}|\\d{1,2}[/-]\\d{1,2}(?:[/-]\\d{2,4})?)\\s*[:\\u2013\\u2014-]\\s*`, 'i');
+  const out = title.replace(re, '').trim();
+  // Never strip away the entire title — a row called "Aug 6-7" keeps its name.
+  return out.length > 0 ? out : title.trim();
+}
+
 /** Classify one extracted row. Shared by every import path. */
 export function propose(
   title: string,

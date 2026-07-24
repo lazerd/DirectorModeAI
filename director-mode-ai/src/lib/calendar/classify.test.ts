@@ -32,6 +32,57 @@ describe('school calendars', () => {
     }
   });
 
+  // Verbatim rows from a real Orinda Union SD 2026-27 PDF. Districts abbreviate
+  // relentlessly, and the first cut of these rules matched only the spelled-out
+  // forms — so "Min. Day", the single most useful category on the whole
+  // calendar, was landing as an ignorable "light" note.
+  describe('real district abbreviations', () => {
+    it('reads minimum days as free junior afternoons', () => {
+      for (const t of ['Min. Day- All Sites', 'OIS Min. Day', 'Min Day', 'Elem Min. Days']) {
+        const c = classifyImported(t, 'school');
+        expect(c.impact, t).toBe('favorable');
+        expect(c.audience_tags, t).toContain('junior');
+      }
+    });
+
+    it('reads PD and non-student days as no-school days', () => {
+      for (const t of ['PD Day', 'Certificated PD Day', 'Teacher Work Day; Non-Stu. Day', 'Non-Student Day']) {
+        expect(classifyImported(t, 'school').impact, t).toBe('favorable');
+      }
+    });
+
+    it('treats school holidays as free days for juniors', () => {
+      for (const t of ["Veteran's Day", 'Martin Luther King, Jr. Day', "Presidents' Day Weekend", 'Labor Day', 'Memorial Day']) {
+        expect(classifyImported(t, 'school').impact, t).toBe('favorable');
+      }
+    });
+
+    // The compound-entry rule. Both halves are true — kids out early AND
+    // parents at school that evening — but the obligation decides whether the
+    // club can run anything, so the obligation has to win.
+    it('lets the obligation win when an entry is both', () => {
+      for (const t of ['Elem BTSN; Min. Day', 'Elem Conf.; Elem Min. Days', 'Elem. Open House; Elem Min. Day', 'OIS Open House, OIS Min Day']) {
+        const c = classifyImported(t, 'school');
+        expect(c.impact, t).toBe('heavy');
+      }
+    });
+
+    it('blocks a promotion ceremony', () => {
+      expect(classifyImported('OIS Promotion', 'school').impact).toBe('blocking');
+    });
+
+    it('still reads the plain forms', () => {
+      expect(classifyImported('Minimum Day-All Sites', 'school').impact).toBe('favorable');
+      expect(classifyImported('Last Day of School, Min Day', 'school').impact).toBe('favorable');
+      expect(classifyImported('First Day of School', 'school').impact).toBe('heavy');
+    });
+
+    // "Conf." must not swallow unrelated words that merely start with it.
+    it('does not mistake other words for a conference', () => {
+      expect(classifyImported('Confetti Parade', 'school').impact).not.toBe('heavy');
+    });
+  });
+
   it('flags administrative noise as ignorable', () => {
     for (const t of ['Picture Day', 'Book Fair', 'PTA Meeting', 'Report Cards Issued', 'Registration Opens']) {
       expect(classifyImported(t, 'school').ignore, t).toBe(true);
