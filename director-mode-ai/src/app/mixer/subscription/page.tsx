@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getPlanContext, getUsage, TIER_LIMITS } from '@/lib/billing';
 import ManagePlanButton from '@/components/billing/ManagePlanButton';
 import UpgradeButton from '@/components/billing/UpgradeButton';
+import { lsCheckoutMode } from '@/lib/lemonsqueezy';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,15 @@ export default async function MixerSubscriptionPage() {
 
   return (
     <div className="px-4 md:px-8 py-8 md:py-12 max-w-4xl mx-auto">
+      {lsCheckoutMode() === 'test' && (
+        <div className="mb-4 rounded-xl border-2 px-4 py-3 text-sm"
+             style={{ borderColor: '#f59e0b', background: '#fffbeb', color: '#92400e' }}>
+          <strong>Test mode.</strong> Checkout is still pointed at the LemonSqueezy test store, so an
+          upgrade here completes without charging anything. Set{' '}
+          <code>LEMONSQUEEZY_BUY_LINK_PRO_MONTHLY</code> in Vercel to start taking real payments.
+        </div>
+      )}
+
       <div className="flex items-center gap-3 mb-2">
         <CreditCard className="text-orange-400" size={24} />
         <h1 className="font-display text-3xl text-white">Subscription</h1>

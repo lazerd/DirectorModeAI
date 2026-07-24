@@ -36,18 +36,44 @@ export function lsConfigured(): boolean {
 // avoids needing the API key / numeric store+variant ids just to start a
 // checkout — we pass the account id via custom data query params, and the
 // webhook reads it back from meta.custom_data to flip the right account to Pro.
-const BUY_LINKS: Record<PriceKey, string | null> = {
-  pro_monthly: 'https://coachmode.lemonsqueezy.com/checkout/buy/331145f1-d9ac-4376-b11d-b1b51a50b793',
-  pro_annual: process.env.LEMONSQUEEZY_BUY_LINK_PRO_ANNUAL || null,
-  day_pass: process.env.LEMONSQUEEZY_BUY_LINK_DAY_PASS || null,
-};
+//
+// The monthly link used to be hardcoded here, which meant switching the store
+// from test mode to live required a code change and a deploy. It's the last
+// thing standing between the product and taking money, so it should not need
+// an engineer: set LEMONSQUEEZY_BUY_LINK_PRO_MONTHLY in Vercel and the next
+// request picks it up.
+//
+// The test-mode link stays as the fallback so nothing breaks before that's
+// done — but lsCheckoutMode() reports 'test' while it's in use, and the
+// billing UI says so out loud rather than letting a test checkout look real.
+const TEST_BUY_LINK_PRO_MONTHLY =
+  'https://coachmode.lemonsqueezy.com/checkout/buy/331145f1-d9ac-4376-b11d-b1b51a50b793';
+
+function buyLinks(): Record<PriceKey, string | null> {
+  return {
+    pro_monthly: process.env.LEMONSQUEEZY_BUY_LINK_PRO_MONTHLY || TEST_BUY_LINK_PRO_MONTHLY,
+    pro_annual: process.env.LEMONSQUEEZY_BUY_LINK_PRO_ANNUAL || null,
+    day_pass: process.env.LEMONSQUEEZY_BUY_LINK_DAY_PASS || null,
+  };
+}
+
+/**
+ * Whether real money can be taken.
+ *
+ * 'test'  — still on the built-in test-store link; checkouts complete but
+ *           charge nothing, so a "subscriber" is not a customer.
+ * 'live'  — a buy link has been configured in the environment.
+ */
+export function lsCheckoutMode(): 'live' | 'test' {
+  return process.env.LEMONSQUEEZY_BUY_LINK_PRO_MONTHLY ? 'live' : 'test';
+}
 
 /** Build a hosted-checkout URL for a plan with the account id attached. */
 export function buildCheckoutUrl(
   priceKey: PriceKey,
   opts: { userId: string; email?: string | null; eventId?: string | null }
 ): string | null {
-  const base = BUY_LINKS[priceKey];
+  const base = buyLinks()[priceKey];
   if (!base) return null;
   const u = new URL(base);
   u.searchParams.set('checkout[custom][user_id]', opts.userId);
