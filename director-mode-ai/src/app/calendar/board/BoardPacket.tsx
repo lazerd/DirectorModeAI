@@ -61,6 +61,10 @@ export default function BoardPacket() {
   const staffDays = items.reduce((n, i) => n + (i.staff_needed ?? 0), 0);
   const attendance = items.reduce((n, i) => n + (i.expected_attendance ?? 0), 0);
   const maxMonth = summary ? Math.max(1, ...summary.byMonth) : 1;
+  // How much of the revenue line rests on the club's own numbers rather than
+  // catalog defaults. A board figure that quietly mixes the two is worse than
+  // no figure at all.
+  const withFee = items.filter((i) => (i.entry_fee_cents ?? 0) > 0).length;
 
   if (loading) {
     return (
@@ -103,7 +107,7 @@ export default function BoardPacket() {
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
           <Stat label="Events" value={String(summary?.total ?? 0)} />
           <Stat label="Flagship events" value={String(summary?.flagshipCount ?? 0)} />
-          <Stat label="Projected revenue" value={`$${revenue.toLocaleString()}`} />
+          <Stat label="Estimated revenue" value={`$${revenue.toLocaleString()}`} />
           <Stat label="Expected participation" value={attendance.toLocaleString()} />
         </section>
 
@@ -184,8 +188,13 @@ export default function BoardPacket() {
               holiday travel patterns and typical weather for the club's location.
             </li>
             <li>
-              Projected revenue assumes typical attendance at the stated entry fee. It excludes food and
-              beverage unless the event's fee already includes it.
+              Revenue is an <strong>estimate</strong>, not a forecast: it assumes typical attendance at
+              each event&apos;s entry fee, and excludes food and beverage unless the fee already covers it.
+              {withFee < items.length && (
+                <> {items.length - withFee} of {items.length} events have no fee set yet, so their figure
+                  comes from typical club pricing rather than ours — treat the total as an order of
+                  magnitude until those are filled in.</>
+              )}
             </li>
             <li>Approximately {staffDays} staff assignments across the year.</li>
             {summary && summary.crowdedWeeks > 0 && (

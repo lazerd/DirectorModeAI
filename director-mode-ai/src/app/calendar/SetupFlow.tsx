@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  Upload, Loader2, Check, Sparkles, ArrowRight, RefreshCw, X, Trash2, CalendarCheck,
+  Upload, Loader2, Check, Sparkles, ArrowRight, RefreshCw, X, Trash2, CalendarCheck, History, Repeat,
 } from 'lucide-react';
 
 // Building a year has an order to it, and the order matters:
@@ -18,6 +18,20 @@ import {
 //
 // The first version of this jumped straight to step 3 and handed back a
 // finished year, which is why it felt like being handed someone else's plan.
+
+type RepeatCandidate = {
+  key: string;
+  title: string;
+  occurrences: number;
+  sourceDates: string[];
+  proposedDates: string[];
+  isSeries: boolean;
+  note: string;
+  match_format: string | null;
+  entry_fee_cents: number | null;
+  num_courts: number | null;
+  start_time: string | null;
+};
 
 type Suggestion = {
   index: number;
@@ -57,6 +71,12 @@ export default function SetupFlow({
   const [rows, setRows] = useState<any[]>([]);
   const [chosen, setChosen] = useState<Set<number>>(new Set());
 
+  // Last year's proven events — offered before any AI suggestion, because a
+  // director's own calendar beats anything a catalog can propose.
+  const [repeats, setRepeats] = useState<RepeatCandidate[] | null>(null);
+  const [repeatPicks, setRepeatPicks] = useState<Set<string>>(new Set());
+  const [sourceYear, setSourceYear] = useState(year - 1);
+
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -67,8 +87,6 @@ export default function SetupFlow({
     setImports((json.imports ?? []).length);
     setConstraintCount((json.constraints ?? []).length);
   }, [year]);
-
-  useEffect(() => { refreshImports(); }, [refreshImports]);
 
   async function sweepClubMode() {
     setBusy('sweep'); setError(null);
@@ -91,6 +109,37 @@ export default function SetupFlow({
       if (!commit.ok) throw new Error(cj.error);
       await refreshImports();
     } catch (e: any) { setError(e.message); } finally { setBusy(null); }
+  }
+
+  const loadRepeats = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/calendar/repeat?year=${year}&from=${year - 1}`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const json = await res.json();
+      setRepeats(json.candidates ?? []);
+      setSourceYear(json.sourceYear ?? year - 1);
+      // Series are the backbone of a club year, so they start ticked; one-offs
+      // are a judgement call and start unticked.
+      setRepeatPicks(new Set((json.candidates ?? []).filter((c: RepeatCandidate) => c.isSeries).map((c: RepeatCandidate) => c.key)));
+    } catch { /* no history is a fine outcome */ }
+  }, [year]);
+
+  useEffect(() => { refreshImports(); loadRepeats(); }, [refreshImports, loadRepeats]);
+
+  async function addRepeats() {
+    if (!repeats) return;
+    const picked = repeats.filter((c) => repeatPicks.has(c.key));
+    if (picked.length === 0) { setError('Tick at least one.'); return; }
+    setBusy('repeat'); setError(null);
+    try {
+      const res = await fetch('/api/calendar/repeat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId, candidates: picked }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      onDone();
+    } catch (e: any) { setError(e.message); setBusy(null); }
   }
 
   async function suggest() {
@@ -212,9 +261,72 @@ export default function SetupFlow({
           <div>
             <h2 className="text-xl font-semibold">What do you want to run?</h2>
             <p className="text-sm opacity-70 mt-1">
-              We&apos;ll suggest a balanced slate for your club. You tick the ones you want — nothing gets
-              added until you say so.
+              Start with what worked last year, then fill the gaps. Nothing gets added until you say so.
             </p>
+          </div>
+
+          {/* Last year first — proven events beat suggested ones. */}
+          {repeats && repeats.length > 0 && (
+            <div className="rounded-xl border p-3" style={{ background: '#002838', borderColor: '#0d3d4d' }}>
+              <div className="flex items-center gap-2 mb-1">
+                <History className="w-4 h-4" style={{ color: '#D3FB52' }} />
+                <span className="font-semibold text-sm">What you ran in {sourceYear}</span>
+                <span className="ml-auto text-xs opacity-50">{repeatPicks.size} selected</span>
+              </div>
+              <p className="text-xs opacity-60 mb-2">
+                Dates moved to the equivalent weekend next year. Recurring events keep their cadence.
+              </p>
+
+              <div className="space-y-1">
+                {repeats.map((c) => {
+                  const on = repeatPicks.has(c.key);
+                  return (
+                    <label key={c.key} className="flex items-start gap-2.5 p-2 rounded-lg cursor-pointer"
+                           style={{ background: on ? '#0d3d4d55' : 'transparent', opacity: on ? 1 : 0.55 }}>
+                      <input type="checkbox" checked={on} className="mt-1 w-4 h-4"
+                             onChange={(e) => setRepeatPicks((cur) => {
+                               const next = new Set(cur);
+                               if (e.target.checked) next.add(c.key); else next.delete(c.key);
+                               return next;
+                             })} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <span className="font-medium text-sm">{c.title}</span>
+                          {c.isSeries && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1"
+                                  style={{ background: '#0d3d4d', color: '#9fc0cb' }}>
+                              <Repeat className="w-2.5 h-2.5" />×{c.occurrences}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs opacity-55">
+                          {c.note} · now {c.proposedDates.length === 1
+                            ? longDate(c.proposedDates[0])
+                            : `${longDate(c.proposedDates[0])} → ${longDate(c.proposedDates[c.proposedDates.length - 1])}`}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center gap-3 mt-2 pt-2 border-t" style={{ borderColor: '#0d3d4d' }}>
+                <button onClick={() => setRepeatPicks(new Set(repeats.map((c) => c.key)))}
+                        className="text-xs opacity-70 hover:opacity-100">Select all</button>
+                <button onClick={() => setRepeatPicks(new Set())}
+                        className="text-xs opacity-70 hover:opacity-100">Clear</button>
+                <button onClick={addRepeats} disabled={!!busy || repeatPicks.size === 0}
+                        className="ml-auto px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1.5 disabled:opacity-40"
+                        style={{ background: '#D3FB52', color: '#001820' }}>
+                  {busy === 'repeat' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Repeat className="w-3.5 h-3.5" />}
+                  Add these
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="text-xs uppercase tracking-wide opacity-40 text-center">
+            {repeats && repeats.length > 0 ? 'or fill the gaps with something new' : ''}
           </div>
 
           <div className="grid sm:grid-cols-[120px_1fr] gap-3">
