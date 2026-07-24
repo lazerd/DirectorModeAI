@@ -7,8 +7,7 @@ import {
   AlertTriangle, CheckCircle2, ExternalLink, Trash2, Megaphone, LandPlot, Globe,
 } from 'lucide-react';
 import RemindersTab from './RemindersTab';
-import SetupFlow from './SetupFlow';
-import EventList from './EventList';
+import CalendarTiers from './CalendarTiers';
 
 // CalendarMode's daily-driver surface.
 //
@@ -83,6 +82,18 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+type ImportRow = {
+  id: string; kind: string; label: string | null; filename: string | null;
+  item_count: number; created_at: string;
+};
+
+type RepeatRow = {
+  key: string; title: string; occurrences: number; isSeries: boolean;
+  note: string; proposedDates: string[];
+  match_format: string | null; entry_fee_cents: number | null;
+  num_courts: number | null; start_time: string | null;
+};
+
 export default function CalendarClient() {
   const [year, setYear] = useState<number>(() => new Date().getFullYear() + 1);
   const [plan, setPlan] = useState<Plan | null>(null);
@@ -90,7 +101,8 @@ export default function CalendarClient() {
   const [constraints, setConstraints] = useState<Constraint[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [club, setClub] = useState<{ name: string; slug: string } | null>(null);
-  const [importCount, setImportCount] = useState(0);
+  const [imports, setImports] = useState<ImportRow[]>([]);
+  const [repeats, setRepeats] = useState<RepeatRow[] | null>(null);
   const [isPro, setIsPro] = useState(true);
 
   const [loading, setLoading] = useState(true);
@@ -113,7 +125,7 @@ export default function CalendarClient() {
       setConstraints(json.constraints ?? []);
       setSummary(json.summary ?? null);
       setClub(json.club ?? null);
-      setImportCount((json.imports ?? []).length);
+      setImports(json.imports ?? []);
       setIsPro(json.isPro !== false);
     } catch (e: any) {
       setError(e.message);
@@ -123,6 +135,18 @@ export default function CalendarClient() {
   }, []);
 
   useEffect(() => { load(year); }, [year, load]);
+
+  // Last year's events, for the "repeat what you ran" list in tier 2.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/calendar/repeat?year=${year}&from=${year - 1}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const json = await res.json();
+        setRepeats(json.candidates ?? []);
+      } catch { setRepeats([]); }
+    })();
+  }, [year]);
 
   // Constraints the list checks each row against. Kept flat — the list does
   // its own overlap test per row rather than exploding every span into days.
@@ -250,107 +274,29 @@ export default function CalendarClient() {
   }
 
   return (
-    <div className="min-h-screen pb-24" style={{ background: '#001820', color: '#e6f0f3' }}>
-      {/* header */}
-      <div className="sticky top-0 z-20 border-b" style={{ background: '#001820e6', backdropFilter: 'blur(8px)', borderColor: '#0d3d4d' }}>
-        <div className="max-w-[1600px] mx-auto px-4 py-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 mr-auto">
-              <CalendarDays className="w-5 h-5" style={{ color: '#c084fc' }} />
-              <h1 className="text-lg font-semibold">CalendarMode</h1>
-              {club && <span className="text-sm opacity-60 hidden sm:inline">· {club.name}</span>}
-              {plan?.status === 'published' && (
-                <span className="text-[11px] px-2 py-0.5 rounded-full font-medium"
-                      style={{ background: '#14532d', color: '#86efac' }}>
-                  Published
-                </span>
-              )}
-            </div>
-
-            <select
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-              className="px-2 py-1.5 rounded-lg text-sm border"
-              style={{ background: '#002838', borderColor: '#0d3d4d', color: '#e6f0f3' }}
-            >
-              {yearOptions().map((y) => <option key={y} value={y}>{y}</option>)}
-            </select>
-
-            <button
-              onClick={() => setBuildOpen(true)}
-              className="px-3 py-1.5 rounded-lg text-sm font-semibold flex items-center gap-1.5"
-              style={{ background: '#D3FB52', color: '#001820' }}
-            >
-              <Sparkles className="w-4 h-4" /> Suggest events
-            </button>
-
-            <Link href="/calendar/ideas" className="px-3 py-1.5 rounded-lg text-sm border flex items-center gap-1.5"
-                  style={{ borderColor: '#0d3d4d', color: '#e6f0f3' }}>
-              <Plus className="w-4 h-4" /> Ideas
-            </Link>
-            <Link href="/calendar/import" className="px-3 py-1.5 rounded-lg text-sm border flex items-center gap-1.5"
-                  style={{ borderColor: '#0d3d4d', color: '#e6f0f3' }}>
-              <Upload className="w-4 h-4" /> Import
-            </Link>
-            <Link href={`/calendar/board?year=${year}`} className="px-3 py-1.5 rounded-lg text-sm border flex items-center gap-1.5"
-                  style={{ borderColor: '#0d3d4d', color: '#e6f0f3' }}>
-              <FileText className="w-4 h-4" /> Board packet
-            </Link>
-
-            {plan?.status === 'published' ? (
-              <button onClick={() => publish('draft')} disabled={busy === 'publish'}
-                      className="px-3 py-1.5 rounded-lg text-sm border" style={{ borderColor: '#0d3d4d' }}>
-                Unpublish
-              </button>
-            ) : (
-              <button onClick={() => publish('published')} disabled={busy === 'publish'}
-                      className="px-3 py-1.5 rounded-lg text-sm border flex items-center gap-1.5"
-                      style={{ borderColor: '#c084fc', color: '#c084fc' }}>
-                <Globe className="w-4 h-4" /> Publish to members
-              </button>
-            )}
-          </div>
-
-          {summary && <SummaryBar summary={summary} constraints={constraints.length} />}
-        </div>
-      </div>
-
-      {error && (
-        <div className="max-w-[1600px] mx-auto px-4 pt-3">
-          <div className="px-3 py-2 rounded-lg text-sm flex items-center justify-between"
-               style={{ background: '#4c1d1d', color: '#fecaca' }}>
-            {error}
-            <button onClick={() => setError(null)}><X className="w-4 h-4" /></button>
-          </div>
-        </div>
-      )}
-
-      {!isPro && (
-        <div className="max-w-[1600px] mx-auto px-4 pt-3">
-          <div className="px-3 py-2 rounded-lg text-sm" style={{ background: '#3b2f0b', color: '#fde68a' }}>
-            CalendarMode planning is a Pro feature. You can browse event ideas for free —{' '}
-            <Link href="/pricing" className="underline">see plans</Link>.
-          </div>
-        </div>
-      )}
-
-      {liveItems.length === 0 && plan ? (
-        <SetupFlow
-          planId={plan.id}
+    <>
+      {plan && (
+        <CalendarTiers
+          plan={plan}
           year={year}
-          importCount={importCount}
-          onDone={() => load(year)}
+          years={yearOptions()}
+          onYear={setYear}
+          club={club}
+          isPro={isPro}
+          items={liveItems as any}
+          constraints={listConstraints as any}
+          imports={imports}
+          repeats={repeats}
+          summary={summary}
+          busy={busy}
+          error={error}
+          onError={setError}
+          onReload={() => load(year)}
+          onOpenItem={(i) => setSelected(i as any)}
+          onMoveToMonth={moveToMonth}
+          onOpenBuild={() => setBuildOpen(true)}
+          onPublish={publish}
         />
-      ) : (
-        <div className="pt-4">
-          <EventList
-            items={liveItems as any}
-            constraints={listConstraints as any}
-            onOpen={(i) => setSelected(i as any)}
-            onMoveToMonth={moveToMonth}
-            busyId={busy}
-          />
-        </div>
       )}
 
       {selected && (
@@ -376,7 +322,7 @@ export default function CalendarClient() {
           onDone={() => { setBuildOpen(false); load(year); }}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -384,6 +330,7 @@ export default function CalendarClient() {
 // Pieces
 // ============================================================
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function SummaryBar({ summary, constraints }: { summary: Summary; constraints: number }) {
   const stat = (label: string, value: string, tone?: string) => (
     <div className="flex items-baseline gap-1.5">
