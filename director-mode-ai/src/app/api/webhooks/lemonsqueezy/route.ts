@@ -15,6 +15,8 @@ import {
   verifyWebhookSignature,
   mapSubscriptionStatus,
   variantIdToTier,
+  isCaptainPriceKey,
+  CAPTAIN_PRICE_KEYS,
 } from '@/lib/lemonsqueezy';
 
 export const runtime = 'nodejs';
@@ -71,6 +73,40 @@ export async function POST(request: NextRequest) {
   ]);
 
   try {
+    // ---- CaptainMode: a per-captain subscription, NOT the club's Pro plan.
+    // Writes captain_subscriptions and must never touch profiles.plan_tier —
+    // a captain can be on ClubMode free and still pay for CaptainMode.
+    if (SUBSCRIPTION_LIFECYCLE.has(eventName) && isCaptainPriceKey(custom.price_key)) {
+      const userId = custom.user_id || (await lookupUserByCustomer(attrs.customer_id));
+      if (userId) {
+        const { status, grantsAccess } = mapSubscriptionStatus(String(attrs.status || ''));
+        const { error: capErr } = await service.from('captain_subscriptions').upsert(
+          {
+            user_id: userId,
+            club_id: custom.club_id || null,
+            rate_type: CAPTAIN_PRICE_KEYS[custom.price_key] ?? 'standalone',
+            status: grantsAccess ? status : 'canceled',
+            stripe_customer_id: attrs.customer_id ? String(attrs.customer_id) : null,
+            stripe_subscription_id: grantsAccess ? String(data.id) : null,
+            current_period_end: attrs.renews_at || attrs.ends_at || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
+        );
+        if (capErr) {
+          console.error('[lemonsqueezy/webhook] captain_subscriptions upsert failed:', capErr.message);
+        }
+      }
+
+      await service.from('billing_events').insert({
+        user_id: custom.user_id || (await lookupUserByCustomer(attrs.customer_id)),
+        event_type: eventName,
+        stripe_event_id: eventKey,
+        metadata: attrs,
+      });
+      return NextResponse.json({ received: true, captain: true });
+    }
+
     if (SUBSCRIPTION_LIFECYCLE.has(eventName)) {
       const userId = custom.user_id || (await lookupUserByCustomer(attrs.customer_id));
       if (userId) {

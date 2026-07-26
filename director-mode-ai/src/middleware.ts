@@ -53,6 +53,13 @@ export async function middleware(request: NextRequest) {
     '/courtsheet/staff',
     '/calendar',
     '/member',
+    // CaptainMode subscription page. The rest of /captain is deliberately NOT
+    // listed: the player-facing surfaces (/captain/availability|claim|confirm)
+    // are tokenized and must work with no login, and a startsWith('/captain')
+    // rule would bounce them to /login. The captain-only pages live in the
+    // (app) route group, whose layout does the auth redirect — same split as
+    // CourtSheet above.
+    '/captain/subscribe',
   ];
   const isProtectedPath = protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path)

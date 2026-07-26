@@ -22,7 +22,7 @@ import { createClient } from '@/lib/supabase/client';
 import {
   Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
   Waves, GraduationCap, BarChart3, Sparkles, ExternalLink, Calendar,
-  CalendarDays, MessagesSquare, ChevronLeft, ChevronRight, Menu, X,
+  CalendarDays, MessagesSquare, ClipboardList, ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
 type Item = {
@@ -48,6 +48,7 @@ const ITEMS: Item[] = [
   { name: 'CoachMode', href: '/lessons/recap', match: '/lessons/recap', icon: GraduationCap, color: '#a78bfa' },
   { name: 'Members', href: '/club/members', match: '/club/members', icon: Users, color: '#38bdf8' },
   { name: 'Stringing', href: '/stringing/jobs', match: '/stringing', icon: Wrench, color: '#f472b6' },
+  { name: 'CaptainMode', href: '/captain', match: '/captain', icon: ClipboardList, color: '#D3FB52' },
   { name: 'CourtConnect', href: '/courtconnect/home', match: '/courtconnect/home', icon: Users, color: '#34d399' },
   { name: 'PlayerVault', href: '/courtconnect/vault', match: '/courtconnect/vault', icon: Database, color: '#2dd4bf' },
   { name: 'SwimMode', href: '/swim', match: '/swim', icon: Waves, color: '#38bdf8' },

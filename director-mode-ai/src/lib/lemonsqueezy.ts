@@ -26,7 +26,26 @@ import crypto from 'crypto';
 
 const API = 'https://api.lemonsqueezy.com/v1';
 
-export type PriceKey = 'pro_monthly' | 'pro_annual' | 'day_pass';
+export type PriceKey =
+  | 'pro_monthly'
+  | 'pro_annual'
+  | 'day_pass'
+  // CaptainMode — a per-captain subscription, separate from the club's Pro plan.
+  // 'captain_club' is the $10 rate for captains whose club is on ClubMode Pro;
+  // 'captain_solo' is the $20 standalone rate. Which one a captain gets is
+  // resolved server-side (see resolveCaptainRate) — never from the client.
+  | 'captain_club'
+  | 'captain_solo';
+
+/** CaptainMode price keys, and the rate_type each maps to. */
+export const CAPTAIN_PRICE_KEYS: Record<string, 'club_linked' | 'standalone'> = {
+  captain_club: 'club_linked',
+  captain_solo: 'standalone',
+};
+
+export function isCaptainPriceKey(key: string | null | undefined): boolean {
+  return !!key && key in CAPTAIN_PRICE_KEYS;
+}
 
 export function lsConfigured(): boolean {
   return !!process.env.LEMONSQUEEZY_API_KEY && !!process.env.LEMONSQUEEZY_STORE_ID;
@@ -54,6 +73,12 @@ function buyLinks(): Record<PriceKey, string | null> {
     pro_monthly: process.env.LEMONSQUEEZY_BUY_LINK_PRO_MONTHLY || TEST_BUY_LINK_PRO_MONTHLY,
     pro_annual: process.env.LEMONSQUEEZY_BUY_LINK_PRO_ANNUAL || null,
     day_pass: process.env.LEMONSQUEEZY_BUY_LINK_DAY_PASS || null,
+    // CaptainMode: two products, $10/mo (club on Pro) and $20/mo (standalone).
+    // Deliberately no test fallback — there is no CaptainMode product yet, and
+    // a checkout that silently charges nothing is worse than one that admits
+    // it isn't configured.
+    captain_club: process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_CLUB || null,
+    captain_solo: process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_SOLO || null,
   };
 }
 
@@ -71,7 +96,13 @@ export function lsCheckoutMode(): 'live' | 'test' {
 /** Build a hosted-checkout URL for a plan with the account id attached. */
 export function buildCheckoutUrl(
   priceKey: PriceKey,
-  opts: { userId: string; email?: string | null; eventId?: string | null }
+  opts: {
+    userId: string;
+    email?: string | null;
+    eventId?: string | null;
+    /** CaptainMode: the club whose Pro status set the rate, stored on the sub */
+    clubId?: string | null;
+  }
 ): string | null {
   const base = buyLinks()[priceKey];
   if (!base) return null;
@@ -80,6 +111,7 @@ export function buildCheckoutUrl(
   u.searchParams.set('checkout[custom][price_key]', priceKey);
   if (opts.email) u.searchParams.set('checkout[email]', opts.email);
   if (opts.eventId) u.searchParams.set('checkout[custom][event_id]', opts.eventId);
+  if (opts.clubId) u.searchParams.set('checkout[custom][club_id]', opts.clubId);
   return u.toString();
 }
 
