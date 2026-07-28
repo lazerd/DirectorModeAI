@@ -424,8 +424,12 @@ pages sit outside it and stay reachable without a login. `middleware.ts` deliber
    ```
 2. **Never-pair UI.** The generator enforces the never-pair list and the table exists, but nothing
    in the roster screen writes to it yet.
-4. **Paste-to-import (§7).** Not started; roster entry is currently paste-one-per-line
-   (`Name, email, rating`) rather than AI-parsed.
+4. ~~**Paste-to-import (§7).**~~ **BUILT** 2026-07-28 — `/api/captain/import` (parse → preview →
+   confirm) plus `ImportPanel` on the team hub. Zod-validated, per-item unticking, and the commit
+   step skips players/matches already on the team so a re-paste can't duplicate. Times are built at
+   America/Los_Angeles wall-clock so DST doesn't shift a match. The parser flags TopDog's
+   placeholder-Sunday schedules on the preview instead of importing them silently.
+   Paste-one-per-line (`Name, email, rating`) remains as the manual fallback.
 5. **Reschedule UI.** The API handles it (`PATCH /api/captain/matches` with `reschedule_to`, which
    wipes availability and re-polls); no button calls it yet.
 
