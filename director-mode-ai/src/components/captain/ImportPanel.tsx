@@ -1,0 +1,246 @@
+'use client';
+
+/**
+ * Paste-to-import (CaptainMode spec §7).
+ *
+ * The captain copies their team page from wherever it lives — TopDog, USTA
+ * TennisLink, tenniscores, a spreadsheet — pastes it here, and an LLM pulls out
+ * the roster and schedule. Nothing is written until they look at the preview and
+ * press the confirm button, and the commit skips anything already on the team,
+ * so re-pasting the same page is harmless.
+ */
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+type PPlayer = { name: string; email?: string | null; rating?: number | null; is_sub?: boolean };
+type PMatch = {
+  date: string;
+  time?: string | null;
+  is_home: boolean;
+  opponent?: string | null;
+  location?: string | null;
+};
+type Preview = { players: PPlayer[]; matches: PMatch[]; notes?: string[] };
+
+const field =
+  'w-full px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-white placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none text-sm';
+
+export default function ImportPanel({ teamId }: { teamId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [preview, setPreview] = useState<Preview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+
+  const [skipPlayers, setSkipPlayers] = useState<Set<number>>(new Set());
+  const [skipMatches, setSkipMatches] = useState<Set<number>>(new Set());
+
+  function toggle(set: Set<number>, i: number, apply: (s: Set<number>) => void) {
+    const next = new Set(set);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    apply(next);
+  }
+
+  async function parse(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setDone(null);
+    try {
+      const res = await fetch('/api/captain/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_id: teamId, text }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not read that paste.');
+      setPreview(json as Preview);
+      setSkipPlayers(new Set());
+      setSkipMatches(new Set());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commit() {
+    if (!preview) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/captain/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_id: teamId,
+          commit: true,
+          players: preview.players.filter((_, i) => !skipPlayers.has(i)),
+          matches: preview.matches.filter((_, i) => !skipMatches.has(i)),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Import failed.');
+      const { players, matches } = json.added || {};
+      const skipped = (json.skipped?.players ?? 0) + (json.skipped?.matches ?? 0);
+      setDone(
+        `Added ${players} player${players === 1 ? '' : 's'} and ${matches} match${
+          matches === 1 ? '' : 'es'
+        }.` + (skipped ? ` ${skipped} already on the team, left alone.` : ''),
+      );
+      setPreview(null);
+      setText('');
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const keptPlayers = preview ? preview.players.length - skipPlayers.size : 0;
+  const keptMatches = preview ? preview.matches.length - skipMatches.size : 0;
+
+  return (
+    <section className="mt-10">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-display text-white">Import from your league site</h2>
+        <button
+          onClick={() => {
+            setOpen((v) => !v);
+            setError(null);
+            setDone(null);
+          }}
+          className="text-sm px-4 py-2 rounded-xl border border-white/10 text-white/70 hover:text-white hover:border-white/25"
+        >
+          {open ? 'Cancel' : '+ Paste a page'}
+        </button>
+      </div>
+
+      {done && <p className="text-sm text-[#D3FB52] mt-3">{done}</p>}
+      {error && <p className="text-sm text-red-300 mt-3">{error}</p>}
+
+      {open && !preview && (
+        <form onSubmit={parse} className="mt-4 rounded-2xl border border-white/[0.08] bg-[#002838] p-5">
+          <label htmlFor="paste" className="block text-sm text-white/60 mb-1">
+            Open your team page on TopDog, TennisLink, tenniscores or a spreadsheet — select all,
+            copy, and paste it here.
+          </label>
+          <p className="text-xs text-white/35 mb-2">
+            Roster, schedule, or both. Nothing is saved until you review it on the next screen.
+          </p>
+          <textarea
+            id="paste"
+            rows={10}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder="Paste the whole page here — extra menus and footers are fine, they get ignored."
+            className={field}
+          />
+          <button
+            type="submit"
+            disabled={busy || !text.trim()}
+            className="mt-3 px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold disabled:opacity-50"
+          >
+            {busy ? 'Reading…' : 'Read this paste'}
+          </button>
+        </form>
+      )}
+
+      {preview && (
+        <div className="mt-4 rounded-2xl border border-white/[0.08] bg-[#002838] p-5">
+          <p className="text-sm text-white/60">
+            Here&apos;s what I found. Untick anything you don&apos;t want, then confirm.
+          </p>
+
+          {preview.notes?.length ? (
+            <ul className="mt-3 space-y-1">
+              {preview.notes.map((n, i) => (
+                <li key={i} className="text-xs text-amber-300/90">
+                  ⚠ {n}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          {preview.players.length > 0 && (
+            <div className="mt-5">
+              <h3 className="text-white/50 text-sm uppercase tracking-wide mb-2">
+                Players ({keptPlayers} of {preview.players.length})
+              </h3>
+              <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+                {preview.players.map((p, i) => (
+                  <label
+                    key={i}
+                    className="flex items-center gap-3 text-sm text-white/80 py-1 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!skipPlayers.has(i)}
+                      onChange={() => toggle(skipPlayers, i, setSkipPlayers)}
+                    />
+                    <span className="flex-1">{p.name}</span>
+                    <span className="text-white/40 text-xs">{p.email || 'no email'}</span>
+                    <span className="text-white/60 text-xs w-10 text-right">
+                      {p.rating ?? '—'}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {preview.matches.length > 0 && (
+            <div className="mt-5">
+              <h3 className="text-white/50 text-sm uppercase tracking-wide mb-2">
+                Matches ({keptMatches} of {preview.matches.length})
+              </h3>
+              <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+                {preview.matches.map((m, i) => (
+                  <label
+                    key={i}
+                    className="flex items-center gap-3 text-sm text-white/80 py-1 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!skipMatches.has(i)}
+                      onChange={() => toggle(skipMatches, i, setSkipMatches)}
+                    />
+                    <span className="w-28">{m.date}</span>
+                    <span className="w-14 text-white/50">{m.time || '—'}</span>
+                    <span
+                      className={`w-14 text-xs ${m.is_home ? 'text-[#D3FB52]' : 'text-white/40'}`}
+                    >
+                      {m.is_home ? 'HOME' : 'away'}
+                    </span>
+                    <span className="flex-1 truncate">{m.opponent || '—'}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="mt-5 flex items-center gap-3">
+            <button
+              onClick={commit}
+              disabled={busy || (keptPlayers === 0 && keptMatches === 0)}
+              className="px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold disabled:opacity-50"
+            >
+              {busy ? 'Adding…' : `Add ${keptPlayers} player(s) + ${keptMatches} match(es)`}
+            </button>
+            <button
+              onClick={() => setPreview(null)}
+              className="text-sm px-4 py-2 rounded-xl border border-white/10 text-white/70 hover:text-white"
+            >
+              Back
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

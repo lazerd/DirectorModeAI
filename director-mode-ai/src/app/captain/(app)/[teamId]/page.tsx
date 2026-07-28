@@ -7,6 +7,7 @@ import { eligibilityReport, type RatingType } from '@/lib/captain/lineup';
 import RosterPanel from '@/components/captain/RosterPanel';
 import AddMatchForm from '@/components/captain/AddMatchForm';
 import PartnershipsPanel from '@/components/captain/PartnershipsPanel';
+import ImportPanel from '@/components/captain/ImportPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -172,6 +173,8 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
           playerBName: (roster.find((p) => p.id === r.playerBId)?.name as string) ?? '—',
         }))}
       />
+
+      <ImportPanel teamId={team.id} />
 
       <RosterPanel
         teamId={team.id}
