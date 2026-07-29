@@ -17,8 +17,10 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+// Single source of truth: the resolver matches each match's weekday against
+// these exact codes, so the form must not drift from them.
+import { DAYS, isDayCode } from '@/lib/captain/availability';
 
-const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const SIDES = ['deuce', 'ad', 'either'];
 const MAX_PARTNERS = 5;
 
@@ -108,9 +110,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
       : null;
 
   const days = Array.isArray(body.unavailable_days)
-    ? (body.unavailable_days as unknown[]).filter(
-        (d): d is string => typeof d === 'string' && DAYS.includes(d),
-      )
+    ? (body.unavailable_days as unknown[]).filter(isDayCode)
     : [];
 
   const courtLimit =

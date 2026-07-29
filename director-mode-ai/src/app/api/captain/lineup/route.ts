@@ -20,6 +20,7 @@ import {
   type LeagueType,
   type RatingType,
 } from '@/lib/captain/lineup';
+import { resolveAvailability } from '@/lib/captain/availability';
 import { lineupEmail, sendAll, type LineupRow, type MatchInfo } from '@/lib/captain/emails';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
@@ -59,7 +60,9 @@ export async function POST(req: Request) {
   if (body.action === 'generate') {
     const { data: players } = await db
       .from('captain_players')
-      .select('id, name, rating, rating_type, gender, return_side, court_limit, is_sub')
+      .select(
+        'id, name, rating, rating_type, gender, return_side, court_limit, is_sub, unavailable_days',
+      )
       .eq('team_id', teamId)
       .eq('active', true);
 
@@ -68,18 +71,26 @@ export async function POST(req: Request) {
       .select('player_id, status')
       .eq('match_id', body.match_id);
 
-    const yes = new Set(
-      ((avail as { player_id: string; status: string }[]) || [])
-        .filter((a) => a.status === 'yes')
-        .map((a) => a.player_id),
-    );
+    // Poll answers plus recurring blackouts from the pre-season intake. An
+    // explicit yes to this match beats a standing blackout; a blackout with no
+    // answer is an exclusion the captain gets told about.
+    const resolved = resolveAvailability({
+      roster: ((players as Record<string, unknown>[]) || []).map((p) => ({
+        id: p.id as string,
+        name: p.name as string,
+        unavailable_days: (p.unavailable_days as string[] | null) ?? [],
+        row: p,
+      })),
+      answers: (avail as { player_id: string; status: string }[]) || [],
+      matchAt: match.match_at as string,
+    });
 
     const counts = await playedCounts(db, teamId);
     const rules = rulesFor(team);
     const history = await pairRecords(db, teamId);
 
-    const available: Player[] = ((players as Record<string, unknown>[]) || [])
-      .filter((p) => yes.has(p.id as string))
+    const available: Player[] = resolved.available
+      .map((r) => r.row)
       .map((p) => {
         const played = counts[p.id as string] ?? 0;
         const need = requiredMatches(rules, (p.rating_type as RatingType) ?? 'computer');
@@ -124,12 +135,17 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ...result,
+      // Blackout exclusions first: they explain a shortfall the generator's own
+      // warnings would otherwise report only as "N short".
+      warnings: [...resolved.warnings, ...result.warnings],
       courts: result.courts.map((c) => ({
         ...c,
         player1Name: nameOf(c.player1Id),
         player2Name: nameOf(c.player2Id),
       })),
       availableCount: available.length,
+      blockedByDay: resolved.blockedByDay.map((r) => ({ id: r.id, name: r.name })),
+      awaitingCount: resolved.awaiting.length,
     });
   }
 
