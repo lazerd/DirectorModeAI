@@ -51,6 +51,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     team_id?: string;
     only_missing?: boolean;
+    player_ids?: unknown;
   };
   if (!body.team_id) {
     return NextResponse.json({ error: 'team_id is required.' }, { status: 400 });
@@ -67,7 +68,25 @@ export async function POST(req: Request) {
     .eq('active', true);
 
   let rows = (data as Row[]) || [];
-  if (body.only_missing) rows = rows.filter((p) => !p.intake_completed_at);
+
+  // Targeted send. A player added after the first blast needs the original
+  // email, not a "still waiting on you" reminder, and re-blasting the whole
+  // roster to reach them means everyone else gets a second copy.
+  const wanted = Array.isArray(body.player_ids)
+    ? (body.player_ids as unknown[]).filter((v): v is string => typeof v === 'string')
+    : null;
+
+  if (wanted?.length) {
+    // Scope to this team's roster — the caller's ids are only a request.
+    const onTeam = new Set(rows.map((p) => p.id));
+    const unknown = wanted.filter((id) => !onTeam.has(id));
+    if (unknown.length) {
+      return NextResponse.json({ error: 'Those players are not on this team.' }, { status: 400 });
+    }
+    rows = rows.filter((p) => wanted.includes(p.id));
+  } else if (body.only_missing) {
+    rows = rows.filter((p) => !p.intake_completed_at);
+  }
 
   const recipients: Recipient[] = rows
     .filter((p) => !!p.email)
@@ -76,16 +95,21 @@ export async function POST(req: Request) {
   if (!recipients.length) {
     return NextResponse.json(
       {
-        error: body.only_missing
-          ? 'Everyone with an email address has already answered.'
-          : 'Nobody on the roster has an email address yet.',
+        error: wanted?.length
+          ? 'Those players have no email address on file.'
+          : body.only_missing
+            ? 'Everyone with an email address has already answered.'
+            : 'Nobody on the roster has an email address yet.',
       },
       { status: 400 },
     );
   }
 
+  // A targeted send is a first ask, so it uses the original wording.
   const payloads = recipients.map((r) =>
-    preseasonIntakeEmail(team.name, r, { reminder: body.only_missing === true }),
+    preseasonIntakeEmail(team.name, r, {
+      reminder: !wanted?.length && body.only_missing === true,
+    }),
   );
 
   try {

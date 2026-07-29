@@ -21,7 +21,12 @@ export default function PreseasonPanel({ teamId, players }: { teamId: string; pl
   const waiting = players.filter((p) => !p.intake_completed_at);
   const noEmail = players.filter((p) => !p.email);
 
-  async function send(onlyMissing: boolean) {
+  /**
+   * `playerIds` sends to exactly those people with the original wording —
+   * for someone added after the first blast, where re-sending to the whole
+   * roster would give everyone else a second copy.
+   */
+  async function send(onlyMissing: boolean, playerIds?: string[]) {
     setBusy(true);
     setMsg(null);
     setError(null);
@@ -29,7 +34,11 @@ export default function PreseasonPanel({ teamId, players }: { teamId: string; pl
       const res = await fetch('/api/captain/preseason', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_id: teamId, only_missing: onlyMissing }),
+        body: JSON.stringify({
+          team_id: teamId,
+          only_missing: onlyMissing,
+          ...(playerIds?.length ? { player_ids: playerIds } : {}),
+        }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Could not send.');
@@ -107,8 +116,23 @@ export default function PreseasonPanel({ teamId, players }: { teamId: string; pl
                 </h3>
                 <ul className="space-y-1">
                   {g.list.map((p) => (
-                    <li key={p.id} className={`text-sm ${g.tone}`}>
-                      {p.name}
+                    <li
+                      key={p.id}
+                      className={`text-sm ${g.tone} flex items-center justify-between gap-2`}
+                    >
+                      <span>{p.name}</span>
+                      {/* Per-player send: the only way to reach one person
+                          without giving the other 22 a duplicate. */}
+                      {p.email && (
+                        <button
+                          onClick={() => send(false, [p.id])}
+                          disabled={busy}
+                          title={`Email the intake link to ${p.name}`}
+                          className="text-[11px] px-2 py-0.5 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 disabled:opacity-50 transition shrink-0"
+                        >
+                          Send
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
