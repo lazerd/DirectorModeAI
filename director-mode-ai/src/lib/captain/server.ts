@@ -6,7 +6,12 @@
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getCaptainAccess, canAccessTeam } from './access';
-import { pairRecordsFrom, type EligibilityRules, type PairRecord } from './lineup';
+import {
+  pairRecordsFrom,
+  type CaptainingStyle,
+  type EligibilityRules,
+  type PairRecord,
+} from './lineup';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export type CaptainCtx = {
@@ -28,6 +33,9 @@ export type TeamRow = {
   min_matches_self_rated: number;
   season_start: string | null;
   season_end: string | null;
+  captaining_style: string | null;
+  poll_lead_days: number | null;
+  lineup_lead_days: number | null;
 };
 
 export type RouteError = { error: NextResponse };
@@ -98,6 +106,39 @@ export function capForTeam(team: { league_type: string; level: string | null }):
   const n = Number(m[1]);
   // Combined caps are 6.0–11.0; anything else is a single-player NTRP level.
   return n >= 6 && n <= 11 ? n : null;
+}
+
+/** Default lead times, matching the constants the cron used to hardcode. */
+export const DEFAULT_POLL_LEAD_DAYS = 21;
+export const DEFAULT_LINEUP_LEAD_DAYS = 7;
+
+/**
+ * How the captain wants the season distributed. Anything unrecognised falls
+ * back to play_to_win, which is the historical behaviour — a bad value in the
+ * column must never silently start benching people.
+ */
+export function styleFor(team: { captaining_style?: string | null }): CaptainingStyle {
+  return team.captaining_style === 'equal_play' ? 'equal_play' : 'play_to_win';
+}
+
+/**
+ * Scheduling lead times. Read from the team so a captain whose league wants a
+ * 10-day lineup isn't stuck on the built-in 7, and clamped because these drive
+ * automatic email sends — a negative or absurd value would either spam or
+ * silently never fire.
+ */
+export function leadDaysFor(team: {
+  poll_lead_days?: number | null;
+  lineup_lead_days?: number | null;
+}): { poll: number; lineup: number } {
+  const clamp = (v: number | null | undefined, dflt: number) => {
+    const n = typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : dflt;
+    return Math.min(120, Math.max(1, n));
+  };
+  const lineup = clamp(team.lineup_lead_days, DEFAULT_LINEUP_LEAD_DAYS);
+  const poll = clamp(team.poll_lead_days, DEFAULT_POLL_LEAD_DAYS);
+  // Asking for availability after the lineup has gone out is meaningless.
+  return { poll: Math.max(poll, lineup), lineup };
 }
 
 /**

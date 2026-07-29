@@ -12,6 +12,7 @@ import {
   playedCounts,
   pairRecords,
   rulesFor,
+  styleFor,
 } from '@/lib/captain/server';
 import {
   generateLineup,
@@ -58,11 +59,11 @@ export async function POST(req: Request) {
 
   // ---------------------------------------------------------------- generate
   if (body.action === 'generate') {
+    // select('*') rather than a column list: the generator keeps gaining inputs
+    // (sort_order, unavailable_days) and a stale list silently drops one.
     const { data: players } = await db
       .from('captain_players')
-      .select(
-        'id, name, rating, rating_type, gender, return_side, court_limit, is_sub, unavailable_days',
-      )
+      .select('*')
       .eq('team_id', teamId)
       .eq('active', true);
 
@@ -104,6 +105,8 @@ export async function POST(req: Request) {
           matchesPlayed: played,
           // false for leagues with no playoffs — requiredMatches returns 0
           needsEligibility: need > 0 && played < need,
+          // captain's manual strength rank; null falls back to rating
+          sortOrder: p.sort_order == null ? null : Number(p.sort_order),
         };
       });
 
@@ -128,6 +131,9 @@ export async function POST(req: Request) {
       doublesCourts: (match.doubles_courts as number) ?? 3,
       leagueType: (team.league_type as LeagueType) || 'usta_adult',
       combinedRatingCap: capForTeam(team),
+      // equal_play is a hard tier gate on matches played, so this is the switch
+      // that decides whether a stronger player gets benched for fairness.
+      captainingStyle: styleFor(team),
     });
 
     const nameOf = (id: string | null) =>
