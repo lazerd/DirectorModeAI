@@ -39,6 +39,13 @@ export type Player = {
   needsEligibility: boolean;
   /** soft nudge from day/time preferences: positive = prefers this slot */
   preferenceNudge?: number;
+  /**
+   * Captain's own strength ranking, 1 = strongest. When set it OVERRIDES
+   * rating — a captain who has watched these people play all season knows
+   * things a number doesn't, and NTRP ratings are coarse (half the roster
+   * shares a 3.5). Null falls back to rating.
+   */
+  sortOrder?: number | null;
 };
 
 export type PartnerPref = {
@@ -57,6 +64,15 @@ export type PairRecord = {
   losses: number;
 };
 
+/**
+ * How the captain wants the season distributed.
+ *   play_to_win — strongest available side every week; fairness stays a mild
+ *                 tiebreaker only (this is the historical behaviour).
+ *   equal_play  — everyone gets as close to the same number of matches as the
+ *                 schedule allows, even when that benches a stronger player.
+ */
+export type CaptainingStyle = 'play_to_win' | 'equal_play';
+
 export type LineupInput = {
   available: Player[];
   partnerPrefs?: PartnerPref[];
@@ -68,6 +84,8 @@ export type LineupInput = {
   leagueType: LeagueType;
   /** combined-rating cap per doubles court (combo/mixed). e.g. 7.5, 8.5 */
   combinedRatingCap?: number | null;
+  /** defaults to play_to_win so existing callers are unchanged */
+  captainingStyle?: CaptainingStyle;
 };
 
 export type CourtAssignment = {
@@ -111,8 +129,21 @@ function ratingOf(p: Player): number {
   return typeof p.rating === 'number' && !Number.isNaN(p.rating) ? p.rating : 0;
 }
 
-/** Strength ordering: rating first, then name so ties are stable. */
+/**
+ * Strength ordering: the captain's manual rank wins when they've set one,
+ * otherwise rating, then name so ties are stable. A manually ranked player
+ * always sorts above an unranked one — a captain who bothered to order the
+ * roster meant it.
+ */
 function byStrength(a: Player, b: Player): number {
+  const ra = typeof a.sortOrder === 'number' ? a.sortOrder : null;
+  const rb = typeof b.sortOrder === 'number' ? b.sortOrder : null;
+  if (ra !== null || rb !== null) {
+    if (ra === null) return 1;
+    if (rb === null) return -1;
+    if (ra !== rb) return ra - rb; // 1 = strongest
+    return a.name.localeCompare(b.name);
+  }
   const d = ratingOf(b) - ratingOf(a);
   return d !== 0 ? d : a.name.localeCompare(b.name);
 }
@@ -296,14 +327,63 @@ function buildPairs(
   return { pairs, leftovers, blocked };
 }
 
+/**
+ * equal_play: restrict the pool to the players who have played least.
+ *
+ * Implemented as a HARD tier gate, not a scoring weight, and that distinction
+ * is the whole point. A weight can always be outvoted by a strong enough pile
+ * of partner-preference and chemistry points, which is exactly how a roster
+ * ends up with someone on 5 matches while a teammate sits on 2. Walking the
+ * tiers guarantees max-minus-min never exceeds 1 over the season.
+ *
+ * Whole tiers are admitted at once, so within the boundary tier the normal
+ * optimiser still gets to honour partner prefs and return sides — fairness
+ * decides WHO is in the running, preference decides who pairs with whom.
+ */
+function equalPlayPool(available: Player[], needed: number): { pool: Player[]; note: string | null } {
+  if (available.length <= needed) return { pool: available, note: null };
+
+  const tiers = new Map<number, Player[]>();
+  for (const p of available) {
+    const t = tiers.get(p.matchesPlayed) ?? [];
+    t.push(p);
+    tiers.set(p.matchesPlayed, t);
+  }
+
+  const pool: Player[] = [];
+  let boundary: number | null = null;
+  for (const count of [...tiers.keys()].sort((a, b) => a - b)) {
+    if (pool.length >= needed) break;
+    pool.push(...(tiers.get(count) as Player[]));
+    boundary = count;
+  }
+
+  const benched = available.filter((p) => !pool.includes(p));
+  const note = benched.length
+    ? `Equal-play: sitting ${benched
+        .slice()
+        .sort((a, b) => a.matchesPlayed - b.matchesPlayed || a.name.localeCompare(b.name))
+        .map((p) => `${p.name} (${p.matchesPlayed})`)
+        .join(', ')} — already ahead of the ${boundary}-match group.`
+    : null;
+
+  return { pool, note };
+}
+
 export function generateLineup(input: LineupInput): LineupResult {
   const warnings: string[] = [];
   const prefs = input.partnerPrefs ?? [];
   const neverSet = new Set((input.neverPairs ?? []).map((n) => key(n.playerAId, n.playerBId)));
   const history = input.pairHistory ?? [];
 
-  const available = [...input.available];
   const needed = input.singlesCourts + input.doublesCourts * 2;
+
+  let available = [...input.available];
+  if ((input.captainingStyle ?? 'play_to_win') === 'equal_play') {
+    const { pool, note } = equalPlayPool(available, needed);
+    available = pool;
+    if (note) warnings.push(note);
+  }
 
   if (available.length < needed) {
     warnings.push(

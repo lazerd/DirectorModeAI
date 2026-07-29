@@ -10,6 +10,10 @@
 
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
+
+// Sends are paced (~2/sec) to stay under Resend's rate limit, so a full roster
+// takes ~11s for 20 players — comfortably past the default function timeout.
+export const maxDuration = 60;
 import { preseasonIntakeEmail, sendAll, type Recipient } from '@/lib/captain/emails';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
@@ -87,9 +91,16 @@ export async function POST(req: Request) {
   try {
     const results = await sendAll(userId, payloads);
     const sent = results.filter((r) => r.sent).length;
+    // Name the people who didn't get it. A bare count ("9 failed") tells a captain
+    // nothing they can act on — they need to know who to chase or resend to.
+    const failedNames = results
+      .map((r, i) => (r.sent ? null : { name: recipients[i].name, reason: r.reason }))
+      .filter(Boolean) as { name: string; reason: string }[];
     return NextResponse.json({
       sent,
       failed: results.length - sent,
+      failedNames: failedNames.map((f) => f.name),
+      unsubscribed: failedNames.filter((f) => f.reason === 'unsubscribed').map((f) => f.name),
       skippedNoEmail: rows.length - recipients.length,
     });
   } catch (err) {

@@ -37,21 +37,64 @@ export async function sendBilledEmail(userId: string | null, payload: EmailPaylo
   });
 }
 
+/**
+ * Resend rate-limits bursts. Firing a whole roster at once with Promise.all got
+ * 9 of 20 CaptainMode pre-season emails silently dropped on 2026-07-29 — every
+ * failure came back as {sent:false} and callers only ever counted them, so nine
+ * players simply never heard from their captain. Send in small paced batches and
+ * retry the rate-limited ones instead.
+ */
+const SEND_BATCH = 2; // Resend's documented steady-state ceiling is ~2/sec
+const SEND_GAP_MS = 1100;
+const SEND_ATTEMPTS = 3;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Rate-limit / transient failures are worth another go; a bad address is not. */
+function isRetryable(r: SafeSendResult): boolean {
+  if (r.sent) return false;
+  if (r.reason !== 'error') return false; // never retry 'unsubscribed'
+  const e = (r.error || '').toLowerCase();
+  return /rate|429|timeout|econn|network|temporar|too many|503|502/.test(e);
+}
+
 export async function sendBilledEmails(userId: string | null, payloads: EmailPayload[]): Promise<SafeSendResult[]> {
   if (userId) {
     await consumeEmailCredits(userId, payloads.length);
   }
-  return Promise.all(
-    payloads.map((p) =>
-      safeResendSend(resend, {
-        from: p.from || DEFAULT_FROM,
-        to: p.to,
-        subject: p.subject,
-        html: p.html,
-        ...(p.replyTo ? { replyTo: p.replyTo } : {}),
-      })
-    )
-  );
+
+  const results = new Array<SafeSendResult>(payloads.length);
+  let pending = payloads.map((p, i) => ({ p, i }));
+
+  for (let attempt = 1; attempt <= SEND_ATTEMPTS && pending.length; attempt++) {
+    const retry: typeof pending = [];
+
+    for (let start = 0; start < pending.length; start += SEND_BATCH) {
+      const batch = pending.slice(start, start + SEND_BATCH);
+      const settled = await Promise.all(
+        batch.map(({ p }) =>
+          safeResendSend(resend, {
+            from: p.from || DEFAULT_FROM,
+            to: p.to,
+            subject: p.subject,
+            html: p.html,
+            ...(p.replyTo ? { replyTo: p.replyTo } : {}),
+          })
+        )
+      );
+      settled.forEach((r, k) => {
+        const item = batch[k];
+        results[item.i] = r;
+        if (isRetryable(r) && attempt < SEND_ATTEMPTS) retry.push(item);
+      });
+      if (start + SEND_BATCH < pending.length) await sleep(SEND_GAP_MS);
+    }
+
+    pending = retry;
+    if (pending.length) await sleep(SEND_GAP_MS * attempt); // back off before the next sweep
+  }
+
+  return results;
 }
 
 export async function resolveCoachUserId(coachId?: string | null, coachEmail?: string | null): Promise<string | null> {

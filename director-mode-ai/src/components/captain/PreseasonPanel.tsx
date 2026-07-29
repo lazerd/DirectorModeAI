@@ -33,9 +33,13 @@ export default function PreseasonPanel({ teamId, players }: { teamId: string; pl
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Could not send.');
+      const failedNames: string[] = json.failedNames || [];
       setMsg(
         `Sent to ${json.sent} player${json.sent === 1 ? '' : 's'}.` +
-          (json.failed ? ` ${json.failed} failed.` : '') +
+          // Name them — a bare "9 failed" leaves the captain with no way to recover.
+          (json.failed
+            ? ` ${json.failed} did NOT go through${failedNames.length ? `: ${failedNames.join(', ')}` : ''}. Send again to retry just them.`
+            : '') +
           (json.skippedNoEmail ? ` ${json.skippedNoEmail} skipped — no email on file.` : ''),
       );
       router.refresh();
