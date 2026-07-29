@@ -8,6 +8,7 @@ import RosterPanel from '@/components/captain/RosterPanel';
 import AddMatchForm from '@/components/captain/AddMatchForm';
 import PartnershipsPanel from '@/components/captain/PartnershipsPanel';
 import ImportPanel from '@/components/captain/ImportPanel';
+import PreseasonPanel from '@/components/captain/PreseasonPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       db
         .from('captain_players')
         .select(
-          'id, name, email, rating, rating_type, gender, return_side, court_limit, is_sub, notes',
+          'id, name, email, rating, rating_type, gender, return_side, court_limit, is_sub, notes, intake_completed_at',
         )
         .eq('team_id', team.id)
         .eq('active', true)
@@ -175,6 +176,8 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       />
 
       <ImportPanel teamId={team.id} />
+
+      <PreseasonPanel teamId={team.id} players={roster as never} />
 
       <RosterPanel
         teamId={team.id}

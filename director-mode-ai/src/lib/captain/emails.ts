@@ -117,6 +117,38 @@ export function nudgeEmail(
   };
 }
 
+/** Pre-season intake — partners, side, days out. Sent once before the season. */
+export function preseasonIntakeEmail(
+  team: string,
+  r: Recipient,
+  opts?: { reminder?: boolean },
+): { to: string; subject: string; html: string } {
+  const link = `${BASE}/captain/intake/${r.token}`;
+  const reminder = opts?.reminder === true;
+  return {
+    to: r.email,
+    subject: reminder
+      ? `Still need your answers — ${team}`
+      : `${team}: a minute of setup before the season`,
+    html: shell(
+      reminder ? `${r.name}, your captain is still waiting` : `Hi ${r.name} — welcome to ${team}`,
+      `<p style="font-size:16px;margin:0 0 8px">
+         Before the season starts, tell your captain how you like to play. It takes a minute and it
+         shapes every lineup you get put in.
+       </p>
+       <p style="font-size:14px;color:#475569;margin:0 0 16px">
+         Who you partner best with (in order) · which side you return on ·
+         any days you can never play · anything else we should know.
+       </p>
+       <div style="margin:20px 0">${button(link, 'Fill this in', BRAND)}</div>
+       <p style="font-size:14px;color:#475569">
+         You can come back to the same link any time to change your answers.
+       </p>`,
+      'No login needed — this link is yours.',
+    ),
+  };
+}
+
 export type LineupRow = {
   courtNumber: number;
   courtType: 'singles' | 'doubles';
