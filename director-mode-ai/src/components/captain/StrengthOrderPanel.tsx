@@ -163,6 +163,19 @@ export default function StrengthOrderPanel({
     setMsg(null);
   }
 
+  /** Re-sort to rating order (strongest first) without saving, so it can be
+   *  eyeballed and adjusted first. Unrated players fall to the bottom. */
+  function sortByRating() {
+    setOrder((o) =>
+      [...o].sort((a, b) => {
+        const d = (b.rating ?? 0) - (a.rating ?? 0);
+        return d !== 0 ? d : a.name.localeCompare(b.name);
+      }),
+    );
+    setDirty(true);
+    setMsg(null);
+  }
+
   function onDragEnd(e: DragEndEvent) {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
@@ -201,22 +214,35 @@ export default function StrengthOrderPanel({
 
   return (
     <section className="mt-10">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-xl font-display text-white">Strength order</h2>
-        {dirty && (
+        <div className="flex items-center gap-2">
+          {/* Nobody should have to look up 23 players to get a usable order.
+              The list already shows rating order, so this just commits it —
+              then drag the handful that are wrong. */}
+          <button
+            onClick={sortByRating}
+            disabled={busy}
+            className="text-sm px-4 py-2 rounded-xl border border-white/10 text-white/70 hover:text-white hover:border-white/25 disabled:opacity-50"
+          >
+            Order by rating
+          </button>
+          {/* Always available: if the shown order is already right, there's
+              nothing to drag, and you still need a way to commit it. */}
           <button
             onClick={save}
             disabled={busy}
             className="px-4 py-2 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold text-sm disabled:opacity-50"
           >
-            {busy ? 'Saving…' : 'Save order'}
+            {busy ? 'Saving…' : dirty ? 'Save order' : 'Save this order'}
           </button>
-        )}
+        </div>
       </div>
 
       <p className="text-sm text-white/50 mt-2">
         #1 is your strongest. This beats rating when the generator picks courts — useful when half
-        the roster shares a rating.
+        the roster shares a rating. Quickest route: <em>Save this order</em> to lock in what&apos;s
+        shown, then drag the few that look wrong.
       </p>
 
       <RatingsPastePanel teamId={teamId} />
