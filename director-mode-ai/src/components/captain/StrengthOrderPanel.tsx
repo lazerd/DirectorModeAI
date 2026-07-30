@@ -32,6 +32,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import RatingsPastePanel from './RatingsPastePanel';
 
 export type RankablePlayer = {
   id: string;
@@ -217,6 +218,8 @@ export default function StrengthOrderPanel({
         #1 is your strongest. This beats rating when the generator picks courts — useful when half
         the roster shares a rating.
       </p>
+
+      <RatingsPastePanel teamId={teamId} />
 
       {msg && <p className="text-sm text-[#D3FB52] mt-3">{msg}</p>}
       {error && <p className="text-sm text-red-300 mt-3">{error}</p>}
