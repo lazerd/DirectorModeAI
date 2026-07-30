@@ -253,18 +253,39 @@ export default function IntakeForm({
       </div>
 
       {/* ------------------------------------------------------ court limit */}
+      {/* Buttons, not free text: this writes to a CHECK-constrained column, so
+          a typed answer failed the constraint and lost the whole submission.
+          Anything more nuanced belongs in the notes box below. */}
       <div style={box}>
         <strong style={{ fontSize: 15 }}>Anything about which court you play?</strong>
         <p style={{ color: '#6b7280', fontSize: 13, margin: '4px 0 10px' }}>
-          Optional — e.g. &quot;happy anywhere&quot;, &quot;court 3 or below&quot;, &quot;not court
-          1&quot;.
+          Optional. Anything more specific — like &quot;court 3 or below&quot; — goes in the last
+          box instead.
         </p>
-        <input
-          value={limit}
-          onChange={(e) => setLimit(e.target.value)}
-          placeholder="Happy anywhere"
-          style={input}
-        />
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {[
+            { v: '', l: 'Happy anywhere' },
+            { v: 'no_court_1', l: 'Not court 1' },
+            { v: 'singles_only', l: 'Singles only' },
+            { v: 'doubles_only', l: 'Doubles only' },
+          ].map((o) => (
+            <button
+              key={o.v || 'any'}
+              type="button"
+              onClick={() => setLimit(o.v)}
+              style={{
+                padding: '10px 14px',
+                borderRadius: 10,
+                border: limit === o.v ? '2px solid #0f766e' : '1px solid #d1d5db',
+                background: limit === o.v ? '#ccfbf1' : '#fff',
+                fontSize: 14,
+                cursor: 'pointer',
+              }}
+            >
+              {o.l}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ------------------------------------------------------------ notes */}

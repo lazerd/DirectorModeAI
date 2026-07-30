@@ -22,6 +22,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { DAYS, isDayCode } from '@/lib/captain/availability';
 
 const SIDES = ['deuce', 'ad', 'either'];
+/** Must match the CHECK constraint on captain_players.court_limit. */
+const COURT_LIMITS = ['singles_only', 'doubles_only', 'no_court_1'];
 const MAX_PARTNERS = 5;
 
 type PlayerRow = {
@@ -113,9 +115,13 @@ export async function POST(req: Request, { params }: { params: { token: string }
     ? (body.unavailable_days as unknown[]).filter(isDayCode)
     : [];
 
+  // captain_players.court_limit is CHECK-constrained to these three values.
+  // It used to take whatever the player typed, so ANY answer here failed the
+  // constraint and 500'd the whole submission — losing every other answer with
+  // it. Anything unrecognised is dropped to null; nuance belongs in notes.
   const courtLimit =
-    typeof body.court_limit === 'string' && body.court_limit.trim()
-      ? body.court_limit.trim().slice(0, 60)
+    typeof body.court_limit === 'string' && COURT_LIMITS.includes(body.court_limit)
+      ? body.court_limit
       : null;
 
   const notes =

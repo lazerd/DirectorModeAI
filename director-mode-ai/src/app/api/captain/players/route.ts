@@ -153,6 +153,18 @@ export async function PATCH(req: Request) {
     if (body.patch && k in body.patch) patch[k] = body.patch[k];
   }
 
+  // court_limit and return_side are CHECK-constrained. Coerce anything else to
+  // null rather than letting the constraint 500 — the same mismatch broke the
+  // player intake form.
+  for (const [key, valid] of [
+    ['court_limit', ['singles_only', 'doubles_only', 'no_court_1']],
+    ['return_side', ['deuce', 'ad']],
+  ] as const) {
+    if (key in patch && !(valid as readonly string[]).includes(patch[key] as string)) {
+      patch[key] = null;
+    }
+  }
+
   const { error } = await ctx.db
     .from('captain_players')
     .update(patch)
