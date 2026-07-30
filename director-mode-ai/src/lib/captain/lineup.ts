@@ -46,6 +46,11 @@ export type Player = {
    * shares a 3.5). Null falls back to rating.
    */
   sortOrder?: number | null;
+  /**
+   * Set internally by equalPlayPool — this player is behind the rest of the
+   * pool on matches played and must be seated. Not something a caller sets.
+   */
+  mustPlay?: boolean;
 };
 
 export type PartnerPref = {
@@ -115,6 +120,15 @@ const W_RETURN_SIDE = 25;
 const W_ELIGIBILITY = 60;
 const W_FAIRNESS = 8;
 const W_NUDGE = 5;
+/**
+ * Deliberately larger than every other signal combined. equal_play admits a
+ * whole boundary tier so partner preference still has room to work, but a
+ * player from a LOWER tier is behind the field and has to be seated — and
+ * W_PREF_MUTUAL (100) would otherwise outbid W_FAIRNESS (8/match) and let a
+ * favoured pair take their slot. Season simulation showed that drifting to a
+ * 2-match spread; see season.test.ts.
+ */
+const W_MUST_PLAY = 10_000;
 
 /**
  * How many matches together before a partnership's record is taken at face
@@ -172,6 +186,7 @@ function prefScore(prefs: PartnerPref[], a: string, b: string): number {
 /** Individual desirability — fairness, eligibility, and the soft nudge. */
 function playerBonus(p: Player): number {
   return (
+    (p.mustPlay ? W_MUST_PLAY : 0) +
     (p.needsEligibility ? W_ELIGIBILITY : 0) +
     W_FAIRNESS * -p.matchesPlayed +
     W_NUDGE * (p.preferenceNudge ?? 0)
@@ -339,6 +354,13 @@ function buildPairs(
  * Whole tiers are admitted at once, so within the boundary tier the normal
  * optimiser still gets to honour partner prefs and return sides — fairness
  * decides WHO is in the running, preference decides who pairs with whom.
+ *
+ * Admission alone is not enough, though. Anyone from a tier BELOW the boundary
+ * is behind the field and is marked mustPlay, because otherwise a mutually
+ * preferred pair in the boundary tier (worth 100) simply outbids the fairness
+ * weight (8 a match) and takes their slot. That is not hypothetical: simulating
+ * a 23-player season with a few strong preferences drifted to a 2-match spread
+ * before this. Preference now only decides who fills what's left.
  */
 function equalPlayPool(available: Player[], needed: number): { pool: Player[]; note: string | null } {
   if (available.length <= needed) return { pool: available, note: null };
@@ -350,15 +372,22 @@ function equalPlayPool(available: Player[], needed: number): { pool: Player[]; n
     tiers.set(p.matchesPlayed, t);
   }
 
-  const pool: Player[] = [];
+  const ordered = [...tiers.keys()].sort((a, b) => a - b);
+  const admitted: Player[] = [];
   let boundary: number | null = null;
-  for (const count of [...tiers.keys()].sort((a, b) => a - b)) {
-    if (pool.length >= needed) break;
-    pool.push(...(tiers.get(count) as Player[]));
+  for (const count of ordered) {
+    if (admitted.length >= needed) break;
+    admitted.push(...(tiers.get(count) as Player[]));
     boundary = count;
   }
 
-  const benched = available.filter((p) => !pool.includes(p));
+  // Everyone below the boundary tier is guaranteed; the boundary tier competes.
+  const pool = admitted.map((p) =>
+    p.matchesPlayed < (boundary as number) ? { ...p, mustPlay: true } : p,
+  );
+
+  const admittedIds = new Set(admitted.map((p) => p.id));
+  const benched = available.filter((p) => !admittedIds.has(p.id));
   const note = benched.length
     ? `Equal-play: sitting ${benched
         .slice()
@@ -392,9 +421,12 @@ export function generateLineup(input: LineupInput): LineupResult {
   }
 
   // --- singles first: they take the strongest eligible players -------------
+  // mustPlay is only ever set by equalPlayPool, so this is a no-op under
+  // play_to_win — but under equal_play a singles court must not be handed to a
+  // boundary-tier player while someone who is behind sits out.
   const singlesEligible = available
     .filter((p) => p.courtLimit !== 'doubles_only')
-    .sort(byStrength);
+    .sort((a, b) => Number(!!b.mustPlay) - Number(!!a.mustPlay) || byStrength(a, b));
 
   const singlesPicked: Player[] = [];
   for (const p of singlesEligible) {
