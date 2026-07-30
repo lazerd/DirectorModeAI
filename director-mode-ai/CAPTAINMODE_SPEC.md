@@ -423,13 +423,12 @@ pages sit outside it and stay reachable without a login. `middleware.ts` deliber
    values ('<auth.users id>', 'active', 'standalone')
    on conflict (user_id) do update set status = 'active';
    ```
-2. **Run `captain_style_and_lead_times.sql`.** ⚠ The only thing blocking items already written:
-   `captaining_style`, `poll_lead_days`, `lineup_lead_days`, `captain_players.sort_order` and
-   `captain_matches.availability_poll_sent_at` do not exist in the live DB yet. Every code path
-   that reads them degrades to its old default until then, and the two write paths (team settings,
-   drag-to-rank) return "run the migration" rather than a raw column error. Needs `DATABASE_URL`
-   restored in `.env.local` — it went missing and is in neither Vercel env nor git.
-   Then: `update captain_teams set captaining_style='equal_play' where id='517c278c-…';`
+2. ~~**Run `captain_style_and_lead_times.sql`.**~~ **APPLIED to production 2026-07-30.** All five
+   columns verified live via the PostgREST OpenAPI spec, and both check constraints verified
+   functionally by confirming an illegal value is rejected (a `do $$ … $$` block can fail while the
+   ALTERs before it commit, so "the script ran" is not evidence). Fall B2/B3 is set to `equal_play`.
+   There is no `DATABASE_URL` for this repo, so DDL goes through the Supabase SQL editor —
+   set `window.monaco.editor.getModels()[0].setValue(sql)` rather than using the clipboard.
 3. ~~**Never-pair UI.**~~ **BUILT** 2026-07-30 — `/api/captain/never-pair` (POST/DELETE) plus
    `NeverPairPanel`. Ids are stored in a stable order so `(a,b)` and `(b,a)` can't both exist.
 4. ~~**Paste-to-import (§7).**~~ **BUILT** 2026-07-28 — `/api/captain/import` (parse → preview →
