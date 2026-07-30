@@ -398,8 +398,9 @@ Steps 1-4 are the usable core — that's a captain's whole week. Everything afte
 |---|---|
 | Schema + RLS + tokens | `supabase/migrations/captain_mode.sql` (11 tables) |
 | Lineup generator | `src/lib/captain/lineup.ts` + `lineup.test.ts` (31 tests) |
+| Availability resolution (poll answers + day blackouts) | `src/lib/captain/availability.ts` + `availability.test.ts` (15 tests) |
 | Access / rate resolution | `src/lib/captain/access.ts` |
-| Route auth, eligibility rules, pair records | `src/lib/captain/server.ts` |
+| Route auth, eligibility rules, pair records, style/lead-time defaults | `src/lib/captain/server.ts` |
 | Player emails | `src/lib/captain/emails.ts` |
 | Captain APIs | `src/app/api/captain/{teams,players,matches,poll,lineup,subs,results}/route.ts` |
 | Player token APIs | `src/app/api/captain/{availability,claim,confirm}/…/route.ts` |
@@ -422,16 +423,44 @@ pages sit outside it and stay reachable without a login. `middleware.ts` deliber
    values ('<auth.users id>', 'active', 'standalone')
    on conflict (user_id) do update set status = 'active';
    ```
-2. **Never-pair UI.** The generator enforces the never-pair list and the table exists, but nothing
-   in the roster screen writes to it yet.
+2. **Run `captain_style_and_lead_times.sql`.** ⚠ The only thing blocking items already written:
+   `captaining_style`, `poll_lead_days`, `lineup_lead_days`, `captain_players.sort_order` and
+   `captain_matches.availability_poll_sent_at` do not exist in the live DB yet. Every code path
+   that reads them degrades to its old default until then, and the two write paths (team settings,
+   drag-to-rank) return "run the migration" rather than a raw column error. Needs `DATABASE_URL`
+   restored in `.env.local` — it went missing and is in neither Vercel env nor git.
+   Then: `update captain_teams set captaining_style='equal_play' where id='517c278c-…';`
+3. ~~**Never-pair UI.**~~ **BUILT** 2026-07-30 — `/api/captain/never-pair` (POST/DELETE) plus
+   `NeverPairPanel`. Ids are stored in a stable order so `(a,b)` and `(b,a)` can't both exist.
 4. ~~**Paste-to-import (§7).**~~ **BUILT** 2026-07-28 — `/api/captain/import` (parse → preview →
    confirm) plus `ImportPanel` on the team hub. Zod-validated, per-item unticking, and the commit
    step skips players/matches already on the team so a re-paste can't duplicate. Times are built at
    America/Los_Angeles wall-clock so DST doesn't shift a match. The parser flags TopDog's
    placeholder-Sunday schedules on the preview instead of importing them silently.
    Paste-one-per-line (`Name, email, rating`) remains as the manual fallback.
-5. **Reschedule UI.** The API handles it (`PATCH /api/captain/matches` with `reschedule_to`, which
-   wipes availability and re-polls); no button calls it yet.
+5. ~~**Reschedule UI.**~~ **BUILT** 2026-07-30 — a date picker on the match page that names what it
+   is about to discard (availability answers, saved lineup) before calling `reschedule_to`.
+
+### Captaining style, fairness and blackouts (built 2026-07-30)
+
+- **`equal_play`** is a HARD tier gate on matches played (`equalPlayPool`), not a scoring weight.
+  A weight gets outvoted by partner-preference and chemistry points, which is exactly how a roster
+  ends up with someone on 5 matches while a teammate sits on 2. Whole tiers are admitted at once so
+  the optimiser still honours partner prefs inside the boundary tier.
+- **`sort_order`** is the captain's own strength rank and overrides rating when set — NTRP is coarse
+  and half a roster shares one number. Unranked players sort below ranked ones.
+- **`unavailable_days`** (recurring weekday blackouts from the intake) is a real constraint, not
+  advisory. Precedence: an explicit `yes` to a specific match beats a standing blackout (the player
+  looked at the date and overrode their own rule) but is flagged; a blackout with no answer is an
+  exclusion the captain is told about, and drops that player off the poll and nudge lists.
+  Resolved on the match's **America/Los_Angeles** weekday — a 7pm Monday match is 02:00 Tuesday UTC.
+- **Lead times** come from the team row. The cron sends the initial availability blast at
+  `poll_lead_days` (this did not exist before — the first ask was manual-only) and the lineup at
+  `lineup_lead_days`. Nudge (2d) and reminder (1d) stay constants; there is no column for them.
+  The poll job refuses to run unless its `*_sent_at` guard column exists, because sending and then
+  failing to stamp would re-blast the whole roster every day after.
+- **Targeted intake sends.** `POST /api/captain/preseason` takes `player_ids[]` so a player added
+  after the first blast gets the original email without giving everyone else a second copy.
 
 ## 12. Open questions
 
