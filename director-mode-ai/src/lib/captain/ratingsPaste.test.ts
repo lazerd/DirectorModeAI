@@ -38,6 +38,19 @@ describe('parseRatingLine', () => {
     expect(parseRatingLine('Jen Acker Parks  12.5  3.05')?.rating).toBe(3.05);
   });
 
+  it('keeps three decimals — the whole reason for importing', () => {
+    // Most of a B2/B3 roster self-rates a flat 3.0, so the decimals are the
+    // only thing that can order them. captain_players.rating is numeric(6,3).
+    expect(parseRatingLine('Paula Garcia\t3.236\t8-4')?.rating).toBe(3.236);
+    expect(parseRatingLine('Shannon Moore\t3.198\t7-5')?.rating).toBe(3.198);
+  });
+
+  it('orders two players who share an NTRP level', () => {
+    const a = parseRatingLine('Paula Garcia\t3.236')!;
+    const b = parseRatingLine('Shannon Moore\t3.198')!;
+    expect(a.rating).toBeGreaterThan(b.rating);
+  });
+
   it('handles "Last, First"', () => {
     expect(parseRatingLine('Pech-Bitton, Brenda\t2.98')).toEqual({
       name: 'Pech-Bitton, Brenda',
