@@ -9,6 +9,8 @@ import AddMatchForm from '@/components/captain/AddMatchForm';
 import PartnershipsPanel from '@/components/captain/PartnershipsPanel';
 import ImportPanel from '@/components/captain/ImportPanel';
 import PreseasonPanel from '@/components/captain/PreseasonPanel';
+import TeamSettingsPanel from '@/components/captain/TeamSettingsPanel';
+import StrengthOrderPanel from '@/components/captain/StrengthOrderPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,15 +40,18 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
     eligibility_enabled: boolean;
     min_matches_default: number;
     min_matches_self_rated: number;
+    captaining_style: string | null;
+    poll_lead_days: number | null;
+    lineup_lead_days: number | null;
   };
 
   const [{ data: players }, { data: matches }, { data: prefs }, { data: never }] =
     await Promise.all([
       db
         .from('captain_players')
-        .select(
-          'id, name, email, rating, rating_type, gender, return_side, court_limit, is_sub, notes, intake_completed_at',
-        )
+        // select('*') so a newly added column (sort_order) can't 400 the whole
+        // team hub if the migration hasn't been run yet.
+        .select('*')
         .eq('team_id', team.id)
         .eq('active', true)
         .order('is_sub')
@@ -178,6 +183,15 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       <ImportPanel teamId={team.id} />
 
       <PreseasonPanel teamId={team.id} players={roster as never} />
+
+      <TeamSettingsPanel
+        teamId={team.id}
+        captainingStyle={team.captaining_style ?? null}
+        pollLeadDays={team.poll_lead_days ?? null}
+        lineupLeadDays={team.lineup_lead_days ?? null}
+      />
+
+      <StrengthOrderPanel teamId={team.id} players={roster as never} />
 
       <RosterPanel
         teamId={team.id}

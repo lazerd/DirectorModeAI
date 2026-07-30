@@ -93,9 +93,47 @@ export async function PATCH(req: Request) {
     player_id?: string;
     patch?: Record<string, unknown>;
     partner_prefs?: { preferred_player_id: string; rank: number }[];
+    order?: unknown;
   };
   const ctx = await requireTeam(body.team_id || '');
   if (isError(ctx)) return ctx.error;
+
+  // Bulk strength re-rank from the drag-to-order list: whole-list replace, so
+  // one write settles every row and there are no gaps or duplicate ranks.
+  if (Array.isArray(body.order)) {
+    const ids = (body.order as unknown[]).filter((v): v is string => typeof v === 'string');
+    const { data: mine } = await ctx.db
+      .from('captain_players')
+      .select('id')
+      .eq('team_id', ctx.teamId);
+    const onTeam = new Set(((mine as { id: string }[]) || []).map((r) => r.id));
+    if (ids.some((id) => !onTeam.has(id))) {
+      return NextResponse.json({ error: 'That roster order includes someone else.' }, { status: 400 });
+    }
+
+    const stamp = new Date().toISOString();
+    const results = await Promise.all(
+      ids.map((id, i) =>
+        ctx.db
+          .from('captain_players')
+          .update({ sort_order: i + 1, updated_at: stamp })
+          .eq('id', id)
+          .eq('team_id', ctx.teamId),
+      ),
+    );
+    const failed = results.find((r) => r.error);
+    if (failed?.error) {
+      if (/column .* does not exist/i.test(failed.error.message)) {
+        return NextResponse.json(
+          { error: 'Ranking needs the captain_style_and_lead_times migration to be run first.' },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ error: failed.error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, ranked: ids.length });
+  }
+
   if (!body.player_id) return NextResponse.json({ error: 'player_id required.' }, { status: 400 });
 
   const allowed = [
@@ -108,6 +146,7 @@ export async function PATCH(req: Request) {
     'court_limit',
     'notes',
     'is_sub',
+    'sort_order',
   ];
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const k of allowed) {
