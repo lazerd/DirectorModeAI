@@ -35,6 +35,7 @@ export default function MatchWorkspace({
   singlesCourts,
   doublesCourts,
   lineupSent,
+  matchAt,
   status,
   initialResults,
 }: {
@@ -63,6 +64,15 @@ export default function MatchWorkspace({
     ),
   );
 
+  const [rescheduling, setRescheduling] = useState(false);
+  // datetime-local wants local wall-clock, not an ISO string with a zone.
+  const [newDate, setNewDate] = useState(() => {
+    const d = new Date(matchAt);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+
+  const answered = players.filter((p) => p.availability !== null);
   const yes = players.filter((p) => p.availability === 'yes');
   const no = players.filter((p) => p.availability === 'no');
   const maybe = players.filter((p) => p.availability === 'maybe');
@@ -92,6 +102,58 @@ export default function MatchWorkspace({
         return;
       }
       onOk?.(j);
+    } catch {
+      setError('Network problem — try again.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /**
+   * Rainout. The API wipes availability, the lineup and any open sub requests,
+   * because all three were answers about the old date — so this asks first and
+   * says exactly what it is about to throw away.
+   */
+  async function reschedule() {
+    if (!newDate) {
+      setError('Pick the new date and time first.');
+      return;
+    }
+    const losing = [
+      answered.length ? `${answered.length} availability answers` : null,
+      courts.length ? 'the saved lineup' : null,
+    ].filter(Boolean);
+    const ok = window.confirm(
+      `Move this match to ${new Date(newDate).toLocaleString()}?` +
+        (losing.length ? `\n\nThis clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
+    );
+    if (!ok) return;
+
+    setBusy('reschedule');
+    setError(null);
+    setNote(null);
+    try {
+      const res = await fetch('/api/captain/matches', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          team_id: teamId,
+          match_id: matchId,
+          // datetime-local has no zone; the browser reads it as club-local,
+          // which is what the captain typed.
+          reschedule_to: new Date(newDate).toISOString(),
+        }),
+      });
+      const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) {
+        setError((j.error as string) || 'Could not reschedule.');
+        return;
+      }
+      setCourts([]);
+      setDirty(false);
+      setRescheduling(false);
+      setNote('Moved. Availability and the lineup were cleared — ask the team again.');
+      router.refresh();
     } catch {
       setError('Network problem — try again.');
     } finally {
@@ -233,8 +295,36 @@ export default function MatchWorkspace({
                 {busy === 'nudge' ? 'Sending…' : `Nudge ${silent.length} silent`}
               </button>
             )}
+            <button
+              onClick={() => setRescheduling((v) => !v)}
+              disabled={!!busy}
+              className={ghost}
+            >
+              {rescheduling ? 'Cancel' : 'Reschedule'}
+            </button>
           </div>
         </div>
+
+        {rescheduling && (
+          <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-4">
+            <label htmlFor="new-date" className="block text-sm text-amber-100/80 mb-2">
+              New date and time — clears availability and the lineup, then re-polls.
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                id="new-date"
+                type="datetime-local"
+                value={newDate}
+                onChange={(e) => setNewDate(e.target.value)}
+                style={{ color: '#ffffff' }}
+                className="px-3 py-2 rounded-lg bg-[#001820] border border-white/10 focus:border-[#D3FB52]/50 focus:outline-none text-sm"
+              />
+              <button onClick={reschedule} disabled={!!busy} className={primary}>
+                {busy === 'reschedule' ? 'Moving…' : 'Move this match'}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
