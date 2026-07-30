@@ -49,8 +49,15 @@ describe('parseRatingLine', () => {
     expect(parseRatingLine('Brenda Pech-Bitton 3.10')?.name).toBe('Brenda Pech-Bitton');
   });
 
-  it('strips a parenthetical', () => {
+  it('strips a parenthetical from the name', () => {
     expect(parseRatingLine('Paula Garcia (3.5C)\t3.42')?.name).toBe('Paula Garcia');
+  });
+
+  it('takes the dynamic rating, not the USTA level tagged on the name', () => {
+    // "(3.5C)" is the coarse level; 3.42 is the number worth having. Reading
+    // the tag throws away the precision the whole import is for.
+    expect(parseRatingLine('Paula Garcia (3.5C)\t3.42')?.rating).toBe(3.42);
+    expect(parseRatingLine('Moore, Shannon (4.0S)  3.61  7-5')?.rating).toBe(3.61);
   });
 
   it('returns null for a header row', () => {

@@ -91,8 +91,14 @@ export function parseRatingLine(line: string): ParsedRating | null {
   }
   if (!name) return null;
 
+  // Scan for the rating with parentheticals removed. TennisRecord tags the
+  // name cell with the coarse USTA level — "Paula Garcia (3.5C)  3.42" — and
+  // reading that 3.5 instead of the 3.42 dynamic rating throws away exactly
+  // the precision the captain came for.
+  const withoutTags = raw.replace(/\(.*?\)/g, ' ');
+
   let rating: number | null = null;
-  for (const m of raw.matchAll(/\d+\.\d+/g)) {
+  for (const m of withoutTags.matchAll(/\d+\.\d+/g)) {
     const v = Number(m[0]);
     if (v >= MIN_RATING && v <= MAX_RATING) {
       rating = v;
