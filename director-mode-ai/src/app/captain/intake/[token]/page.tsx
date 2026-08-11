@@ -23,7 +23,7 @@ export default async function CaptainIntakePage({ params }: { params: { token: s
   const { data: playerRow } = await admin
     .from('captain_players')
     .select(
-      'id, team_id, name, active, return_side, court_limit, unavailable_days, notes, intake_completed_at',
+      'id, team_id, name, active, return_side, court_limit, court_note, unavailable_days, notes, intake_completed_at',
     )
     .eq('player_token', params.token)
     .maybeSingle();
@@ -43,6 +43,7 @@ export default async function CaptainIntakePage({ params }: { params: { token: s
     name: string;
     return_side: string | null;
     court_limit: string | null;
+  court_note: string | null;
     unavailable_days: string[] | null;
     notes: string | null;
     intake_completed_at: string | null;
@@ -75,6 +76,7 @@ export default async function CaptainIntakePage({ params }: { params: { token: s
         current={{
           return_side: player.return_side,
           court_limit: player.court_limit,
+      court_note: player.court_note,
           unavailable_days: player.unavailable_days || [],
           notes: player.notes,
           partner_ids: ((prefs as { preferred_player_id: string }[]) || []).map(

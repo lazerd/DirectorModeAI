@@ -46,7 +46,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       db
         .from('captain_players')
         .select(
-          'id, name, email, rating, rating_type, gender, return_side, court_limit, is_sub, notes, intake_completed_at',
+          'id, name, email, rating, rating_type, gender, return_side, court_limit, court_note, is_sub, notes, intake_completed_at',
         )
         .eq('team_id', team.id)
         .eq('active', true)

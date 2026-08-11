@@ -13,6 +13,14 @@ import { useState } from 'react';
 
 type Mate = { id: string; name: string };
 
+/** Values here MUST match captain_players_court_limit_check in the database. */
+const COURT_CHOICES = [
+  { value: '', label: 'Happy anywhere' },
+  { value: 'doubles_only', label: 'Doubles only' },
+  { value: 'singles_only', label: 'Singles only' },
+  { value: 'no_court_1', label: 'Not court 1' },
+];
+
 export default function IntakeForm({
   token,
   playerName,
@@ -29,6 +37,7 @@ export default function IntakeForm({
   current: {
     return_side: string | null;
     court_limit: string | null;
+  court_note: string | null;
     unavailable_days: string[];
     notes: string | null;
     partner_ids: string[];
@@ -39,6 +48,7 @@ export default function IntakeForm({
   const [picked, setPicked] = useState<string[]>(current.partner_ids ?? []);
   const [out, setOut] = useState<string[]>(current.unavailable_days ?? []);
   const [limit, setLimit] = useState(current.court_limit ?? '');
+  const [courtNote, setCourtNote] = useState(current.court_note ?? '');
   const [notes, setNotes] = useState(current.notes ?? '');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(!!current.completed_at);
@@ -73,6 +83,7 @@ export default function IntakeForm({
         body: JSON.stringify({
           return_side: side,
           court_limit: limit,
+          court_note: courtNote,
           unavailable_days: out,
           partner_ids: picked,
           notes,
@@ -253,17 +264,43 @@ export default function IntakeForm({
       </div>
 
       {/* ------------------------------------------------------ court limit */}
+      {/* These four map onto what the lineup generator actually understands.
+          Anything else the player wants to say goes in the free-text note
+          below — it used to go into the constrained column and fail the save. */}
       <div style={box}>
-        <strong style={{ fontSize: 15 }}>Anything about which court you play?</strong>
+        <strong style={{ fontSize: 15 }}>Any limits on where you play?</strong>
         <p style={{ color: '#6b7280', fontSize: 13, margin: '4px 0 10px' }}>
-          Optional — e.g. &quot;happy anywhere&quot;, &quot;court 3 or below&quot;, &quot;not court
-          1&quot;.
+          Pick the one that fits. Most people are happy anywhere.
         </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {COURT_CHOICES.map((c) => {
+            const on = limit === c.value;
+            return (
+              <button
+                key={c.label}
+                type="button"
+                onClick={() => setLimit(c.value)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 999,
+                  border: on ? '2px solid #1d4ed8' : '1px solid #d1d5db',
+                  background: on ? '#dbeafe' : '#fff',
+                  color: '#111827',
+                  fontSize: 14,
+                  fontWeight: on ? 600 : 400,
+                  cursor: 'pointer',
+                }}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
         <input
-          value={limit}
-          onChange={(e) => setLimit(e.target.value)}
-          placeholder="Happy anywhere"
-          style={input}
+          value={courtNote}
+          onChange={(e) => setCourtNote(e.target.value)}
+          placeholder="Anything else about courts? (optional)"
+          style={{ ...input, marginTop: 10 }}
         />
       </div>
 
