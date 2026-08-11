@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Upload, Users, Filter, Trash2, ArrowRightCircle, FileUp, Trophy } from 'lucide-react';
+import { Plus, Search, Users, Trash2, ArrowRightCircle, FileUp, Trophy, Crown, GraduationCap, User as UserIcon, Mail, Copy, Check, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 
 const SPORTS = [
@@ -23,6 +24,13 @@ const GENDERS = [
   { value: 'non_binary', label: 'Non-Binary' },
 ];
 
+const ACCESS = [
+  { value: '', label: 'Everyone' },
+  { value: 'staff', label: 'Staff only' },
+  { value: 'members', label: 'Has an account' },
+  { value: 'roster', label: 'Roster only' },
+];
+
 type VaultPlayer = {
   id: string;
   full_name: string;
@@ -39,6 +47,12 @@ type VaultPlayer = {
   notes: string | null;
   created_at: string;
 };
+
+// A person with a login account in this club (may or may not have a roster row).
+type Member = { userId: string; role: string; isStaff: boolean; isOwner: boolean; name: string; email: string | null };
+type Account = { userId: string; role: string; isStaff: boolean; isOwner: boolean };
+// A unified row: a roster player, a member account, or both (matched by email).
+type Row = VaultPlayer & { _account: Account | null; _memberOnly?: boolean };
 
 type SortKey =
   | 'name_asc'
@@ -62,21 +76,35 @@ const getLastName = (fullName: string): string => {
   return parts[parts.length - 1] || fullName;
 };
 
+const ROLE_LABEL: Record<string, string> = {
+  owner: 'Owner', director: 'Director', coach: 'Coach', front_desk: 'Front desk', member: 'Member',
+};
+
 export default function PlayerVaultPage() {
   const [players, setPlayers] = useState<VaultPlayer[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+  const [club, setClub] = useState<{ name: string; join_code: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sportFilter, setSportFilter] = useState('');
   const [genderFilter, setGenderFilter] = useState('');
+  const [accessFilter, setAccessFilter] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('name_asc');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; skipped: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [importResult, setImportResult] = useState<{ success: number; skipped: number } | null>(null);
+  const [savingRole, setSavingRole] = useState<string | null>(null);
+  const [inviting, setInviting] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetchPlayers();
   }, [sportFilter, genderFilter]);
+
+  useEffect(() => {
+    loadMembers();
+  }, []);
 
   const fetchPlayers = async () => {
     setLoading(true);
@@ -98,16 +126,82 @@ export default function PlayerVaultPage() {
     setLoading(false);
   };
 
-  const filtered = players
-    .filter(p =>
-      !searchQuery ||
-      p.full_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.email?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
+  const loadMembers = async () => {
+    try {
+      const res = await fetch('/api/clubs/members');
+      const json = await res.json();
+      setClub(json.club || null);
+      setMembers(json.members || []);
+    } catch { /* no club / not staff — vault still works as a plain roster */ }
+  };
+
+  const joinUrl = club ? `${typeof window !== 'undefined' ? window.location.origin : 'https://club.coachmode.ai'}/join/${club.join_code}` : '';
+  const copyJoin = () => { navigator.clipboard.writeText(joinUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); };
+
+  // Change a member's role (grant/remove staff access). Optimistic.
+  async function setRole(userId: string, role: string) {
+    setSavingRole(userId);
+    const prev = members;
+    setMembers((cur) => cur.map((m) => (m.userId === userId ? { ...m, role, isStaff: role !== 'member' } : m)));
+    try {
+      const res = await fetch('/api/clubs/members', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, role }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      toast.success(role === 'member' ? 'Staff access removed.' : `Now a ${ROLE_LABEL[role] || role}.`);
+    } catch (e: any) {
+      setMembers(prev);
+      toast.error(e?.message || 'Could not change that role.');
+    } finally {
+      setSavingRole(null);
+    }
+  }
+
+  // Email a roster-only player their invite link so they can create an account.
+  async function invite(vaultId: string) {
+    setInviting(vaultId);
+    try {
+      const res = await fetch('/api/clubs/invite-vault', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: [vaultId] }) });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not send');
+      toast.success(`Invite sent${json.capped ? ' (hit your monthly email limit — upgrade for more)' : ''}.`);
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not send the invite.');
+    } finally {
+      setInviting(null);
+    }
+  }
+
+  // ---- merge roster + accounts into one people list, keyed by email ----
+  const memberByEmail = new Map<string, Member>();
+  members.forEach((m) => { if (m.email) memberByEmail.set(m.email.toLowerCase(), m); });
+  const rosterEmails = new Set(players.map((p) => p.email?.toLowerCase()).filter(Boolean) as string[]);
+
+  const rosterRows: Row[] = players.map((p) => {
+    const acct = p.email ? memberByEmail.get(p.email.toLowerCase()) : undefined;
+    return { ...p, _account: acct ? { userId: acct.userId, role: acct.role, isStaff: acct.isStaff, isOwner: acct.isOwner } : null };
+  });
+  const memberOnlyRows: Row[] = members
+    .filter((m) => !m.email || !rosterEmails.has(m.email.toLowerCase()))
+    .map((m) => ({
+      id: `member:${m.userId}`, full_name: m.name, email: m.email, phone: null, gender: null, age: null,
+      usta_rating: null, utr_singles: null, utr_doubles: null, primary_sport: 'tennis',
+      membership_status: 'active', cc_player_id: null, notes: null, created_at: '',
+      _account: { userId: m.userId, role: m.role, isStaff: m.isStaff, isOwner: m.isOwner }, _memberOnly: true,
+    }));
+  const allRows: Row[] = [...rosterRows, ...memberOnlyRows];
+
+  const filtered = allRows
+    .filter((p) => !searchQuery || p.full_name.toLowerCase().includes(searchQuery.toLowerCase()) || p.email?.toLowerCase().includes(searchQuery.toLowerCase()))
+    .filter((p) => {
+      if (accessFilter === 'staff') return p._account?.isStaff;
+      if (accessFilter === 'members') return !!p._account;
+      if (accessFilter === 'roster') return !p._account;
+      return true;
+    })
+    // member-only rows ignore the sport/gender DB filters (they have no ratings)
+    .filter((p) => !(p._memberOnly && (sportFilter || genderFilter)))
     .slice()
     .sort((a, b) => {
-      // Null numerics always sink to the bottom regardless of direction so
-      // unrated / missing players never pollute the top.
       const byNum = (av: number | null, bv: number | null, desc: boolean) => {
         if (av == null && bv == null) return a.full_name.localeCompare(b.full_name);
         if (av == null) return 1;
@@ -130,8 +224,8 @@ export default function PlayerVaultPage() {
         case 'ntrp_asc':         return byNum(a.usta_rating, b.usta_rating, false);
         case 'age_desc':         return byNum(a.age, b.age, true);
         case 'age_asc':          return byNum(a.age, b.age, false);
-        case 'created_desc':     return b.created_at.localeCompare(a.created_at);
-        case 'created_asc':      return a.created_at.localeCompare(b.created_at);
+        case 'created_desc':     return (b.created_at || '').localeCompare(a.created_at || '');
+        case 'created_asc':      return (a.created_at || '').localeCompare(b.created_at || '');
         case 'utr_singles_desc': return byNum(a.utr_singles, b.utr_singles, true);
         case 'utr_singles_asc':  return byNum(a.utr_singles, b.utr_singles, false);
         case 'utr_doubles_desc': return byNum(a.utr_doubles, b.utr_doubles, true);
@@ -140,31 +234,17 @@ export default function PlayerVaultPage() {
       }
     });
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev =>
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === filtered.length) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(filtered.map(p => p.id));
-    }
-  };
+  // Only real roster rows are selectable for bulk import/delete.
+  const selectableIds = filtered.filter((r) => !r._memberOnly).map((r) => r.id);
+  const toggleSelect = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
+  const toggleSelectAll = () => setSelectedIds(selectedIds.length === selectableIds.length ? [] : selectableIds);
 
   const handleBulkImport = async () => {
     if (selectedIds.length === 0) return;
     setImporting(true);
     setImportResult(null);
-
     try {
-      const res = await fetch('/api/courtconnect/vault-import', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ vaultPlayerIds: selectedIds }),
-      });
+      const res = await fetch('/api/courtconnect/vault-import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vaultPlayerIds: selectedIds }) });
       const data = await res.json();
       setImportResult({ success: data.imported || 0, skipped: data.skipped || 0 });
       setSelectedIds([]);
@@ -172,14 +252,12 @@ export default function PlayerVaultPage() {
     } catch (err) {
       setImportResult({ success: 0, skipped: 0 });
     }
-
     setImporting(false);
   };
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
-    if (!confirm(`Delete ${selectedIds.length} player(s)? This cannot be undone.`)) return;
-
+    if (!confirm(`Delete ${selectedIds.length} roster player(s)? This removes their roster entry — it does not delete any member account. This cannot be undone.`)) return;
     setDeleting(true);
     const supabase = createClient();
     await supabase.from('cc_vault_players').delete().in('id', selectedIds);
@@ -188,16 +266,15 @@ export default function PlayerVaultPage() {
     fetchPlayers();
   };
 
-  const sportLabel = (sport: string) =>
-    sport.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const sportLabel = (sport: string) => sport.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  const genderLabel = (g: string | null) => (!g ? '' : g === 'non_binary' ? 'NB' : g.charAt(0).toUpperCase());
+  const roleIcon = (r: string) =>
+    r === 'owner' || r === 'director' ? <Crown className="h-3.5 w-3.5 text-yellow-500" />
+    : r === 'coach' ? <GraduationCap className="h-3.5 w-3.5 text-violet-400" />
+    : <UserIcon className="h-3.5 w-3.5 text-gray-400" />;
 
-  const genderLabel = (g: string | null) => {
-    if (!g) return '';
-    return g === 'non_binary' ? 'NB' : g.charAt(0).toUpperCase();
-  };
-
-  const totalPlayers = players.length;
-  const connectedPlayers = players.filter(p => p.cc_player_id).length;
+  const memberCount = allRows.filter((r) => r._account).length;
+  const rosterOnly = allRows.filter((r) => !r._account).length;
 
   return (
     <div className="p-6 max-w-6xl mx-auto page-enter">
@@ -206,7 +283,7 @@ export default function PlayerVaultPage() {
         <div>
           <h1 className="text-2xl font-display">PlayerVault</h1>
           <p className="text-gray-500 mt-1">
-            {totalPlayers} players &middot; {connectedPlayers} connected to CourtConnect
+            Everyone at your club in one place — {allRows.length} people &middot; {memberCount} with a login &middot; {rosterOnly} roster only
           </p>
         </div>
         <div className="flex gap-2">
@@ -225,6 +302,24 @@ export default function PlayerVaultPage() {
         </div>
       </div>
 
+      {/* Invite link — how people get a login account */}
+      {club && (
+        <div className="card p-4 mb-4">
+          <div className="flex items-center gap-2 text-sm font-semibold mb-2">
+            <Mail size={16} className="text-courtconnect" /> Invite people to join {club.name}
+          </div>
+          <div className="flex items-center gap-2">
+            <input readOnly value={joinUrl} onFocus={(e) => e.currentTarget.select()} className="input flex-1" style={{ color: '#e5e7eb' }} />
+            <button onClick={copyJoin} className="btn btn-courtconnect btn-sm shrink-0">
+              {copied ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy link</>}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Anyone with this link gets a member login. Your subscription covers your whole team — give a director, coach, or front-desk person <strong>staff access</strong> in the Access column and they can run events and enter scores at no extra charge.
+          </p>
+        </div>
+      )}
+
       {/* Filters */}
       <div className="card p-4 mb-4">
         <div className="flex flex-wrap gap-3">
@@ -238,6 +333,9 @@ export default function PlayerVaultPage() {
               onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
+          <select className="input w-auto" value={accessFilter} onChange={e => setAccessFilter(e.target.value)} aria-label="Filter by access">
+            {ACCESS.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
+          </select>
           <select className="input w-auto" value={sportFilter} onChange={e => setSportFilter(e.target.value)}>
             {SPORTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
@@ -313,16 +411,16 @@ export default function PlayerVaultPage() {
         </div>
       )}
 
-      {/* Player Table */}
+      {/* People table */}
       {loading ? (
         <div className="flex justify-center py-12"><div className="spinner" /></div>
       ) : filtered.length === 0 ? (
         <div className="card p-8 text-center">
           <Users size={40} className="mx-auto text-gray-300 mb-3" />
           <p className="text-gray-500 mb-4">
-            {players.length === 0 ? 'No players in your vault yet.' : 'No players match your filters.'}
+            {allRows.length === 0 ? 'No one here yet — add players to your roster or share your invite link.' : 'No one matches your filters.'}
           </p>
-          {players.length === 0 && (
+          {allRows.length === 0 && (
             <Link href="/courtconnect/vault/add" className="btn btn-courtconnect btn-sm">
               <Plus size={16} /> Add Your First Player
             </Link>
@@ -336,7 +434,7 @@ export default function PlayerVaultPage() {
                 <th className="w-10">
                   <input
                     type="checkbox"
-                    checked={selectedIds.length === filtered.length && filtered.length > 0}
+                    checked={selectableIds.length > 0 && selectedIds.length === selectableIds.length}
                     onChange={toggleSelectAll}
                     className="w-4 h-4 rounded border-gray-300"
                   />
@@ -349,43 +447,81 @@ export default function PlayerVaultPage() {
                 <th>Doubles UTR</th>
                 <th>Gender</th>
                 <th>Age</th>
-                <th>Status</th>
+                <th>Access</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(player => (
-                <tr key={player.id} className="cursor-pointer" onClick={() => toggleSelect(player.id)}>
+                <tr key={player.id} className={player._memberOnly ? '' : 'cursor-pointer'} onClick={() => !player._memberOnly && toggleSelect(player.id)}>
                   <td onClick={e => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(player.id)}
-                      onChange={() => toggleSelect(player.id)}
-                      className="w-4 h-4 rounded border-gray-300"
-                    />
+                    {!player._memberOnly && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(player.id)}
+                        onChange={() => toggleSelect(player.id)}
+                        className="w-4 h-4 rounded border-gray-300"
+                      />
+                    )}
                   </td>
                   <td>
-                    <Link
-                      href={`/courtconnect/vault/add?edit=${player.id}`}
-                      className="font-medium text-courtconnect hover:underline"
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {player.full_name}
-                    </Link>
+                    <div className="flex items-center gap-2">
+                      {player._memberOnly ? (
+                        <span className="font-medium">{player.full_name}</span>
+                      ) : (
+                        <Link
+                          href={`/courtconnect/vault/add?edit=${player.id}`}
+                          className="font-medium text-courtconnect hover:underline"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {player.full_name}
+                        </Link>
+                      )}
+                      {player.cc_player_id && <span className="badge badge-success text-[10px]" title="Connected to CourtConnect">CC</span>}
+                    </div>
                   </td>
                   <td className="text-gray-500 text-sm">{player.email || '—'}</td>
                   <td>
-                    <span className="badge badge-courtconnect text-xs">{sportLabel(player.primary_sport)}</span>
+                    {player._memberOnly ? <span className="text-gray-500 text-sm">—</span> : <span className="badge badge-courtconnect text-xs">{sportLabel(player.primary_sport)}</span>}
                   </td>
                   <td className="text-sm">{player.usta_rating || '—'}</td>
                   <td className="text-sm">{player.utr_singles || '—'}</td>
                   <td className="text-sm">{player.utr_doubles || '—'}</td>
                   <td className="text-sm text-gray-500">{genderLabel(player.gender)}</td>
                   <td className="text-sm text-gray-500">{player.age || '—'}</td>
-                  <td>
-                    {player.cc_player_id ? (
-                      <span className="badge badge-success text-xs">Connected</span>
+                  <td onClick={e => e.stopPropagation()}>
+                    {player._account ? (
+                      player._account.isOwner ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
+                          <Crown className="h-3.5 w-3.5 text-yellow-500" /> Owner · pays
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          {roleIcon(player._account.role)}
+                          <select
+                            value={player._account.role}
+                            disabled={savingRole === player._account.userId}
+                            onChange={e => setRole(player._account!.userId, e.target.value)}
+                            className="text-xs px-2 py-1 rounded-lg border"
+                            style={{ color: '#111827', backgroundColor: '#fff' }}
+                          >
+                            <option value="director">Director — full access</option>
+                            <option value="coach">Coach / pro — run events</option>
+                            <option value="front_desk">Front desk — run events</option>
+                            <option value="member">Member — player access</option>
+                          </select>
+                        </span>
+                      )
+                    ) : player.email ? (
+                      <button
+                        onClick={() => invite(player.id)}
+                        disabled={inviting === player.id}
+                        className="btn btn-ghost btn-sm text-xs"
+                        title="Email this player an invite to create a login"
+                      >
+                        {inviting === player.id ? <Loader2 size={13} className="animate-spin" /> : <><Mail size={13} /> Invite</>}
+                      </button>
                     ) : (
-                      <span className="badge text-xs bg-gray-100 text-gray-600">Vault only</span>
+                      <span className="text-xs text-gray-400">Roster only</span>
                     )}
                   </td>
                 </tr>

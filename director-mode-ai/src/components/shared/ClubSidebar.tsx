@@ -46,10 +46,11 @@ const ITEMS: Item[] = [
   { name: 'TournamentMode', href: '/mixer/tournaments', match: '/mixer/tournaments', icon: Trophy, color: '#eab308' },
   { name: 'Lessons', href: '/lessons/dashboard', match: '/lessons/dashboard', icon: Clock, color: '#60a5fa' },
   { name: 'CoachMode', href: '/lessons/recap', match: '/lessons/recap', icon: GraduationCap, color: '#a78bfa' },
-  { name: 'Members', href: '/club/members', match: '/club/members', icon: Users, color: '#38bdf8' },
   { name: 'Stringing', href: '/stringing/jobs', match: '/stringing', icon: Wrench, color: '#f472b6' },
   { name: 'CaptainMode', href: '/captain', match: '/captain', icon: ClipboardList, color: '#D3FB52' },
   { name: 'CourtConnect', href: '/courtconnect/home', match: '/courtconnect/home', icon: Users, color: '#34d399' },
+  // PlayerVault is now the single home for everyone — rostered players AND member
+  // accounts + roles (the old standalone "Members" page redirects here).
   { name: 'PlayerVault', href: '/courtconnect/vault', match: '/courtconnect/vault', icon: Database, color: '#2dd4bf' },
   { name: 'SwimMode', href: '/swim', match: '/swim', icon: Waves, color: '#38bdf8' },
   { name: 'Benchmarks', href: '/benchmarks', match: '/benchmarks', icon: BarChart3, color: '#f59e0b' },
@@ -59,6 +60,21 @@ const ITEMS: Item[] = [
 
 const EXPANDED = 248;
 const COLLAPSED = 72;
+
+/**
+ * Tokenized, login-free pages that players open from an email. They are not
+ * running the club, so the director rail (and its floating phone opener) has no
+ * business covering their screen.
+ */
+const PUBLIC_PREFIXES = [
+  '/captain/availability',
+  '/captain/intake',
+  '/captain/claim',
+  '/captain/confirm',
+  '/leagues/rsvp',
+  '/leagues/join',
+  '/enter',
+];
 
 function activeHref(pathname: string, items: Item[]): string | null {
   let best: string | null = null;
@@ -74,6 +90,7 @@ function activeHref(pathname: string, items: Item[]): string | null {
 
 export default function ClubSidebar() {
   const pathname = usePathname() || '/';
+  const hidden = PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hovering, setHovering] = useState(false); // hover-to-peek when collapsed
@@ -122,7 +139,7 @@ export default function ClubSidebar() {
 
   // Push page content right on desktop so it isn't hidden behind the fixed rail.
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || hidden) return;
     const apply = () => {
       const desktop = window.matchMedia('(min-width: 768px)').matches;
       document.body.style.paddingLeft = desktop ? `${collapsed ? COLLAPSED : EXPANDED}px` : '';
@@ -134,7 +151,7 @@ export default function ClubSidebar() {
       window.removeEventListener('resize', apply);
       document.body.style.paddingLeft = '';
     };
-  }, [collapsed, mounted]);
+  }, [collapsed, mounted, hidden]);
 
   // Close the mobile drawer whenever you navigate.
   useEffect(() => { setMobileOpen(false); }, [pathname]);
@@ -152,6 +169,8 @@ export default function ClubSidebar() {
   const peeking = collapsed && hovering && !mobileOpen;
   const showLabels = !collapsed || mobileOpen || peeking;
   const width = mobileOpen ? EXPANDED : (collapsed && !peeking) ? COLLAPSED : EXPANDED;
+
+  if (hidden) return null;
 
   return (
     <>

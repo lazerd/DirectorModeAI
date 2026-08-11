@@ -9,6 +9,7 @@ import AddMatchForm from '@/components/captain/AddMatchForm';
 import PartnershipsPanel from '@/components/captain/PartnershipsPanel';
 import ImportPanel from '@/components/captain/ImportPanel';
 import PreseasonPanel from '@/components/captain/PreseasonPanel';
+import SeasonAvailabilityPanel from '@/components/captain/SeasonAvailabilityPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,17 +82,23 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
   });
 
   const availByMatch: Record<string, number> = {};
+  // How many of the UPCOMING dates each player has answered either way — the
+  // season panel chases gaps, which is a different question from "who said yes".
+  const answeredByPlayer: Record<string, number> = {};
+  const upcomingIds = new Set(upcoming.map((m) => m.id as string));
   if (allMatches.length) {
     const { data: avail } = await db
       .from('captain_availability')
-      .select('match_id, status')
+      .select('match_id, status, player_id')
       .in(
         'match_id',
         allMatches.map((m) => m.id as string),
-      )
-      .eq('status', 'yes');
-    for (const a of (avail as { match_id: string }[]) || []) {
-      availByMatch[a.match_id] = (availByMatch[a.match_id] ?? 0) + 1;
+      );
+    for (const a of (avail as { match_id: string; status: string; player_id: string }[]) || []) {
+      if (a.status === 'yes') availByMatch[a.match_id] = (availByMatch[a.match_id] ?? 0) + 1;
+      if (upcomingIds.has(a.match_id)) {
+        answeredByPlayer[a.player_id] = (answeredByPlayer[a.player_id] ?? 0) + 1;
+      }
     }
   }
 
@@ -166,6 +173,19 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         </div>
         <AddMatchForm teamId={team.id} />
       </section>
+
+      <SeasonAvailabilityPanel
+        teamId={team.id}
+        totalMatches={upcoming.length}
+        players={roster
+          .filter((p) => !p.is_sub)
+          .map((p) => ({
+            id: p.id as string,
+            name: p.name as string,
+            email: (p.email as string) || null,
+            answered: answeredByPlayer[p.id as string] ?? 0,
+          }))}
+      />
 
       <PartnershipsPanel
         partnerships={partnerships.map((r) => ({

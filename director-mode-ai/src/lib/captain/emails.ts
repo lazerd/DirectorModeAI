@@ -241,6 +241,82 @@ export function subRequestEmail(
   };
 }
 
+/**
+ * Season-wide availability request — one email covering the whole schedule.
+ * Cheaper than nine per-match polls and it lets a player block out the season in
+ * a single sitting, which is what actually gets a roster to 100%.
+ */
+export function seasonAvailabilityEmail(
+  team: string,
+  matches: MatchInfo[],
+  r: Recipient,
+  opts?: { tz?: string; reminder?: boolean; answered?: number },
+): { to: string; subject: string; html: string } {
+  const tz = opts?.tz;
+  const link = `${BASE}/captain/availability/${r.token}`;
+  const left = opts?.answered != null ? matches.length - opts.answered : matches.length;
+
+  const rows = matches
+    .map((m) => {
+      const d = new Date(m.matchAt);
+      const day = new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        timeZone: tz || undefined,
+      }).format(d);
+      const time = new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: tz || undefined,
+      }).format(d);
+      const where = [m.isHome ? 'Home' : 'Away', m.location || m.opponent || null]
+        .filter(Boolean)
+        .join(' · ');
+      return `
+        <tr>
+          <td style="padding:10px 10px 10px 0;border-bottom:1px solid #e2e8f0;font-size:15px;font-weight:700;color:${INK};white-space:nowrap">${day}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;font-size:15px;font-weight:700;color:${INK};white-space:nowrap">${time}</td>
+          <td style="padding:10px 0 10px 10px;border-bottom:1px solid #e2e8f0;font-size:14px;color:#475569">
+            ${m.opponent ? `vs ${m.opponent}<br>` : ''}<span style="color:#64748b">${where}</span>
+          </td>
+        </tr>`;
+    })
+    .join('');
+
+  const title = opts?.reminder
+    ? `${r.name}, we still need ${left} date${left === 1 ? '' : 's'} from you`
+    : `Hi ${r.name} — your ${team} availability`;
+
+  return {
+    to: r.email,
+    subject: opts?.reminder
+      ? `Reminder: ${team} availability (${left} date${left === 1 ? '' : 's'} left)`
+      : `${team}: mark your availability for all ${matches.length} matches`,
+    html: shell(
+      title,
+      `<p style="font-size:16px;line-height:1.5;margin:0 0 18px">
+         The schedule is final. Open your personal page and tap <strong>Yes</strong>,
+         <strong>No</strong>, or <strong>Maybe</strong> for each of the ${matches.length} match dates
+         below. It takes about a minute, and you can change an answer any time.
+       </p>
+       <div style="margin:0 0 24px">${button(link, `Enter my availability →`, BRAND)}</div>
+       <table style="border-collapse:collapse;width:100%;margin:0 0 8px">
+         <tr>
+           <th align="left" style="padding:0 10px 6px 0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748b">Date</th>
+           <th align="left" style="padding:0 10px 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748b">Time</th>
+           <th align="left" style="padding:0 0 6px 10px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748b">Match</th>
+         </tr>
+         ${rows}
+       </table>
+       <p style="font-size:14px;color:#475569;margin:18px 0 0">
+         No login, no app — the link above is yours for the whole season. Bookmark it.
+       </p>`,
+      'Sent by your captain through ClubMode.',
+    ),
+  };
+}
+
 export async function sendAll(
   billingUserId: string | null,
   payloads: { to: string; subject: string; html: string }[],
