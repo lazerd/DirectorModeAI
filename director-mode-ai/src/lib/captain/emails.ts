@@ -25,6 +25,14 @@ export type MatchInfo = {
 
 export type Recipient = { playerId: string; name: string; email: string; token: string };
 
+/**
+ * Club time. NEVER fall back to `undefined` here: that means "the runtime's own
+ * timezone", which on Vercel is UTC — a 9:30am match then goes out to the whole
+ * roster as "4:30 PM". Every formatter in this file defaults to club time so a
+ * caller cannot silently ship the wrong hour by forgetting an argument.
+ */
+export const CLUB_TZ = 'America/Los_Angeles';
+
 export function formatMatchWhen(matchAt: string, timeZone?: string): string {
   const d = new Date(matchAt);
   return new Intl.DateTimeFormat('en-US', {
@@ -33,7 +41,7 @@ export function formatMatchWhen(matchAt: string, timeZone?: string): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: timeZone || undefined,
+    timeZone: timeZone || CLUB_TZ,
   }).format(d);
 }
 
@@ -263,12 +271,12 @@ export function seasonAvailabilityEmail(
         weekday: 'short',
         month: 'short',
         day: 'numeric',
-        timeZone: tz || undefined,
+        timeZone: tz || CLUB_TZ,
       }).format(d);
       const time = new Intl.DateTimeFormat('en-US', {
         hour: 'numeric',
         minute: '2-digit',
-        timeZone: tz || undefined,
+        timeZone: tz || CLUB_TZ,
       }).format(d);
       const where = [m.isHome ? 'Home' : 'Away', m.location || m.opponent || null]
         .filter(Boolean)

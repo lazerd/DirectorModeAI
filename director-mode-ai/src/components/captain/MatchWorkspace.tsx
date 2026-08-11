@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 
 export type MatchPlayer = {
   id: string;
@@ -56,6 +57,8 @@ export default function MatchWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [preview, setPreview] = useState<EmailPreview | null>(null);
+  const [pendingOnlyMissing, setPendingOnlyMissing] = useState(false);
   const [scoring, setScoring] = useState(status === 'played');
   const [scores, setScores] = useState<Record<number, { score: string; won: boolean | null }>>(
     Object.fromEntries(
@@ -99,12 +102,27 @@ export default function MatchWorkspace({
     }
   }
 
+  // Build and show it first — the button itself never puts mail in flight.
   const sendPoll = (onlyMissing: boolean) =>
     call(
       onlyMissing ? 'nudge' : 'poll',
       '/api/captain/poll',
-      { team_id: teamId, match_id: matchId, only_missing: onlyMissing },
-      (j) => setNote(`Asked ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`),
+      { team_id: teamId, match_id: matchId, only_missing: onlyMissing, preview: true },
+      (j) => {
+        setPendingOnlyMissing(onlyMissing);
+        setPreview(j as unknown as EmailPreview);
+      },
+    );
+
+  const confirmPoll = () =>
+    call(
+      'poll',
+      '/api/captain/poll',
+      { team_id: teamId, match_id: matchId, only_missing: pendingOnlyMissing },
+      (j) => {
+        setPreview(null);
+        setNote(`Asked ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`);
+      },
     );
 
   const generate = () =>
@@ -220,17 +238,23 @@ export default function MatchWorkspace({
 
   return (
     <div className="mt-8 space-y-8">
+      <EmailPreviewModal
+        preview={preview}
+        sending={busy === 'poll'}
+        onSend={confirmPoll}
+        onCancel={() => setPreview(null)}
+      />
       {/* ---------------------------------------------------------- availability */}
       <section>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-display text-white">Availability</h2>
           <div className="flex gap-2">
             <button onClick={() => sendPoll(false)} disabled={!!busy} className={ghost}>
-              {busy === 'poll' ? 'Sending…' : 'Ask the team'}
+              {busy === 'poll' ? 'Working…' : 'Preview & ask the team'}
             </button>
             {silent.length > 0 && (
               <button onClick={() => sendPoll(true)} disabled={!!busy} className={ghost}>
-                {busy === 'nudge' ? 'Sending…' : `Nudge ${silent.length} silent`}
+                {busy === 'nudge' ? 'Working…' : `Preview nudge to ${silent.length}`}
               </button>
             )}
           </div>

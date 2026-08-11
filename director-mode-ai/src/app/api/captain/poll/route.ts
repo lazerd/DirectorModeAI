@@ -1,7 +1,8 @@
 /**
  * Availability poll.
- *   POST { team_id, match_id, only_missing? } — email the roster asking if
- *   they can play. `only_missing` re-asks just the people who never answered.
+ *   POST { team_id, match_id, only_missing?, preview? } — email the roster asking
+ *   if they can play. `only_missing` re-asks just the people who never answered.
+ *   `preview:true` returns the exact payload without sending it.
  */
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
@@ -14,6 +15,7 @@ export async function POST(req: Request) {
     team_id?: string;
     match_id?: string;
     only_missing?: boolean;
+    preview?: boolean;
   };
   if (!body.team_id || !body.match_id) {
     return NextResponse.json({ error: 'team_id and match_id are required.' }, { status: 400 });
@@ -71,6 +73,18 @@ export async function POST(req: Request) {
       token: p.player_token,
     }),
   );
+
+  // Show, then send — same builder, same data, so the preview is the real thing.
+  if (body.preview) {
+    return NextResponse.json({
+      preview: true,
+      subject: payloads[0].subject,
+      html: payloads[0].html,
+      sample_for: roster[0].name,
+      count: payloads.length,
+      recipients: roster.map((p) => ({ name: p.name, email: p.email })),
+    });
+  }
 
   try {
     const results = await sendAll(ctx.userId, payloads);

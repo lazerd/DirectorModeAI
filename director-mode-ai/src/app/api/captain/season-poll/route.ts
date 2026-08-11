@@ -2,8 +2,10 @@
  * Season availability request.
  *   GET  ?team_id=…                       — per-player answered/total, so the
  *                                            captain can see who is still out.
- *   POST { team_id, only_missing?, include_subs? }
+ *   POST { team_id, only_missing?, include_subs?, preview? }
  *        — email the roster ONE message covering every upcoming match.
+ *          `preview:true` builds the identical payload and returns it WITHOUT
+ *          sending, so the captain sees the real thing before it leaves.
  *
  * Mirrors /api/captain/poll, which does the same job one match at a time.
  */
@@ -90,6 +92,7 @@ export async function POST(req: Request) {
     team_id?: string;
     only_missing?: boolean;
     include_subs?: boolean;
+    preview?: boolean;
   };
   if (!body.team_id) return NextResponse.json({ error: 'team_id is required.' }, { status: 400 });
 
@@ -141,6 +144,20 @@ export async function POST(req: Request) {
       { tz: TZ, reminder: !!body.only_missing, answered: answeredCount[p.id] ?? 0 },
     ),
   );
+
+  // Show, then send. The preview is the first real payload — same builder, same
+  // data — so what the captain approves is literally what goes out.
+  if (body.preview) {
+    return NextResponse.json({
+      preview: true,
+      subject: payloads[0].subject,
+      html: payloads[0].html,
+      sample_for: roster[0].name,
+      count: payloads.length,
+      matches: matches.length,
+      recipients: roster.map((p) => ({ name: p.name, email: p.email })),
+    });
+  }
 
   try {
     const results = await sendAll(ctx.userId, payloads);
