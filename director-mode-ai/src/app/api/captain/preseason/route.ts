@@ -1,9 +1,13 @@
 /**
  * Pre-season intake poll.
  *   GET  ?team_id=…              — who has answered and who hasn't
- *   POST { team_id, only_missing? } — email the roster their intake link.
+ *   POST { team_id, only_missing?, preview?, player_ids? }
+ *                                   — email the roster their intake link.
  *                                     only_missing re-asks just the people who
- *                                     never submitted.
+ *                                     never submitted; player_ids narrows the
+ *                                     send to specific people (a late addition
+ *                                     shouldn't cost everyone else an email);
+ *                                     preview returns the payload without sending.
  *
  * Mirrors /api/captain/poll, which does the same job for per-match availability.
  */
@@ -51,6 +55,8 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     team_id?: string;
     only_missing?: boolean;
+    preview?: boolean;
+    player_ids?: string[];
   };
   if (!body.team_id) {
     return NextResponse.json({ error: 'team_id is required.' }, { status: 400 });
@@ -69,6 +75,12 @@ export async function POST(req: Request) {
   let rows = (data as Row[]) || [];
   if (body.only_missing) rows = rows.filter((p) => !p.intake_completed_at);
 
+  // Targeted send — applied last so it always wins over only_missing.
+  if (body.player_ids?.length) {
+    const want = new Set(body.player_ids);
+    rows = rows.filter((p) => want.has(p.id));
+  }
+
   const recipients: Recipient[] = rows
     .filter((p) => !!p.email)
     .map((p) => ({ playerId: p.id, name: p.name, email: p.email as string, token: p.player_token }));
@@ -76,9 +88,11 @@ export async function POST(req: Request) {
   if (!recipients.length) {
     return NextResponse.json(
       {
-        error: body.only_missing
-          ? 'Everyone with an email address has already answered.'
-          : 'Nobody on the roster has an email address yet.',
+        error: body.player_ids?.length
+          ? 'Those players are not on the active roster, or have no email on file.'
+          : body.only_missing
+            ? 'Everyone with an email address has already answered.'
+            : 'Nobody on the roster has an email address yet.',
       },
       { status: 400 },
     );
@@ -87,6 +101,19 @@ export async function POST(req: Request) {
   const payloads = recipients.map((r) =>
     preseasonIntakeEmail(team.name, r, { reminder: body.only_missing === true }),
   );
+
+  // Show, then send — same builder, same data, so what the captain approves is
+  // literally what goes out. Matches /api/captain/poll and /season-poll.
+  if (body.preview) {
+    return NextResponse.json({
+      preview: true,
+      subject: payloads[0].subject,
+      html: payloads[0].html,
+      sample_for: recipients[0].name,
+      count: payloads.length,
+      recipients: recipients.map((r) => ({ name: r.name, email: r.email })),
+    });
+  }
 
   try {
     const results = await sendAll(userId, payloads);

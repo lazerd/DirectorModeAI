@@ -2,7 +2,9 @@
  * Season availability request.
  *   GET  ?team_id=…                       — per-player answered/total, so the
  *                                            captain can see who is still out.
- *   POST { team_id, only_missing?, include_subs?, preview? }
+ *   POST { team_id, only_missing?, include_subs?, preview?, player_ids? }
+ *          `player_ids` narrows the send to specific people — a late addition
+ *          gets caught up without re-emailing the whole team.
  *        — email the roster ONE message covering every upcoming match.
  *          `preview:true` builds the identical payload and returns it WITHOUT
  *          sending, so the captain sees the real thing before it leaves.
@@ -93,6 +95,7 @@ export async function POST(req: Request) {
     only_missing?: boolean;
     include_subs?: boolean;
     preview?: boolean;
+    player_ids?: string[];
   };
   if (!body.team_id) return NextResponse.json({ error: 'team_id is required.' }, { status: 400 });
 
@@ -132,6 +135,19 @@ export async function POST(req: Request) {
 
   if (body.only_missing) {
     roster = roster.filter((p) => (answeredCount[p.id] ?? 0) < matches.length);
+  }
+
+  // Targeted send — someone who joined after the blast went out shouldn't cost
+  // the rest of the roster another email. Applied last so it always wins.
+  if (body.player_ids?.length) {
+    const want = new Set(body.player_ids);
+    roster = roster.filter((p) => want.has(p.id));
+    if (!roster.length) {
+      return NextResponse.json(
+        { error: 'Those players are not on the active roster, or have no email on file.' },
+        { status: 400 },
+      );
+    }
   }
 
   if (!roster.length) return NextResponse.json({ ok: true, sent: 0, skipped: 'everyone answered' });

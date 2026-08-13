@@ -32,13 +32,23 @@ export default function SeasonAvailabilityPanel({
   const noEmail = players.filter((p) => !p.email);
 
   const [preview, setPreview] = useState<EmailPreview | null>(null);
-  const [pendingOnlyMissing, setPendingOnlyMissing] = useState(false);
+  const [pending, setPending] = useState<{ onlyMissing: boolean; playerIds?: string[] }>({
+    onlyMissing: false,
+  });
 
-  async function post(onlyMissing: boolean, isPreview: boolean) {
+  async function post(
+    opts: { onlyMissing: boolean; playerIds?: string[] },
+    isPreview: boolean,
+  ) {
     const res = await fetch('/api/captain/season-poll', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ team_id: teamId, only_missing: onlyMissing, preview: isPreview }),
+      body: JSON.stringify({
+        team_id: teamId,
+        only_missing: opts.onlyMissing,
+        player_ids: opts.playerIds,
+        preview: isPreview,
+      }),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.error || 'Could not send.');
@@ -46,17 +56,17 @@ export default function SeasonAvailabilityPanel({
   }
 
   /** Build it, show it, and wait. The button never sends on its own. */
-  async function requestPreview(onlyMissing: boolean) {
+  async function requestPreview(opts: { onlyMissing: boolean; playerIds?: string[] }) {
     setBusy(true);
     setMsg(null);
     setError(null);
     try {
-      const json = await post(onlyMissing, true);
+      const json = await post(opts, true);
       if (json.skipped || json.count === 0) {
         setMsg('Nobody needed it — everyone has answered every date.');
         return;
       }
-      setPendingOnlyMissing(onlyMissing);
+      setPending(opts);
       setPreview(json as EmailPreview);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -69,7 +79,7 @@ export default function SeasonAvailabilityPanel({
     setBusy(true);
     setError(null);
     try {
-      const json = await post(pendingOnlyMissing, false);
+      const json = await post(pending, false);
       setMsg(
         json.sent === 0
           ? 'Nobody needed it — everyone has answered every date.'
@@ -113,7 +123,7 @@ export default function SeasonAvailabilityPanel({
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
-          onClick={() => requestPreview(false)}
+          onClick={() => requestPreview({ onlyMissing: false })}
           disabled={busy}
           className="px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold disabled:opacity-50"
         >
@@ -125,7 +135,7 @@ export default function SeasonAvailabilityPanel({
         </button>
         {outstanding > 0 && complete.length > 0 && (
           <button
-            onClick={() => requestPreview(true)}
+            onClick={() => requestPreview({ onlyMissing: true })}
             disabled={busy}
             className="text-sm px-4 py-2 rounded-xl border border-white/10 text-white/70 hover:text-white hover:border-white/25 disabled:opacity-50"
           >
@@ -154,10 +164,22 @@ export default function SeasonAvailabilityPanel({
                 </h3>
                 <ul className="space-y-1">
                   {g.list.map((p) => (
-                    <li key={p.id} className={`text-sm ${g.tone}`}>
-                      {p.name}
-                      {p.answered > 0 && p.answered < totalMatches && (
-                        <span className="text-white/30"> · {p.answered}/{totalMatches}</span>
+                    <li key={p.id} className={`text-sm ${g.tone} flex items-center gap-2 group`}>
+                      <span>
+                        {p.name}
+                        {p.answered > 0 && p.answered < totalMatches && (
+                          <span className="text-white/30"> · {p.answered}/{totalMatches}</span>
+                        )}
+                      </span>
+                      {p.email && (
+                        <button
+                          onClick={() => requestPreview({ onlyMissing: false, playerIds: [p.id] })}
+                          disabled={busy}
+                          title={`Send the season dates to ${p.name} only`}
+                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[11px] px-2 py-0.5 rounded-lg border border-white/15 text-white/60 hover:text-white hover:border-white/35 disabled:opacity-50 transition"
+                        >
+                          send
+                        </button>
                       )}
                     </li>
                   ))}
