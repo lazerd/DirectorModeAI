@@ -6,9 +6,9 @@
  *   1. Validate the slug + that registration is open
  *   2. Look up UTR by player name (best-effort, soft fail)
  *   3. Insert a quad_entries row in `pending_payment`
- *   4. Either confirm immediately (free tournament) or create a Stripe
- *      Checkout session against the director's Connect account and return
- *      the URL for the client to redirect to.
+ *   4. Either confirm immediately (free event) or start checkout. Payment
+ *      rails, in priority order: Square-hosted payment link (current rail),
+ *      a static external_payment_url, then legacy Stripe Connect.
  *
  * Body:
  *   {
@@ -23,6 +23,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { stripe, platformFeeForCents } from '@/lib/stripe';
+import { squareConfigured, createEntryPaymentLink } from '@/lib/square';
 import { computeQuadComposite } from '@/lib/quads';
 import { sendQuadsConfirmEmail, sendQuadsWaitlistEmail } from '@/lib/quadEmails';
 
@@ -118,7 +119,7 @@ export async function POST(request: Request) {
     const { data: ev, error: evErr } = await admin
       .from('events')
       .select(
-        'id, name, slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, event_date, user_id'
+        'id, name, slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, external_payment_url, event_date, user_id'
       )
       .eq('slug', slug)
       .maybeSingle();
@@ -204,7 +205,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Free tournament — skip Stripe entirely
+    const origin = new URL(request.url).origin;
+
+    // Free tournament — no payment rail needed
     const fee = e.entry_fee_cents ?? 0;
     if (fee <= 0) {
       // Decide flight vs waitlist now.
@@ -226,7 +229,6 @@ export async function POST(request: Request) {
       try {
         const recipient = player_email || parent_email;
         if (recipient) {
-          const origin = new URL(request.url).origin;
           const args = {
             to: recipient,
             playerName: player_name,
@@ -246,7 +248,64 @@ export async function POST(request: Request) {
       return NextResponse.json({ entry_id: (entry as any).id, free: true, position });
     }
 
-    // Paid: requires director's Stripe account
+    // Helper: seat a paid-but-not-yet-collected entry into a flight (or the
+    // waitlist if the field is already full).
+    const seatEntry = async (): Promise<'in_flight' | 'waitlist'> => {
+      let position: 'in_flight' | 'waitlist' = 'in_flight';
+      if (e.max_players && e.max_players > 0) {
+        const { count } = await admin
+          .from('quad_entries')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', e.id)
+          .in('position', ['in_flight'])
+          .neq('id', (entry as any).id);
+        if ((count ?? 0) >= e.max_players) position = 'waitlist';
+      }
+      await admin
+        .from('quad_entries')
+        .update({ position })
+        .eq('id', (entry as any).id);
+      return position;
+    };
+
+    // Square-hosted checkout — the current payment rail (Stripe is unavailable).
+    // The order's reference_id is this entry's id, so the Square webhook marks
+    // the exact entry paid and seats it, even if the parent closes the tab.
+    if (squareConfigured()) {
+      try {
+        const { url, orderId, paymentLinkId } = await createEntryPaymentLink({
+          entryId: (entry as any).id,
+          amountCents: fee,
+          name: `Entry: ${e.name}`,
+          buyerEmail: player_email || parent_email || null,
+          redirectUrl: `${origin}/quads/${slug}/registered?entry=${(entry as any).id}`,
+        });
+        await admin
+          .from('quad_entries')
+          .update({ square_order_id: orderId, square_payment_link_id: paymentLinkId })
+          .eq('id', (entry as any).id);
+        return NextResponse.json({ url, entry_id: (entry as any).id });
+      } catch (err: any) {
+        return NextResponse.json(
+          { error: `Could not start checkout: ${err?.message || 'Square error'}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Static external payment link (Square dashboard / PayPal) — the entry is
+    // seated now and reconciled by hand.
+    if (e.external_payment_url) {
+      const position = await seatEntry();
+      return NextResponse.json({
+        entry_id: (entry as any).id,
+        external_payment: true,
+        external_payment_url: e.external_payment_url,
+        position,
+      });
+    }
+
+    // Legacy Stripe Connect path.
     if (!e.stripe_account_id) {
       return NextResponse.json(
         {
@@ -257,7 +316,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const origin = new URL(request.url).origin;
     const applicationFee = platformFeeForCents(fee);
     const session = await stripe.checkout.sessions.create(
       {

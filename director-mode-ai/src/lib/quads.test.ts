@@ -10,6 +10,8 @@ import {
   formatTimeDisplay,
   autoScheduleQuads,
   isValidQuadScore,
+  isFlightComplete,
+  computeQuadFinalStandings,
 } from './quads';
 
 describe('computeQuadComposite', () => {
@@ -477,5 +479,177 @@ describe('autoScheduleQuads', () => {
     expect(result.get('mA1')).toEqual({ scheduled_at: '09:00', court: '1' });
     // Flight B reuses courts 1+2 but starts one slot later
     expect(result.get('mB1')).toEqual({ scheduled_at: '09:45', court: '1' });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Overall quad winner: most games won across all 4 rounds
+// ---------------------------------------------------------------------------
+
+const ENTRIES4 = [
+  { id: 'a', flight_seed: 1 },
+  { id: 'b', flight_seed: 2 },
+  { id: 'c', flight_seed: 3 },
+  { id: 'd', flight_seed: 4 },
+];
+
+/** Fast4 singles round-robin helper. */
+function s(
+  round: number,
+  p1: string,
+  p3: string,
+  score: string,
+  winner: 'a' | 'b'
+): any {
+  return {
+    round,
+    match_type: 'singles',
+    player1_id: p1,
+    player3_id: p3,
+    score,
+    winner_side: winner,
+    status: 'completed',
+  };
+}
+
+function dbl(
+  p1: string,
+  p2: string,
+  p3: string,
+  p4: string,
+  score: string,
+  winner: 'a' | 'b',
+  status = 'completed'
+): any {
+  return {
+    round: 4,
+    match_type: 'doubles',
+    player1_id: p1,
+    player2_id: p2,
+    player3_id: p3,
+    player4_id: p4,
+    score,
+    winner_side: winner,
+    status,
+  };
+}
+
+// a wins all 3 (12 games), b wins 2, c wins 1, d wins 0.
+const SINGLES_SWEEP = [
+  s(1, 'a', 'd', '4-0', 'a'),
+  s(1, 'b', 'c', '4-2', 'a'),
+  s(2, 'a', 'c', '4-1', 'a'),
+  s(2, 'b', 'd', '4-1', 'a'),
+  s(3, 'a', 'b', '4-2', 'a'),
+  s(3, 'c', 'd', '4-3', 'a'),
+];
+
+describe('isFlightComplete', () => {
+  it('is false while the doubles has not been scored', () => {
+    expect(isFlightComplete(SINGLES_SWEEP)).toBe(false);
+  });
+  it('is false when the doubles exists but is pending', () => {
+    expect(
+      isFlightComplete([...SINGLES_SWEEP, dbl('a', 'd', 'b', 'c', '', 'a', 'pending')])
+    ).toBe(false);
+  });
+  it('is true once all 6 singles and the doubles are completed', () => {
+    expect(isFlightComplete([...SINGLES_SWEEP, dbl('a', 'd', 'b', 'c', '4-2', 'a')])).toBe(
+      true
+    );
+  });
+});
+
+describe('computeQuadFinalStandings', () => {
+  it('counts doubles games in full for both partners', () => {
+    const rows = computeQuadFinalStandings(ENTRIES4, [
+      ...SINGLES_SWEEP,
+      dbl('a', 'd', 'b', 'c', '4-2', 'a'),
+    ]);
+    const byId = Object.fromEntries(rows.map((r) => [r.entry_id, r]));
+    // Singles games: a=12, b=4+4+2=10, c=2+1+4=7, d=0+1+3=4
+    expect(byId.a.singles_games_won).toBe(12);
+    expect(byId.d.singles_games_won).toBe(4);
+    // Winning pair (a + d) each bank the full 4 doubles games.
+    expect(byId.a.games_won).toBe(16);
+    expect(byId.d.games_won).toBe(8);
+    // Losing pair (b + c) each bank 2.
+    expect(byId.b.games_won).toBe(12);
+    expect(byId.c.games_won).toBe(9);
+    expect(byId.a.doubles_partner_id).toBe('d');
+    expect(byId.b.doubles_partner_id).toBe('c');
+    expect(byId.a.doubles_won).toBe(true);
+    expect(byId.b.doubles_won).toBe(false);
+  });
+
+  it('crowns the player with the most games across all four rounds', () => {
+    const rows = computeQuadFinalStandings(ENTRIES4, [
+      ...SINGLES_SWEEP,
+      dbl('a', 'd', 'b', 'c', '4-2', 'a'),
+    ]);
+    expect(rows[0].entry_id).toBe('a');
+    expect(rows[0].is_champion).toBe(true);
+    expect(rows.filter((r) => r.is_champion)).toHaveLength(1);
+  });
+
+  it('lets the doubles flip the winner when the singles were close', () => {
+    // a and b split the ladder: a 11 games, b 12 games after singles.
+    const closeSingles = [
+      s(1, 'a', 'd', '4-3', 'a'),
+      s(1, 'b', 'c', '4-0', 'a'),
+      s(2, 'a', 'c', '4-3', 'a'),
+      s(2, 'b', 'd', '4-1', 'a'),
+      s(3, 'a', 'b', '3-4', 'b'),
+      s(3, 'c', 'd', '4-2', 'a'),
+    ];
+    // b leads on games (12 vs 11) but a wins the ladder on... check both ways.
+    const beforeDoubles = computeQuadFinalStandings(ENTRIES4, closeSingles);
+    expect(beforeDoubles[0].entry_id).toBe('b');
+    expect(beforeDoubles[0].is_champion).toBe(false); // doubles not played yet
+
+    // b's team loses the doubles 1-4 → b +1 = 13, a +4 = 15.
+    const after = computeQuadFinalStandings(ENTRIES4, [
+      ...closeSingles,
+      dbl(
+        beforeDoubles[0].entry_id === 'b' ? 'b' : 'a',
+        'd',
+        'a',
+        'c',
+        '1-4',
+        'b'
+      ),
+    ]);
+    expect(after[0].entry_id).toBe('a');
+    expect(after[0].is_champion).toBe(true);
+  });
+
+  it('breaks a games tie on match wins first', () => {
+    // Contrived: a and b both finish on the same game count.
+    const rows = computeQuadFinalStandings(ENTRIES4, [
+      s(1, 'a', 'd', '4-0', 'a'),
+      s(1, 'b', 'c', '4-0', 'a'),
+      s(2, 'a', 'c', '4-0', 'a'),
+      s(2, 'b', 'd', '4-0', 'a'),
+      s(3, 'a', 'b', '4-2', 'a'),
+      s(3, 'c', 'd', '4-2', 'a'),
+      dbl('a', 'd', 'b', 'c', '2-4', 'b'),
+    ]);
+    const byId = Object.fromEntries(rows.map((r) => [r.entry_id, r]));
+    // a: 12 singles + 2 doubles = 14, 3 match wins + 0 = 3
+    // b: 10 singles + 4 doubles = 14, 2 match wins + 1 = 3
+    expect(byId.a.games_won).toBe(14);
+    expect(byId.b.games_won).toBe(14);
+    expect(byId.a.tied_on_games).toBe(true);
+    // Both on 3 match wins → head-to-head: a beat b in R3.
+    expect(rows[0].entry_id).toBe('a');
+  });
+
+  it('works as a live leaderboard with only some singles scored', () => {
+    const rows = computeQuadFinalStandings(ENTRIES4, [s(1, 'a', 'd', '4-1', 'a')]);
+    const byId = Object.fromEntries(rows.map((r) => [r.entry_id, r]));
+    expect(byId.a.games_won).toBe(4);
+    expect(byId.d.games_won).toBe(1);
+    expect(byId.a.doubles_won).toBeNull();
+    expect(rows.every((r) => !r.is_champion)).toBe(true);
   });
 });

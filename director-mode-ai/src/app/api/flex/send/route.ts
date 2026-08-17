@@ -11,6 +11,7 @@ import {
   FLEX_FROM,
   FLEX_REPLY_TO,
 } from '@/lib/flexLeague';
+import { buildPlayoffRecipients, playoffEmailHtml } from '@/lib/flexPlayoffEmail';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,14 +24,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
   const { kind, mode } = (await req.json().catch(() => ({}))) as {
-    kind?: 'update' | 'nudge';
+    kind?: 'update' | 'nudge' | 'playoffs';
     mode?: 'preview' | 'test' | 'live';
   };
-  if (kind !== 'update' && kind !== 'nudge') {
+  if (kind !== 'update' && kind !== 'nudge' && kind !== 'playoffs') {
     return NextResponse.json({ error: 'bad kind' }, { status: 400 });
   }
   if (mode !== 'preview' && mode !== 'test' && mode !== 'live') {
     return NextResponse.json({ error: 'bad mode' }, { status: 400 });
+  }
+
+  // -------- PLAYOFFS (broadcast, personalized with each player's matchup) ----
+  if (kind === 'playoffs') {
+    const { recipients, snapshot } = await buildPlayoffRecipients();
+
+    if (mode === 'preview') {
+      const sample = recipients[0] ? playoffEmailHtml(recipients[0], snapshot) : null;
+      return NextResponse.json({
+        kind,
+        count: recipients.length,
+        recipients: recipients.map((r) => ({ email: r.email, playoffMatches: r.mine.length })),
+        subject: sample?.subject,
+        sampleHtml: sample?.html,
+        sampleFor: recipients[0]?.email,
+      });
+    }
+    if (mode === 'test') {
+      if (!recipients[0]) return NextResponse.json({ kind, mode, note: 'no playoff matches generated yet' });
+      const { subject, html } = playoffEmailHtml(recipients[0], snapshot);
+      const res = await safeResendSend(resend, {
+        from: FLEX_FROM,
+        to: TEST_TO,
+        replyTo: FLEX_REPLY_TO,
+        subject: `[TEST → ${recipients[0].email}] ${subject}`,
+        html,
+      });
+      return NextResponse.json({ kind, mode, to: TEST_TO, sampleFor: recipients[0].email, result: res });
+    }
+    let sent = 0;
+    const failures: { email: string; reason: string }[] = [];
+    for (const r of recipients) {
+      const { subject, html } = playoffEmailHtml(r, snapshot);
+      const res = await safeResendSend(resend, { from: FLEX_FROM, to: r.email, replyTo: FLEX_REPLY_TO, subject, html });
+      if (res.sent) sent++;
+      else failures.push({ email: r.email, reason: res.reason });
+      await sleep(650); // stay under Resend 2/sec
+    }
+    return NextResponse.json({ kind, mode, attempted: recipients.length, sent, failures });
   }
 
   const state = await getFlexState();

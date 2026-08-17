@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { Trophy, Calendar, Users, AlertCircle } from 'lucide-react';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { quadScoringLabel } from '@/lib/quads';
+import { getSponsor } from '@/config/sponsors';
+import SponsoredQuadLanding from '@/components/quads/SponsoredQuadLanding';
 import RegisterForm from './RegisterForm';
 
 export const dynamic = 'force-dynamic';
@@ -69,6 +71,22 @@ export default async function PublicQuadsLandingPage({
 
   const spotsTotal = e.max_players ?? null;
   const spotsLeft = spotsTotal !== null ? Math.max(0, spotsTotal - (confirmedCount ?? 0)) : null;
+
+  // Sponsored events get the sponsor's own branded page (src/config/sponsors.ts).
+  const sponsor = getSponsor(e.sponsor_id);
+  if (sponsor) {
+    return (
+      <SponsoredQuadLanding
+        event={e}
+        sponsor={sponsor}
+        spotsLeft={spotsLeft}
+        spotsTotal={spotsTotal}
+        waitlistCount={waitlistCount ?? 0}
+        closedReason={closedReason}
+        cancelled={cancelled === '1'}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#001820] text-white">

@@ -1,8 +1,9 @@
 /**
  * POST /api/webhooks/square
  *
- * Receives Square payment webhooks and marks the matching tournament entry
- * paid. Security: we do NOT trust the payload — we re-fetch the payment from
+ * Receives Square payment webhooks and marks the matching entry paid — either
+ * a tournament_entries row or a quad_entries row (Quads events use the same
+ * reference_id = entry id convention). Security: we do NOT trust the payload — we re-fetch the payment from
  * the Square API (authenticated) and confirm it's COMPLETED, then map it to
  * the entry via the order's reference_id (= our entry id). A forged webhook
  * with a fake payment id fails the API fetch and is ignored.
@@ -55,12 +56,25 @@ export async function POST(request: Request) {
     }
 
     const admin = getSupabaseAdmin();
-    let query = admin
-      .from('tournament_entries')
-      .select('id, payment_status, position, event_id');
-    query = entryId ? query.eq('id', entryId) : query.eq('square_order_id', orderId || '__none__');
-    const { data: entry } = await query.maybeSingle();
+
+    // The reference_id could belong to either product. Try tournaments first,
+    // then quads. `seatedPosition` is the table's own "in the event" value.
+    const findEntry = async (table: 'tournament_entries' | 'quad_entries') => {
+      let q = admin.from(table).select('id, payment_status, position, event_id');
+      q = entryId ? q.eq('id', entryId) : q.eq('square_order_id', orderId || '__none__');
+      const { data } = await q.maybeSingle();
+      return data as any;
+    };
+
+    let table: 'tournament_entries' | 'quad_entries' = 'tournament_entries';
+    let entry = await findEntry('tournament_entries');
+    if (!entry) {
+      entry = await findEntry('quad_entries');
+      table = 'quad_entries';
+    }
     if (!entry) return NextResponse.json({ ignored: true, reason: 'no matching entry' });
+
+    const seatedPosition = table === 'quad_entries' ? 'in_flight' : 'in_draw';
 
     if ((entry as any).payment_status !== 'paid') {
       // Also promote a pending_payment entry into the draw (or waitlist if the
@@ -68,7 +82,7 @@ export async function POST(request: Request) {
       // before redirect gets marked paid but never lands in the director's draw.
       let newPosition = (entry as any).position;
       if (newPosition === 'pending_payment') {
-        newPosition = 'in_draw';
+        newPosition = seatedPosition;
         const { data: ev } = await admin
           .from('events')
           .select('max_players')
@@ -77,16 +91,16 @@ export async function POST(request: Request) {
         const cap = (ev as any)?.max_players;
         if (cap && cap > 0) {
           const { count } = await admin
-            .from('tournament_entries')
+            .from(table)
             .select('*', { count: 'exact', head: true })
             .eq('event_id', (entry as any).event_id)
-            .eq('position', 'in_draw')
+            .eq('position', seatedPosition)
             .neq('id', (entry as any).id);
           if ((count ?? 0) >= cap) newPosition = 'waitlist';
         }
       }
       await admin
-        .from('tournament_entries')
+        .from(table)
         .update({
           payment_status: 'paid',
           amount_paid_cents: payment.amount_money?.amount ?? null,
@@ -95,7 +109,7 @@ export async function POST(request: Request) {
         .eq('id', (entry as any).id);
     }
 
-    return NextResponse.json({ ok: true, entry_id: (entry as any).id });
+    return NextResponse.json({ ok: true, table, entry_id: (entry as any).id });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Internal error' }, { status: 500 });
   }

@@ -106,6 +106,13 @@ export default function FlexAdminPage() {
 
       <div style={{ display: 'grid', gap: 18, gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))' }}>
         <ActionCard
+          kind="playoffs"
+          adminKey={pw}
+          title="🏆 Playoffs Are Set"
+          desc="Announces every playoff matchup that's been generated, plus any champion crowned. Goes to all players; anyone IN a playoff match also gets their own matchup + opponent contact at the top. Re-send it later and it announces whatever is newly seeded."
+          confirmVerb="Send the playoff announcement to ALL players"
+        />
+        <ActionCard
           kind="update"
           adminKey={pw}
           title="📣 Mid-Summer Update"
@@ -124,7 +131,7 @@ export default function FlexAdminPage() {
   );
 }
 
-function ActionCard({ kind, adminKey, title, desc, confirmVerb }: { kind: 'update' | 'nudge'; adminKey: string; title: string; desc: string; confirmVerb: string }) {
+function ActionCard({ kind, adminKey, title, desc, confirmVerb }: { kind: 'update' | 'nudge' | 'playoffs'; adminKey: string; title: string; desc: string; confirmVerb: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ count: number; subject?: string; sampleHtml?: string; recipients: unknown[] } | null>(null);
   const [result, setResult] = useState<string | null>(null);

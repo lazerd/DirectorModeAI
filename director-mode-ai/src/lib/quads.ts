@@ -16,6 +16,7 @@ export const QUAD_SCORING_FORMATS = [
   { id: 'pro8', label: '8-game pro set (TB at 8-8)' },
   { id: 'pro10', label: '10-game pro set (TB at 10-10)' },
   // Standard set formats
+  { id: 'fast4', label: 'Fast4 — first to 4 games, no-ad (TB at 3-3)' },
   { id: 'set4', label: '1 set to 4 (TB at 3-3)' },
   { id: 'set6', label: '1 set to 6 (TB at 6-6)' },
   { id: 'best3', label: 'Best of 3 sets' },
@@ -296,6 +297,173 @@ export function buildQuadDoublesRound(standings: QuadStanding[]): {
     player3_id: r2,
     player4_id: r3,
   };
+}
+
+/**
+ * A flight is "complete" when all 6 singles AND the round-4 doubles have been
+ * scored. Only then is the overall quad winner meaningful — the doubles can
+ * still move players past each other.
+ */
+export function isFlightComplete(matches: QuadMatchView[]): boolean {
+  const singles = matches.filter((m) => m.match_type === 'singles');
+  const doubles = matches.find((m) => m.match_type === 'doubles');
+  return (
+    singles.length === 6 &&
+    singles.every((m) => m.status === 'completed') &&
+    !!doubles &&
+    doubles.status === 'completed'
+  );
+}
+
+export type QuadFinalStanding = {
+  entry_id: string;
+  rank: number; // overall 1-4 for the quad
+  singles_rank: number; // 1-4 after the three singles rounds
+  games_won: number; // ALL FOUR rounds
+  games_lost: number;
+  singles_games_won: number;
+  doubles_games_won: number;
+  match_wins: number; // singles + doubles
+  match_losses: number;
+  doubles_partner_id: string | null;
+  doubles_won: boolean | null; // null until the doubles is scored
+  tied_on_games: boolean; // someone else finished on the same game count
+  is_champion: boolean;
+};
+
+/**
+ * OVERALL quad winner: most games won across all four rounds.
+ *
+ * Every player plays the same four matches (3 singles + 1 doubles), so total
+ * games is an apples-to-apples measure and it keeps the doubles live — win it
+ * 4-1 and you bank 4 more games, lose it and you bank 1.
+ *
+ * Doubles games count in full for BOTH partners. A side effect worth knowing:
+ * because 1st partners 4th, the doubles can never reorder two players who are
+ * on the same team — it only swings the {1,4} pair against the {2,3} pair.
+ * That's the intent: the singles ladder sets the pairings, the doubles decides
+ * which pair closes the day on top.
+ *
+ * Tiebreakers, in order:
+ *   1. games won (desc)          ← primary
+ *   2. match wins across all 4 rounds (desc)
+ *   3. head-to-head singles
+ *   4. games lost (asc)
+ *   5. singles ladder rank (asc) — itself fully deterministic down to seed
+ *
+ * Passing only the singles matches gives a valid live leaderboard mid-event;
+ * `doubles_won` stays null and the ranking simply reflects games so far.
+ */
+export function computeQuadFinalStandings(
+  entries: Array<{ id: string; flight_seed: number | null }>,
+  matches: QuadMatchView[]
+): QuadFinalStanding[] {
+  const singlesStandings = computeFlightStandings(entries, matches);
+  const singlesRankById = new Map(singlesStandings.map((s) => [s.entry_id, s.rank]));
+
+  const rows = new Map<string, QuadFinalStanding>();
+  for (const s of singlesStandings) {
+    rows.set(s.entry_id, {
+      entry_id: s.entry_id,
+      rank: 0,
+      singles_rank: s.rank,
+      games_won: s.games_won,
+      games_lost: s.games_lost,
+      singles_games_won: s.games_won,
+      doubles_games_won: 0,
+      match_wins: s.match_wins,
+      match_losses: s.match_losses,
+      doubles_partner_id: null,
+      doubles_won: null,
+      tied_on_games: false,
+      is_champion: false,
+    });
+  }
+
+  // Head-to-head from the singles round-robin, reused as tiebreaker 3.
+  const h2h = new Map<string, Set<string>>();
+  for (const m of matches) {
+    if (m.match_type !== 'singles' || m.status !== 'completed') continue;
+    if (!m.player1_id || !m.player3_id) continue;
+    const winner = m.winner_side === 'a' ? m.player1_id : m.winner_side === 'b' ? m.player3_id : null;
+    const loser = m.winner_side === 'a' ? m.player3_id : m.winner_side === 'b' ? m.player1_id : null;
+    if (!winner || !loser) continue;
+    if (!h2h.has(winner)) h2h.set(winner, new Set());
+    h2h.get(winner)!.add(loser);
+  }
+
+  // Fold in the round-4 doubles — games count in full for both partners.
+  for (const m of matches) {
+    if (m.match_type !== 'doubles' || m.status !== 'completed') continue;
+    const sideA = [m.player1_id, m.player2_id].filter((x): x is string => !!x);
+    const sideB = [m.player3_id, m.player4_id].filter((x): x is string => !!x);
+    if (sideA.length !== 2 || sideB.length !== 2) continue;
+
+    let gamesA = 0;
+    let gamesB = 0;
+    for (const [a, b] of parseScoreSets(m.score)) {
+      gamesA += a;
+      gamesB += b;
+    }
+
+    const apply = (
+      ids: string[],
+      partnerOf: (id: string) => string,
+      won: number,
+      lost: number,
+      isWinner: boolean
+    ) => {
+      for (const id of ids) {
+        const row = rows.get(id);
+        if (!row) continue;
+        row.games_won += won;
+        row.games_lost += lost;
+        row.doubles_games_won = won;
+        row.doubles_partner_id = partnerOf(id);
+        row.doubles_won = isWinner;
+        if (isWinner) row.match_wins += 1;
+        else row.match_losses += 1;
+      }
+    };
+
+    apply(
+      sideA,
+      (id) => (id === sideA[0] ? sideA[1] : sideA[0]),
+      gamesA,
+      gamesB,
+      m.winner_side === 'a'
+    );
+    apply(
+      sideB,
+      (id) => (id === sideB[0] ? sideB[1] : sideB[0]),
+      gamesB,
+      gamesA,
+      m.winner_side === 'b'
+    );
+  }
+
+  const sorted = [...rows.values()].sort((a, b) => {
+    if (a.games_won !== b.games_won) return b.games_won - a.games_won;
+    if (a.match_wins !== b.match_wins) return b.match_wins - a.match_wins;
+    const aBeatB = h2h.get(a.entry_id)?.has(b.entry_id);
+    const bBeatA = h2h.get(b.entry_id)?.has(a.entry_id);
+    if (aBeatB && !bBeatA) return -1;
+    if (bBeatA && !aBeatB) return 1;
+    if (a.games_lost !== b.games_lost) return a.games_lost - b.games_lost;
+    return (singlesRankById.get(a.entry_id) ?? 99) - (singlesRankById.get(b.entry_id) ?? 99);
+  });
+
+  const complete = isFlightComplete(matches);
+  const gameCounts = new Map<number, number>();
+  for (const r of sorted) gameCounts.set(r.games_won, (gameCounts.get(r.games_won) ?? 0) + 1);
+
+  sorted.forEach((r, i) => {
+    r.rank = i + 1;
+    r.tied_on_games = (gameCounts.get(r.games_won) ?? 0) > 1;
+    r.is_champion = complete && i === 0;
+  });
+
+  return sorted;
 }
 
 /**

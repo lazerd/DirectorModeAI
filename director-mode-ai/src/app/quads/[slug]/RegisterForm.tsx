@@ -8,9 +8,24 @@ type Props = {
   feeCents: number;
   ageMax: number | null;
   genderRestriction: 'boys' | 'girls' | 'coed' | null;
+  /** Sponsor accent for the submit button (defaults to CoachMode orange). */
+  accent?: string;
+  /** Overrides the button label, e.g. "Reserve my spot — $35". */
+  submitLabel?: string;
 };
 
-export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction }: Props) {
+// Tailwind text colors on inputs get clobbered by the global input reset in
+// this app — set the colors inline so fields never render white-on-white.
+const INPUT_STYLE = { color: '#111827', backgroundColor: '#FFFFFF' } as const;
+
+export default function RegisterForm({
+  slug,
+  feeCents,
+  ageMax,
+  genderRestriction,
+  accent,
+  submitLabel,
+}: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -54,7 +69,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
         window.location.href = data.url;
         return;
       }
-      // Free tournament — redirect to a confirmation
+      // Free tournament, or an entry taken with payment collected off-platform
       window.location.href = `/quads/${slug}/registered?entry=${data.entry_id}`;
     } catch (err: any) {
       setError(err?.message || 'Network error');
@@ -75,6 +90,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
             value={form.player_name}
             onChange={(e) => setForm({ ...form, player_name: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg text-gray-900"
+            style={INPUT_STYLE}
             placeholder="Full name"
           />
         </div>
@@ -86,6 +102,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
             value={form.date_of_birth}
             onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg text-gray-900"
+            style={INPUT_STYLE}
             required={!!ageMax}
           />
         </div>
@@ -95,6 +112,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
             value={form.gender}
             onChange={(e) => setForm({ ...form, gender: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg text-gray-900"
+            style={INPUT_STYLE}
             disabled={genderRestriction === 'boys' || genderRestriction === 'girls'}
             required={genderRestriction === 'boys' || genderRestriction === 'girls'}
           >
@@ -112,6 +130,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
             value={form.player_email}
             onChange={(e) => setForm({ ...form, player_email: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg text-gray-900"
+            style={INPUT_STYLE}
             required={!isJunior}
           />
         </div>
@@ -122,6 +141,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
             value={form.player_phone}
             onChange={(e) => setForm({ ...form, player_phone: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg text-gray-900"
+            style={INPUT_STYLE}
           />
         </div>
 
@@ -138,6 +158,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
                 value={form.parent_name}
                 onChange={(e) => setForm({ ...form, parent_name: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg text-gray-900"
+            style={INPUT_STYLE}
               />
             </div>
             <div>
@@ -148,6 +169,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
                 value={form.parent_email}
                 onChange={(e) => setForm({ ...form, parent_email: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg text-gray-900"
+            style={INPUT_STYLE}
               />
             </div>
             <div className="sm:col-span-2">
@@ -157,6 +179,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
                 value={form.parent_phone}
                 onChange={(e) => setForm({ ...form, parent_phone: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg text-gray-900"
+            style={INPUT_STYLE}
               />
             </div>
           </>
@@ -174,6 +197,7 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
             value={form.ntrp}
             onChange={(e) => setForm({ ...form, ntrp: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg text-gray-900"
+            style={INPUT_STYLE}
             placeholder="e.g. 3.5"
           />
           <p className="text-xs text-gray-500 mt-1">
@@ -191,14 +215,17 @@ export default function RegisterForm({ slug, feeCents, ageMax, genderRestriction
       <button
         type="submit"
         disabled={submitting}
-        className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+        className="w-full py-3 text-white rounded-lg font-semibold disabled:opacity-50 flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+        style={{ backgroundColor: accent || '#F97316' }}
       >
         {submitting && <Loader2 size={16} className="animate-spin" />}
         {submitting
           ? 'Working…'
-          : feeCents > 0
-            ? `Register & Pay $${(feeCents / 100).toFixed(0)}`
-            : 'Register (Free)'}
+          : submitLabel
+            ? submitLabel
+            : feeCents > 0
+              ? `Register & Pay $${(feeCents / 100).toFixed(0)}`
+              : 'Register (Free)'}
       </button>
     </form>
   );
