@@ -135,13 +135,17 @@ function ActionCard({ kind, adminKey, title, desc, confirmVerb }: { kind: 'updat
   const [busy, setBusy] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ count: number; subject?: string; sampleHtml?: string; recipients: unknown[] } | null>(null);
   const [result, setResult] = useState<string | null>(null);
+  // Playoff announcement can go to the whole league or only the players who
+  // actually have a playoff match to schedule.
+  const [audience, setAudience] = useState<'all' | 'playoff'>('playoff');
 
   async function call(mode: 'preview' | 'test' | 'live') {
-    if (mode === 'live' && !confirm(`${confirmVerb}?\n\nThis sends real emails and cannot be undone.`)) return;
+    const who = kind === 'playoffs' && audience === 'playoff' ? 'players who have a playoff match' : 'ALL players';
+    if (mode === 'live' && !confirm(`${kind === 'playoffs' ? `Send the playoff announcement to ${who}` : confirmVerb}?\n\nThis sends real emails and cannot be undone.`)) return;
     setBusy(mode);
     setResult(null);
     try {
-      const r = await fetch('/api/flex/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey }, body: JSON.stringify({ kind, mode }) });
+      const r = await fetch('/api/flex/send', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Admin-Key': adminKey }, body: JSON.stringify({ kind, mode, ...(kind === 'playoffs' ? { audience } : {}) }) });
       const d = await r.json();
       if (mode === 'preview') setPreview(d);
       else if (mode === 'test') setResult(d?.result?.sent ? `Test sent to darrinjco@gmail.com${d.sampleFor ? ` (sample for ${d.sampleFor})` : ''}.` : `Test: ${JSON.stringify(d)}`);
@@ -159,6 +163,16 @@ function ActionCard({ kind, adminKey, title, desc, confirmVerb }: { kind: 'updat
     <div style={card}>
       <h3 style={{ margin: '0 0 6px', fontSize: 18 }}>{title}</h3>
       <p style={{ color: '#475569', fontSize: 14, marginTop: 0 }}>{desc}</p>
+      {kind === 'playoffs' && (
+        <div style={{ display: 'flex', gap: 14, marginBottom: 12, flexWrap: 'wrap', fontSize: 14, color: '#0f172a' }}>
+          {([['playoff', 'Only players in a playoff'], ['all', 'Everyone in the league']] as const).map(([v, label]) => (
+            <label key={v} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontWeight: audience === v ? 700 : 400 }}>
+              <input type="radio" name={`aud-${kind}`} checked={audience === v} onChange={() => { setAudience(v); setPreview(null); }} />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button disabled={!!busy} onClick={() => call('preview')} style={btn('#64748b')}>{busy === 'preview' ? '…' : 'Preview'}</button>
         <button disabled={!!busy} onClick={() => call('test')} style={btn('#0C7B8C')}>{busy === 'test' ? '…' : 'Send test to me'}</button>

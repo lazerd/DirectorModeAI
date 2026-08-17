@@ -23,9 +23,11 @@ export async function POST(req: NextRequest) {
   if (!(await isAdminRequest(req))) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
-  const { kind, mode } = (await req.json().catch(() => ({}))) as {
+  const { kind, mode, audience } = (await req.json().catch(() => ({}))) as {
     kind?: 'update' | 'nudge' | 'playoffs';
     mode?: 'preview' | 'test' | 'live';
+    /** playoffs only: 'playoff' restricts to players actually IN a playoff match. */
+    audience?: 'all' | 'playoff';
   };
   if (kind !== 'update' && kind !== 'nudge' && kind !== 'playoffs') {
     return NextResponse.json({ error: 'bad kind' }, { status: 400 });
@@ -36,14 +38,21 @@ export async function POST(req: NextRequest) {
 
   // -------- PLAYOFFS (broadcast, personalized with each player's matchup) ----
   if (kind === 'playoffs') {
-    const { recipients, snapshot } = await buildPlayoffRecipients();
+    const { recipients: everyone, snapshot } = await buildPlayoffRecipients();
+    // 'playoff' = only players who actually have a playoff match to schedule.
+    // Anyone whose match is already scored is excluded — there's nothing to do.
+    const recipients =
+      audience === 'playoff'
+        ? everyone.filter((r) => r.mine.some((m) => m.info.status !== 'completed'))
+        : everyone;
 
     if (mode === 'preview') {
       const sample = recipients[0] ? playoffEmailHtml(recipients[0], snapshot) : null;
       return NextResponse.json({
         kind,
+        audience: audience || 'all',
         count: recipients.length,
-        recipients: recipients.map((r) => ({ email: r.email, playoffMatches: r.mine.length })),
+        recipients: recipients.map((r) => ({ email: r.email, firstName: r.firstName, playoffMatches: r.mine.length })),
         subject: sample?.subject,
         sampleHtml: sample?.html,
         sampleFor: recipients[0]?.email,
@@ -70,7 +79,7 @@ export async function POST(req: NextRequest) {
       else failures.push({ email: r.email, reason: res.reason });
       await sleep(650); // stay under Resend 2/sec
     }
-    return NextResponse.json({ kind, mode, attempted: recipients.length, sent, failures });
+    return NextResponse.json({ kind, mode, audience: audience || 'all', attempted: recipients.length, sent, failures });
   }
 
   const state = await getFlexState();
