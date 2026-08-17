@@ -1,10 +1,33 @@
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { AlertCircle, MapPin, Clock, CalendarDays, Users, Ticket, Trophy } from 'lucide-react';
+import {
+  AlertCircle,
+  MapPin,
+  Clock,
+  CalendarDays,
+  Users,
+  Ticket,
+  Trophy,
+  Check,
+} from 'lucide-react';
 import type { Sponsor } from '@/config/sponsors';
 import { quadScoringLabel, formatTimeDisplay } from '@/lib/quads';
+import { PLAYERS_PER_QUAD, type QuadDivision } from '@/lib/quadDivisions';
 import SponsorWordmark from './SponsorWordmark';
 import RegisterForm from '@/app/quads/[slug]/RegisterForm';
+
+export type DivisionStatus = QuadDivision & {
+  inLine: number;
+  spotsLeft: number;
+  waiting: number;
+};
+
+export type SiblingDate = {
+  slug: string;
+  eventDate: string;
+  isCurrent: boolean;
+  isOpen: boolean;
+};
 
 const GENDER_LABELS: Record<string, string> = {
   boys: 'Boys only',
@@ -29,6 +52,8 @@ export default function SponsoredQuadLanding({
   waitlistCount,
   closedReason,
   cancelled,
+  divisions = [],
+  siblings = [],
 }: {
   event: any;
   sponsor: Sponsor;
@@ -37,15 +62,20 @@ export default function SponsoredQuadLanding({
   waitlistCount: number;
   closedReason: string | null;
   cancelled: boolean;
+  divisions?: DivisionStatus[];
+  siblings?: SiblingDate[];
 }) {
   const c = sponsor.colors;
   const e = event;
+  const requestMode = e.entry_flow === 'request_then_invite';
 
   const dateLabel = e.event_date
     ? format(new Date(e.event_date + 'T00:00:00'), 'EEEE, MMMM d, yyyy')
     : 'Date to be announced';
   const timeLabel = e.start_time
-    ? `${formatTimeDisplay(e.start_time)} · ${durationLabel(e.duration_minutes)}`
+    ? e.end_time
+      ? `${formatTimeDisplay(e.start_time)} – ${formatTimeDisplay(e.end_time)}`
+      : `${formatTimeDisplay(e.start_time)} · ${durationLabel(e.duration_minutes)}`
     : `Time TBD · ${durationLabel(e.duration_minutes)}`;
   const feeLabel = e.entry_fee_cents > 0 ? `$${(e.entry_fee_cents / 100).toFixed(0)}` : 'Free';
 
@@ -55,8 +85,13 @@ export default function SponsoredQuadLanding({
     { icon: Ticket, label: 'Entry fee', value: feeLabel, sub: 'Everything below included' },
     {
       icon: Users,
-      label: 'Who plays',
-      value: e.age_max ? `${e.age_max} & Under` : 'All ages',
+      label: 'Divisions',
+      value:
+        divisions.length > 0
+          ? divisions.map((d) => d.label.replace(' & Under', 'U').replace(' & Over', '+')).join(' · ')
+          : e.age_max
+            ? `${e.age_max} & Under`
+            : 'All ages',
       sub: GENDER_LABELS[e.gender_restriction] ?? 'Open to boys and girls',
     },
   ];
@@ -110,6 +145,45 @@ export default function SponsoredQuadLanding({
         </div>
       </div>
 
+      {/* ---- Date switcher (multi-date series) ---- */}
+      {siblings.length > 1 && (
+        <div className="w-full" style={{ backgroundColor: c.cream }}>
+          <div className="max-w-4xl mx-auto px-4 pt-4 pb-1">
+            <div className="text-[10px] uppercase tracking-[0.18em] font-bold mb-2" style={{ color: 'rgba(0,0,0,0.45)' }}>
+              Pick your date
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {siblings.map((s) => {
+                const label = format(new Date(s.eventDate + 'T00:00:00'), 'EEE, MMM d');
+                return s.isCurrent ? (
+                  <span
+                    key={s.slug}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm font-bold text-white"
+                    style={{ backgroundColor: c.primary }}
+                  >
+                    <Check size={14} /> {label}
+                  </span>
+                ) : (
+                  <Link
+                    key={s.slug}
+                    href={`/quads/${s.slug}`}
+                    className="inline-flex items-center px-4 py-2 rounded-full text-sm font-semibold border transition-colors hover:bg-white"
+                    style={{ borderColor: 'rgba(0,0,0,0.15)', color: c.ink }}
+                  >
+                    {label}
+                    {!s.isOpen && (
+                      <span className="ml-1.5 text-xs" style={{ color: 'rgba(0,0,0,0.45)' }}>
+                        (closed)
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ---- Hero ---- */}
       <header
         className="relative overflow-hidden"
@@ -149,7 +223,21 @@ export default function SponsoredQuadLanding({
               </span>
             )}
           </div>
-          {spotsLeft !== null && !closedReason && (
+          {!closedReason && divisions.length > 0 && (
+            <div className="mt-6 flex flex-wrap gap-2">
+              {divisions.map((d) => (
+                <div
+                  key={d.id}
+                  className="bg-white rounded-xl px-3.5 py-2 text-sm font-bold"
+                  style={{ color: d.spotsLeft > 0 ? c.primary : 'rgba(0,0,0,0.5)' }}
+                >
+                  {d.label}:{' '}
+                  {d.spotsLeft > 0 ? `${d.spotsLeft} of ${PLAYERS_PER_QUAD} left` : 'waitlist'}
+                </div>
+              ))}
+            </div>
+          )}
+          {!closedReason && divisions.length === 0 && spotsLeft !== null && (
             <div className="mt-6 inline-block bg-white rounded-xl px-4 py-2.5 text-sm font-bold" style={{ color: c.primary }}>
               {spotsLeft > 0
                 ? `${spotsLeft} of ${spotsTotal} spots left`
@@ -192,6 +280,81 @@ export default function SponsoredQuadLanding({
             </div>
           ))}
         </section>
+
+        {/* ---- Divisions + how spots are awarded ---- */}
+        {divisions.length > 0 && (
+          <section
+            className="rounded-3xl p-6 sm:p-8"
+            style={{ backgroundColor: c.surface, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' }}
+          >
+            <h2 className="text-xl sm:text-2xl font-extrabold mb-1" style={{ color: c.ink }}>
+              Three quads, three divisions
+            </h2>
+            <p className="text-sm mb-5" style={{ color: 'rgba(0,0,0,0.6)' }}>
+              The block fits {e.total_quads ?? divisions.length} groups of four. First four signups
+              in a division get the spots; after that you join that division&rsquo;s waitlist.
+            </p>
+
+            <div className="grid sm:grid-cols-3 gap-3">
+              {divisions.map((d) => {
+                const full = d.spotsLeft === 0;
+                return (
+                  <div
+                    key={d.id}
+                    className="rounded-2xl p-4 border-2"
+                    style={{
+                      backgroundColor: c.cream,
+                      borderColor: full ? 'rgba(0,0,0,0.10)' : c.primary,
+                    }}
+                  >
+                    <div className="font-extrabold text-base" style={{ color: c.ink }}>
+                      {d.label}
+                    </div>
+                    <div className="mt-2 flex items-center gap-1.5">
+                      {Array.from({ length: PLAYERS_PER_QUAD }).map((_, i) => (
+                        <span
+                          key={i}
+                          className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold"
+                          style={
+                            i < Math.min(d.inLine, PLAYERS_PER_QUAD)
+                              ? { backgroundColor: c.primary, color: '#fff' }
+                              : { backgroundColor: 'rgba(0,0,0,0.08)', color: 'rgba(0,0,0,0.35)' }
+                          }
+                        >
+                          {i + 1}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="text-xs mt-2 font-semibold" style={{ color: full ? 'rgba(0,0,0,0.5)' : c.secondary }}>
+                      {full
+                        ? d.waiting > 0
+                          ? `Full · ${d.waiting} on the waitlist`
+                          : 'Full'
+                        : `${d.spotsLeft} spot${d.spotsLeft === 1 ? '' : 's'} left`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div
+              className="mt-5 rounded-2xl p-4 border-2 border-dashed"
+              style={{ borderColor: c.primary }}
+            >
+              <div
+                className="text-[10px] uppercase tracking-[0.18em] font-bold mb-1.5"
+                style={{ color: c.secondary }}
+              >
+                If a division doesn&rsquo;t fill
+              </div>
+              <p className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.7)' }}>
+                A division needs four players to run. If one comes up short we cancel it and give
+                its court block to a division with players waiting — so eight signups at 10 &amp;
+                Under becomes two 10U quads. Nobody in a cancelled division is charged.
+              </p>
+            </div>
+          </section>
+        )}
 
         {/* ---- Perks: what the sponsor brings ---- */}
         <section
@@ -249,6 +412,12 @@ export default function SponsoredQuadLanding({
             <p className="mt-3 text-sm sm:text-base text-white/90 leading-relaxed">
               {sponsor.prize.body}
             </p>
+            {divisions.length > 0 && (
+              <p className="mt-2 text-sm text-white/80">
+                That&rsquo;s one winner per quad — up to {e.total_quads ?? divisions.length} gift
+                cards on the day.
+              </p>
+            )}
           </div>
         </section>
 
@@ -348,28 +517,69 @@ export default function SponsoredQuadLanding({
               style={{ backgroundColor: c.surface, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' }}
             >
               <h2 className="text-xl sm:text-2xl font-extrabold mb-1" style={{ color: c.ink }}>
-                Grab a spot
+                {requestMode ? 'Request a spot' : 'Grab a spot'}
               </h2>
-              <p className="text-sm mb-5" style={{ color: 'rgba(0,0,0,0.6)' }}>
+              <p className="text-sm mb-4" style={{ color: 'rgba(0,0,0,0.6)' }}>
                 {feeLabel} covers all four matches, the donuts and coffee, and a shot at the gift
                 card.
                 {waitlistCount > 0 && (
                   <>
                     {' '}
                     <span style={{ color: c.secondary }} className="font-semibold">
-                      {waitlistCount} player{waitlistCount === 1 ? '' : 's'} already on the waitlist.
+                      {waitlistCount} player{waitlistCount === 1 ? '' : 's'} already waitlisted.
                     </span>
                   </>
                 )}
               </p>
+
+              {requestMode && (
+                <ol className="mb-5 space-y-2">
+                  {[
+                    { n: 1, t: 'Sign up free', b: 'No card, no charge — you just get in line.' },
+                    {
+                      n: 2,
+                      t: 'We confirm the divisions',
+                      b: 'Once registration closes we lock in which quads are running.',
+                    },
+                    {
+                      n: 3,
+                      t: `Pay ${feeLabel} within 24 hours`,
+                      b: 'Accepted players get a payment link. Paying is what holds the spot.',
+                    },
+                  ].map((step) => (
+                    <li key={step.n} className="flex gap-3 items-start">
+                      <span
+                        className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 mt-0.5"
+                        style={{ backgroundColor: c.secondary }}
+                      >
+                        {step.n}
+                      </span>
+                      <span className="text-sm">
+                        <span className="font-bold" style={{ color: c.ink }}>
+                          {step.t}
+                        </span>{' '}
+                        <span style={{ color: 'rgba(0,0,0,0.6)' }}>— {step.b}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+
               <RegisterForm
                 slug={e.slug}
                 feeCents={e.entry_fee_cents ?? 0}
                 ageMax={e.age_max}
                 genderRestriction={e.gender_restriction}
                 accent={c.primary}
+                divisions={divisions}
+                eventDate={e.event_date}
+                requestMode={requestMode}
                 submitLabel={
-                  e.entry_fee_cents > 0 ? `Reserve my spot — ${feeLabel}` : 'Reserve my spot'
+                  requestMode
+                    ? 'Request my spot — free'
+                    : e.entry_fee_cents > 0
+                      ? `Reserve my spot — ${feeLabel}`
+                      : 'Reserve my spot'
                 }
               />
               <p className="text-xs mt-3" style={{ color: 'rgba(0,0,0,0.45)' }}>

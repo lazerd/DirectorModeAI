@@ -1,6 +1,7 @@
 /**
  * Quads tournament emails — confirmation, waitlist, promoted-from-waitlist,
- * doubles-round-set. All sends go through `safeResendSend()` so the
+ * doubles-round-set, plus the request → invite → pay flow used by dated
+ * multi-division events. All sends go through `safeResendSend()` so the
  * unsubscribe blocklist + footer apply automatically.
  */
 
@@ -179,4 +180,136 @@ function ordinal(n: number) {
   if (n === 2) return '2nd';
   if (n === 3) return '3rd';
   return `${n}th`;
+}
+
+// ---------------------------------------------------------------------------
+// request → invite → pay flow (multi-division dated events)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sent the moment a parent submits the form. Nobody has paid anything yet —
+ * this email's whole job is to set the expectation that a payment link with a
+ * deadline is what actually secures the spot.
+ */
+export async function sendQuadRequestReceivedEmail(args: {
+  to: string;
+  playerName: string;
+  tournamentName: string;
+  divisionLabel: string;
+  dateLabel: string;
+  feeLabel: string;
+  positionInLine: number;
+  publicUrl: string;
+}) {
+  const inLine =
+    args.positionInLine <= 4
+      ? `You're <strong>#${args.positionInLine}</strong> in line for ${args.divisionLabel} — the first four get the spots.`
+      : `You're <strong>#${args.positionInLine}</strong> in line for ${args.divisionLabel}, so you're on the waitlist for now. Divisions that don't fill get folded into ones that do, which often frees up spots.`;
+
+  return safeResendSend(resend, {
+    from: FROM,
+    to: args.to,
+    subject: `Request received: ${args.tournamentName}`,
+    html: htmlShell(
+      `${args.playerName} — we've got your request`,
+      `<p>You asked for a spot in <strong>${args.divisionLabel}</strong> on <strong>${args.dateLabel}</strong>.</p>
+      <p>${inLine}</p>
+      <p><strong>Nothing has been charged.</strong> Once registration closes we confirm which divisions are running and email accepted players a payment link. You'll have <strong>24 hours</strong> to pay the ${args.feeLabel} entry fee and lock in the spot.</p>
+      <p><a href="${args.publicUrl}" style="color: #ea580c;">View the event page →</a></p>`
+    ),
+  });
+}
+
+/**
+ * The accept email. Contains the Square payment link and a hard deadline —
+ * this is the only thing that converts a request into a confirmed entry.
+ */
+export async function sendQuadInviteEmail(args: {
+  to: string;
+  playerName: string;
+  tournamentName: string;
+  divisionLabel: string;
+  dateLabel: string;
+  timeLabel: string;
+  venue: string | null;
+  feeLabel: string;
+  deadlineLabel: string;
+  paymentUrl: string;
+}) {
+  return safeResendSend(resend, {
+    from: FROM,
+    to: args.to,
+    subject: `You're in — pay by ${args.deadlineLabel} to confirm: ${args.tournamentName}`,
+    html: htmlShell(
+      `${args.playerName} — you've got a spot!`,
+      `<p><strong>${args.divisionLabel}</strong> is running and you're in.</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 6px 0; color: #666;">Date</td><td style="padding: 6px 0; text-align: right;"><strong>${args.dateLabel}</strong></td></tr>
+        <tr><td style="padding: 6px 0; color: #666;">Time</td><td style="padding: 6px 0; text-align: right;"><strong>${args.timeLabel}</strong></td></tr>
+        ${args.venue ? `<tr><td style="padding: 6px 0; color: #666;">Where</td><td style="padding: 6px 0; text-align: right;"><strong>${args.venue}</strong></td></tr>` : ''}
+        <tr><td style="padding: 6px 0; color: #666;">Entry fee</td><td style="padding: 6px 0; text-align: right;"><strong>${args.feeLabel}</strong></td></tr>
+      </table>
+      <p style="background: #FFF7EF; border-left: 4px solid #FF6E0C; padding: 12px 14px; margin: 16px 0;">
+        Pay by <strong>${args.deadlineLabel}</strong> to confirm. After that the spot goes to the next player in line.
+      </p>
+      <p style="margin: 24px 0;">
+        <a href="${args.paymentUrl}" style="display: inline-block; padding: 14px 28px; background: #FF6E0C; color: white; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px;">
+          Pay ${args.feeLabel} and confirm my spot
+        </a>
+      </p>
+      <p style="color: #888; font-size: 13px;">Or paste this into your browser:<br><code>${args.paymentUrl}</code></p>`
+    ),
+  });
+}
+
+/** Sent when the 24-hour payment window lapses without payment. */
+export async function sendQuadInviteExpiredEmail(args: {
+  to: string;
+  playerName: string;
+  tournamentName: string;
+  divisionLabel: string;
+  publicUrl: string;
+}) {
+  return safeResendSend(resend, {
+    from: FROM,
+    to: args.to,
+    subject: `Spot released: ${args.tournamentName}`,
+    html: htmlShell(
+      `${args.playerName} — your hold expired`,
+      `<p>The 24-hour window to pay for your <strong>${args.divisionLabel}</strong> spot has passed, so we've released it to the next player in line.</p>
+      <p>If you still want to play, reply to this email — if there's room we'll get you back in.</p>
+      <p><a href="${args.publicUrl}" style="color: #ea580c;">View the event page →</a></p>`
+    ),
+  });
+}
+
+/** Accepted on a full comp code — no payment link, just a confirmation. */
+export async function sendQuadCompConfirmedEmail(args: {
+  to: string;
+  playerName: string;
+  tournamentName: string;
+  divisionLabel: string;
+  dateLabel: string;
+  timeLabel: string;
+  venue: string | null;
+  couponCode: string | null;
+}) {
+  return safeResendSend(resend, {
+    from: FROM,
+    to: args.to,
+    subject: `Confirmed (entry comped): ${args.tournamentName}`,
+    html: htmlShell(
+      `${args.playerName} — you're confirmed`,
+      `<p><strong>${args.divisionLabel}</strong> is running and your spot is locked in.</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 6px 0; color: #666;">Date</td><td style="padding: 6px 0; text-align: right;"><strong>${args.dateLabel}</strong></td></tr>
+        <tr><td style="padding: 6px 0; color: #666;">Time</td><td style="padding: 6px 0; text-align: right;"><strong>${args.timeLabel}</strong></td></tr>
+        ${args.venue ? `<tr><td style="padding: 6px 0; color: #666;">Where</td><td style="padding: 6px 0; text-align: right;"><strong>${args.venue}</strong></td></tr>` : ''}
+        <tr><td style="padding: 6px 0; color: #666;">Entry fee</td><td style="padding: 6px 0; text-align: right;"><strong>Comped${args.couponCode ? ` (${args.couponCode})` : ''}</strong></td></tr>
+      </table>
+      <p style="background: #ECFDF5; border-left: 4px solid #10B981; padding: 12px 14px; margin: 16px 0;">
+        Nothing to pay — there's no payment link to act on. We'll email the match schedule before the event.
+      </p>`
+    ),
+  });
 }

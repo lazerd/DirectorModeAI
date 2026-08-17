@@ -6,9 +6,12 @@
  *   1. Validate the slug + that registration is open
  *   2. Look up UTR by player name (best-effort, soft fail)
  *   3. Insert a quad_entries row in `pending_payment`
- *   4. Either confirm immediately (free event) or start checkout. Payment
- *      rails, in priority order: Square-hosted payment link (current rail),
- *      a static external_payment_url, then legacy Stripe Connect.
+ *   4. Branch on the event's entry_flow:
+ *      - 'request_then_invite' — no payment at signup; the entry waits in
+ *        'requested' for the director to send a payment invite.
+ *      - 'pay_now' — confirm immediately (free event) or start checkout.
+ *        Payment rails in priority order: Square-hosted payment link, a
+ *        static external_payment_url, then legacy Stripe Connect.
  *
  * Body:
  *   {
@@ -25,7 +28,19 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { stripe, platformFeeForCents } from '@/lib/stripe';
 import { squareConfigured, createEntryPaymentLink } from '@/lib/square';
 import { computeQuadComposite } from '@/lib/quads';
-import { sendQuadsConfirmEmail, sendQuadsWaitlistEmail } from '@/lib/quadEmails';
+import {
+  sendQuadsConfirmEmail,
+  sendQuadsWaitlistEmail,
+  sendQuadRequestReceivedEmail,
+} from '@/lib/quadEmails';
+import { claimCoupon, releaseCoupon, normalizeCode } from '@/lib/quadCoupons';
+import {
+  parseDivisions,
+  divisionLabel,
+  ageOnDate as ageOnDateDiv,
+  isEligibleForDivision,
+  PLAYERS_PER_QUAD,
+} from '@/lib/quadDivisions';
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 20;
@@ -119,7 +134,7 @@ export async function POST(request: Request) {
     const { data: ev, error: evErr } = await admin
       .from('events')
       .select(
-        'id, name, slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, external_payment_url, event_date, user_id'
+        'id, name, slug, series_slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, external_payment_url, event_date, user_id, divisions, entry_flow, total_quads'
       )
       .eq('slug', slug)
       .maybeSingle();
@@ -172,6 +187,61 @@ export async function POST(request: Request) {
       }
     }
 
+    // Division eligibility (multi-division events only)
+    const divisions = parseDivisions(e.divisions);
+    const requestedDivision = clampText(body.division, 40);
+    let division: string | null = null;
+    if (divisions.length > 0) {
+      const match = divisions.find((d) => d.id === requestedDivision);
+      if (!match) {
+        return NextResponse.json(
+          { error: 'Please choose a division.' },
+          { status: 400 }
+        );
+      }
+      if (!date_of_birth) {
+        return NextResponse.json(
+          { error: "Date of birth is required so we can check the player's division." },
+          { status: 400 }
+        );
+      }
+      const dob = new Date(date_of_birth + 'T00:00:00Z');
+      const eventDay = e.event_date ? new Date(e.event_date + 'T00:00:00Z') : new Date();
+      if (Number.isNaN(dob.getTime())) {
+        return NextResponse.json({ error: 'That date of birth is not valid.' }, { status: 400 });
+      }
+      const age = ageOnDateDiv(dob, eventDay);
+      if (!isEligibleForDivision(age, match)) {
+        return NextResponse.json(
+          {
+            error: `${player_name} turns ${age} by the event date, which doesn't fit ${match.label}. Players may play up an age group but not down.`,
+          },
+          { status: 400 }
+        );
+      }
+      division = match.id;
+    }
+
+    // Comp / discount code. Claimed BEFORE the insert so two people racing a
+    // single-use code can't both get it; released again if the insert fails.
+    const submittedCode = normalizeCode(body.coupon_code);
+    let couponCode: string | null = null;
+    let couponId: string | null = null;
+    let discountPercent: number | null = null;
+    if (submittedCode) {
+      const claim = await claimCoupon(admin, {
+        code: submittedCode,
+        eventId: e.id,
+        seriesSlug: e.series_slug ?? null,
+      });
+      if (!claim.valid) {
+        return NextResponse.json({ error: claim.reason }, { status: 400 });
+      }
+      couponCode = claim.code;
+      couponId = claim.id;
+      discountPercent = claim.discountPercent;
+    }
+
     // UTR auto-lookup (best effort)
     const { utr, utrId } = await lookupUtr(player_name);
     const composite = computeQuadComposite({ utr, ntrp });
@@ -193,12 +263,16 @@ export async function POST(request: Request) {
         utr,
         utr_id: utrId,
         composite_rating: composite || null,
-        position: 'pending_payment',
+        division,
+        coupon_code: couponCode,
+        discount_percent: discountPercent,
+        position: e.entry_flow === 'request_then_invite' ? 'requested' : 'pending_payment',
         payment_status: 'pending',
       })
       .select('id')
       .single();
     if (insErr || !entry) {
+      if (couponId) await releaseCoupon(admin, couponId);
       return NextResponse.json(
         { error: insErr?.message || 'Could not create entry' },
         { status: 500 }
@@ -207,8 +281,53 @@ export async function POST(request: Request) {
 
     const origin = new URL(request.url).origin;
 
-    // Free tournament — no payment rail needed
-    const fee = e.entry_fee_cents ?? 0;
+    // Request-then-invite: nobody pays at signup. The entry sits in
+    // 'requested' until the director sees which divisions filled and sends
+    // payment invites. See /api/quads/events/[id]/invite.
+    if (e.entry_flow === 'request_then_invite') {
+      const { count: aheadInDivision } = await admin
+        .from('quad_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('event_id', e.id)
+        .eq('division', division)
+        .in('position', ['requested', 'pending_payment', 'in_flight'])
+        .neq('id', (entry as any).id);
+      const positionInLine = (aheadInDivision ?? 0) + 1;
+
+      try {
+        const recipient = parent_email || player_email;
+        if (recipient) {
+          await sendQuadRequestReceivedEmail({
+            to: recipient,
+            playerName: player_name,
+            tournamentName: e.name,
+            divisionLabel: divisionLabel(divisions, division),
+            dateLabel: e.event_date ?? 'date TBD',
+            feeLabel:
+              discountPercent === 100
+                ? 'free (comp code applied)'
+                : `$${((e.entry_fee_cents ?? 0) / 100).toFixed(0)}`,
+            positionInLine,
+            publicUrl: `${origin}/quads/${slug}`,
+          });
+        }
+      } catch (err) {
+        console.error('quad request-received email failed:', err);
+      }
+
+      return NextResponse.json({
+        entry_id: (entry as any).id,
+        requested: true,
+        division,
+        position_in_line: positionInLine,
+        in_first_four: positionInLine <= PLAYERS_PER_QUAD,
+        coupon_code: couponCode,
+        discount_percent: discountPercent,
+      });
+    }
+
+    // A full comp leaves nothing to charge, so it takes the free path.
+    const fee = discountPercent === 100 ? 0 : e.entry_fee_cents ?? 0;
     if (fee <= 0) {
       // Decide flight vs waitlist now.
       let position: 'in_flight' | 'waitlist' = 'in_flight';
