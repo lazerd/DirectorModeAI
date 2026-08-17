@@ -69,6 +69,11 @@ export default function SponsoredQuadLanding({
   const e = event;
   const requestMode = e.entry_flow === 'request_then_invite';
 
+  // How long a PLAYER is actually on court: four rounds back to back. That's
+  // not the same as the booking window — a 9am-1pm block can hold more than
+  // one wave of quads — so never describe the format using the block length.
+  const playMinutes = 4 * (e.round_duration_minutes ?? 30);
+
   const dateLabel = e.event_date
     ? format(new Date(e.event_date + 'T00:00:00'), 'EEEE, MMMM d, yyyy')
     : 'Date to be announced';
@@ -77,11 +82,19 @@ export default function SponsoredQuadLanding({
       ? `${formatTimeDisplay(e.start_time)} – ${formatTimeDisplay(e.end_time)}`
       : `${formatTimeDisplay(e.start_time)} · ${durationLabel(e.duration_minutes)}`
     : `Time TBD · ${durationLabel(e.duration_minutes)}`;
+  const blockNote = e.start_time && e.end_time ? 'Arrive 15 min early' : null;
+  // The scheduling promise parents actually plan around: four matches, one
+  // fixed window, done at the end time. Only claim it when both ends are set.
+  const guaranteedWindow =
+    e.start_time && e.end_time
+      ? `${formatTimeDisplay(e.start_time)} – ${formatTimeDisplay(e.end_time)}`
+      : null;
+  const doneBy = e.end_time ? formatTimeDisplay(e.end_time) : null;
   const feeLabel = e.entry_fee_cents > 0 ? `$${(e.entry_fee_cents / 100).toFixed(0)}` : 'Free';
 
   const facts = [
     { icon: CalendarDays, label: 'Date', value: dateLabel },
-    { icon: Clock, label: 'Time', value: timeLabel },
+    { icon: Clock, label: 'Time', value: timeLabel, sub: blockNote ?? undefined },
     { icon: Ticket, label: 'Entry fee', value: feeLabel, sub: 'Everything below included' },
     {
       icon: Users,
@@ -210,6 +223,13 @@ export default function SponsoredQuadLanding({
           <p className="mt-3 text-base sm:text-lg text-white/90 max-w-xl font-medium">
             {sponsor.tagline}
           </p>
+          {guaranteedWindow && (
+            <p className="mt-3 inline-flex items-center gap-2 text-sm sm:text-base font-bold bg-white/20 rounded-full px-4 py-1.5">
+              <Clock size={15} />
+              Four matches, one {durationLabel(e.duration_minutes).replace(' block', '')} window —
+              done by {doneBy}
+            </p>
+          )}
           <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-semibold">
             <span className="flex items-center gap-1.5">
               <CalendarDays size={15} /> {dateLabel}
@@ -427,12 +447,32 @@ export default function SponsoredQuadLanding({
           style={{ backgroundColor: c.surface, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' }}
         >
           <h2 className="text-xl sm:text-2xl font-extrabold mb-1" style={{ color: c.ink }}>
-            Four matches in {durationLabel(e.duration_minutes).replace(' block', '')}
+            Four matches in {durationLabel(playMinutes).replace(' block', '')}
           </h2>
-          <p className="text-sm mb-6" style={{ color: 'rgba(0,0,0,0.6)' }}>
+          <p className="text-sm mb-4" style={{ color: 'rgba(0,0,0,0.6)' }}>
             You&rsquo;re grouped into a quad of four players at your level. Everybody plays every
             round — no draws, no early exits, nobody sitting out.
           </p>
+
+          {guaranteedWindow && (
+            <div
+              className="mb-6 rounded-2xl p-4 flex items-start gap-3"
+              style={{ backgroundColor: c.cream }}
+            >
+              <Clock size={18} className="mt-0.5 flex-shrink-0" style={{ color: c.secondary }} />
+              <div>
+                <div className="font-bold text-sm" style={{ color: c.ink }}>
+                  Plan your day around {guaranteedWindow}
+                </div>
+                <p className="text-xs mt-1 leading-relaxed" style={{ color: 'rgba(0,0,0,0.65)' }}>
+                  Every quad runs at the same time on its own pair of courts, and rounds are on a
+                  clock — so all four matches finish inside the window. No waiting around for a
+                  draw to come back to you, and no chance of a 1pm finish. Drop off at{' '}
+                  {formatTimeDisplay(e.start_time)}, pick up at {doneBy}.
+                </p>
+              </div>
+            </div>
+          )}
 
           <ol className="space-y-3">
             {rounds.map((r) => (

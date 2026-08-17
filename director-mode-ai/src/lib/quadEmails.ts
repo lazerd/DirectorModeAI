@@ -249,6 +249,9 @@ export async function sendQuadInviteEmail(args: {
         ${args.venue ? `<tr><td style="padding: 6px 0; color: #666;">Where</td><td style="padding: 6px 0; text-align: right;"><strong>${args.venue}</strong></td></tr>` : ''}
         <tr><td style="padding: 6px 0; color: #666;">Entry fee</td><td style="padding: 6px 0; text-align: right;"><strong>${args.feeLabel}</strong></td></tr>
       </table>
+      <p style="color: #555; font-size: 13px; margin: -6px 0 16px;">
+        All four matches finish inside that window — drop off at the start, pick up at the end.
+      </p>
       <p style="background: #FFF7EF; border-left: 4px solid #FF6E0C; padding: 12px 14px; margin: 16px 0;">
         Pay by <strong>${args.deadlineLabel}</strong> to confirm. After that the spot goes to the next player in line.
       </p>
@@ -307,6 +310,9 @@ export async function sendQuadCompConfirmedEmail(args: {
         ${args.venue ? `<tr><td style="padding: 6px 0; color: #666;">Where</td><td style="padding: 6px 0; text-align: right;"><strong>${args.venue}</strong></td></tr>` : ''}
         <tr><td style="padding: 6px 0; color: #666;">Entry fee</td><td style="padding: 6px 0; text-align: right;"><strong>Comped${args.couponCode ? ` (${args.couponCode})` : ''}</strong></td></tr>
       </table>
+      <p style="color: #555; font-size: 13px; margin: -6px 0 16px;">
+        All four matches finish inside that window — drop off at the start, pick up at the end.
+      </p>
       <p style="background: #ECFDF5; border-left: 4px solid #10B981; padding: 12px 14px; margin: 16px 0;">
         Nothing to pay — there's no payment link to act on. We'll email the match schedule before the event.
       </p>`
