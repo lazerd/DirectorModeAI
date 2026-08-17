@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { syncPlacementPlayoffs } from '@/lib/tournamentPlayoffs';
+import { syncFlexPlayoffsForEvent } from '@/lib/flexPlayoffs';
 import { isValidQuadScore, resolveCourtList } from '@/lib/quads';
 import {
   optimizeTournamentSchedule,
@@ -235,6 +236,15 @@ export async function POST(req: Request, { params }: { params: { token: string }
     await syncPlacementPlayoffs(admin, m.event_id);
   } catch (err) {
     console.error('placement playoff sync failed:', err);
+  }
+
+  // Summer Flex League divisions run multi-flight round robins that the generic
+  // two-pool sync above deliberately skips. Seat their placement playoffs the
+  // instant a flight's last result lands, rather than waiting for a page load.
+  try {
+    await syncFlexPlayoffsForEvent(admin, m.event_id);
+  } catch (err) {
+    console.error('flex playoff sync failed:', err);
   }
 
   return NextResponse.json({ success: true });
