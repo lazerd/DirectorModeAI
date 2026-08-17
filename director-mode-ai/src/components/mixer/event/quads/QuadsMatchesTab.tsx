@@ -5,6 +5,8 @@ import { Edit3, Loader2, Trophy, Mail, Wand2, Calendar, PartyPopper } from 'luci
 import { createClient } from '@/lib/supabase/client';
 import {
   computeFlightStandings,
+  computeQuadFinalStandings,
+  isFlightComplete,
   buildQuadDoublesRound,
   quadScoringLabel,
   autoScheduleQuads,
@@ -418,9 +420,80 @@ export default function QuadsMatchesTab({
                 />
               ) : null}
             </div>
+
+            <QuadLeaderboard
+              flightMatches={fm}
+              flightEntries={entries.filter((e) => e.flight_id === flight.id)}
+              playerName={playerName}
+            />
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Running "most games won across all 4 rounds" board for one flight. This is
+ * the number that decides the quad — the singles ladder only sets the doubles
+ * pairing. Shows live as scores come in and locks once the doubles is scored.
+ */
+function QuadLeaderboard({
+  flightMatches,
+  flightEntries,
+  playerName,
+}: {
+  flightMatches: QuadMatch[];
+  flightEntries: QuadEntry[];
+  playerName: (id: string | null) => string;
+}) {
+  if (flightEntries.length !== 4) return null;
+  const scored = flightMatches.filter((m) => m.status === 'completed');
+  if (scored.length === 0) return null;
+
+  const standings = computeQuadFinalStandings(
+    flightEntries.map((e) => ({ id: e.id, flight_seed: e.flight_seed })),
+    flightMatches as any
+  );
+  const decided = isFlightComplete(flightMatches as any);
+
+  return (
+    <div className="mt-4 border-t border-gray-200 pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs uppercase tracking-wide text-gray-500">
+          {decided ? 'Final — most games wins' : 'Running total — most games wins'}
+        </div>
+        {!decided && (
+          <div className="text-[11px] text-gray-400">
+            {scored.length}/{flightMatches.length} matches in
+          </div>
+        )}
+      </div>
+      <div className="space-y-1">
+        {standings.map((s) => (
+          <div
+            key={s.entry_id}
+            className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-sm ${
+              decided && s.rank === 1
+                ? 'bg-yellow-50 border border-yellow-300'
+                : 'bg-gray-50 border border-gray-100'
+            }`}
+          >
+            <span className="w-5 text-center font-bold text-gray-700">
+              {decided && s.rank === 1 ? '🏆' : s.rank}
+            </span>
+            <span className="flex-1 truncate text-gray-900">{playerName(s.entry_id)}</span>
+            <span className="text-xs text-gray-500 hidden sm:inline">
+              {s.match_wins}-{s.match_losses}
+              {s.doubles_won !== null && (s.doubles_won ? ' · won dbls' : ' · lost dbls')}
+            </span>
+            <span className="font-bold text-gray-900 w-8 text-right">{s.games_won}</span>
+            {s.tied_on_games && (
+              <span className="text-[10px] text-amber-600 font-semibold">tie</span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
