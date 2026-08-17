@@ -35,6 +35,7 @@ const GENDER_LABELS: Record<string, string> = {
   coed: 'Open to boys and girls',
 };
 
+/** Adjectival form, for "one 2-hour window". */
 function durationLabel(minutes: number | null | undefined): string {
   if (!minutes || minutes <= 0) return '2-hour block';
   const h = Math.floor(minutes / 60);
@@ -42,6 +43,16 @@ function durationLabel(minutes: number | null | undefined): string {
   if (h && m) return `${h}h ${m}m block`;
   if (h) return `${h}-hour block`;
   return `${m}-minute block`;
+}
+
+/** Noun form, for "four matches in 2 hours". */
+function durationNoun(minutes: number | null | undefined): string {
+  if (!minutes || minutes <= 0) return '2 hours';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h} hour${h === 1 ? '' : 's'}`;
+  return `${m} minutes`;
 }
 
 export default function SponsoredQuadLanding({
@@ -447,7 +458,7 @@ export default function SponsoredQuadLanding({
           style={{ backgroundColor: c.surface, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' }}
         >
           <h2 className="text-xl sm:text-2xl font-extrabold mb-1" style={{ color: c.ink }}>
-            Four matches in {durationLabel(playMinutes).replace(' block', '')}
+            Four matches in {durationNoun(playMinutes)}
           </h2>
           <p className="text-sm mb-4" style={{ color: 'rgba(0,0,0,0.6)' }}>
             You&rsquo;re grouped into a quad of four players at your level. Everybody plays every
