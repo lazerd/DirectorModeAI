@@ -21,8 +21,8 @@ type Props = {
   genderRestriction: 'boys' | 'girls' | 'coed' | null;
   /** Sponsor accent for the submit button (defaults to CoachMode orange). */
   accent?: string;
-  /** Overrides the button label, e.g. "Reserve my spot — $35". */
-  submitLabel?: string;
+  /** Overrides the button label. Takes a node so it can be two lines. */
+  submitLabel?: React.ReactNode;
   /** Age divisions to choose between. Empty = single-division event. */
   divisions?: DivisionOption[];
   /** ISO date of the event — divisions are judged on the player's age that day. */

@@ -586,7 +586,11 @@ export default function SponsoredQuadLanding({
               {requestMode && (
                 <ol className="mb-5 space-y-2">
                   {[
-                    { n: 1, t: 'Sign up free', b: 'No card, no charge — you just get in line.' },
+                    {
+                      n: 1,
+                      t: 'Request a spot',
+                      b: 'No card needed — you’re getting in line, not paying yet.',
+                    },
                     {
                       n: 2,
                       t: 'We confirm the divisions',
@@ -626,11 +630,21 @@ export default function SponsoredQuadLanding({
                 eventDate={e.event_date}
                 requestMode={requestMode}
                 submitLabel={
-                  requestMode
-                    ? 'Request my spot — free'
-                    : e.entry_fee_cents > 0
-                      ? `Reserve my spot — ${feeLabel}`
-                      : 'Reserve my spot'
+                  requestMode ? (
+                    // Never call this "free" — the event costs money, the
+                    // REQUEST doesn't. Two lines so the distinction survives
+                    // on a phone.
+                    <span className="flex flex-col leading-tight py-0.5">
+                      <span>Request my spot</span>
+                      <span className="text-[11px] font-medium opacity-90">
+                        No payment due until selected for the event
+                      </span>
+                    </span>
+                  ) : e.entry_fee_cents > 0 ? (
+                    `Reserve my spot — ${feeLabel}`
+                  ) : (
+                    'Reserve my spot'
+                  )
                 }
               />
               <p className="text-xs mt-3" style={{ color: 'rgba(0,0,0,0.45)' }}>
