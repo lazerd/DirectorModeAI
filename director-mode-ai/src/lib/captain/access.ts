@@ -128,3 +128,34 @@ export async function canAccessTeam(userId: string, teamId: string): Promise<boo
     .maybeSingle();
   return !!staff;
 }
+
+export type TeamGate = 'ok' | 'not_member' | 'needs_subscription';
+
+/**
+ * Team-scoped entitlement. Co-captains are free (spec §2), so the subscription
+ * that matters for a co-captain is the TEAM OWNER's, not their own — checking
+ * the viewer's own sub would push every co-captain to the paywall.
+ */
+export async function gateTeam(userId: string, teamId: string): Promise<TeamGate> {
+  const db = await createServiceClient();
+  const { data: team } = await db
+    .from('captain_teams')
+    .select('captain_user_id')
+    .eq('id', teamId)
+    .maybeSingle();
+  const ownerId = (team as { captain_user_id: string } | null)?.captain_user_id;
+  if (!ownerId) return 'not_member';
+
+  if (ownerId !== userId) {
+    const { data: staff } = await db
+      .from('captain_team_staff')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!staff) return 'not_member';
+    if ((await getCaptainAccess(ownerId)).active) return 'ok';
+  }
+
+  return (await getCaptainAccess(userId)).active ? 'ok' : 'needs_subscription';
+}

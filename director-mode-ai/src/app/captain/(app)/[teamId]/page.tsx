@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { getCaptainAccess, canAccessTeam } from '@/lib/captain/access';
+import { gateTeam } from '@/lib/captain/access';
 import { playedCounts, pairRecords, rulesFor } from '@/lib/captain/server';
 import { eligibilityReport, type RatingType } from '@/lib/captain/lineup';
 import RosterPanel from '@/components/captain/RosterPanel';
@@ -20,9 +20,9 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
   } = await supabase.auth.getUser();
   if (!user) redirect(`/login?redirect=/captain/${params.teamId}`);
 
-  const access = await getCaptainAccess(user.id);
-  if (!access.active) redirect('/captain/subscribe');
-  if (!(await canAccessTeam(user.id, params.teamId))) notFound();
+  const gate = await gateTeam(user.id, params.teamId);
+  if (gate === 'not_member') notFound();
+  if (gate === 'needs_subscription') redirect('/captain/subscribe');
 
   const db = await createServiceClient();
   const { data: teamRow } = await db
