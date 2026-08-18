@@ -3,7 +3,7 @@ import {
   buildTimeline,
   dueAtFor,
   isDue,
-  nextCronTick,
+  tickAtOrBefore,
   resolveSettings,
   type MatchRow,
   type OverrideRow,
@@ -49,17 +49,25 @@ const build = (
 const pick = (events: ReturnType<typeof build>, kind: string) =>
   events.find((e) => e.kind === kind)!;
 
-describe('nextCronTick', () => {
-  it('uses the same day when the due moment is before the 16:00Z run', () => {
-    expect(nextCronTick('2026-08-25T09:00:00.000Z')).toBe('2026-08-25T16:00:00.000Z');
+describe('tickAtOrBefore', () => {
+  it('falls back to the previous day when the due moment precedes the run', () => {
+    expect(tickAtOrBefore('2026-08-25T09:00:00.000Z')).toBe('2026-08-24T16:00:00.000Z');
   });
 
-  it('rolls to the next day when the due moment is after the run', () => {
-    expect(nextCronTick('2026-08-25T18:00:00.000Z')).toBe('2026-08-26T16:00:00.000Z');
+  it('uses the same day once the run has passed', () => {
+    expect(tickAtOrBefore('2026-08-25T18:00:00.000Z')).toBe('2026-08-25T16:00:00.000Z');
   });
 
   it('treats the run time itself as on time', () => {
-    expect(nextCronTick('2026-08-25T16:00:00.000Z')).toBe('2026-08-25T16:00:00.000Z');
+    expect(tickAtOrBefore('2026-08-25T16:00:00.000Z')).toBe('2026-08-25T16:00:00.000Z');
+  });
+
+  it('never lets a day-before reminder land on match morning', () => {
+    // 9:30am PT match, 1 day of lead: the send must be the day before, not the
+    // 9:00am run half an hour before the players are due on court.
+    const send = tickAtOrBefore('2026-08-31T16:30:00.000Z');
+    expect(send).toBe('2026-08-31T16:00:00.000Z');
+    expect(new Date(send).getTime()).toBeLessThan(new Date('2026-09-01T16:30:00.000Z').getTime() - 20 * 60 * 60 * 1000);
   });
 });
 
@@ -99,21 +107,21 @@ describe('buildTimeline', () => {
   it('schedules the lineup email on the cron tick a week out', () => {
     const e = pick(build('2026-08-01T00:00:00.000Z'), 'lineup');
     expect(e.status).toBe('scheduled');
-    expect(e.sendAt).toBe('2026-08-26T16:00:00.000Z'); // due 8/25 16:30Z -> next 16:00Z run
+    expect(e.sendAt).toBe('2026-08-25T16:00:00.000Z'); // due 8/25 16:30Z -> the 8/25 16:00Z run
   });
 
   it('marks a send whose moment has passed as due rather than late', () => {
-    const e = pick(build('2026-08-27T00:00:00.000Z'), 'lineup');
+    const e = pick(build('2026-08-26T00:00:00.000Z'), 'lineup');
     expect(e.status).toBe('due');
   });
 
   it('reports sent emails with the time they actually went', () => {
     const e = pick(
-      build('2026-08-27T00:00:00.000Z', match({ lineup_email_sent_at: '2026-08-26T16:00:12.000Z' })),
+      build('2026-08-27T00:00:00.000Z', match({ lineup_email_sent_at: '2026-08-25T16:00:12.000Z' })),
       'lineup',
     );
     expect(e.status).toBe('sent');
-    expect(e.sentAt).toBe('2026-08-26T16:00:12.000Z');
+    expect(e.sentAt).toBe('2026-08-25T16:00:12.000Z');
   });
 
   it('blocks lineup-dependent emails until a lineup exists', () => {
@@ -170,6 +178,12 @@ describe('buildTimeline', () => {
     expect(pick(events, 'reminder').audienceCount).toBe(6); // only who is playing
   });
 
+  it('puts the day-before reminder on the day before, not match morning', () => {
+    const e = pick(build('2026-08-01T00:00:00.000Z'), 'reminder');
+    expect(e.sendAt).toBe('2026-08-31T16:00:00.000Z');
+    expect(new Date(e.sendAt).getTime()).toBeLessThan(new Date(e.matchAt).getTime());
+  });
+
   it('orders the season by when each email goes out', () => {
     const kinds = build('2026-08-01T00:00:00.000Z').map((e) => e.kind);
     expect(kinds.indexOf('lineup')).toBeLessThan(kinds.indexOf('nudge'));
@@ -194,7 +208,7 @@ describe('isDue agrees with the timeline', () => {
 
   it('stops once the send has been stamped', () => {
     const now = new Date('2026-08-27T00:00:00.000Z');
-    const m = match({ lineup_email_sent_at: '2026-08-26T16:00:00.000Z' });
+    const m = match({ lineup_email_sent_at: '2026-08-25T16:00:00.000Z' });
     expect(isDue('lineup', m, settings.lineup, null, now)).toBe(false);
   });
 

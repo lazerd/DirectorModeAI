@@ -6,10 +6,11 @@
  * here. If they were computed separately the dashboard would eventually start
  * lying, which is the one thing a schedule preview must never do.
  *
- * Timing model: a send becomes DUE at `match_at - lead_days` (or an explicit
- * per-match `send_at`), but the cron only ticks once a day, so the real send
- * lands on the first tick at or after that moment. The timeline shows that real
- * tick, not the theoretical due time.
+ * Timing model: a send is DUE at `match_at - lead_days` (or an explicit
+ * per-match `send_at`), but the cron only ticks once a day, so the real send is
+ * the last tick at or before that moment. It rounds DOWN, never up: rounding up
+ * pushed the day-before reminder for a 9:30am match onto the 9:00am run on
+ * match day itself — thirty minutes of notice. Early is harmless, late is not.
  */
 
 export type EmailKind = 'poll' | 'nudge' | 'lineup' | 'reminder';
@@ -178,14 +179,26 @@ export function dueAtFor(
   return new Date(new Date(matchAt).getTime() - leadDays * DAY).toISOString();
 }
 
-/** First daily cron tick at or after `due` — the time the email really goes. */
-export function nextCronTick(due: string | Date): string {
+/** Last daily cron tick at or before `due` — the moment the email really goes. */
+export function tickAtOrBefore(due: string | Date): string {
   const d = due instanceof Date ? due : new Date(due);
   const tick = new Date(
     Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), CRON_UTC_HOUR, 0, 0, 0),
   );
-  if (tick.getTime() < d.getTime()) tick.setUTCDate(tick.getUTCDate() + 1);
+  if (tick.getTime() > d.getTime()) tick.setUTCDate(tick.getUTCDate() - 1);
   return tick.toISOString();
+}
+
+/**
+ * The single answer to "when does this go out". Both the timeline and the cron
+ * read this, so a row that says Monday 9am is sent by the Monday 9am run.
+ */
+export function sendAtFor(
+  matchAt: string,
+  leadDays: number,
+  override?: OverrideRow | null,
+): string {
+  return tickAtOrBefore(dueAtFor(matchAt, leadDays, override));
 }
 
 export function sentAtOf(match: MatchRow, kind: EmailKind): string | null {
@@ -254,7 +267,7 @@ export function buildTimeline(args: BuildTimelineArgs): TimelineEvent[] {
       const setting = settings[kind];
       const ov = overrides.find((o) => o.match_id === m.id && o.kind === kind) || null;
       const dueAt = dueAtFor(m.match_at, setting.leadDays, ov);
-      const sendAt = nextCronTick(dueAt);
+      const sendAt = sendAtFor(m.match_at, setting.leadDays, ov);
       const sentAt = sentAtOf(m, kind);
       const audience = audienceFor(kind, m, counts);
 
@@ -326,5 +339,6 @@ export function isDue(
   if (m.status !== 'scheduled') return false;
   if (sentAtOf(m, kind)) return false;
   if (new Date(m.match_at).getTime() <= now.getTime()) return false;
-  return new Date(dueAtFor(m.match_at, setting.leadDays, ov)).getTime() <= now.getTime();
+  // Same instant the dashboard prints, so "goes out today" is literally true.
+  return new Date(sendAtFor(m.match_at, setting.leadDays, ov)).getTime() <= now.getTime();
 }
