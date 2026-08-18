@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { CalendarClock } from 'lucide-react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { gateTeam } from '@/lib/captain/access';
 import { playedCounts, pairRecords, rulesFor } from '@/lib/captain/server';
@@ -115,6 +116,14 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         {roster.filter((p) => !p.is_sub).length} on roster ·{' '}
         {roster.filter((p) => p.is_sub).length} subs
       </p>
+
+      <Link
+        href={`/captain/${team.id}/timeline`}
+        className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-2.5 text-sm text-white/80 hover:border-[#D3FB52]/40 hover:text-white transition-colors"
+      >
+        <CalendarClock size={16} className="text-[#D3FB52]" />
+        Season email timeline
+      </Link>
 
       {atRisk.length > 0 && (
         <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4">

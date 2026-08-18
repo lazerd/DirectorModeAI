@@ -1,236 +1,106 @@
 /**
- * CaptainMode daily cron — one pass, three scheduled sends.
+ * CaptainMode daily cron — one pass over every team's scheduled email.
  *
- *   1. lineup emails    for matches ~7 days out   (lineup_email_sent_at IS NULL)
- *   2. availability nudge for matches ~2 days out (nudge_sent_at IS NULL)
- *   3. day-before reminders                        (reminder_sent_at IS NULL)
+ * Timing is no longer hardcoded. Each team's lead times, on/off switches, and
+ * per-match exceptions live in captain_email_settings / captain_email_overrides
+ * and are resolved by src/lib/captain/timeline.ts — the same module the
+ * captain's timeline dashboard renders from, so the preview and the send can
+ * never disagree.
  *
- * Deliberately one route rather than three crons — Vercel cron slots are
- * limited and these all want the same daily cadence. Each send is guarded by
- * its own *_sent_at column so a re-run never double-sends.
+ * Due-based, not window-based. The old version only sent when a match fell
+ * inside a fixed ±12h window (6.5–7.5 days out, etc.), so a lineup that was not
+ * built on exactly the right day was never emailed at all — the window had
+ * moved on by the next run. Now a send stays due until it happens, and each
+ * `*_sent_at` stamp is what stops it repeating.
  */
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import {
-  lineupEmail,
-  nudgeEmail,
-  matchReminderEmail,
-  sendAll,
-  type LineupRow,
-  type MatchInfo,
-} from '@/lib/captain/emails';
+import { sendAll } from '@/lib/captain/emails';
+import { EMAIL_KINDS, KIND_META, isDue, type EmailKind, type MatchRow } from '@/lib/captain/timeline';
+import { loadTeamEmailContext, payloadsFor, MATCH_COLUMNS } from '@/lib/captain/timelineSend';
 
 export const dynamic = 'force-dynamic';
 
-type Player = { id: string; name: string; email: string | null; player_token: string };
+/** No point loading matches whose longest lead time could not have arrived yet. */
+const HORIZON_DAYS = 150;
 
-const DAY = 24 * 60 * 60 * 1000;
-const win = (from: number, to: number) => ({
-  from: new Date(Date.now() + from * DAY).toISOString(),
-  to: new Date(Date.now() + to * DAY).toISOString(),
-});
-
-async function rosterFor(admin: ReturnType<typeof getSupabaseAdmin>, teamId: string) {
-  const { data } = await admin
-    .from('captain_players')
-    .select('id, name, email, player_token')
-    .eq('team_id', teamId)
-    .eq('active', true);
-  return ((data as Player[]) || []).filter((p) => !!p.email);
-}
-
-function infoOf(m: Record<string, unknown>): MatchInfo {
-  return {
-    id: m.id as string,
-    matchAt: m.match_at as string,
-    isHome: m.is_home as boolean,
-    opponent: (m.opponent as string) || null,
-    location: (m.location as string) || null,
-    arrivalNote: (m.arrival_note as string) || null,
-    opposingCaptainName: (m.opposing_captain_name as string) || null,
-    opposingCaptainPhone: (m.opposing_captain_phone as string) || null,
-  };
-}
+type TeamRow = { id: string; name: string; captain_user_id: string };
 
 export async function GET() {
   const admin = getSupabaseAdmin();
-  const summary = { lineups: 0, nudges: 0, reminders: 0, errors: [] as string[] };
-
-  const teamCache = new Map<string, { name: string; captain_user_id: string }>();
-  const teamOf = async (id: string) => {
-    if (!teamCache.has(id)) {
-      const { data } = await admin
-        .from('captain_teams')
-        .select('name, captain_user_id')
-        .eq('id', id)
-        .maybeSingle();
-      if (data) teamCache.set(id, data as { name: string; captain_user_id: string });
-    }
-    return teamCache.get(id);
+  const now = new Date();
+  const summary = {
+    polls: 0,
+    lineups: 0,
+    nudges: 0,
+    reminders: 0,
+    errors: [] as string[],
+  };
+  const counter: Record<EmailKind, 'polls' | 'lineups' | 'nudges' | 'reminders'> = {
+    poll: 'polls',
+    lineup: 'lineups',
+    nudge: 'nudges',
+    reminder: 'reminders',
   };
 
-  // ---------------------------------------------------------------- lineups
-  {
-    const { from, to } = win(6.5, 7.5);
-    const { data: matches } = await admin
-      .from('captain_matches')
-      .select('*')
-      .eq('status', 'scheduled')
-      .is('lineup_email_sent_at', null)
-      .gte('match_at', from)
-      .lte('match_at', to);
+  const horizon = new Date(now.getTime() + HORIZON_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const { data: matchRows } = await admin
+    .from('captain_matches')
+    .select(MATCH_COLUMNS)
+    .eq('status', 'scheduled')
+    .gt('match_at', now.toISOString())
+    .lte('match_at', horizon)
+    .order('match_at');
 
-    for (const m of (matches as Record<string, unknown>[]) || []) {
-      try {
-        const team = await teamOf(m.team_id as string);
-        if (!team) continue;
-        const { data: courts } = await admin
-          .from('captain_lineups')
-          .select('court_number, court_type, player1_id, player2_id')
-          .eq('match_id', m.id as string)
-          .order('court_number');
-        if (!courts?.length) continue; // captain hasn't built one yet
+  const matches = (matchRows as unknown as Record<string, unknown>[]) || [];
+  if (!matches.length) return NextResponse.json(summary);
 
-        const roster = await rosterFor(admin, m.team_id as string);
-        const nameOf = (id: string | null) =>
-          id ? roster.find((p) => p.id === id)?.name ?? '—' : '—';
-
-        const rows: LineupRow[] = (courts as Record<string, unknown>[]).map((c) => ({
-          courtNumber: c.court_number as number,
-          courtType: c.court_type as 'singles' | 'doubles',
-          names: [nameOf(c.player1_id as string | null)].concat(
-            c.court_type === 'doubles' ? [nameOf(c.player2_id as string | null)] : [],
-          ),
-        }));
-        const playing = new Set(
-          (courts as Record<string, unknown>[])
-            .flatMap((c) => [c.player1_id, c.player2_id])
-            .filter(Boolean) as string[],
-        );
-
-        const res = await sendAll(
-          team.captain_user_id,
-          roster.map((p) =>
-            lineupEmail(
-              team.name,
-              infoOf(m),
-              rows,
-              { playerId: p.id, name: p.name, email: p.email as string, token: p.player_token },
-              playing.has(p.id),
-            ),
-          ),
-        );
-        await admin
-          .from('captain_matches')
-          .update({ lineup_email_sent_at: new Date().toISOString() })
-          .eq('id', m.id as string);
-        summary.lineups += res.filter((r) => r.sent).length;
-      } catch (e) {
-        summary.errors.push(`lineup ${m.id}: ${(e as Error).message}`);
-      }
-    }
+  // One context load per team, not per match.
+  const byTeam = new Map<string, Record<string, unknown>[]>();
+  for (const m of matches) {
+    const id = m.team_id as string;
+    if (!byTeam.has(id)) byTeam.set(id, []);
+    byTeam.get(id)!.push(m);
   }
 
-  // ----------------------------------------------------------------- nudges
-  {
-    const { from, to } = win(1.5, 2.5);
-    const { data: matches } = await admin
-      .from('captain_matches')
-      .select('*')
-      .eq('status', 'scheduled')
-      .is('nudge_sent_at', null)
-      .gte('match_at', from)
-      .lte('match_at', to);
+  const { data: teamRows } = await admin
+    .from('captain_teams')
+    .select('id, name, captain_user_id')
+    .in('id', [...byTeam.keys()])
+    .eq('archived', false);
+  const teams = new Map(((teamRows as TeamRow[]) || []).map((t) => [t.id, t]));
 
-    for (const m of (matches as Record<string, unknown>[]) || []) {
-      try {
-        const team = await teamOf(m.team_id as string);
-        if (!team) continue;
-        const roster = await rosterFor(admin, m.team_id as string);
-        const { data: answered } = await admin
-          .from('captain_availability')
-          .select('player_id')
-          .eq('match_id', m.id as string);
-        const done = new Set(((answered as { player_id: string }[]) || []).map((a) => a.player_id));
-        const missing = roster.filter((p) => !done.has(p.id));
+  for (const [teamId, teamMatches] of byTeam) {
+    const team = teams.get(teamId);
+    if (!team) continue; // archived or deleted mid-run
 
-        if (missing.length) {
-          const res = await sendAll(
-            team.captain_user_id,
-            missing.map((p) =>
-              nudgeEmail(team.name, infoOf(m), {
-                playerId: p.id,
-                name: p.name,
-                email: p.email as string,
-                token: p.player_token,
-              }),
-            ),
-          );
-          summary.nudges += res.filter((r) => r.sent).length;
+    try {
+      const ctx = await loadTeamEmailContext(admin, team, teamMatches);
+
+      for (const m of ctx.matches as MatchRow[]) {
+        for (const kind of EMAIL_KINDS) {
+          const ov = ctx.overrides.find((o) => o.match_id === m.id && o.kind === kind) || null;
+          if (!isDue(kind, m, ctx.settings[kind], ov, now)) continue;
+
+          try {
+            const payloads = payloadsFor(kind, ctx, m.id);
+            // No lineup yet, or nobody left to chase. Leave the stamp alone so
+            // it goes out on a later run once the blocker clears.
+            if (!payloads.length) continue;
+
+            const res = await sendAll(team.captain_user_id, payloads);
+            await admin
+              .from('captain_matches')
+              .update({ [KIND_META[kind].sentColumn]: new Date().toISOString() })
+              .eq('id', m.id);
+            summary[counter[kind]] += res.filter((r) => r.sent).length;
+          } catch (e) {
+            summary.errors.push(`${kind} ${m.id}: ${(e as Error).message}`);
+          }
         }
-        await admin
-          .from('captain_matches')
-          .update({ nudge_sent_at: new Date().toISOString() })
-          .eq('id', m.id as string);
-      } catch (e) {
-        summary.errors.push(`nudge ${m.id}: ${(e as Error).message}`);
       }
-    }
-  }
-
-  // -------------------------------------------------------------- reminders
-  {
-    const { from, to } = win(0.5, 1.5);
-    const { data: matches } = await admin
-      .from('captain_matches')
-      .select('*')
-      .eq('status', 'scheduled')
-      .is('reminder_sent_at', null)
-      .gte('match_at', from)
-      .lte('match_at', to);
-
-    for (const m of (matches as Record<string, unknown>[]) || []) {
-      try {
-        const team = await teamOf(m.team_id as string);
-        if (!team) continue;
-        const { data: courts } = await admin
-          .from('captain_lineups')
-          .select('court_number, court_type, player1_id, player2_id')
-          .eq('match_id', m.id as string);
-        if (!courts?.length) continue;
-
-        const roster = await rosterFor(admin, m.team_id as string);
-        const courtFor = (pid: string) => {
-          const c = (courts as Record<string, unknown>[]).find(
-            (x) => x.player1_id === pid || x.player2_id === pid,
-          );
-          return c
-            ? `${c.court_type === 'singles' ? 'Singles' : 'Doubles'} ${c.court_number}`
-            : null;
-        };
-        const playing = roster.filter((p) => !!courtFor(p.id));
-
-        if (playing.length) {
-          const res = await sendAll(
-            team.captain_user_id,
-            playing.map((p) =>
-              matchReminderEmail(
-                team.name,
-                infoOf(m),
-                { playerId: p.id, name: p.name, email: p.email as string, token: p.player_token },
-                courtFor(p.id),
-              ),
-            ),
-          );
-          summary.reminders += res.filter((r) => r.sent).length;
-        }
-        await admin
-          .from('captain_matches')
-          .update({ reminder_sent_at: new Date().toISOString() })
-          .eq('id', m.id as string);
-      } catch (e) {
-        summary.errors.push(`reminder ${m.id}: ${(e as Error).message}`);
-      }
+    } catch (e) {
+      summary.errors.push(`team ${teamId}: ${(e as Error).message}`);
     }
   }
 
