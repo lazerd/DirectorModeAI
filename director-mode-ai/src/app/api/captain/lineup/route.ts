@@ -122,6 +122,46 @@ export async function POST(req: Request) {
     const nameOf = (id: string | null) =>
       id ? ((players as { id: string; name: string }[]) || []).find((p) => p.id === id)?.name ?? null : null;
 
+    // Why it chose this. The generator already knows — this just says it out
+    // loud, because a captain who cannot see the reasoning will not trust the
+    // lineup enough to send it.
+    const singles = (match.singles_courts as number) ?? 2;
+    const doubles = (match.doubles_courts as number) ?? 3;
+    const spots = singles + doubles * 2;
+    const answered = (avail as { player_id: string; status: string }[]) || [];
+    const saidNo = answered.filter((a) => a.status === 'no').length;
+    const saidMaybe = answered.filter((a) => a.status === 'maybe').length;
+    const rosterSize = ((players as Record<string, unknown>[]) || []).length;
+
+    const summary: string[] = [
+      `${available.length} of ${rosterSize} said yes. This match needs ${spots} — ${singles} singles and ${doubles} doubles courts.`,
+      'Singles went first, to the strongest available players who are not marked doubles-only.',
+      'Doubles pairs were then scored on partner preference, complementary return sides (a deuce player with an ad player), and not repeating a partnership you have already used.',
+      'Courts are ordered strongest pair first, so court 1 is your best pairing.',
+    ];
+    if (capForTeam(team) != null) {
+      summary.push(`Every pair was checked against the ${capForTeam(team)} combined-rating cap for this level.`);
+    }
+    if (rules.enabled) {
+      summary.push('Players short of their playoff-eligibility minimum were pushed up the order.');
+    }
+    if (saidMaybe) summary.push(`${saidMaybe} said maybe and were left out — only a yes is used.`);
+    if (saidNo) summary.push(`${saidNo} said no.`);
+
+    const benched = result.unassigned.map((id) => {
+      const p = available.find((a) => a.id === id);
+      return {
+        name: nameOf(id) || 'Unknown',
+        reason: p?.needsEligibility
+          ? 'available, and still needs matches for playoff eligibility'
+          : p?.courtLimit === 'singles_only'
+            ? 'available, but plays singles only and both singles courts were filled'
+            : p?.courtLimit === 'doubles_only'
+              ? 'available, but plays doubles only and the doubles courts were filled'
+              : 'available, but there were more players than spots',
+      };
+    });
+
     return NextResponse.json({
       ...result,
       courts: result.courts.map((c) => ({
@@ -130,6 +170,7 @@ export async function POST(req: Request) {
         player2Name: nameOf(c.player2Id),
       })),
       availableCount: available.length,
+      explanation: { summary, benched },
     });
   }
 
