@@ -80,6 +80,7 @@ export default function MatchWorkspace({
   const [preview, setPreview] = useState<EmailPreview | null>(null);
   const [pendingOnlyMissing, setPendingOnlyMissing] = useState(false);
   const [previewKind, setPreviewKind] = useState<'poll' | 'lineup'>('poll');
+  const [swapPick, setSwapPick] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
   const [scoring, setScoring] = useState(status === 'played');
   const [scores, setScores] = useState<Record<number, { score: string; won: boolean | null }>>(
     Object.fromEntries(
@@ -304,7 +305,91 @@ export default function MatchWorkspace({
     }));
   }
 
+  const labelOf = (c: Court) =>
+    `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
+
+  /** A line only ever trades with its own kind — doubles never lands on a singles court. */
+  const peersOf = (c: Court) =>
+    courts
+      .filter((x) => x.courtType === c.courtType)
+      .sort((a, b) => a.courtNumber - b.courtNumber);
+
+  const neighborOf = (c: Court, dir: -1 | 1): Court | null => {
+    const peers = peersOf(c);
+    const i = peers.findIndex((p) => p.courtNumber === c.courtNumber);
+    return peers[i + dir] ?? null;
+  };
+
+  /**
+   * One-click line flip: the whole pair moves to the other court and vice versa.
+   * Court identity (row id, number, type) stays put; only the people on it move,
+   * and their confirmations move with them because a confirmation belongs to the
+   * player, not the seat.
+   */
+  function flipLines(aNum: number, bNum: number) {
+    setCourts((cs) => {
+      const a = cs.find((c) => c.courtNumber === aNum);
+      const b = cs.find((c) => c.courtNumber === bNum);
+      if (!a || !b) return cs;
+      const take = (from: Court, seat: Court): Court => ({
+        ...seat,
+        player1Id: from.player1Id,
+        player2Id: from.player2Id,
+        player1Confirmed: from.player1Confirmed,
+        player2Confirmed: from.player2Confirmed,
+        notes: from.notes,
+      });
+      return cs.map((c) =>
+        c.courtNumber === aNum ? take(b, a) : c.courtNumber === bNum ? take(a, b) : c,
+      );
+    });
+    setSwapPick(null);
+    setDirty(true);
+    setHandEdited(true);
+    setNote(null);
+  }
+
+  /** Two-click single-player trade: pick one slot, pick another, they exchange. */
+  function pickSlot(courtNumber: number, slot: 1 | 2) {
+    if (!swapPick) {
+      setSwapPick({ courtNumber, slot });
+      return;
+    }
+    if (swapPick.courtNumber === courtNumber && swapPick.slot === slot) {
+      setSwapPick(null);
+      return;
+    }
+    const from = swapPick;
+    setCourts((cs) => {
+      const read = (c: Court, s: 1 | 2) =>
+        s === 1
+          ? { id: c.player1Id, ok: c.player1Confirmed }
+          : { id: c.player2Id, ok: c.player2Confirmed };
+      const write = (c: Court, s: 1 | 2, v: { id: string | null; ok?: boolean }): Court =>
+        s === 1
+          ? { ...c, player1Id: v.id, player1Confirmed: v.ok }
+          : { ...c, player2Id: v.id, player2Confirmed: v.ok };
+      const a = cs.find((c) => c.courtNumber === from.courtNumber);
+      const b = cs.find((c) => c.courtNumber === courtNumber);
+      if (!a || !b) return cs;
+      const av = read(a, from.slot);
+      const bv = read(b, slot);
+      return cs.map((c) => {
+        let out = c;
+        // Both writes can land on the same court (swapping partners) — chain them.
+        if (out.courtNumber === from.courtNumber) out = write(out, from.slot, bv);
+        if (out.courtNumber === courtNumber) out = write(out, slot, av);
+        return out;
+      });
+    });
+    setSwapPick(null);
+    setDirty(true);
+    setHandEdited(true);
+    setNote(null);
+  }
+
   function setSlot(courtNumber: number, slot: 1 | 2, playerId: string | null) {
+    setSwapPick(null);
     setCourts((cs) =>
       cs.map((c) =>
         c.courtNumber === courtNumber
@@ -543,12 +628,46 @@ export default function MatchWorkspace({
           </p>
         )}
 
+        {courts.length > 0 && (
+          <p className="text-white/40 text-xs mt-3">
+            {swapPick
+              ? `Now pick the slot ${nameOf(
+                  courts.find((x) => x.courtNumber === swapPick.courtNumber)?.[
+                    swapPick.slot === 1 ? 'player1Id' : 'player2Id'
+                  ] ?? null,
+                )} should trade with.`
+              : 'Use ↑ ↓ to move a whole line, or ⇄ to trade two players. Nothing is emailed until you save and send.'}
+          </p>
+        )}
+
         <div className="mt-3 space-y-2">
           {courts.map((c) => (
             <div key={c.courtNumber} className="rounded-xl border border-white/[0.08] bg-[#002838] p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-white/50 text-xs uppercase tracking-wide">
-                  {c.courtType === 'singles' ? 'Singles' : 'Doubles'} {c.courtNumber}
+                <div className="flex items-center gap-2">
+                  <div className="text-white/50 text-xs uppercase tracking-wide">
+                    {labelOf(c)}
+                  </div>
+                  {/* One click moves this whole pair a line up or down. */}
+                  <div className="flex items-center gap-1">
+                    {([-1, 1] as const).map((dir) => {
+                      const n = neighborOf(c, dir);
+                      return (
+                        <button
+                          key={dir}
+                          onClick={() => n && flipLines(c.courtNumber, n.courtNumber)}
+                          disabled={!n}
+                          title={n ? `Flip with ${labelOf(n)}` : undefined}
+                          aria-label={
+                            n ? `Flip ${labelOf(c)} with ${labelOf(n)}` : `${labelOf(c)} cannot move`
+                          }
+                          className="w-6 h-6 rounded-md border border-white/10 text-white/50 text-xs leading-none hover:text-[#D3FB52] hover:border-[#D3FB52]/40 disabled:opacity-20 disabled:hover:text-white/50 disabled:hover:border-white/10"
+                        >
+                          {dir === -1 ? '↑' : '↓'}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 {c.notes && c.notes.length > 0 && (
                   <div className="text-white/35 text-xs text-right">{c.notes.join(' · ')}</div>
@@ -561,9 +680,39 @@ export default function MatchWorkspace({
                   .map((slot) => {
                     const pid = slot === 1 ? c.player1Id : c.player2Id;
                     const confirmed = slot === 1 ? c.player1Confirmed : c.player2Confirmed;
+                    const picked =
+                      swapPick?.courtNumber === c.courtNumber && swapPick.slot === slot;
+                    const pickedCourt = courts.find((x) => x.courtNumber === swapPick?.courtNumber);
+                    const pickedId = pickedCourt
+                      ? swapPick?.slot === 1
+                        ? pickedCourt.player1Id
+                        : pickedCourt.player2Id
+                      : null;
                     return (
                       <div key={slot}>
                         <div className="flex items-center gap-2">
+                          {/* Pick one slot, then another — the two players trade places. */}
+                          <button
+                            onClick={() => pickSlot(c.courtNumber, slot)}
+                            title={
+                              picked
+                                ? 'Cancel the swap'
+                                : swapPick
+                                  ? `Swap with ${nameOf(pickedId)}`
+                                  : 'Swap this player with another court'
+                            }
+                            aria-pressed={picked}
+                            aria-label={`Swap ${nameOf(pid)} on ${labelOf(c)}`}
+                            className={`w-8 h-9 shrink-0 rounded-lg border text-sm ${
+                              picked
+                                ? 'bg-[#D3FB52] text-[#001820] border-[#D3FB52]'
+                                : swapPick
+                                  ? 'border-[#D3FB52]/40 text-[#D3FB52] hover:bg-[#D3FB52]/10'
+                                  : 'border-white/10 text-white/40 hover:text-white hover:border-white/25'
+                            }`}
+                          >
+                            ⇄
+                          </button>
                           <select
                             value={pid ?? ''}
                             onChange={(e) => setSlot(c.courtNumber, slot, e.target.value || null)}
