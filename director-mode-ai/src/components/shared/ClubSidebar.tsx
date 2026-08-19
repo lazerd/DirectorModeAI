@@ -21,7 +21,7 @@ import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
-  Waves, GraduationCap, BarChart3, Sparkles, ExternalLink, Calendar,
+  Waves, GraduationCap, BarChart3, Sparkles, ExternalLink, Calendar, Mountain,
   CalendarDays, MessagesSquare, ClipboardList, ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
@@ -52,6 +52,7 @@ const ITEMS: Item[] = [
   { name: 'CourtConnect', href: '/courtconnect/home', match: '/courtconnect/home', icon: Users, color: '#34d399' },
   { name: 'PlayerVault', href: '/courtconnect/vault', match: '/courtconnect/vault', icon: Database, color: '#2dd4bf' },
   { name: 'SwimMode', href: '/swim', match: '/swim', icon: Waves, color: '#38bdf8' },
+  { name: 'PathwayMode', href: '/pathway', match: '/pathway', icon: Mountain, color: '#eab308' },
   { name: 'Benchmarks', href: '/benchmarks', match: '/benchmarks', icon: BarChart3, color: '#f59e0b' },
   { name: 'Recruiting', href: '/connect', match: '/connect', icon: Sparkles, color: '#2dd4bf' },
   { name: 'ClubHub', href: '/club-hub', match: '/club-hub', icon: MessagesSquare, color: '#D3FB52' },
@@ -59,6 +60,22 @@ const ITEMS: Item[] = [
 
 const EXPANDED = 248;
 const COLLAPSED = 72;
+
+/**
+ * Tokenized, login-free pages that players open from an email. They are not
+ * running the club, so the director rail (and its floating phone opener) has no
+ * business covering their screen.
+ */
+const PUBLIC_PREFIXES = [
+  '/captain/availability',
+  '/captain/intake',
+  '/captain/claim',
+  '/captain/confirm',
+  '/leagues/rsvp',
+  '/leagues/join',
+  '/enter',
+  '/pathway/p',
+];
 
 function activeHref(pathname: string, items: Item[]): string | null {
   let best: string | null = null;
@@ -74,6 +91,7 @@ function activeHref(pathname: string, items: Item[]): string | null {
 
 export default function ClubSidebar() {
   const pathname = usePathname() || '/';
+  const isPublic = PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hovering, setHovering] = useState(false); // hover-to-peek when collapsed
@@ -125,7 +143,7 @@ export default function ClubSidebar() {
     if (!mounted) return;
     const apply = () => {
       const desktop = window.matchMedia('(min-width: 768px)').matches;
-      document.body.style.paddingLeft = desktop ? `${collapsed ? COLLAPSED : EXPANDED}px` : '';
+      document.body.style.paddingLeft = desktop && !isPublic ? `${collapsed ? COLLAPSED : EXPANDED}px` : '';
       document.body.style.transition = 'padding-left .2s ease';
     };
     apply();
@@ -134,7 +152,7 @@ export default function ClubSidebar() {
       window.removeEventListener('resize', apply);
       document.body.style.paddingLeft = '';
     };
-  }, [collapsed, mounted]);
+  }, [collapsed, mounted, isPublic]);
 
   // Close the mobile drawer whenever you navigate.
   useEffect(() => { setMobileOpen(false); }, [pathname]);
@@ -152,6 +170,8 @@ export default function ClubSidebar() {
   const peeking = collapsed && hovering && !mobileOpen;
   const showLabels = !collapsed || mobileOpen || peeking;
   const width = mobileOpen ? EXPANDED : (collapsed && !peeking) ? COLLAPSED : EXPANDED;
+
+  if (isPublic) return null;
 
   return (
     <>
