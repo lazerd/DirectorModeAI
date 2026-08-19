@@ -21,7 +21,7 @@ import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
   Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
-  Waves, GraduationCap, BarChart3, Sparkles, ExternalLink, Calendar,
+  Waves, GraduationCap, BarChart3, Sparkles, ExternalLink, Calendar, Mountain,
   CalendarDays, MessagesSquare, ClipboardList, ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
@@ -53,6 +53,7 @@ const ITEMS: Item[] = [
   // accounts + roles (the old standalone "Members" page redirects here).
   { name: 'PlayerVault', href: '/courtconnect/vault', match: '/courtconnect/vault', icon: Database, color: '#2dd4bf' },
   { name: 'SwimMode', href: '/swim', match: '/swim', icon: Waves, color: '#38bdf8' },
+  { name: 'PathwayMode', href: '/pathway', match: '/pathway', icon: Mountain, color: '#eab308' },
   { name: 'Benchmarks', href: '/benchmarks', match: '/benchmarks', icon: BarChart3, color: '#f59e0b' },
   { name: 'Recruiting', href: '/connect', match: '/connect', icon: Sparkles, color: '#2dd4bf' },
   { name: 'ClubHub', href: '/club-hub', match: '/club-hub', icon: MessagesSquare, color: '#D3FB52' },
@@ -74,6 +75,7 @@ const PUBLIC_PREFIXES = [
   '/leagues/rsvp',
   '/leagues/join',
   '/enter',
+  '/pathway/p',
 ];
 
 function activeHref(pathname: string, items: Item[]): string | null {
