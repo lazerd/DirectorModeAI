@@ -29,11 +29,17 @@ export async function GET(_req: Request, { params }: { params: { token: string }
     return NextResponse.json({ error: 'Link not recognized.' }, { status: 404 });
   }
 
-  const { data: awards } = await admin
-    .from('pathway_awards')
-    .select('stripe_key, awarded_on')
-    .eq('player_id', (player as any).id)
-    .order('awarded_on', { ascending: true });
+  const [{ data: awards }, { data: checks }] = await Promise.all([
+    admin
+      .from('pathway_awards')
+      .select('stripe_key, awarded_on')
+      .eq('player_id', (player as any).id)
+      .order('awarded_on', { ascending: true }),
+    admin
+      .from('pathway_test_checks')
+      .select('stripe_key, test_index, passed_on')
+      .eq('player_id', (player as any).id),
+  ]);
 
   return NextResponse.json({
     player: {
@@ -42,5 +48,6 @@ export async function GET(_req: Request, { params }: { params: { token: string }
       enrolled: (player as any).enrolled,
     },
     awards: awards ?? [],
+    checks: checks ?? [],
   });
 }

@@ -15,11 +15,14 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
   Check,
+  ChevronDown,
   ChevronUp,
+  ClipboardCheck,
   Copy,
   Loader2,
   Mountain,
   Plus,
+  Printer,
   Search,
   UserX,
   X,
@@ -44,6 +47,7 @@ type Player = {
   notes: string | null;
 };
 type Award = { player_id: string; stripe_key: string; awarded_on: string };
+type TestCheck = { player_id: string; stripe_key: string; test_index: number };
 
 const todayPT = () =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles' }).format(new Date());
@@ -53,6 +57,8 @@ export default function PathwayDashboard() {
   const [userId, setUserId] = useState<string | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [awards, setAwards] = useState<Award[]>([]);
+  const [checks, setChecks] = useState<TestCheck[]>([]);
+  const [openTests, setOpenTests] = useState<string | null>(null); // `${playerId}:${stripeKey}`
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -71,12 +77,15 @@ export default function PathwayDashboard() {
     const ps = (rows as Player[]) || [];
     setPlayers(ps);
     if (ps.length) {
-      const { data: aw } = await supabase
-        .from('pathway_awards')
-        .select('player_id, stripe_key, awarded_on');
+      const [{ data: aw }, { data: ch }] = await Promise.all([
+        supabase.from('pathway_awards').select('player_id, stripe_key, awarded_on'),
+        supabase.from('pathway_test_checks').select('player_id, stripe_key, test_index'),
+      ]);
       setAwards((aw as Award[]) || []);
+      setChecks((ch as TestCheck[]) || []);
     } else {
       setAwards([]);
+      setChecks([]);
     }
     setLoading(false);
   }, []);
@@ -101,6 +110,11 @@ export default function PathwayDashboard() {
     return m;
   }, [awards]);
 
+  const checkSet = useMemo(
+    () => new Set(checks.map((c) => `${c.player_id}:${c.stripe_key}:${c.test_index}`)),
+    [checks],
+  );
+
   const filtered = useMemo(
     () => players.filter((p) => p.name.toLowerCase().includes(q.toLowerCase())),
     [players, q],
@@ -114,18 +128,60 @@ export default function PathwayDashboard() {
   async function toggleStripe(p: Player, stripeKey: string, has: boolean) {
     setBusy(true);
     if (has) {
-      await supabase
-        .from('pathway_awards')
-        .delete()
-        .eq('player_id', p.id)
-        .eq('stripe_key', stripeKey);
+      // taking a stripe back also clears its three test checks
+      await Promise.all([
+        supabase.from('pathway_awards').delete().eq('player_id', p.id).eq('stripe_key', stripeKey),
+        supabase.from('pathway_test_checks').delete().eq('player_id', p.id).eq('stripe_key', stripeKey),
+      ]);
     } else {
+      // awarding a whole stripe marks all three tests passed
       await supabase.from('pathway_awards').insert({
         player_id: p.id,
         stripe_key: stripeKey,
         awarded_on: todayPT(),
         awarded_by: 'director',
       });
+      await supabase.from('pathway_test_checks').upsert(
+        [0, 1, 2].map((i) => ({
+          player_id: p.id,
+          stripe_key: stripeKey,
+          test_index: i,
+          passed_on: todayPT(),
+          passed_by: 'director',
+        })),
+        { onConflict: 'player_id,stripe_key,test_index' },
+      );
+    }
+    await load();
+    setBusy(false);
+  }
+
+  async function toggleTest(p: Player, stripeKey: string, testIndex: number, has: boolean) {
+    setBusy(true);
+    if (has) {
+      await supabase
+        .from('pathway_test_checks')
+        .delete()
+        .eq('player_id', p.id)
+        .eq('stripe_key', stripeKey)
+        .eq('test_index', testIndex);
+    } else {
+      await supabase.from('pathway_test_checks').insert({
+        player_id: p.id,
+        stripe_key: stripeKey,
+        test_index: testIndex,
+        passed_on: todayPT(),
+        passed_by: 'director',
+      });
+      const done = [0, 1, 2].every(
+        (i) => i === testIndex || checkSet.has(`${p.id}:${stripeKey}:${i}`),
+      );
+      if (done) {
+        await supabase.from('pathway_awards').upsert(
+          { player_id: p.id, stripe_key: stripeKey, awarded_on: todayPT(), awarded_by: 'director' },
+          { onConflict: 'player_id,stripe_key' },
+        );
+      }
     }
     await load();
     setBusy(false);
@@ -199,7 +255,19 @@ export default function PathwayDashboard() {
               <span className="text-yellow-400">{stripesThisMonth} stripes this month</span>
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Link
+              href="/pathway/testday"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white/10 text-sm font-semibold hover:bg-white/15"
+            >
+              <ClipboardCheck size={15} /> Run Test Day
+            </Link>
+            <Link
+              href="/pathway/print"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white/10 text-sm font-semibold hover:bg-white/15"
+            >
+              <Printer size={15} /> Coach packet
+            </Link>
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
@@ -286,28 +354,77 @@ export default function PathwayDashboard() {
                             <div className="mt-4 pt-4 border-t border-white/10 space-y-1.5">
                               {lvl.stripes.map((st) => {
                                 const has = keys.includes(st.key);
+                                const tKey = `${p.id}:${st.key}`;
+                                const testsOpen = openTests === tKey;
+                                const doneCount = [0, 1, 2].filter((i) =>
+                                  checkSet.has(`${p.id}:${st.key}:${i}`),
+                                ).length;
                                 return (
-                                  <button
-                                    key={st.key}
-                                    disabled={busy}
-                                    onClick={() => toggleStripe(p, st.key, has)}
-                                    className="w-full flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm hover:bg-white/5 disabled:opacity-50"
-                                  >
-                                    <span
-                                      className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
-                                      style={{
-                                        background: has ? lvl.color : 'transparent',
-                                        border: `2px solid ${has ? lvl.color : 'rgba(255,255,255,.3)'}`,
-                                        color: has ? '#111' : 'rgba(255,255,255,.5)',
-                                      }}
-                                    >
-                                      {has ? <Check size={11} strokeWidth={3.5} /> : st.number}
-                                    </span>
-                                    <span className={has ? 'text-white' : 'text-gray-400'}>
-                                      {st.title}
-                                      {st.promotes && ' ★'}
-                                    </span>
-                                  </button>
+                                  <div key={st.key}>
+                                    <div className="flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm hover:bg-white/5">
+                                      <button
+                                        disabled={busy}
+                                        onClick={() => toggleStripe(p, st.key, has)}
+                                        title={has ? 'Take the stripe back' : 'Award the whole stripe'}
+                                        className="disabled:opacity-50"
+                                      >
+                                        <span
+                                          className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+                                          style={{
+                                            background: has ? lvl.color : 'transparent',
+                                            border: `2px solid ${has ? lvl.color : 'rgba(255,255,255,.3)'}`,
+                                            color: has ? '#111' : 'rgba(255,255,255,.5)',
+                                          }}
+                                        >
+                                          {has ? <Check size={11} strokeWidth={3.5} /> : st.number}
+                                        </span>
+                                      </button>
+                                      <button
+                                        className="flex-1 flex items-center gap-1.5 text-left"
+                                        onClick={() => setOpenTests(testsOpen ? null : tKey)}
+                                      >
+                                        <span className={has ? 'text-white' : 'text-gray-400'}>
+                                          {st.title}
+                                          {st.promotes && ' ★'}
+                                        </span>
+                                        {!has && doneCount > 0 && (
+                                          <span className="text-[10px] font-bold" style={{ color: lvl.color }}>
+                                            {doneCount}/3
+                                          </span>
+                                        )}
+                                        <ChevronDown
+                                          size={12}
+                                          className={`text-gray-600 transition-transform ${testsOpen ? 'rotate-180' : ''}`}
+                                        />
+                                      </button>
+                                    </div>
+                                    {testsOpen && (
+                                      <div className="ml-9 mr-1 mb-1.5 space-y-1">
+                                        {st.tests.map((t, i) => {
+                                          const passed = has || checkSet.has(`${p.id}:${st.key}:${i}`);
+                                          return (
+                                            <button
+                                              key={i}
+                                              disabled={busy || has}
+                                              onClick={() => toggleTest(p, st.key, i, passed)}
+                                              className="w-full flex items-start gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] leading-snug hover:bg-white/5 disabled:opacity-70"
+                                            >
+                                              <span
+                                                className="mt-[2px] w-3.5 h-3.5 rounded-full flex-shrink-0"
+                                                style={{
+                                                  background: passed ? lvl.color : 'transparent',
+                                                  border: `1.5px solid ${passed ? lvl.color : 'rgba(255,255,255,.3)'}`,
+                                                }}
+                                              />
+                                              <span className={passed ? 'text-gray-500 line-through' : 'text-gray-300'}>
+                                                {t}
+                                              </span>
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
                                 );
                               })}
 

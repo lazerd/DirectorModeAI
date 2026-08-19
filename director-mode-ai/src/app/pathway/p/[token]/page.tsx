@@ -24,6 +24,7 @@ import {
 } from '@/lib/pathway/curriculum';
 
 type Award = { stripe_key: string; awarded_on: string };
+type Check = { stripe_key: string; test_index: number; passed_on: string };
 type PlayerState = { name: string; level: LevelKey; enrolled: boolean };
 
 const fmt = (d: string) =>
@@ -37,6 +38,7 @@ export default function PathwayFamilyPage() {
   const { token } = useParams<{ token: string }>();
   const [player, setPlayer] = useState<PlayerState | null>(null);
   const [awards, setAwards] = useState<Award[]>([]);
+  const [checks, setChecks] = useState<Check[]>([]);
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
 
   useEffect(() => {
@@ -47,6 +49,7 @@ export default function PathwayFamilyPage() {
         const j = await res.json();
         setPlayer(j.player);
         setAwards(j.awards || []);
+        setChecks(j.checks || []);
         setState('ok');
       } catch {
         setState('error');
@@ -55,6 +58,10 @@ export default function PathwayFamilyPage() {
   }, [token]);
 
   const awardKeys = useMemo(() => awards.map((a) => a.stripe_key), [awards]);
+  const checkSet = useMemo(
+    () => new Set(checks.map((c) => `${c.stripe_key}:${c.test_index}`)),
+    [checks],
+  );
   const awardDate = useMemo(
     () => Object.fromEntries(awards.map((a) => [a.stripe_key, a.awarded_on])),
     [awards],
@@ -177,18 +184,41 @@ export default function PathwayFamilyPage() {
               )}
             </div>
             <ul className="px-6 py-4 space-y-3">
-              {nextStripe.tests.map((t, i) => (
-                <li key={i} className="flex gap-3 items-start">
-                  <span
-                    className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold"
-                    style={{ borderColor: level.color, color: level.colorDark }}
-                  >
-                    {i + 1}
-                  </span>
-                  <span className="text-[15px] leading-snug text-gray-800">{t}</span>
-                </li>
-              ))}
+              {nextStripe.tests.map((t, i) => {
+                const done = checkSet.has(`${nextStripe.key}:${i}`);
+                return (
+                  <li key={i} className="flex gap-3 items-start">
+                    <span
+                      className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold"
+                      style={{
+                        borderColor: level.color,
+                        color: done ? '#fff' : level.colorDark,
+                        background: done ? level.color : 'transparent',
+                      }}
+                    >
+                      {done ? '✓' : i + 1}
+                    </span>
+                    <span
+                      className="text-[15px] leading-snug"
+                      style={{
+                        color: done ? '#9ca3af' : '#1f2937',
+                        textDecoration: done ? 'line-through' : 'none',
+                      }}
+                    >
+                      {t}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
+            {(() => {
+              const done = nextStripe.tests.filter((_, i) => checkSet.has(`${nextStripe.key}:${i}`)).length;
+              return done > 0 ? (
+                <p className="px-6 pb-1 -mt-1 text-sm font-semibold" style={{ color: level.colorDark }}>
+                  {done} of 3 already passed — {3 - done} to go on the next Test Day.
+                </p>
+              ) : null;
+            })()}
             <p className="px-6 pb-5 text-xs text-gray-500">
               Tested on <strong>Test Day</strong> — the last class of the month, parents welcome for
               the final 15 minutes.
@@ -211,6 +241,7 @@ export default function PathwayFamilyPage() {
                 playerLevel={level}
                 awardKeys={awardKeys}
                 awardDate={awardDate}
+                checkSet={checkSet}
                 firstName={firstName}
               />
             ))}
@@ -263,12 +294,14 @@ function ClimbLevel({
   playerLevel,
   awardKeys,
   awardDate,
+  checkSet,
   firstName,
 }: {
   level: Level;
   playerLevel: Level;
   awardKeys: string[];
   awardDate: Record<string, string>;
+  checkSet: Set<string>;
   firstName: string;
 }) {
   const isCurrent = level.key === playerLevel.key;
@@ -358,38 +391,94 @@ function ClimbLevel({
       {/* expanded stripe list */}
       {open && !level.invitational && (
         <div className="mt-1 mb-3 ml-1 space-y-1">
-          {level.stripes.map((st) => {
-            const has = awardKeys.includes(st.key);
+          {level.stripes.map((st) => (
+            <StripeRow
+              key={st.key}
+              stripe={st}
+              level={level}
+              has={awardKeys.includes(st.key)}
+              date={awardDate[st.key]}
+              checkSet={checkSet}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StripeRow({
+  stripe,
+  level,
+  has,
+  date,
+  checkSet,
+}: {
+  stripe: { key: string; number: number; title: string; tests: readonly string[]; promotes: boolean };
+  level: Level;
+  has: boolean;
+  date?: string;
+  checkSet: Set<string>;
+}) {
+  const [open, setOpen] = useState(false);
+  const doneCount = stripe.tests.filter((_, i) => checkSet.has(`${stripe.key}:${i}`)).length;
+  return (
+    <div
+      className="rounded-lg"
+      style={{ background: has ? `${level.color}14` : open ? '#ffffff' : 'transparent' }}
+    >
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center gap-2.5 px-3 py-2 text-left"
+      >
+        <span
+          className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold"
+          style={{
+            background: has ? level.color : '#fff',
+            border: `2px solid ${has ? level.color : '#d1d5db'}`,
+            color: has ? '#fff' : '#9ca3af',
+          }}
+        >
+          {has ? '✓' : stripe.number}
+        </span>
+        <span
+          className="text-sm flex-1"
+          style={{ color: has ? '#1C2321' : '#6b7280', fontWeight: has ? 600 : 400 }}
+        >
+          {stripe.title}
+          {stripe.promotes && <span style={{ color: level.colorDark }}> ★</span>}
+          {!has && doneCount > 0 && (
+            <span className="ml-1.5 text-[11px] font-semibold" style={{ color: level.colorDark }}>
+              {doneCount}/3
+            </span>
+          )}
+        </span>
+        {has && date && <span className="text-[11px] text-gray-400">{fmt(date)}</span>}
+        <span className="text-gray-300 text-xs">{open ? '\u25b4' : '\u25be'}</span>
+      </button>
+      {open && (
+        <ul className="px-3 pb-2.5 ml-7 space-y-1.5">
+          {stripe.tests.map((t, i) => {
+            const done = has || checkSet.has(`${stripe.key}:${i}`);
             return (
-              <div
-                key={st.key}
-                className="flex items-center gap-2.5 rounded-lg px-3 py-2"
-                style={{ background: has ? `${level.color}14` : 'transparent' }}
-              >
+              <li key={i} className="flex gap-2 items-start text-[13px] leading-snug">
                 <span
-                  className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center text-[10px] font-bold"
+                  className="mt-[3px] w-3 h-3 rounded-full flex-shrink-0"
                   style={{
-                    background: has ? level.color : '#fff',
-                    border: `2px solid ${has ? level.color : '#d1d5db'}`,
-                    color: has ? '#fff' : '#9ca3af',
+                    background: done ? level.color : 'transparent',
+                    border: `1.5px solid ${done ? level.color : '#d1d5db'}`,
                   }}
-                >
-                  {has ? '✓' : st.number}
-                </span>
-                <span
-                  className="text-sm flex-1"
-                  style={{ color: has ? '#1C2321' : '#6b7280', fontWeight: has ? 600 : 400 }}
-                >
-                  {st.title}
-                  {st.promotes && <span style={{ color: level.colorDark }}> ★</span>}
-                </span>
-                {has && awardDate[st.key] && (
-                  <span className="text-[11px] text-gray-400">{fmt(awardDate[st.key])}</span>
-                )}
-              </div>
+                />
+                <span style={{ color: done ? '#6b7280' : '#374151' }}>{t}</span>
+              </li>
             );
           })}
-        </div>
+          {stripe.promotes && (
+            <li className="text-[12px] font-semibold pt-0.5" style={{ color: level.colorDark }}>
+              \u2605 Passing this stripe is the promotion.
+            </li>
+          )}
+        </ul>
       )}
     </div>
   );
