@@ -80,7 +80,9 @@ function DivisionCard({ d }: { d: Division }) {
   // "Challenger · …") is really two tournaments sharing one page section.
   // Render each tier as its own clearly-banded sub-tournament, with that
   // tier's finals bracket pinned at the top of its band.
-  const tiers = [...new Set(d.groups.map((g) => tierOf(g.title)).filter((t): t is string => !!t))];
+  // Compass stage titles ("East · Round 2") also contain the separator, so
+  // tier banding applies to round-robin divisions only.
+  const tiers = d.type === 'group' ? [...new Set(d.groups.map((g) => tierOf(g.title)).filter((t): t is string => !!t))] : [];
   const multiTier = tiers.length > 1;
 
   return (
