@@ -277,7 +277,7 @@ export async function buildUpdateRecipients(): Promise<{ email: string; firstNam
 
 // ---- Email HTML ----
 
-const shell = (inner: string) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1f2937;line-height:1.55;max-width:640px;margin:0 auto">
+export const shell = (inner: string) => `<div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;color:#1f2937;line-height:1.55;max-width:640px;margin:0 auto">
   <div style="background:linear-gradient(160deg,#1F4FA0,#163670);border-radius:14px 14px 0 0;padding:22px 26px;color:#fff">
     <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#FFD24F;font-weight:700">Sleepy Hollow · Summer 2026</div>
     <div style="font-size:26px;font-weight:800;text-transform:uppercase;margin-top:4px;letter-spacing:.01em">Summer Flex League</div>
@@ -285,7 +285,7 @@ const shell = (inner: string) => `<div style="font-family:Arial,Helvetica,sans-s
   <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 14px 14px;padding:22px 26px">${inner}</div>
 </div>`;
 
-const flexButton = (href: string, label: string) =>
+export const flexButton = (href: string, label: string) =>
   `<p style="margin:16px 0"><a href="${href}" style="display:inline-block;background:#16a34a;color:#fff;font-weight:700;text-decoration:none;padding:13px 24px;border-radius:9px;font-size:16px">${label}</a></p>`;
 
 export function updateEmailHtml(firstName: string, state: FlexState): { subject: string; html: string } {

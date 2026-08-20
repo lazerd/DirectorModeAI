@@ -3,10 +3,20 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PanScroll from '@/components/tournament/PanScroll';
 
-export type MatchT = { token: string; a: string; b: string; score: string; winner_side: 'a' | 'b' | null; status: string };
+export type MatchT = { token: string; a: string; b: string; score: string; winner_side: 'a' | 'b' | null; status: string; label?: string };
 export type StandingT = { name: string; w: number; l: number; gf: number; ga: number };
-export type GroupT = { title: string; matches: MatchT[]; standings: StandingT[] | null };
-export type Division = { id: string; name: string; num: string; color: string; accent: string; type: 'compass' | 'group'; groups: GroupT[]; compassR1?: [string, string][]; compassStages?: Record<string, MatchT[]> };
+export type GroupT = { title: string; matches: MatchT[]; standings: StandingT[] | null; subtitle?: string; complete?: boolean; isPlayoff?: boolean };
+export type PodiumT = { place: number; name: string; wl: string; pct: string };
+export type ChampionT = {
+  crownTitle: string;
+  name: string;
+  runnerUp: string | null;
+  recordLine: string | null;
+  clincher: string | null;
+  road: { opponent: string; score: string; won: boolean }[];
+  podium: PodiumT[];
+};
+export type Division = { id: string; name: string; num: string; color: string; accent: string; type: 'compass' | 'group'; groups: GroupT[]; playoffGroups?: GroupT[]; champions?: ChampionT[]; compassR1?: [string, string][]; compassStages?: Record<string, MatchT[]> };
 
 const FONT = "https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800;900&family=Barlow+Semi+Condensed:wght@600;700&display=swap";
 
@@ -70,7 +80,9 @@ function DivisionCard({ d }: { d: Division }) {
         <h2 style={{ position: 'relative', fontFamily: "'Barlow Condensed'", fontWeight: 900, textTransform: 'uppercase', fontSize: 32, margin: 0 }}>{d.name}</h2>
       </div>
       <div style={{ padding: '20px 22px 24px' }}>
+        {(d.champions || []).map((c) => <ChampionBanner key={c.crownTitle} c={c} color={d.color} accent={d.accent} />)}
         {d.type === 'compass' && <CompassDraw stages={d.compassStages || {}} r1={d.compassR1} />}
+        {(d.playoffGroups || []).map((g) => <Group key={g.title} g={g} accent={d.accent} />)}
         {d.groups.map((g) => <Group key={g.title} g={g} accent={d.accent} />)}
       </div>
     </section>
@@ -78,12 +90,20 @@ function DivisionCard({ d }: { d: Division }) {
 }
 
 function Group({ g, accent }: { g: GroupT; accent: string }) {
+  const playoff = !!g.isPlayoff;
   return (
-    <div style={{ marginTop: 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-        <span style={{ width: 11, height: 11, borderRadius: '50%', background: accent }} />
-        <span style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 19, textTransform: 'uppercase', color: '#111726' }}>{g.title}</span>
+    <div style={playoff
+      ? { marginTop: 16, marginBottom: 6, border: '1px solid #FFE08A', background: 'linear-gradient(180deg,#FFFBEF 0%,#FFFFFF 62%)', borderRadius: 14, padding: '14px 16px 10px' }
+      : { marginTop: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: g.subtitle ? 4 : 8, flexWrap: 'wrap' }}>
+        {playoff
+          ? <span style={{ fontSize: 15 }}>🏆</span>
+          : <span style={{ width: 11, height: 11, borderRadius: '50%', background: accent }} />}
+        <span style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: playoff ? 22 : 19, textTransform: 'uppercase', color: '#111726' }}>{g.title}</span>
+        {playoff && <span style={{ background: '#B07D00', color: '#fff', borderRadius: 999, padding: '2px 9px', fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase' }}>Playoff</span>}
+        {!playoff && g.complete && <span style={{ background: '#DCFCE7', color: '#15803d', border: '1px solid #A7F3D0', borderRadius: 999, padding: '1px 8px', fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.1em', textTransform: 'uppercase' }}>Complete</span>}
       </div>
+      {g.subtitle && <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>{g.subtitle}</div>}
       {g.standings && g.standings.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13.5, marginBottom: 12 }}>
           <thead>
@@ -106,7 +126,100 @@ function Group({ g, accent }: { g: GroupT; accent: string }) {
           </tbody>
         </table>
       )}
-      {g.matches.map((m, i) => <MatchRow key={m.token || i} m={m} />)}
+      {g.matches.map((m, i) => (
+        <div key={m.token || i}>
+          {m.label && (
+            <div style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 11, letterSpacing: '.11em', textTransform: 'uppercase', color: i === 0 ? '#B07D00' : '#64748b', margin: '10px 0 5px' }}>{m.label}</div>
+          )}
+          <MatchRow m={m} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---- CHAMPION BANNER -------------------------------------------------------
+// Auto-appears the moment a division is decided: a single-flight round robin
+// finishing, or a placement playoff final being scored. Everything below is
+// derived from results — nothing here is hand-entered.
+
+const MEDAL = ['🥇', '🥈', '🥉'];
+
+function ChampionBanner({ c, color, accent }: { c: ChampionT; color: string; accent: string }) {
+  const names = c.name.split(' / ');
+  return (
+    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 18, marginBottom: 20, background: `linear-gradient(150deg, ${color} 0%, #0B1428 78%)`, boxShadow: '0 18px 44px rgba(11,20,40,.34)', border: '1px solid rgba(255,255,255,.10)' }}>
+      {/* stadium-light glow + confetti flecks, pure CSS so it costs nothing */}
+      <div style={{ position: 'absolute', width: 420, height: 420, borderRadius: '50%', background: 'radial-gradient(circle, #FFD24F 0%, rgba(255,210,79,0) 68%)', opacity: 0.34, right: -150, top: -210, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', width: 260, height: 260, borderRadius: '50%', background: `radial-gradient(circle, ${accent} 0%, rgba(0,0,0,0) 70%)`, opacity: 0.3, left: -110, bottom: -140, pointerEvents: 'none' }} />
+      {[
+        { l: '8%', t: '16%', c: '#FFD24F', s: 7 }, { l: '22%', t: '68%', c: '#7CE7C0', s: 5 },
+        { l: '46%', t: '9%', c: '#FF8A5B', s: 6 }, { l: '63%', t: '78%', c: '#FFD24F', s: 5 },
+        { l: '81%', t: '28%', c: '#8FC7FF', s: 6 }, { l: '92%', t: '62%', c: '#FF8A5B', s: 5 },
+      ].map((f, i) => (
+        <span key={i} aria-hidden style={{ position: 'absolute', left: f.l, top: f.t, width: f.s, height: f.s, background: f.c, opacity: 0.5, borderRadius: 2, transform: `rotate(${i * 37}deg)`, pointerEvents: 'none' }} />
+      ))}
+
+      <div style={{ position: 'relative', padding: '26px 26px 22px', color: '#fff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 14 }}>
+          <span style={{ height: 2, width: 26, background: '#FFD24F', borderRadius: 2 }} />
+          <span style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 11.5, letterSpacing: '.24em', textTransform: 'uppercase', color: '#FFD24F' }}>{c.crownTitle}</span>
+          <span style={{ height: 2, flex: 1, background: 'rgba(255,210,79,.28)', borderRadius: 2 }} />
+          <span style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.16em', textTransform: 'uppercase', color: 'rgba(255,255,255,.6)' }}>Final</span>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
+          <div style={{ flexShrink: 0, width: 84, height: 84, borderRadius: '50%', display: 'grid', placeItems: 'center', fontSize: 42, background: 'radial-gradient(circle at 34% 28%, #FFE9A8 0%, #FFC72C 46%, #C98A00 100%)', boxShadow: '0 10px 26px rgba(255,199,44,.42), inset 0 -3px 10px rgba(0,0,0,.22)' }}>🏆</div>
+          <div style={{ flex: '1 1 260px', minWidth: 0 }}>
+            {names.map((n, i) => (
+              <div key={n} style={{ fontFamily: "'Barlow Condensed'", fontWeight: 900, textTransform: 'uppercase', letterSpacing: '.005em', fontSize: names.length > 1 ? 40 : 48, lineHeight: 0.98, textShadow: '0 3px 18px rgba(0,0,0,.4)' }}>
+                {n}
+                {i < names.length - 1 && <span style={{ color: '#FFD24F', margin: '0 2px 0 8px', fontSize: 26, verticalAlign: 'middle' }}>&amp;</span>}
+              </div>
+            ))}
+            {c.recordLine && (
+              <div style={{ marginTop: 9, display: 'inline-block', background: 'rgba(255,255,255,.13)', border: '1px solid rgba(255,255,255,.24)', borderRadius: 999, padding: '5px 14px', fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 13.5, letterSpacing: '.03em' }}>
+                {c.recordLine}
+              </div>
+            )}
+            {c.clincher && <div style={{ marginTop: 8, fontSize: 14, color: 'rgba(255,255,255,.86)' }}>{c.clincher}</div>}
+            {c.runnerUp && (
+              <div style={{ marginTop: 8, fontSize: 13.5, color: 'rgba(255,255,255,.72)' }}>
+                <span style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, letterSpacing: '.14em', textTransform: 'uppercase', fontSize: 10.5, color: '#FFD24F', marginRight: 7 }}>Runner-up</span>
+                {c.runnerUp}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {c.road.length > 0 && (
+          <div style={{ marginTop: 20, background: 'rgba(0,0,0,.24)', border: '1px solid rgba(255,255,255,.10)', borderRadius: 12, padding: '13px 15px' }}>
+            <div style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.18em', textTransform: 'uppercase', color: '#FFD24F', marginBottom: 9 }}>Road to the title</div>
+            {c.road.map((r, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: i ? '1px solid rgba(255,255,255,.08)' : 'none' }}>
+                <span style={{ width: 20, height: 20, borderRadius: '50%', display: 'grid', placeItems: 'center', flexShrink: 0, fontSize: 11, fontWeight: 800, background: r.won ? '#16a34a' : 'rgba(255,255,255,.16)', color: '#fff' }}>{r.won ? 'W' : 'L'}</span>
+                <span style={{ flex: 1, fontSize: 14, color: 'rgba(255,255,255,.9)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.opponent}</span>
+                <span style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 14, color: '#fff', whiteSpace: 'nowrap' }}>{r.score}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {c.podium.length > 0 && (
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,.62)', marginBottom: 8 }}>Final standings</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              {c.podium.map((p) => (
+                <div key={p.place} style={{ flex: '1 1 170px', display: 'flex', alignItems: 'center', gap: 9, background: p.place === 1 ? 'rgba(255,199,44,.18)' : 'rgba(255,255,255,.07)', border: p.place === 1 ? '1px solid rgba(255,210,79,.5)' : '1px solid rgba(255,255,255,.10)', borderRadius: 10, padding: '8px 11px' }}>
+                  <span style={{ fontSize: 16, width: 20, textAlign: 'center', flexShrink: 0 }}>{MEDAL[p.place - 1] || <span style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: 15, color: 'rgba(255,255,255,.55)' }}>{p.place}</span>}</span>
+                  <span style={{ flex: 1, fontSize: 13.5, fontWeight: p.place === 1 ? 700 : 500, color: '#fff', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                  <span style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 12.5, color: 'rgba(255,255,255,.72)', whiteSpace: 'nowrap' }}>{p.wl}{p.pct ? ` · ${p.pct}` : ''}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
