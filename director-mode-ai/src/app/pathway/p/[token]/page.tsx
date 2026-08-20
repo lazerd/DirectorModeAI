@@ -127,11 +127,11 @@ export default function PathwayFamilyPage() {
             </span>
             {!level.invitational && (
               <span className="text-sm text-gray-500">
-                · {earnedHere} of 5 stripes
+                · {earnedHere} of 5 strings
               </span>
             )}
             {totalStripes > 0 && (
-              <span className="text-sm text-gray-400">· {totalStripes} earned all-time</span>
+              <span className="text-sm text-gray-400">· {totalStripes} strings all-time</span>
             )}
           </div>
         </header>
@@ -142,7 +142,7 @@ export default function PathwayFamilyPage() {
             className="mb-6 rounded-2xl px-5 py-4 text-white shadow-lg"
             style={{ background: `linear-gradient(120deg, ${level.colorDark}, ${level.color})` }}
           >
-            <p className="text-[11px] font-bold tracking-[0.2em] uppercase opacity-80">New stripe</p>
+            <p className="text-[11px] font-bold tracking-[0.2em] uppercase opacity-80">New string</p>
             <p className="text-xl font-extrabold" style={{ fontFamily: '"Barlow Condensed", sans-serif' }}>
               {STRIPE_BY_KEY[recent[recent.length - 1].stripe_key].title} ✓
             </p>
@@ -168,7 +168,7 @@ export default function PathwayFamilyPage() {
           <div className="rounded-2xl bg-white shadow-sm border border-gray-200 overflow-hidden mb-10">
             <div className="px-6 pt-5 pb-4" style={{ borderBottom: `3px solid ${level.color}` }}>
               <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-gray-400">
-                Next up — stripe {nextStripe.number} of 5
+                Next up — string {nextStripe.number} of 5
               </p>
               <h2
                 className="text-3xl mt-0.5"
@@ -384,7 +384,7 @@ function ClimbLevel({
         <p className="text-xs text-gray-500 mt-0.5">
           {level.invitational
             ? level.tagline
-            : `${level.court} · ${level.ball}${earned ? ` · ${earned}/5 stripes` : ''}`}
+            : `${level.court} · ${level.ball}${earned ? ` · ${earned}/5 strings` : ''}`}
         </p>
       </button>
 
@@ -454,7 +454,7 @@ function StripeRow({
           )}
         </span>
         {has && date && <span className="text-[11px] text-gray-400">{fmt(date)}</span>}
-        <span className="text-gray-300 text-xs">{open ? '\u25b4' : '\u25be'}</span>
+        <span className="text-gray-300 text-xs">{open ? '▴' : '▾'}</span>
       </button>
       {open && (
         <ul className="px-3 pb-2.5 ml-7 space-y-1.5">
@@ -475,7 +475,7 @@ function StripeRow({
           })}
           {stripe.promotes && (
             <li className="text-[12px] font-semibold pt-0.5" style={{ color: level.colorDark }}>
-              \u2605 Passing this stripe is the promotion.
+              ★ Passing this string is the promotion.
             </li>
           )}
         </ul>

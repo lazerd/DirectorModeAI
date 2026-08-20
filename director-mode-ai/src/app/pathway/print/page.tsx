@@ -75,7 +75,7 @@ export default function PathwayPrintPage() {
           <div>
             <h1 className="text-2xl font-bold">Coach packet — {monthPT()}</h1>
             <p className="text-sm text-gray-400">
-              One sheet per ball color: each kid&apos;s next stripe with its three tests. Print it and
+              One sheet per ball color: each kid&apos;s next string with its three tests. Print it and
               clip it to the ball cart.
             </p>
           </div>
@@ -117,7 +117,7 @@ export default function PathwayPrintPage() {
                 <thead>
                   <tr className="border-b-2 border-gray-800 text-left">
                     <th className="py-1.5 pr-3 w-44">Player</th>
-                    <th className="py-1.5 pr-3 w-40">Next stripe</th>
+                    <th className="py-1.5 pr-3 w-40">Next string</th>
                     <th className="py-1.5">Tests (check what passes)</th>
                   </tr>
                 </thead>
@@ -136,7 +136,7 @@ export default function PathwayPrintPage() {
                               </span>
                               {next.promotes && (
                                 <span className="block text-[11px] font-bold" style={{ color: lvl.colorDark }}>
-                                  ★ PROMOTION STRIPE
+                                  ★ PROMOTION STRING
                                 </span>
                               )}
                             </td>
@@ -159,7 +159,7 @@ export default function PathwayPrintPage() {
                           </>
                         ) : (
                           <td colSpan={2} className="py-2.5 font-semibold" style={{ color: lvl.colorDark }}>
-                            All 5 stripes earned — promotion ceremony. Announce it.
+                            All 5 strings earned — promotion ceremony. Announce it.
                           </td>
                         )}
                       </tr>
@@ -171,7 +171,7 @@ export default function PathwayPrintPage() {
               <div className="mt-4 text-[11px] text-gray-600 leading-relaxed">
                 <strong>Eligibility:</strong> attended 3 of this month&apos;s 4 classes · registered for
                 next month. <strong>House rules:</strong> {HOUSE_RULES[3]} <strong>Script for the
-                band moment:</strong> &ldquo;[Name] passed [stripe title] — that&apos;s stripe [n] of 5 on
+                band moment:</strong> &ldquo;[Name] earned [string title] — that&apos;s string [n] of 5 on
                 the way to [next color]. Band goes on the racquet.&rdquo; Say it loud, in front of the
                 parents.
               </div>

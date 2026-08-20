@@ -129,7 +129,7 @@ export default function TestDayPage() {
         </Link>
         <h1 className="text-2xl font-bold mb-1">Test Day</h1>
         <p className="text-sm text-gray-400 mb-5">
-          Tap each test a kid passes — the third tap awards the stripe. Partial passes are saved
+          Tap each test a kid passes — the third tap awards the string. Partial passes are saved
           for next month. Eligibility: 3 of 4 classes attended + registered for next month.
         </p>
 
@@ -166,7 +166,7 @@ export default function TestDayPage() {
                   <div key={p.id} className="rounded-2xl border border-yellow-400/50 bg-yellow-400/10 p-5">
                     <p className="font-bold text-lg">{p.name}</p>
                     <p className="text-sm text-yellow-300 mt-1">
-                      All 5 stripes earned — promote to {nl?.name} from the Pathway board. 🎉
+                      All 5 strings earned — promote to {nl?.name} from the Pathway board. 🎉
                     </p>
                   </div>
                 );
@@ -192,17 +192,17 @@ export default function TestDayPage() {
                     <div className="flex items-center gap-2 py-6 justify-center text-yellow-300">
                       <PartyPopper size={22} />
                       <span className="font-bold text-lg">
-                        Stripe earned — hand out the band!
+                        String earned — tie it on the racquet!
                       </span>
                     </div>
                   ) : (
                     <>
                       <p className="text-sm mb-3">
                         <span className="font-semibold" style={{ color: level.color }}>
-                          Stripe {next.number} — {next.title}
+                          String {next.number} — {next.title}
                         </span>
                         {next.promotes && (
-                          <span className="text-yellow-400 font-semibold"> · promotion stripe ★</span>
+                          <span className="text-yellow-400 font-semibold"> · promotion string ★</span>
                         )}
                       </p>
                       <div className="space-y-2">

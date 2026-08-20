@@ -1,8 +1,9 @@
 /**
  * The ClubMode Junior Pathway curriculum.
  *
- * Five ball colors, five stripes per color, three pass/fail tests per stripe.
- * The 5th stripe of each color IS the promotion test — clear it and the kid
+ * Five ball colors, five STRINGS per color (a kid earns their strings — they are
+ * tennis players), three pass/fail tests per string.
+ * The 5th string of each color IS the promotion test — clear it and the kid
  * moves up, announced in front of everybody. High Performance sits at the top
  * as an invitation tier: Yellow 5 is how a kid earns the invite.
  *

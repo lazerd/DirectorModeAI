@@ -252,7 +252,7 @@ export default function PathwayDashboard() {
             </h1>
             <p className="text-sm text-gray-400 mt-1">
               The Junior Pathway · {players.length} players ·{' '}
-              <span className="text-yellow-400">{stripesThisMonth} stripes this month</span>
+              <span className="text-yellow-400">{stripesThisMonth} strings this month</span>
             </p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
@@ -365,7 +365,7 @@ export default function PathwayDashboard() {
                                       <button
                                         disabled={busy}
                                         onClick={() => toggleStripe(p, st.key, has)}
-                                        title={has ? 'Take the stripe back' : 'Award the whole stripe'}
+                                        title={has ? 'Take the string back' : 'Award the whole string'}
                                         className="disabled:opacity-50"
                                       >
                                         <span
