@@ -72,20 +72,69 @@ export default function FlexHub({ divisions }: { divisions: Division[] }) {
   );
 }
 
+/** "Championship · Flight A" -> "Championship"; single-tier titles have no tier. */
+const tierOf = (title: string) => (title.includes('·') ? title.split('·')[0].trim() : null);
+
 function DivisionCard({ d }: { d: Division }) {
+  // A division whose flights carry tier prefixes ("Championship · …",
+  // "Challenger · …") is really two tournaments sharing one page section.
+  // Render each tier as its own clearly-banded sub-tournament, with that
+  // tier's finals bracket pinned at the top of its band.
+  const tiers = [...new Set(d.groups.map((g) => tierOf(g.title)).filter((t): t is string => !!t))];
+  const multiTier = tiers.length > 1;
+
   return (
     <section id={d.id} style={{ background: '#fff', border: '1px solid #DCE1EA', borderRadius: 18, boxShadow: '0 8px 24px rgba(16,38,80,.09)', overflow: 'hidden', marginTop: 22, scrollMarginTop: 12 }}>
       <div style={{ position: 'relative', overflow: 'hidden', background: d.color, padding: '20px 26px', color: '#fff' }}>
         <span style={{ position: 'absolute', right: 18, top: -20, fontFamily: "'Barlow Condensed'", fontWeight: 900, fontSize: 120, lineHeight: 1, color: 'rgba(255,255,255,.12)' }}>{d.num}</span>
         <h2 style={{ position: 'relative', fontFamily: "'Barlow Condensed'", fontWeight: 900, textTransform: 'uppercase', fontSize: 32, margin: 0 }}>{d.name}</h2>
+        {multiTier && (
+          <div style={{ position: 'relative', fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 12.5, letterSpacing: '.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,.85)', marginTop: 5 }}>
+            Two separate tournaments: {tiers.join(' + ')}
+          </div>
+        )}
       </div>
       <div style={{ padding: '20px 22px 24px' }}>
         {(d.champions || []).map((c) => <ChampionBanner key={c.crownTitle} c={c} color={d.color} accent={d.accent} />)}
         {d.type === 'compass' && <CompassDraw stages={d.compassStages || {}} r1={d.compassR1} />}
-        {(d.playoffGroups || []).map((g) => <Group key={g.title} g={g} accent={d.accent} />)}
-        {d.groups.map((g) => <Group key={g.title} g={g} accent={d.accent} />)}
+        {!multiTier && (d.playoffGroups || []).map((g) => <Group key={g.title} g={g} accent={d.accent} />)}
+        {!multiTier && d.groups.map((g) => <Group key={g.title} g={g} accent={d.accent} />)}
+        {multiTier && tiers.map((tier) => (
+          <TierSection
+            key={tier}
+            tier={tier}
+            accent={d.accent}
+            color={d.color}
+            playoffs={(d.playoffGroups || []).filter((g) => g.title.startsWith(tier))}
+            groups={d.groups.filter((g) => tierOf(g.title) === tier)}
+          />
+        ))}
       </div>
     </section>
+  );
+}
+
+/**
+ * One tier (Championship / Challenger) rendered as its own tournament: a
+ * full-width band header, that tier's FINALS bracket first (the moment it
+ * exists), then its feeder flights with the tier prefix trimmed off.
+ */
+function TierSection({ tier, accent, color, playoffs, groups }: { tier: string; accent: string; color: string; playoffs: GroupT[]; groups: GroupT[] }) {
+  const isChampionship = /championship/i.test(tier);
+  const band = isChampionship ? color : '#5B6472';
+  return (
+    <div style={{ marginTop: 26, border: `2px solid ${band}`, borderRadius: 16, overflow: 'hidden' }}>
+      <div style={{ background: band, color: '#fff', padding: '12px 18px', display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: "'Barlow Condensed'", fontWeight: 900, textTransform: 'uppercase', fontSize: 24, lineHeight: 1 }}>{tier} Tournament</span>
+        <span style={{ fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 11.5, letterSpacing: '.13em', textTransform: 'uppercase', color: 'rgba(255,255,255,.8)' }}>
+          {playoffs.length ? 'Finals below — winners of each flight meet here' : 'Flight winners will meet in the finals'}
+        </span>
+      </div>
+      <div style={{ padding: '4px 16px 16px' }}>
+        {playoffs.map((g) => <Group key={g.title} g={{ ...g, title: 'Finals' }} accent={accent} />)}
+        {groups.map((g) => <Group key={g.title} g={{ ...g, title: g.title.split('·')[1]?.trim() || g.title }} accent={accent} />)}
+      </div>
+    </div>
   );
 }
 
@@ -93,14 +142,14 @@ function Group({ g, accent }: { g: GroupT; accent: string }) {
   const playoff = !!g.isPlayoff;
   return (
     <div style={playoff
-      ? { marginTop: 16, marginBottom: 6, border: '1px solid #FFE08A', background: 'linear-gradient(180deg,#FFFBEF 0%,#FFFFFF 62%)', borderRadius: 14, padding: '14px 16px 10px' }
+      ? { marginTop: 16, marginBottom: 6, border: '2px solid #E8B923', background: 'linear-gradient(180deg,#FFFBEF 0%,#FFFFFF 62%)', borderRadius: 14, padding: '14px 16px 10px', boxShadow: '0 4px 14px rgba(176,125,0,.14)' }
       : { marginTop: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: g.subtitle ? 4 : 8, flexWrap: 'wrap' }}>
         {playoff
           ? <span style={{ fontSize: 15 }}>🏆</span>
           : <span style={{ width: 11, height: 11, borderRadius: '50%', background: accent }} />}
         <span style={{ fontFamily: "'Barlow Condensed'", fontWeight: 800, fontSize: playoff ? 22 : 19, textTransform: 'uppercase', color: '#111726' }}>{g.title}</span>
-        {playoff && <span style={{ background: '#B07D00', color: '#fff', borderRadius: 999, padding: '2px 9px', fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase' }}>Playoff</span>}
+        {playoff && <span style={{ background: '#B07D00', color: '#fff', borderRadius: 999, padding: '2px 9px', fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.12em', textTransform: 'uppercase' }}>Finals</span>}
         {!playoff && g.complete && <span style={{ background: '#DCFCE7', color: '#15803d', border: '1px solid #A7F3D0', borderRadius: 999, padding: '1px 8px', fontFamily: "'Barlow Semi Condensed'", fontWeight: 700, fontSize: 10.5, letterSpacing: '.1em', textTransform: 'uppercase' }}>Complete</span>}
       </div>
       {g.subtitle && <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>{g.subtitle}</div>}
