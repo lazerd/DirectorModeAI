@@ -75,6 +75,7 @@ const PUBLIC_PREFIXES = [
   '/leagues/join',
   '/enter',
   '/pathway/p',
+  '/pathway/curriculum',
 ];
 
 function activeHref(pathname: string, items: Item[]): string | null {

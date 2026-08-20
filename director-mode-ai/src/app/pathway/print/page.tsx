@@ -151,7 +151,14 @@ export default function PathwayPrintPage() {
                                     >
                                       {done ? '✓' : ''}
                                     </span>
-                                    <span className={done ? 'line-through text-gray-400' : ''}>{t}</span>
+                                    <span className={done ? 'line-through text-gray-400' : ''}>
+                                      {t.label}
+                                      {!done && (
+                                        <span className="block text-[10px] text-gray-500">
+                                          Run: {t.how} Pass: {t.pass}
+                                        </span>
+                                      )}
+                                    </span>
                                   </div>
                                 );
                               })}

@@ -184,32 +184,15 @@ export default function PathwayFamilyPage() {
               )}
             </div>
             <ul className="px-6 py-4 space-y-3">
-              {nextStripe.tests.map((t, i) => {
-                const done = checkSet.has(`${nextStripe.key}:${i}`);
-                return (
-                  <li key={i} className="flex gap-3 items-start">
-                    <span
-                      className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold"
-                      style={{
-                        borderColor: level.color,
-                        color: done ? '#fff' : level.colorDark,
-                        background: done ? level.color : 'transparent',
-                      }}
-                    >
-                      {done ? '✓' : i + 1}
-                    </span>
-                    <span
-                      className="text-[15px] leading-snug"
-                      style={{
-                        color: done ? '#9ca3af' : '#1f2937',
-                        textDecoration: done ? 'line-through' : 'none',
-                      }}
-                    >
-                      {t}
-                    </span>
-                  </li>
-                );
-              })}
+              {nextStripe.tests.map((t, i) => (
+                <HeroTest
+                  key={i}
+                  test={t}
+                  index={i}
+                  done={checkSet.has(`${nextStripe.key}:${i}`)}
+                  level={level}
+                />
+              ))}
             </ul>
             {(() => {
               const done = nextStripe.tests.filter((_, i) => checkSet.has(`${nextStripe.key}:${i}`)).length;
@@ -414,7 +397,7 @@ function StripeRow({
   date,
   checkSet,
 }: {
-  stripe: { key: string; number: number; title: string; tests: readonly string[]; promotes: boolean };
+  stripe: { key: string; number: number; title: string; tests: readonly { label: string; what: string; how: string; pass: string }[]; promotes: boolean };
   level: Level;
   has: boolean;
   date?: string;
@@ -458,21 +441,14 @@ function StripeRow({
       </button>
       {open && (
         <ul className="px-3 pb-2.5 ml-7 space-y-1.5">
-          {stripe.tests.map((t, i) => {
-            const done = has || checkSet.has(`${stripe.key}:${i}`);
-            return (
-              <li key={i} className="flex gap-2 items-start text-[13px] leading-snug">
-                <span
-                  className="mt-[3px] w-3 h-3 rounded-full flex-shrink-0"
-                  style={{
-                    background: done ? level.color : 'transparent',
-                    border: `1.5px solid ${done ? level.color : '#d1d5db'}`,
-                  }}
-                />
-                <span style={{ color: done ? '#6b7280' : '#374151' }}>{t}</span>
-              </li>
-            );
-          })}
+          {stripe.tests.map((t, i) => (
+            <TestLine
+              key={i}
+              test={t}
+              done={has || checkSet.has(`${stripe.key}:${i}`)}
+              level={level}
+            />
+          ))}
           {stripe.promotes && (
             <li className="text-[12px] font-semibold pt-0.5" style={{ color: level.colorDark }}>
               ★ Passing this string is the promotion.
@@ -480,6 +456,103 @@ function StripeRow({
           )}
         </ul>
       )}
+    </div>
+  );
+}
+
+/** The what / how-to-run / how-to-pass block behind every test. */
+function TestDetail({ test, color }: { test: { what: string; how: string; pass: string }; color: string }) {
+  const row = (tag: string, body: string) => (
+    <div className="flex gap-2 items-start">
+      <span
+        className="mt-[2px] flex-shrink-0 text-[9px] font-extrabold tracking-widest uppercase w-11"
+        style={{ color }}
+      >
+        {tag}
+      </span>
+      <span className="text-[12.5px] leading-snug text-gray-600">{body}</span>
+    </div>
+  );
+  return (
+    <div className="mt-1.5 mb-1 space-y-1.5 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2.5">
+      {row('What', test.what)}
+      {row('How', test.how)}
+      {row('Pass', test.pass)}
+    </div>
+  );
+}
+
+function HeroTest({
+  test,
+  index,
+  done,
+  level,
+}: {
+  test: { label: string; what: string; how: string; pass: string };
+  index: number;
+  done: boolean;
+  level: Level;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li>
+      <button className="w-full flex gap-3 items-start text-left" onClick={() => setOpen((o) => !o)}>
+        <span
+          className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[11px] font-bold"
+          style={{
+            borderColor: level.color,
+            color: done ? '#fff' : level.colorDark,
+            background: done ? level.color : 'transparent',
+          }}
+        >
+          {done ? '✓' : index + 1}
+        </span>
+        <span
+          className="text-[15px] leading-snug flex-1"
+          style={{
+            color: done ? '#9ca3af' : '#1f2937',
+            textDecoration: done ? 'line-through' : 'none',
+          }}
+        >
+          {test.label}
+          <span className="ml-1.5 text-[11px] font-semibold" style={{ color: level.colorDark }}>
+            {open ? 'less ▴' : 'details ▾'}
+          </span>
+        </span>
+      </button>
+      {open && <div className="ml-9"><TestDetail test={test} color={level.colorDark} /></div>}
+    </li>
+  );
+}
+
+function TestLine({
+  test,
+  done,
+  level,
+}: {
+  test: { label: string; what: string; how: string; pass: string };
+  done: boolean;
+  level: Level;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button className="w-full flex gap-2 items-start text-[13px] leading-snug text-left" onClick={() => setOpen((o) => !o)}>
+        <span
+          className="mt-[3px] w-3 h-3 rounded-full flex-shrink-0"
+          style={{
+            background: done ? level.color : 'transparent',
+            border: `1.5px solid ${done ? level.color : '#d1d5db'}`,
+          }}
+        />
+        <span className="flex-1" style={{ color: done ? '#6b7280' : '#374151' }}>
+          {test.label}
+          <span className="ml-1 text-[10px] font-semibold" style={{ color: level.colorDark }}>
+            {open ? '▴' : '▾'}
+          </span>
+        </span>
+      </button>
+      {open && <div className="ml-5"><TestDetail test={test} color={level.colorDark} /></div>}
     </div>
   );
 }

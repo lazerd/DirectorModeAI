@@ -407,6 +407,7 @@ export default function PathwayDashboard() {
                                               key={i}
                                               disabled={busy || has}
                                               onClick={() => toggleTest(p, st.key, i, passed)}
+                                              title={`WHAT: ${t.what}\n\nHOW: ${t.how}\n\nPASS: ${t.pass}`}
                                               className="w-full flex items-start gap-2 rounded-md px-2 py-1.5 text-left text-[12.5px] leading-snug hover:bg-white/5 disabled:opacity-70"
                                             >
                                               <span
@@ -417,7 +418,7 @@ export default function PathwayDashboard() {
                                                 }}
                                               />
                                               <span className={passed ? 'text-gray-500 line-through' : 'text-gray-300'}>
-                                                {t}
+                                                {t.label}
                                               </span>
                                             </button>
                                           );

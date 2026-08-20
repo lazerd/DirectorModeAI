@@ -39,6 +39,7 @@ export default function TestDayPage() {
   const [checks, setChecks] = useState<TestCheck[]>([]);
   const [loading, setLoading] = useState(true);
   const [justEarned, setJustEarned] = useState<string | null>(null); // player id
+  const [infoKey, setInfoKey] = useState<string | null>(null); // `${playerId}:${stripeKey}:${testIndex}`
 
   const load = useCallback(async () => {
     const [{ data: ps }, { data: aw }, { data: ch }] = await Promise.all([
@@ -209,8 +210,8 @@ export default function TestDayPage() {
                         {next.tests.map((t, i) => {
                           const has = checkSet.has(`${p.id}:${next.key}:${i}`);
                           return (
+                            <div key={i} className="space-y-1.5">
                             <button
-                              key={i}
                               onClick={() => toggleTest(p, next.key, i, has)}
                               className={`w-full flex items-center gap-3 rounded-xl px-4 py-3.5 text-left border transition-colors ${
                                 has
@@ -229,10 +230,28 @@ export default function TestDayPage() {
                               >
                                 {has ? <Check size={15} strokeWidth={3.5} /> : i + 1}
                               </span>
-                              <span className={`text-[15px] leading-snug ${has ? 'text-white' : 'text-gray-300'}`}>
-                                {t}
+                              <span className={`flex-1 text-[15px] leading-snug ${has ? 'text-white' : 'text-gray-300'}`}>
+                                {t.label}
+                              </span>
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setInfoKey(infoKey === `${p.id}:${next.key}:${i}` ? null : `${p.id}:${next.key}:${i}`);
+                                }}
+                                className="flex-shrink-0 w-6 h-6 rounded-full bg-white/10 text-gray-400 text-[11px] font-bold flex items-center justify-center hover:bg-white/20"
+                              >
+                                ?
                               </span>
                             </button>
+                              {infoKey === `${p.id}:${next.key}:${i}` && (
+                                <div className="rounded-lg bg-white/[.06] border border-white/10 px-3.5 py-2.5 space-y-1.5 text-[12.5px] leading-snug">
+                                  <p><span className="font-extrabold text-[9px] tracking-widest uppercase mr-1.5" style={{ color: level.color }}>How</span><span className="text-gray-300">{t.how}</span></p>
+                                  <p><span className="font-extrabold text-[9px] tracking-widest uppercase mr-1.5" style={{ color: level.color }}>Pass</span><span className="text-gray-300">{t.pass}</span></p>
+                                </div>
+                              )}
+                            </div>
                           );
                         })}
                       </div>
