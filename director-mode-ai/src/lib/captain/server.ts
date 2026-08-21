@@ -201,7 +201,59 @@ export async function pairRecords(
   );
 }
 
-/** Matches actually played, per player, from saved lineups. */
+/**
+ * Matches each player is already COMMITTED to, per player.
+ *
+ * This — not playedCounts — is the fairness signal, and the difference is the
+ * whole ballgame. A season is planned in advance: when the captain builds the
+ * lineup for match 2, match 1 has not happened yet, so nothing has status
+ * 'played' and playedCounts returns all zeros. Every player then looks equally
+ * rested, equal_play's tier gate has nothing to bite on, and the generator
+ * falls straight through to strength — handing the same eight people match
+ * after match. A saved lineup is a promise to the player, so it counts from
+ * the moment it is saved, not from the moment a score is entered.
+ *
+ * Cancelled matches never count; nobody played them.
+ *
+ * `excludeMatchId` is required in practice: regenerating match 2 must not
+ * count match 2's own saved lineup, which would penalise exactly the players
+ * it just seated and flip the lineup every time the captain pressed the button.
+ */
+export async function committedCounts(
+  db: SupabaseClient,
+  teamId: string,
+  excludeMatchId?: string,
+): Promise<Record<string, number>> {
+  const { data: matches } = await db
+    .from('captain_matches')
+    .select('id')
+    .eq('team_id', teamId)
+    .neq('status', 'cancelled');
+
+  const ids = ((matches as { id: string }[]) || [])
+    .map((m) => m.id)
+    .filter((id) => id !== excludeMatchId);
+  if (!ids.length) return {};
+
+  const { data: rows } = await db
+    .from('captain_lineups')
+    .select('player1_id, player2_id, match_id')
+    .in('match_id', ids);
+
+  const counts: Record<string, number> = {};
+  for (const r of (rows as { player1_id: string | null; player2_id: string | null }[]) || []) {
+    for (const id of [r.player1_id, r.player2_id]) {
+      if (id) counts[id] = (counts[id] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
+/**
+ * Matches actually played, per player, from saved lineups.
+ * Factual reporting only (the eligibility table) — see committedCounts for the
+ * number the generator plans against.
+ */
 export async function playedCounts(
   db: SupabaseClient,
   teamId: string,

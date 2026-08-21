@@ -23,6 +23,9 @@ type Court = {
   notes?: string[];
 };
 
+/** The generator's own reasoning, echoed back so the captain can audit it. */
+type Explanation = { summary: string[]; benched: { name: string; reason: string }[] };
+
 const btn = 'px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50 transition';
 const primary = `${btn} bg-[#D3FB52] text-[#001820] hover:brightness-95`;
 const ghost = `${btn} border border-white/10 text-white/70 hover:text-white hover:border-white/25`;
@@ -53,6 +56,10 @@ export default function MatchWorkspace({
   const router = useRouter();
   const [courts, setCourts] = useState<Court[]>(initialLineup);
   const [warnings, setWarnings] = useState<string[]>([]);
+  const [explanation, setExplanation] = useState<Explanation | null>(null);
+  const [showWhy, setShowWhy] = useState(true);
+  const [handEdited, setHandEdited] = useState(false);
+  const [swapPick, setSwapPick] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -169,13 +176,29 @@ export default function MatchWorkspace({
       (j) => setNote(`Asked ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`),
     );
 
-  const generate = () =>
-    call('generate', '/api/captain/lineup', { action: 'generate', team_id: teamId, match_id: matchId }, (j) => {
-      setCourts((j.courts as Court[]) || []);
-      setWarnings((j.warnings as string[]) || []);
-      setDirty(true);
-      setNote('Lineup proposed — review it, then save.');
-    });
+  const generate = () => {
+    // Regenerating throws away hand edits, so say so before doing it.
+    if (
+      handEdited &&
+      !window.confirm('Regenerating replaces your manual changes with a fresh lineup. Continue?')
+    ) {
+      return;
+    }
+    return call(
+      'generate',
+      '/api/captain/lineup',
+      { action: 'generate', team_id: teamId, match_id: matchId },
+      (j) => {
+        setCourts((j.courts as Court[]) || []);
+        setWarnings((j.warnings as string[]) || []);
+        setExplanation((j.explanation as Explanation) || null);
+        setHandEdited(false);
+        setSwapPick(null);
+        setDirty(true);
+        setNote('Draft only — nothing has been emailed. Move lines or swap players, then save.');
+      },
+    );
+  };
 
   const save = () =>
     call(
@@ -194,7 +217,8 @@ export default function MatchWorkspace({
       },
       () => {
         setDirty(false);
-        setNote('Lineup saved.');
+        setHandEdited(false);
+        setNote('Saved as a draft. Players still have not seen it.');
         router.refresh();
       },
     );
@@ -255,7 +279,91 @@ export default function MatchWorkspace({
     }));
   }
 
+  const labelOf = (c: Court) =>
+    `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
+
+  /** A line only ever trades with its own kind — doubles never lands on a singles court. */
+  const peersOf = (c: Court) =>
+    courts
+      .filter((x) => x.courtType === c.courtType)
+      .sort((a, b) => a.courtNumber - b.courtNumber);
+
+  const neighborOf = (c: Court, dir: -1 | 1): Court | null => {
+    const peers = peersOf(c);
+    const i = peers.findIndex((p) => p.courtNumber === c.courtNumber);
+    return peers[i + dir] ?? null;
+  };
+
+  /**
+   * One-click line flip: the whole pair moves to the other court and vice versa.
+   * Court identity (row id, number, type) stays put; only the people on it move,
+   * and their confirmations move with them because a confirmation belongs to the
+   * player, not the seat.
+   */
+  function flipLines(aNum: number, bNum: number) {
+    setCourts((cs) => {
+      const a = cs.find((c) => c.courtNumber === aNum);
+      const b = cs.find((c) => c.courtNumber === bNum);
+      if (!a || !b) return cs;
+      const take = (from: Court, seat: Court): Court => ({
+        ...seat,
+        player1Id: from.player1Id,
+        player2Id: from.player2Id,
+        player1Confirmed: from.player1Confirmed,
+        player2Confirmed: from.player2Confirmed,
+        notes: from.notes,
+      });
+      return cs.map((c) =>
+        c.courtNumber === aNum ? take(b, a) : c.courtNumber === bNum ? take(a, b) : c,
+      );
+    });
+    setSwapPick(null);
+    setDirty(true);
+    setHandEdited(true);
+    setNote(null);
+  }
+
+  /** Two-click single-player trade: pick one slot, pick another, they exchange. */
+  function pickSlot(courtNumber: number, slot: 1 | 2) {
+    if (!swapPick) {
+      setSwapPick({ courtNumber, slot });
+      return;
+    }
+    if (swapPick.courtNumber === courtNumber && swapPick.slot === slot) {
+      setSwapPick(null);
+      return;
+    }
+    const from = swapPick;
+    setCourts((cs) => {
+      const read = (c: Court, s: 1 | 2) =>
+        s === 1
+          ? { id: c.player1Id, ok: c.player1Confirmed }
+          : { id: c.player2Id, ok: c.player2Confirmed };
+      const write = (c: Court, s: 1 | 2, v: { id: string | null; ok?: boolean }): Court =>
+        s === 1
+          ? { ...c, player1Id: v.id, player1Confirmed: v.ok }
+          : { ...c, player2Id: v.id, player2Confirmed: v.ok };
+      const a = cs.find((c) => c.courtNumber === from.courtNumber);
+      const b = cs.find((c) => c.courtNumber === courtNumber);
+      if (!a || !b) return cs;
+      const av = read(a, from.slot);
+      const bv = read(b, slot);
+      return cs.map((c) => {
+        let out = c;
+        // Both writes can land on the same court (swapping partners) — chain them.
+        if (out.courtNumber === from.courtNumber) out = write(out, from.slot, bv);
+        if (out.courtNumber === courtNumber) out = write(out, slot, av);
+        return out;
+      });
+    });
+    setSwapPick(null);
+    setDirty(true);
+    setHandEdited(true);
+    setNote(null);
+  }
+
   function setSlot(courtNumber: number, slot: 1 | 2, playerId: string | null) {
+    setSwapPick(null);
     setCourts((cs) =>
       cs.map((c) =>
         c.courtNumber === courtNumber
@@ -264,6 +372,7 @@ export default function MatchWorkspace({
       ),
     );
     setDirty(true);
+    setHandEdited(true);
   }
 
   /** Players not already placed elsewhere in the lineup. */
@@ -379,8 +488,8 @@ export default function MatchWorkspace({
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-display text-white">Lineup</h2>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={generate} disabled={!!busy} className={primary}>
-              {busy === 'generate' ? 'Building…' : 'Generate lineup'}
+            <button onClick={generate} disabled={!!busy} className={courts.length ? ghost : primary}>
+              {busy === 'generate' ? 'Building…' : courts.length ? 'Regenerate' : 'Generate lineup'}
             </button>
             {courts.length > 0 && (
               <>
@@ -394,6 +503,70 @@ export default function MatchWorkspace({
             )}
           </div>
         </div>
+
+        {/* Never leave a captain guessing whether players can already see what is
+            on screen — that uncertainty is what stops them pressing Generate. */}
+        {courts.length > 0 && (
+          <div
+            className={`mt-3 rounded-xl border p-4 ${
+              lineupSent
+                ? 'border-emerald-400/25 bg-emerald-400/[0.07]'
+                : 'border-[#D3FB52]/25 bg-[#D3FB52]/[0.06]'
+            }`}
+          >
+            <div className={`font-medium ${lineupSent ? 'text-emerald-200' : 'text-[#D3FB52]'}`}>
+              {lineupSent
+                ? 'Sent — your team has this lineup.'
+                : dirty
+                  ? 'Draft — nothing has been emailed, and unsaved changes are visible only to you.'
+                  : 'Saved draft — no player has seen this.'}
+            </div>
+            {!lineupSent && (
+              <div className="text-white/60 text-sm mt-2">
+                Generating, moving lines and saving never email anyone. The only thing that does is
+                Send to team.
+              </div>
+            )}
+          </div>
+        )}
+
+        {explanation && (
+          <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
+            <button
+              onClick={() => setShowWhy((v) => !v)}
+              className="text-white font-medium text-sm hover:text-[#D3FB52]"
+            >
+              Why this lineup {showWhy ? '▾' : '▸'}
+            </button>
+            {showWhy && (
+              <>
+                <ol className="mt-3 space-y-1.5 text-sm text-white/65 list-decimal pl-5">
+                  {explanation.summary.map((line, i) => (
+                    <li key={i}>{line}</li>
+                  ))}
+                </ol>
+                {explanation.benched.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-white/[0.08]">
+                    <div className="text-white/45 text-xs uppercase tracking-wider font-semibold">
+                      Said yes but not in the lineup
+                    </div>
+                    <ul className="mt-2 space-y-1 text-sm text-white/60">
+                      {explanation.benched.map((b) => (
+                        <li key={b.name}>
+                          <span className="text-white/85">{b.name}</span> — {b.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-white/35 text-xs mt-3">
+                  Each court shows its own reason on the right. Your edits always win — Regenerate
+                  is the only thing that starts over.
+                </p>
+              </>
+            )}
+          </div>
+        )}
 
         {warnings.length > 0 && (
           <ul className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-4 space-y-1 text-sm text-amber-100/85">
@@ -409,12 +582,44 @@ export default function MatchWorkspace({
           </p>
         )}
 
+        {courts.length > 0 && (
+          <p className="text-white/40 text-xs mt-3">
+            {swapPick
+              ? `Now pick the slot ${nameOf(
+                  courts.find((x) => x.courtNumber === swapPick.courtNumber)?.[
+                    swapPick.slot === 1 ? 'player1Id' : 'player2Id'
+                  ] ?? null,
+                )} should trade with.`
+              : 'Use ↑ ↓ to move a whole line up or down the order, or ⇄ to trade two players. Nothing is emailed until you save and send.'}
+          </p>
+        )}
+
         <div className="mt-3 space-y-2">
           {courts.map((c) => (
             <div key={c.courtNumber} className="rounded-xl border border-white/[0.08] bg-[#002838] p-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="text-white/50 text-xs uppercase tracking-wide">
-                  {c.courtType === 'singles' ? 'Singles' : 'Doubles'} {c.courtNumber}
+                <div className="flex items-center gap-2">
+                  <div className="text-white/50 text-xs uppercase tracking-wide">{labelOf(c)}</div>
+                  {/* One click moves this whole pair a line up or down. */}
+                  <div className="flex items-center gap-1">
+                    {([-1, 1] as const).map((dir) => {
+                      const n = neighborOf(c, dir);
+                      return (
+                        <button
+                          key={dir}
+                          onClick={() => n && flipLines(c.courtNumber, n.courtNumber)}
+                          disabled={!n}
+                          title={n ? `Flip with ${labelOf(n)}` : undefined}
+                          aria-label={
+                            n ? `Flip ${labelOf(c)} with ${labelOf(n)}` : `${labelOf(c)} cannot move`
+                          }
+                          className="w-6 h-6 rounded-md border border-white/10 text-white/50 text-xs leading-none hover:text-[#D3FB52] hover:border-[#D3FB52]/40 disabled:opacity-20 disabled:hover:text-white/50 disabled:hover:border-white/10"
+                        >
+                          {dir === -1 ? '↑' : '↓'}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 {c.notes && c.notes.length > 0 && (
                   <div className="text-white/35 text-xs text-right">{c.notes.join(' · ')}</div>
@@ -427,9 +632,39 @@ export default function MatchWorkspace({
                   .map((slot) => {
                     const pid = slot === 1 ? c.player1Id : c.player2Id;
                     const confirmed = slot === 1 ? c.player1Confirmed : c.player2Confirmed;
+                    const picked =
+                      swapPick?.courtNumber === c.courtNumber && swapPick.slot === slot;
+                    const pickedCourt = courts.find((x) => x.courtNumber === swapPick?.courtNumber);
+                    const pickedId = pickedCourt
+                      ? swapPick?.slot === 1
+                        ? pickedCourt.player1Id
+                        : pickedCourt.player2Id
+                      : null;
                     return (
                       <div key={slot}>
                         <div className="flex items-center gap-2">
+                          {/* Pick one slot, then another — the two players trade places. */}
+                          <button
+                            onClick={() => pickSlot(c.courtNumber, slot)}
+                            title={
+                              picked
+                                ? 'Cancel the swap'
+                                : swapPick
+                                  ? `Swap with ${nameOf(pickedId)}`
+                                  : 'Swap this player with another court'
+                            }
+                            aria-pressed={picked}
+                            aria-label={`Swap ${nameOf(pid)} on ${labelOf(c)}`}
+                            className={`w-8 h-9 shrink-0 rounded-lg border text-sm ${
+                              picked
+                                ? 'bg-[#D3FB52] text-[#001820] border-[#D3FB52]'
+                                : swapPick
+                                  ? 'border-[#D3FB52]/40 text-[#D3FB52] hover:bg-[#D3FB52]/10'
+                                  : 'border-white/10 text-white/40 hover:text-white hover:border-white/25'
+                            }`}
+                          >
+                            ⇄
+                          </button>
                           <select
                             value={pid ?? ''}
                             onChange={(e) => setSlot(c.courtNumber, slot, e.target.value || null)}

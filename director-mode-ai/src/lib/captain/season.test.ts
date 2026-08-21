@@ -133,3 +133,55 @@ describe('why equal_play is a gate and not a weight', () => {
     expect(s.max - s.min).toBeLessThanOrEqual(1);
   });
 });
+
+/**
+ * The regression that started this: on the live Fall B2/B3 team, match 2's
+ * lineup came back full of the players who were already in match 1.
+ *
+ * Nothing was wrong with the algorithm — the tests above prove it holds the
+ * spread. The count feeding it was wrong. The route counted matches with
+ * status 'played', but a captain builds match 2's lineup a week BEFORE match 1
+ * happens, so every player still read as 0 and the tier gate had nothing to
+ * bite on. The fix is committedCounts(): a saved lineup counts immediately.
+ */
+describe('equal_play is only as good as the count it is fed', () => {
+  const PLAYERS = 23;
+
+  /** What a season looks like when the count never advances (the bug). */
+  function seasonWithFrozenCounts() {
+    const players = roster(PLAYERS);
+    const seatedByWeek: string[][] = [];
+
+    for (let week = 0; week < MATCHES; week++) {
+      const result = generateLineup({
+        // every week reports zero matches played — nothing is 'played' yet
+        available: players.map((p) => ({ ...p, matchesPlayed: 0 })),
+        singlesCourts: 0,
+        doublesCourts: DOUBLES_COURTS,
+        leagueType: 'flex',
+        captainingStyle: 'equal_play',
+      });
+      seatedByWeek.push(
+        result.courts.flatMap((c) => [c.player1Id, c.player2Id]).filter(Boolean) as string[],
+      );
+    }
+    return seatedByWeek;
+  }
+
+  it('a frozen count hands the same players every single match', () => {
+    const weeks = seasonWithFrozenCounts();
+    const first = [...weeks[0]].sort();
+    for (const week of weeks.slice(1)) {
+      expect([...week].sort()).toEqual(first);
+    }
+    // ...and two thirds of the roster never plays at all.
+    const everSeated = new Set(weeks.flat());
+    expect(everSeated.size).toBe(SLOTS);
+    expect(everSeated.size).toBeLessThan(PLAYERS);
+  });
+
+  it('advancing the count on commitment — not on results — spreads the season', () => {
+    const season = playSeason(roster(PLAYERS), 'equal_play');
+    expect(season.max - season.min).toBeLessThanOrEqual(1);
+  });
+});
