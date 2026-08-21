@@ -79,12 +79,54 @@ export async function POST(req: Request) {
     });
   }
 
+  /**
+   * Claim the send BEFORE putting mail in flight, not after.
+   *
+   * Sending 24 players takes ~25s (Resend is paced at 2/sec), and the stamp
+   * used to land only once that finished. A captain who clicked Send three
+   * times while nothing visibly happened got three passes of the guard and the
+   * whole roster got three copies of the same lineup — which is exactly what
+   * happened on 2026-08-21. Stamping first makes the second click a no-op.
+   *
+   * Scoped to a two-minute window so a deliberate re-send later still works;
+   * this is a double-click guard, not a one-send-ever lock.
+   */
+  const sentColumn = KIND_META[body.kind].sentColumn as string;
+  const previousStamp = (matchRow as unknown as Record<string, unknown>)[sentColumn] as string | null;
+  const claimCutoff = new Date(Date.now() - 2 * 60_000).toISOString();
+
+  if (previousStamp && previousStamp > claimCutoff) {
+    return NextResponse.json(
+      {
+        error: 'That email just went out. Give it a minute before sending it again.',
+        code: 'recently_sent',
+        sentAt: previousStamp,
+      },
+      { status: 409 },
+    );
+  }
+
+  const { data: claimed } = await db
+    .from('captain_matches')
+    .update({ [sentColumn]: new Date().toISOString() })
+    .eq('id', body.match_id)
+    .or(`${sentColumn}.is.null,${sentColumn}.lt.${claimCutoff}`)
+    .select('id')
+    .maybeSingle();
+
+  // Someone else claimed it between our read and our write.
+  if (!claimed) {
+    return NextResponse.json(
+      {
+        error: 'That email just went out. Give it a minute before sending it again.',
+        code: 'recently_sent',
+      },
+      { status: 409 },
+    );
+  }
+
   try {
     const results = await sendAll(team.captain_user_id, payloads);
-    await db
-      .from('captain_matches')
-      .update({ [KIND_META[body.kind].sentColumn]: new Date().toISOString() })
-      .eq('id', body.match_id);
 
     const sent = results.filter((r) => r.sent).length;
     return NextResponse.json({
@@ -97,6 +139,11 @@ export async function POST(req: Request) {
         .filter(Boolean) as string[],
     });
   } catch (err) {
+    // Nothing went out, so give the claim back or the captain can never retry.
+    await db
+      .from('captain_matches')
+      .update({ [sentColumn]: previousStamp })
+      .eq('id', body.match_id);
     if (err instanceof CreditLimitError) return creditLimitResponse(err);
     return NextResponse.json({ error: 'Could not send that email.' }, { status: 502 });
   }

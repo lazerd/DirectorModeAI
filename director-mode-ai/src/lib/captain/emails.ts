@@ -257,7 +257,7 @@ export function lineupEmail(
 
   const confirm = isPlaying
     ? `<div style="margin:20px 0 8px">
-         ${button(`${BASE}/captain/confirm/${r.token}/${m.id}?a=in`, "✓ Yes — I'll be there", BRAND)}
+         ${button(`${BASE}/api/captain/confirm/${r.token}/${m.id}/yes`, "✓ Yes — I'll be there", BRAND)}
          ${button(`${BASE}/captain/confirm/${r.token}/${m.id}?a=out`, '✗ Sorry — I can’t play', '#fee2e2', '#991b1b')}
        </div>
        <p style="font-size:14px;color:#475569;margin:0 0 4px">

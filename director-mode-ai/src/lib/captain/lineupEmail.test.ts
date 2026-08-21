@@ -26,9 +26,14 @@ const ROWS = [
 describe('lineupEmail — a player who is in it', () => {
   const html = lineupEmail('Fall B2/B3', MATCH, ROWS, ME, true).html;
 
-  it('offers both answers, each landing on the confirm page', () => {
-    expect(html).toContain('/captain/confirm/tok123/match-1?a=in');
+  it('confirms in ONE tap - the Yes link records it, no page button to find', () => {
+    expect(html).toContain('/api/captain/confirm/tok123/match-1/yes');
+  });
+
+  it('sends a decline to a page instead, where it costs a deliberate second tap', () => {
     expect(html).toContain('/captain/confirm/tok123/match-1?a=out');
+    // A mis-tap that pulls someone from a match must never be one-tap.
+    expect(html).not.toContain('/out');
   });
 
   it('offers Google and .ics separately — no email client tells us which to pick', () => {
@@ -56,6 +61,7 @@ describe('lineupEmail — a player who is not in it', () => {
   it('shows the lineup but asks for nothing and adds nothing to a calendar', () => {
     expect(html).toContain('Doubles 2');
     expect(html).not.toContain('/captain/confirm/');
+    expect(html).not.toContain('/api/captain/confirm/');
     expect(html).not.toContain('calendar.google.com');
   });
 });
