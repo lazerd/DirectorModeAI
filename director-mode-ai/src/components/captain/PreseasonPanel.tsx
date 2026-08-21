@@ -3,11 +3,13 @@
 /**
  * Captain's view of the pre-season intake: send it, see who's answered, chase
  * the stragglers. The chase button only emails people who never submitted, so
- * nobody who already did the work gets nagged.
+ * nobody who already did the work gets nagged, and a single player can be
+ * caught up on their own when they join after the first blast.
  */
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 
 type Row = { id: string; name: string; email: string | null; intake_completed_at: string | null };
 
@@ -21,27 +23,51 @@ export default function PreseasonPanel({ teamId, players }: { teamId: string; pl
   const waiting = players.filter((p) => !p.intake_completed_at);
   const noEmail = players.filter((p) => !p.email);
 
-  /**
-   * `playerIds` sends to exactly those people with the original wording —
-   * for someone added after the first blast, where re-sending to the whole
-   * roster would give everyone else a second copy.
-   */
-  async function send(onlyMissing: boolean, playerIds?: string[]) {
+  const [preview, setPreview] = useState<EmailPreview | null>(null);
+  const [pending, setPending] = useState<{ onlyMissing: boolean; playerIds?: string[] }>({
+    onlyMissing: false,
+  });
+
+  async function post(
+    opts: { onlyMissing: boolean; playerIds?: string[] },
+    isPreview: boolean,
+  ) {
+    const res = await fetch('/api/captain/preseason', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        team_id: teamId,
+        only_missing: opts.onlyMissing,
+        player_ids: opts.playerIds,
+        preview: isPreview,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || 'Could not send.');
+    return json;
+  }
+
+  /** Build it, show it, and wait. The button never sends on its own. */
+  async function requestPreview(opts: { onlyMissing: boolean; playerIds?: string[] }) {
     setBusy(true);
     setMsg(null);
     setError(null);
     try {
-      const res = await fetch('/api/captain/preseason', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          team_id: teamId,
-          only_missing: onlyMissing,
-          ...(playerIds?.length ? { player_ids: playerIds } : {}),
-        }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Could not send.');
+      const json = await post(opts, true);
+      setPending(opts);
+      setPreview(json as EmailPreview);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmSend() {
+    setBusy(true);
+    setError(null);
+    try {
+      const json = await post(pending, false);
       const failedNames: string[] = json.failedNames || [];
       setMsg(
         `Sent to ${json.sent} player${json.sent === 1 ? '' : 's'}.` +
@@ -51,6 +77,7 @@ export default function PreseasonPanel({ teamId, players }: { teamId: string; pl
             : '') +
           (json.skippedNoEmail ? ` ${json.skippedNoEmail} skipped — no email on file.` : ''),
       );
+      setPreview(null);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -63,6 +90,12 @@ export default function PreseasonPanel({ teamId, players }: { teamId: string; pl
 
   return (
     <section className="mt-10">
+      <EmailPreviewModal
+        preview={preview}
+        sending={busy}
+        onSend={confirmSend}
+        onCancel={() => setPreview(null)}
+      />
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-display text-white">Pre-season questions</h2>
         <span className="text-sm text-white/50">
@@ -80,15 +113,19 @@ export default function PreseasonPanel({ teamId, players }: { teamId: string; pl
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button
-          onClick={() => send(false)}
+          onClick={() => requestPreview({ onlyMissing: false })}
           disabled={busy}
           className="px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold disabled:opacity-50"
         >
-          {busy ? 'Sending…' : done.length ? 'Send to everyone again' : 'Send to the team'}
+          {busy
+            ? 'Building preview…'
+            : done.length
+              ? 'Preview & send to everyone again'
+              : 'Preview & send to the team'}
         </button>
         {waiting.length > 0 && done.length > 0 && (
           <button
-            onClick={() => send(true)}
+            onClick={() => requestPreview({ onlyMissing: true })}
             disabled={busy}
             className="text-sm px-4 py-2 rounded-xl border border-white/10 text-white/70 hover:text-white hover:border-white/25 disabled:opacity-50"
           >
@@ -116,21 +153,16 @@ export default function PreseasonPanel({ teamId, players }: { teamId: string; pl
                 </h3>
                 <ul className="space-y-1">
                   {g.list.map((p) => (
-                    <li
-                      key={p.id}
-                      className={`text-sm ${g.tone} flex items-center justify-between gap-2`}
-                    >
+                    <li key={p.id} className={`text-sm ${g.tone} flex items-center gap-2 group`}>
                       <span>{p.name}</span>
-                      {/* Per-player send: the only way to reach one person
-                          without giving the other 22 a duplicate. */}
                       {p.email && (
                         <button
-                          onClick={() => send(false, [p.id])}
+                          onClick={() => requestPreview({ onlyMissing: false, playerIds: [p.id] })}
                           disabled={busy}
-                          title={`Email the intake link to ${p.name}`}
-                          className="text-[11px] px-2 py-0.5 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/25 disabled:opacity-50 transition shrink-0"
+                          title={`Send the intake to ${p.name} only`}
+                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-[11px] px-2 py-0.5 rounded-lg border border-white/15 text-white/60 hover:text-white hover:border-white/35 disabled:opacity-50 transition"
                         >
-                          Send
+                          send
                         </button>
                       )}
                     </li>

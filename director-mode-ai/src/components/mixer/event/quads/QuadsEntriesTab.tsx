@@ -14,13 +14,17 @@ import {
   Wand2,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { parseDivisions, divisionLabel } from '@/lib/quadDivisions';
+import QuadsAllocationPanel from './QuadsAllocationPanel';
 import type { QuadEvent, QuadEntry, QuadFlight } from '../QuadsAdminDashboard';
 
 const POSITION_LABELS: Record<QuadEntry['position'], { label: string; color: string }> = {
+  requested: { label: 'Requested', color: 'bg-blue-100 text-blue-700' },
   in_flight: { label: 'Confirmed', color: 'bg-emerald-100 text-emerald-700' },
   waitlist: { label: 'Waitlist', color: 'bg-amber-100 text-amber-700' },
-  pending_payment: { label: 'Pending pmt', color: 'bg-gray-100 text-gray-700' },
+  pending_payment: { label: 'Awaiting pmt', color: 'bg-gray-100 text-gray-700' },
   withdrawn: { label: 'Withdrawn', color: 'bg-red-100 text-red-700' },
+  expired: { label: 'Expired', color: 'bg-red-100 text-red-700' },
 };
 
 const PAYMENT_LABELS: Record<QuadEntry['payment_status'], { label: string; color: string }> = {
@@ -128,12 +132,15 @@ export default function QuadsEntriesTab({
     setBusy(null);
   };
 
+  const divisions = parseDivisions(event.divisions);
   const sorted = [...entries].sort(
     (a, b) => (b.composite_rating ?? 0) - (a.composite_rating ?? 0)
   );
 
   return (
     <div className="space-y-4">
+      <QuadsAllocationPanel event={event} entries={entries} onRefresh={onRefresh} />
+
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-600">
           {entries.length} total entries · sorted by rating
@@ -222,8 +229,8 @@ export default function QuadsEntriesTab({
             Add player
           </button>
           <p className="text-xs text-gray-500">
-            Manual adds skip Stripe (payment marked waived). Rating fed straight into snake-tier
-            seeding.
+            Manual adds skip checkout entirely (payment marked waived). Rating feeds straight into
+            tier seeding.
           </p>
         </form>
       )}
@@ -238,6 +245,7 @@ export default function QuadsEntriesTab({
             <thead className="bg-gray-50 text-gray-600">
               <tr>
                 <th className="text-left px-3 py-2">Player</th>
+                {divisions.length > 0 && <th className="text-left px-3 py-2">Division</th>}
                 <th className="text-left px-3 py-2">Rating</th>
                 <th className="text-left px-3 py-2">Gender</th>
                 <th className="text-left px-3 py-2">Status</th>
@@ -259,6 +267,11 @@ export default function QuadsEntriesTab({
                         {flight && ` · ${flight.name} · seed ${entry.flight_seed}`}
                       </div>
                     </td>
+                    {divisions.length > 0 && (
+                      <td className="px-3 py-2 text-gray-700 text-xs">
+                        {divisionLabel(divisions, entry.division)}
+                      </td>
+                    )}
                     <td className="px-3 py-2 text-gray-700">
                       {entry.utr ? `UTR ${entry.utr.toFixed(2)}` : entry.ntrp ? `NTRP ${entry.ntrp.toFixed(1)}` : '—'}
                       {entry.composite_rating ? (
@@ -270,8 +283,10 @@ export default function QuadsEntriesTab({
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${pos.color}`}>
                         {entry.position === 'in_flight' && <CheckCircle2 size={11} />}
                         {entry.position === 'waitlist' && <Clock size={11} />}
+                        {entry.position === 'requested' && <Clock size={11} />}
                         {entry.position === 'pending_payment' && <Clock size={11} />}
                         {entry.position === 'withdrawn' && <XCircle size={11} />}
+                        {entry.position === 'expired' && <XCircle size={11} />}
                         {pos.label}
                       </span>
                     </td>

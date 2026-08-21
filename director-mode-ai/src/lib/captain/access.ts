@@ -9,8 +9,20 @@
  *   club on ClubMode Pro -> $10/mo  (rate_type 'club_linked')
  *   otherwise            -> $20/mo  (rate_type 'standalone')
  */
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getPlanContext } from '@/lib/billing';
+
+/**
+ * Authorization reads run on the real service-role client, NOT
+ * createServiceClient(): that one forwards the caller's auth cookie, so
+ * @supabase/ssr sends the user's JWT and RLS applies despite the service key.
+ * captain_subscriptions only exposes `user_id = auth.uid()`, which meant a
+ * co-captain checking whether the TEAM OWNER pays read nothing back and was
+ * bounced to the paywall. These checks decide access, so they must see the
+ * whole table and do their own membership test — which gateTeam does below.
+ */
+const adminDb = () => getSupabaseAdmin();
 
 export const MAX_TEAMS_PER_CAPTAIN = 3;
 
@@ -27,7 +39,7 @@ export type CaptainAccess = {
 const ACTIVE_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
 export async function getCaptainAccess(userId: string): Promise<CaptainAccess> {
-  const db = await createServiceClient();
+  const db = adminDb();
   const { data } = await db
     .from('captain_subscriptions')
     .select('status, rate_type, current_period_end, club_id')
@@ -63,7 +75,7 @@ export async function hasCaptainAccess(userId: string): Promise<boolean> {
  */
 export async function resolveCaptainRate(clubId: string | null): Promise<CaptainRate> {
   if (!clubId) return 'standalone';
-  const db = await createServiceClient();
+  const db = adminDb();
   const { data: club } = await db
     .from('cc_clubs')
     .select('owner_id')
@@ -101,7 +113,7 @@ export async function listCaptainTeams(userId: string) {
 
 /** Only teams the captain OWNS count toward the 3-team limit; co-captaining is free. */
 export async function ownedTeamCount(userId: string): Promise<number> {
-  const db = await createServiceClient();
+  const db = adminDb();
   const { count } = await db
     .from('captain_teams')
     .select('id', { count: 'exact', head: true })
@@ -111,7 +123,7 @@ export async function ownedTeamCount(userId: string): Promise<number> {
 }
 
 export async function canAccessTeam(userId: string, teamId: string): Promise<boolean> {
-  const db = await createServiceClient();
+  const db = adminDb();
   const { data: team } = await db
     .from('captain_teams')
     .select('captain_user_id')
@@ -127,4 +139,35 @@ export async function canAccessTeam(userId: string, teamId: string): Promise<boo
     .eq('user_id', userId)
     .maybeSingle();
   return !!staff;
+}
+
+export type TeamGate = 'ok' | 'not_member' | 'needs_subscription';
+
+/**
+ * Team-scoped entitlement. Co-captains are free (spec §2), so the subscription
+ * that matters for a co-captain is the TEAM OWNER's, not their own — checking
+ * the viewer's own sub would push every co-captain to the paywall.
+ */
+export async function gateTeam(userId: string, teamId: string): Promise<TeamGate> {
+  const db = adminDb();
+  const { data: team } = await db
+    .from('captain_teams')
+    .select('captain_user_id')
+    .eq('id', teamId)
+    .maybeSingle();
+  const ownerId = (team as { captain_user_id: string } | null)?.captain_user_id;
+  if (!ownerId) return 'not_member';
+
+  if (ownerId !== userId) {
+    const { data: staff } = await db
+      .from('captain_team_staff')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!staff) return 'not_member';
+    if ((await getCaptainAccess(ownerId)).active) return 'ok';
+  }
+
+  return (await getCaptainAccess(userId)).active ? 'ok' : 'needs_subscription';
 }

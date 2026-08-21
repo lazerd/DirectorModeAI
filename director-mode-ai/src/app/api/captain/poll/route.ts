@@ -1,11 +1,14 @@
 /**
  * Availability poll.
- *   POST { team_id, match_id, only_missing? } — email the roster asking if
- *   they can play. `only_missing` re-asks just the people who never answered.
+ *   POST { team_id, match_id, only_missing?, preview? } — email the roster asking
+ *   if they can play. `only_missing` re-asks just the people who never answered.
+ *   `preview:true` returns the exact payload without sending it.
  */
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { availabilityEmail, nudgeEmail, sendAll, type MatchInfo } from '@/lib/captain/emails';
+import { resolveSettings, type SettingRow } from '@/lib/captain/timeline';
+import { customFor } from '@/lib/captain/timelineSend';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
 
@@ -14,6 +17,7 @@ export async function POST(req: Request) {
     team_id?: string;
     match_id?: string;
     only_missing?: boolean;
+    preview?: boolean;
   };
   if (!body.team_id || !body.match_id) {
     return NextResponse.json({ error: 'team_id and match_id are required.' }, { status: 400 });
@@ -62,24 +66,62 @@ export async function POST(req: Request) {
     location: (match.location as string) || null,
   };
 
+  const kind = body.only_missing ? 'nudge' : 'poll';
+  const [{ data: settingRows }, { data: ovRow }] = await Promise.all([
+    db
+      .from('captain_email_settings')
+      .select('kind, enabled, lead_days, subject_override, intro_override')
+      .eq('team_id', teamId),
+    db
+      .from('captain_email_overrides')
+      .select('match_id, kind, skip, send_at, subject_override, intro_override')
+      .eq('match_id', body.match_id)
+      .eq('kind', kind)
+      .maybeSingle(),
+  ]);
+  const custom = customFor(
+    resolveSettings((settingRows as SettingRow[]) || [])[kind],
+    (ovRow as Parameters<typeof customFor>[1]) || null,
+  );
+
   const build = body.only_missing ? nudgeEmail : availabilityEmail;
   const payloads = roster.map((p) =>
-    build(team.name, info, {
-      playerId: p.id,
-      name: p.name,
-      email: p.email as string,
-      token: p.player_token,
-    }),
+    build(
+      team.name,
+      info,
+      {
+        playerId: p.id,
+        name: p.name,
+        email: p.email as string,
+        token: p.player_token,
+      },
+      undefined,
+      custom,
+    ),
   );
+
+  // Show, then send — same builder, same data, so the preview is the real thing.
+  if (body.preview) {
+    return NextResponse.json({
+      preview: true,
+      subject: payloads[0].subject,
+      html: payloads[0].html,
+      sample_for: roster[0].name,
+      count: payloads.length,
+      recipients: roster.map((p) => ({ name: p.name, email: p.email })),
+    });
+  }
 
   try {
     const results = await sendAll(ctx.userId, payloads);
-    if (body.only_missing) {
-      await db
-        .from('captain_matches')
-        .update({ nudge_sent_at: new Date().toISOString() })
-        .eq('id', body.match_id);
-    }
+    await db
+      .from('captain_matches')
+      .update(
+        body.only_missing
+          ? { nudge_sent_at: new Date().toISOString() }
+          : { availability_poll_sent_at: new Date().toISOString() },
+      )
+      .eq('id', body.match_id);
     return NextResponse.json({ ok: true, sent: results.filter((r) => r.sent).length });
   } catch (err) {
     if (err instanceof CreditLimitError) return creditLimitResponse(err);

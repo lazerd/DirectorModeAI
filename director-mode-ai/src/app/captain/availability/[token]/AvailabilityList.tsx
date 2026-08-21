@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 export type AvailMatch = {
   id: string;
@@ -12,20 +12,16 @@ export type AvailMatch = {
 };
 
 const OPTIONS: { value: 'yes' | 'no' | 'maybe'; label: string; bg: string; fg: string }[] = [
-  { value: 'yes', label: 'Yes', bg: '#D3FB52', fg: '#0f172a' },
-  { value: 'no', label: 'No', bg: '#fecaca', fg: '#7f1d1d' },
-  { value: 'maybe', label: 'Maybe', bg: '#e2e8f0', fg: '#334155' },
+  { value: 'yes', label: 'Yes', bg: '#16a34a', fg: '#ffffff' },
+  { value: 'no', label: 'No', bg: '#dc2626', fg: '#ffffff' },
+  { value: 'maybe', label: 'Maybe', bg: '#475569', fg: '#ffffff' },
 ];
 
-function when(iso: string) {
-  return new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(iso));
-}
+// Matches are played at the club, so pin every date to club time. A player
+// answering from a trip should still see the 9:30am the team actually plays.
+const TZ = 'America/Los_Angeles';
+const part = (iso: string, opts: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat('en-US', { ...opts, timeZone: TZ }).format(new Date(iso));
 
 export default function AvailabilityList({
   token,
@@ -48,6 +44,11 @@ export default function AvailabilityList({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const applied = useRef(false);
+
+  const answered = useMemo(
+    () => matches.filter((m) => state[m.id]).length,
+    [matches, state],
+  );
 
   async function answer(matchId: string, status: 'yes' | 'no' | 'maybe') {
     setBusy(matchId);
@@ -83,94 +84,270 @@ export default function AvailabilityList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const done = matches.length > 0 && answered === matches.length;
+
   return (
-    <main
+    // The app shell paints a dark navy body; this page is a light, player-facing
+    // sheet, so it paints its own surface instead of inheriting one it can't read on.
+    <div
       style={{
-        fontFamily: 'system-ui, sans-serif',
-        maxWidth: 560,
-        margin: '0 auto',
-        padding: '32px 20px 64px',
-        color: '#0f172a',
+        colorScheme: 'light',
+        background: '#f1f5f9',
+        minHeight: '100vh',
+        padding: '0 0 56px',
       }}
     >
-      <p style={{ color: '#64748b', margin: 0, fontSize: 14 }}>
-        {teamName}
-        {teamLevel ? ` · ${teamLevel}` : ''}
-      </p>
-      <h1 style={{ fontSize: 24, margin: '4px 0 4px' }}>Hi {playerName}</h1>
-      <p style={{ color: '#475569', marginTop: 0 }}>
-        Tap your availability for each match. You can change it any time.
-      </p>
-
-      {error && (
-        <p
-          role="alert"
+      <main
+        style={{
+          fontFamily: "'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif",
+          maxWidth: 600,
+          margin: '0 auto',
+          padding: '20px 16px 0',
+          color: '#0f172a',
+        }}
+      >
+        <header
           style={{
-            background: '#fef2f2',
-            color: '#991b1b',
-            padding: '10px 12px',
-            borderRadius: 8,
-            fontSize: 14,
+            background: 'linear-gradient(135deg,#003049 0%,#001820 100%)',
+            borderRadius: 18,
+            padding: '22px 22px 20px',
+            color: '#fff',
           }}
         >
-          {error}
-        </p>
-      )}
-
-      {matches.length === 0 && (
-        <p style={{ color: '#64748b' }}>No upcoming matches on the schedule yet.</p>
-      )}
-
-      {matches.map((m) => (
-        <section
-          key={m.id}
-          style={{
-            border: '1px solid #e2e8f0',
-            borderRadius: 12,
-            padding: 16,
-            marginBottom: 12,
-            opacity: busy === m.id ? 0.6 : 1,
-          }}
-        >
-          <div style={{ fontWeight: 600, fontSize: 16 }}>{when(m.matchAt)}</div>
-          <div style={{ color: '#64748b', fontSize: 14, marginTop: 2 }}>
-            {m.opponent ? `vs ${m.opponent} · ` : ''}
-            {m.isHome ? 'Home' : 'Away'}
-            {m.location ? ` · ${m.location}` : ''}
+          <div
+            style={{
+              fontSize: 12,
+              letterSpacing: '.14em',
+              textTransform: 'uppercase',
+              color: '#D3FB52',
+              fontWeight: 700,
+            }}
+          >
+            {teamName}
+            {teamLevel ? ` · ${teamLevel}` : ''}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            {OPTIONS.map((o) => {
-              const active = state[m.id] === o.value;
-              return (
-                <button
-                  key={o.value}
-                  onClick={() => answer(m.id, o.value)}
-                  disabled={busy === m.id}
-                  aria-pressed={active}
+          <h1 style={{ fontSize: 27, margin: '8px 0 6px', lineHeight: 1.15 }}>Hi {playerName}</h1>
+          <p style={{ margin: 0, fontSize: 15, color: 'rgba(255,255,255,0.78)', lineHeight: 1.45 }}>
+            Tap <strong style={{ color: '#fff' }}>Yes</strong>,{' '}
+            <strong style={{ color: '#fff' }}>No</strong>, or{' '}
+            <strong style={{ color: '#fff' }}>Maybe</strong> for every match below. Change it any
+            time — this link stays live all season.
+          </p>
+
+          {matches.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div
+                style={{
+                  height: 8,
+                  borderRadius: 99,
+                  background: 'rgba(255,255,255,0.14)',
+                  overflow: 'hidden',
+                }}
+              >
+                <div
                   style={{
-                    flex: '1 1 auto',
-                    minWidth: 88,
-                    padding: '12px 16px',
-                    borderRadius: 10,
-                    border: active ? '2px solid #0f172a' : '1px solid #cbd5e1',
-                    background: active ? o.bg : '#fff',
-                    color: active ? o.fg : '#475569',
-                    fontWeight: 600,
-                    fontSize: 15,
-                    cursor: busy === m.id ? 'default' : 'pointer',
+                    width: `${(answered / matches.length) * 100}%`,
+                    height: '100%',
+                    background: '#D3FB52',
+                    borderRadius: 99,
+                    transition: 'width .25s ease',
                   }}
-                >
-                  {o.label}
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+                />
+              </div>
+              <div style={{ marginTop: 8, fontSize: 13, fontWeight: 600, color: '#D3FB52' }}>
+                {done
+                  ? `All set — ${matches.length} of ${matches.length} answered 🎾`
+                  : `${answered} of ${matches.length} answered · ${matches.length - answered} to go`}
+              </div>
+            </div>
+          )}
+        </header>
 
-      <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 24 }}>
-        Your captain sees these answers. No account needed — this link is yours.
-      </p>
-    </main>
+        {error && (
+          <p
+            role="alert"
+            style={{
+              background: '#fee2e2',
+              color: '#991b1b',
+              padding: '12px 14px',
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 600,
+              marginTop: 16,
+            }}
+          >
+            {error}
+          </p>
+        )}
+
+        {matches.length === 0 && (
+          <p
+            style={{
+              color: '#475569',
+              background: '#fff',
+              border: '1px solid #e2e8f0',
+              borderRadius: 14,
+              padding: 20,
+              marginTop: 16,
+            }}
+          >
+            No upcoming matches on the schedule yet — check back soon.
+          </p>
+        )}
+
+        <div style={{ marginTop: 16 }}>
+          {matches.map((m) => {
+            const picked = state[m.id];
+            return (
+              <section
+                key={m.id}
+                style={{
+                  background: '#fff',
+                  border: picked ? '1px solid #cbd5e1' : '2px solid #0f172a',
+                  borderRadius: 16,
+                  padding: 16,
+                  marginBottom: 14,
+                  boxShadow: '0 1px 2px rgba(15,23,42,0.06)',
+                  opacity: busy === m.id ? 0.6 : 1,
+                }}
+              >
+                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+                  {/* Calendar chip — the date readable at arm's length. */}
+                  <div
+                    style={{
+                      flex: '0 0 auto',
+                      width: 62,
+                      borderRadius: 12,
+                      overflow: 'hidden',
+                      border: '1px solid #e2e8f0',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <div
+                      style={{
+                        background: '#0f172a',
+                        color: '#fff',
+                        fontSize: 12,
+                        fontWeight: 800,
+                        letterSpacing: '.1em',
+                        padding: '4px 0',
+                      }}
+                    >
+                      {part(m.matchAt, { month: 'short' }).toUpperCase()}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 26,
+                        fontWeight: 800,
+                        color: '#0f172a',
+                        lineHeight: 1.15,
+                        padding: '4px 0 6px',
+                      }}
+                    >
+                      {part(m.matchAt, { day: 'numeric' })}
+                    </div>
+                  </div>
+
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 19, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
+                      {part(m.matchAt, { weekday: 'long' })}
+                    </div>
+                    <div
+                      style={{
+                        display: 'inline-block',
+                        marginTop: 6,
+                        background: '#0f172a',
+                        color: '#D3FB52',
+                        fontSize: 17,
+                        fontWeight: 800,
+                        padding: '4px 12px',
+                        borderRadius: 99,
+                        letterSpacing: '.01em',
+                      }}
+                    >
+                      {part(m.matchAt, { hour: 'numeric', minute: '2-digit' })}
+                    </div>
+                    <div
+                      style={{
+                        marginTop: 9,
+                        fontSize: 15,
+                        fontWeight: 600,
+                        color: '#1e293b',
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          fontSize: 11,
+                          fontWeight: 800,
+                          letterSpacing: '.09em',
+                          textTransform: 'uppercase',
+                          padding: '3px 8px',
+                          borderRadius: 6,
+                          marginRight: 8,
+                          background: m.isHome ? '#dcfce7' : '#e0e7ff',
+                          color: m.isHome ? '#166534' : '#3730a3',
+                        }}
+                      >
+                        {m.isHome ? 'Home' : 'Away'}
+                      </span>
+                      {m.opponent ? `vs ${m.opponent}` : 'Opponent TBD'}
+                    </div>
+                    {m.location && (
+                      <div style={{ marginTop: 5, fontSize: 14, color: '#475569', lineHeight: 1.35 }}>
+                        📍 {m.location}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+                  {OPTIONS.map((o) => {
+                    const active = picked === o.value;
+                    return (
+                      <button
+                        key={o.value}
+                        onClick={() => answer(m.id, o.value)}
+                        disabled={busy === m.id}
+                        aria-pressed={active}
+                        style={{
+                          flex: 1,
+                          padding: '13px 8px',
+                          borderRadius: 11,
+                          border: active ? `2px solid ${o.bg}` : '1.5px solid #cbd5e1',
+                          background: active ? o.bg : '#fff',
+                          color: active ? o.fg : '#334155',
+                          fontWeight: 700,
+                          fontSize: 15.5,
+                          cursor: busy === m.id ? 'default' : 'pointer',
+                          WebkitAppearance: 'none',
+                        }}
+                      >
+                        {active ? `✓ ${o.label}` : o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+
+        <p
+          style={{
+            color: '#64748b',
+            fontSize: 12.5,
+            marginTop: 20,
+            textAlign: 'center',
+            lineHeight: 1.5,
+          }}
+        >
+          All times are club time (Pacific). Your captain sees these answers.
+          <br />
+          No account needed — this link is yours. Bookmark it.
+        </p>
+      </main>
+    </div>
   );
 }

@@ -122,7 +122,7 @@ async function main() {
       clubId = (await ins('cc_clubs', {
         owner_id: userId, name: CLUB_NAME, slug: slugify(CLUB_NAME) + '-' + code().slice(0, 4).toLowerCase(),
         sports: ['tennis'], is_public: false, timezone: CLUB_TZ, state: 'CA', zip: '94563',
-        operating_hours: {},
+        operating_hours: {}, join_code: code(),
       })).id;
     }
     await db.from('cc_club_members').upsert({ club_id: clubId, user_id: userId, role: 'owner' }, { onConflict: 'club_id,user_id' });

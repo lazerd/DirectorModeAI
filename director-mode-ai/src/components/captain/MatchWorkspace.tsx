@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 
 export type MatchPlayer = {
   id: string;
@@ -23,8 +24,21 @@ type Court = {
   notes?: string[];
 };
 
-/** The generator's own reasoning, echoed back so the captain can audit it. */
 type Explanation = { summary: string[]; benched: { name: string; reason: string }[] };
+
+/** The lineup email's row on the season timeline, for this match. */
+type AutoSend = { status: string; sendAt: string; sentAt: string | null };
+
+/** Vercel runs UTC; the banner must speak club time or it will quote the wrong hour. */
+const fmtWhen = (iso: string) =>
+  new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'America/Los_Angeles',
+  }).format(new Date(iso));
 
 const btn = 'px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50 transition';
 const primary = `${btn} bg-[#D3FB52] text-[#001820] hover:brightness-95`;
@@ -59,18 +73,15 @@ export default function MatchWorkspace({
   const [explanation, setExplanation] = useState<Explanation | null>(null);
   const [showWhy, setShowWhy] = useState(true);
   const [handEdited, setHandEdited] = useState(false);
-  const [swapPick, setSwapPick] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
+  const [autoSend, setAutoSend] = useState<AutoSend | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
-  const [scoring, setScoring] = useState(status === 'played');
-  const [scores, setScores] = useState<Record<number, { score: string; won: boolean | null }>>(
-    Object.fromEntries(
-      initialResults.map((r) => [r.courtNumber, { score: r.score ?? '', won: r.won }]),
-    ),
-  );
-
+  const [preview, setPreview] = useState<EmailPreview | null>(null);
+  const [pendingOnlyMissing, setPendingOnlyMissing] = useState(false);
+  const [previewKind, setPreviewKind] = useState<'poll' | 'lineup'>('poll');
+  const [swapPick, setSwapPick] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
   const [rescheduling, setRescheduling] = useState(false);
   // datetime-local wants local wall-clock, not an ISO string with a zone.
   const [newDate, setNewDate] = useState(() => {
@@ -78,6 +89,12 @@ export default function MatchWorkspace({
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   });
+  const [scoring, setScoring] = useState(status === 'played');
+  const [scores, setScores] = useState<Record<number, { score: string; won: boolean | null }>>(
+    Object.fromEntries(
+      initialResults.map((r) => [r.courtNumber, { score: r.score ?? '', won: r.won }]),
+    ),
+  );
 
   const answered = players.filter((p) => p.availability !== null);
   const yes = players.filter((p) => p.availability === 'yes');
@@ -116,6 +133,7 @@ export default function MatchWorkspace({
     }
   }
 
+  // Build and show it first — the button itself never puts mail in flight.
   /**
    * Rainout. The API wipes availability, the lineup and any open sub requests,
    * because all three were answers about the old date — so this asks first and
@@ -132,7 +150,9 @@ export default function MatchWorkspace({
     ].filter(Boolean);
     const ok = window.confirm(
       `Move this match to ${new Date(newDate).toLocaleString()}?` +
-        (losing.length ? `\n\nThis clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
+        (losing.length ? `
+
+This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     );
     if (!ok) return;
 
@@ -172,8 +192,23 @@ export default function MatchWorkspace({
     call(
       onlyMissing ? 'nudge' : 'poll',
       '/api/captain/poll',
-      { team_id: teamId, match_id: matchId, only_missing: onlyMissing },
-      (j) => setNote(`Asked ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`),
+      { team_id: teamId, match_id: matchId, only_missing: onlyMissing, preview: true },
+      (j) => {
+        setPendingOnlyMissing(onlyMissing);
+        setPreviewKind('poll');
+        setPreview(j as unknown as EmailPreview);
+      },
+    );
+
+  const confirmPoll = () =>
+    call(
+      'poll',
+      '/api/captain/poll',
+      { team_id: teamId, match_id: matchId, only_missing: pendingOnlyMissing },
+      (j) => {
+        setPreview(null);
+        setNote(`Asked ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`);
+      },
     );
 
   const generate = () => {
@@ -193,12 +228,46 @@ export default function MatchWorkspace({
         setWarnings((j.warnings as string[]) || []);
         setExplanation((j.explanation as Explanation) || null);
         setHandEdited(false);
-        setSwapPick(null);
         setDirty(true);
-        setNote('Draft only — nothing has been emailed. Move lines or swap players, then save.');
+        setNote('Draft only — nothing has been emailed. Edit any court, then save.');
       },
     );
   };
+
+  /** Where this match sits on the season timeline, so the page can say whether the automation will mail it. */
+  async function refreshAutoSend() {
+    try {
+      const res = await fetch(`/api/captain/timeline?team_id=${teamId}`, { cache: 'no-store' });
+      if (!res.ok) return;
+      const data = (await res.json()) as {
+        events: { kind: string; matchId: string; status: string; sendAt: string; sentAt: string | null }[];
+      };
+      const row = data.events.find((e) => e.matchId === matchId && e.kind === 'lineup');
+      setAutoSend(row ? { status: row.status, sendAt: row.sendAt, sentAt: row.sentAt } : null);
+    } catch {
+      /* the banner is advisory; a failed lookup must not break the page */
+    }
+  }
+
+  useEffect(() => {
+    void refreshAutoSend();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const setAutoSendSkip = (skip: boolean) =>
+    call(
+      'autosend',
+      '/api/captain/timeline/override',
+      { team_id: teamId, match_id: matchId, kind: 'lineup', skip },
+      async () => {
+        setNote(
+          skip
+            ? 'Automatic sending is off for this lineup — it will only go out when you send it.'
+            : 'Automatic sending is back on for this lineup.',
+        );
+        await refreshAutoSend();
+      },
+    );
 
   const save = () =>
     call(
@@ -215,19 +284,39 @@ export default function MatchWorkspace({
           player2Id: c.player2Id,
         })),
       },
-      () => {
+      async () => {
         setDirty(false);
         setHandEdited(false);
         setNote('Saved as a draft. Players still have not seen it.');
+        await refreshAutoSend();
         router.refresh();
       },
     );
 
-  const send = () =>
-    call('send', '/api/captain/lineup', { action: 'send', team_id: teamId, match_id: matchId }, (j) => {
-      setNote(`Lineup emailed to ${j.sent as number} players.`);
-      router.refresh();
-    });
+  // Show the real email first. The button never puts mail in flight.
+  const previewLineup = () =>
+    call(
+      'send',
+      '/api/captain/timeline/send',
+      { team_id: teamId, match_id: matchId, kind: 'lineup', preview: true },
+      (j) => {
+        setPreviewKind('lineup');
+        setPreview(j as unknown as EmailPreview);
+      },
+    );
+
+  const confirmSendLineup = () =>
+    call(
+      'send',
+      '/api/captain/timeline/send',
+      { team_id: teamId, match_id: matchId, kind: 'lineup' },
+      async (j) => {
+        setPreview(null);
+        setNote(`Lineup emailed to ${j.sent as number} players.`);
+        await refreshAutoSend();
+        router.refresh();
+      },
+    );
 
   const findSub = (court: Court, slot: 1 | 2) => {
     const dropped = slot === 1 ? court.player1Id : court.player2Id;
@@ -391,24 +480,26 @@ export default function MatchWorkspace({
 
   return (
     <div className="mt-8 space-y-8">
+      <EmailPreviewModal
+        preview={preview}
+        sending={busy === 'poll'}
+        onSend={previewKind === 'lineup' ? confirmSendLineup : confirmPoll}
+        onCancel={() => setPreview(null)}
+      />
       {/* ---------------------------------------------------------- availability */}
       <section>
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-display text-white">Availability</h2>
           <div className="flex gap-2">
             <button onClick={() => sendPoll(false)} disabled={!!busy} className={ghost}>
-              {busy === 'poll' ? 'Sending…' : 'Ask the team'}
+              {busy === 'poll' ? 'Working…' : 'Preview & ask the team'}
             </button>
             {silent.length > 0 && (
               <button onClick={() => sendPoll(true)} disabled={!!busy} className={ghost}>
-                {busy === 'nudge' ? 'Sending…' : `Nudge ${silent.length} silent`}
+                {busy === 'nudge' ? 'Working…' : `Preview nudge to ${silent.length}`}
               </button>
             )}
-            <button
-              onClick={() => setRescheduling((v) => !v)}
-              disabled={!!busy}
-              className={ghost}
-            >
+            <button onClick={() => setRescheduling((v) => !v)} disabled={!!busy} className={ghost}>
               {rescheduling ? 'Cancel' : 'Reschedule'}
             </button>
           </div>
@@ -494,18 +585,22 @@ export default function MatchWorkspace({
             {courts.length > 0 && (
               <>
                 <button onClick={save} disabled={!!busy || !dirty} className={ghost}>
-                  {busy === 'save' ? 'Saving…' : dirty ? 'Save' : 'Saved'}
+                  {busy === 'save' ? 'Saving…' : dirty ? 'Save draft' : 'Saved'}
                 </button>
-                <button onClick={send} disabled={!!busy || dirty} className={ghost}>
-                  {busy === 'send' ? 'Sending…' : lineupSent ? 'Resend to team' : 'Send to team'}
+                <button onClick={previewLineup} disabled={!!busy || dirty} className={primary}>
+                  {busy === 'send'
+                    ? 'Opening…'
+                    : lineupSent
+                      ? 'Preview & resend'
+                      : 'Preview & send to team'}
                 </button>
               </>
             )}
           </div>
         </div>
 
-        {/* Never leave a captain guessing whether players can already see what is
-            on screen — that uncertainty is what stops them pressing Generate. */}
+        {/* The whole point of this strip: never leave a captain guessing whether
+            players can already see what is on screen. */}
         {courts.length > 0 && (
           <div
             className={`mt-3 rounded-xl border p-4 ${
@@ -521,10 +616,47 @@ export default function MatchWorkspace({
                   ? 'Draft — nothing has been emailed, and unsaved changes are visible only to you.'
                   : 'Saved draft — no player has seen this.'}
             </div>
+
             {!lineupSent && (
               <div className="text-white/60 text-sm mt-2">
-                Generating, moving lines and saving never email anyone. The only thing that does is
-                Send to team.
+                Generating, editing and saving never email anyone. The only things that do are the
+                Preview &amp; send button above — which shows you the email first — and the
+                automatic send below.
+              </div>
+            )}
+
+            {!lineupSent && autoSend && (
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                {autoSend.status === 'skipped' ? (
+                  <>
+                    <span className="text-white/70 text-sm">
+                      Automatic sending is <strong className="text-white">off</strong> for this
+                      lineup. It goes out only when you send it.
+                    </span>
+                    <button
+                      onClick={() => setAutoSendSkip(false)}
+                      disabled={!!busy}
+                      className="text-xs text-white/45 hover:text-white underline"
+                    >
+                      turn it back on
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-white/70 text-sm">
+                      {autoSend.status === 'blocked'
+                        ? 'Once you save a lineup, the automation will email it on the scheduled day.'
+                        : `Unless you turn this off, the automation emails this lineup on ${fmtWhen(autoSend.sendAt)}.`}
+                    </span>
+                    <button
+                      onClick={() => setAutoSendSkip(true)}
+                      disabled={!!busy}
+                      className="px-3 py-1.5 rounded-lg border border-white/20 text-white/80 hover:text-white text-xs"
+                    >
+                      Don&rsquo;t auto-send — I&rsquo;ll send it myself
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -560,8 +692,8 @@ export default function MatchWorkspace({
                   </div>
                 )}
                 <p className="text-white/35 text-xs mt-3">
-                  Each court shows its own reason on the right. Your edits always win — Regenerate
-                  is the only thing that starts over.
+                  Each court shows its own reason on the right. Change any player with the dropdowns
+                  — your edits win, and Regenerate starts over from scratch.
                 </p>
               </>
             )}
@@ -578,7 +710,8 @@ export default function MatchWorkspace({
 
         {courts.length === 0 && (
           <p className="text-white/40 text-sm mt-3">
-            No lineup yet. Collect availability, then hit Generate.
+            No lineup yet. Collect availability, then hit Generate — it only proposes a lineup on
+            screen, it does not email anyone.
           </p>
         )}
 
@@ -590,7 +723,7 @@ export default function MatchWorkspace({
                     swapPick.slot === 1 ? 'player1Id' : 'player2Id'
                   ] ?? null,
                 )} should trade with.`
-              : 'Use ↑ ↓ to move a whole line up or down the order, or ⇄ to trade two players. Nothing is emailed until you save and send.'}
+              : 'Use ↑ ↓ to move a whole line, or ⇄ to trade two players. Nothing is emailed until you save and send.'}
           </p>
         )}
 
@@ -599,7 +732,9 @@ export default function MatchWorkspace({
             <div key={c.courtNumber} className="rounded-xl border border-white/[0.08] bg-[#002838] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <div className="text-white/50 text-xs uppercase tracking-wide">{labelOf(c)}</div>
+                  <div className="text-white/50 text-xs uppercase tracking-wide">
+                    {labelOf(c)}
+                  </div>
                   {/* One click moves this whole pair a line up or down. */}
                   <div className="flex items-center gap-1">
                     {([-1, 1] as const).map((dir) => {
@@ -707,7 +842,7 @@ export default function MatchWorkspace({
 
         {dirty && courts.length > 0 && (
           <p className="text-amber-300/70 text-xs mt-3">
-            Unsaved changes — save before sending to the team.
+            Unsaved changes — save the draft before sending to the team.
           </p>
         )}
       </section>

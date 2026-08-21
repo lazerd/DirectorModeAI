@@ -1,9 +1,13 @@
 /**
  * Pre-season intake poll.
  *   GET  ?team_id=…              — who has answered and who hasn't
- *   POST { team_id, only_missing? } — email the roster their intake link.
+ *   POST { team_id, only_missing?, preview?, player_ids? }
+ *                                   — email the roster their intake link.
  *                                     only_missing re-asks just the people who
- *                                     never submitted.
+ *                                     never submitted; player_ids narrows the
+ *                                     send to specific people (a late addition
+ *                                     shouldn't cost everyone else an email);
+ *                                     preview returns the payload without sending.
  *
  * Mirrors /api/captain/poll, which does the same job for per-match availability.
  */
@@ -51,6 +55,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     team_id?: string;
     only_missing?: boolean;
+    preview?: boolean;
     player_ids?: unknown;
   };
   if (!body.team_id) {
@@ -68,24 +73,16 @@ export async function POST(req: Request) {
     .eq('active', true);
 
   let rows = (data as Row[]) || [];
+  if (body.only_missing) rows = rows.filter((p) => !p.intake_completed_at);
 
-  // Targeted send. A player added after the first blast needs the original
-  // email, not a "still waiting on you" reminder, and re-blasting the whole
-  // roster to reach them means everyone else gets a second copy.
+  // Targeted send — applied last so it always wins over only_missing. Typed as
+  // unknown and filtered: a malformed body must not silently mail the roster.
   const wanted = Array.isArray(body.player_ids)
     ? (body.player_ids as unknown[]).filter((v): v is string => typeof v === 'string')
     : null;
-
   if (wanted?.length) {
-    // Scope to this team's roster — the caller's ids are only a request.
-    const onTeam = new Set(rows.map((p) => p.id));
-    const unknown = wanted.filter((id) => !onTeam.has(id));
-    if (unknown.length) {
-      return NextResponse.json({ error: 'Those players are not on this team.' }, { status: 400 });
-    }
-    rows = rows.filter((p) => wanted.includes(p.id));
-  } else if (body.only_missing) {
-    rows = rows.filter((p) => !p.intake_completed_at);
+    const want = new Set(wanted);
+    rows = rows.filter((p) => want.has(p.id));
   }
 
   const recipients: Recipient[] = rows
@@ -96,7 +93,7 @@ export async function POST(req: Request) {
     return NextResponse.json(
       {
         error: wanted?.length
-          ? 'Those players have no email address on file.'
+          ? 'Those players are not on the active roster, or have no email on file.'
           : body.only_missing
             ? 'Everyone with an email address has already answered.'
             : 'Nobody on the roster has an email address yet.',
@@ -105,12 +102,22 @@ export async function POST(req: Request) {
     );
   }
 
-  // A targeted send is a first ask, so it uses the original wording.
   const payloads = recipients.map((r) =>
-    preseasonIntakeEmail(team.name, r, {
-      reminder: !wanted?.length && body.only_missing === true,
-    }),
+    preseasonIntakeEmail(team.name, r, { reminder: body.only_missing === true }),
   );
+
+  // Show, then send — same builder, same data, so what the captain approves is
+  // literally what goes out. Matches /api/captain/poll and /season-poll.
+  if (body.preview) {
+    return NextResponse.json({
+      preview: true,
+      subject: payloads[0].subject,
+      html: payloads[0].html,
+      sample_for: recipients[0].name,
+      count: payloads.length,
+      recipients: recipients.map((r) => ({ name: r.name, email: r.email })),
+    });
+  }
 
   try {
     const results = await sendAll(userId, payloads);

@@ -3,7 +3,7 @@
  *
  *   GET  /api/captain/intake/[token]  — this player's current answers + the
  *                                       teammate list they can rank
- *   POST /api/captain/intake/[token]  — { return_side, court_limit,
+ *   POST /api/captain/intake/[token]  — { return_side, court_limit, court_note,
  *                                         unavailable_days[], partner_ids[], notes }
  *
  * No auth: the token IS the credential, same contract as the availability
@@ -17,14 +17,17 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-// Single source of truth: the resolver matches each match's weekday against
-// these exact codes, so the form must not drift from them.
-import { DAYS, isDayCode } from '@/lib/captain/availability';
 
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const SIDES = ['deuce', 'ad', 'either'];
-/** Must match the CHECK constraint on captain_players.court_limit. */
-const COURT_LIMITS = ['singles_only', 'doubles_only', 'no_court_1'];
 const MAX_PARTNERS = 5;
+
+/**
+ * MUST stay in sync with the captain_players_court_limit_check constraint — the
+ * lineup generator branches on these exact strings. Anything else the player
+ * says about courts is free text and belongs in court_note, not here.
+ */
+const COURT_LIMITS = ['singles_only', 'doubles_only', 'no_court_1'];
 
 type PlayerRow = {
   id: string;
@@ -33,6 +36,7 @@ type PlayerRow = {
   active: boolean;
   return_side: string | null;
   court_limit: string | null;
+  court_note: string | null;
   unavailable_days: string[] | null;
   notes: string | null;
   intake_completed_at: string | null;
@@ -43,7 +47,7 @@ async function loadPlayer(token: string) {
   const { data } = await admin
     .from('captain_players')
     .select(
-      'id, team_id, name, active, return_side, court_limit, unavailable_days, notes, intake_completed_at',
+      'id, team_id, name, active, return_side, court_limit, court_note, unavailable_days, notes, intake_completed_at',
     )
     .eq('player_token', token)
     .maybeSingle();
@@ -80,6 +84,7 @@ export async function GET(_req: Request, { params }: { params: { token: string }
     current: {
       return_side: player.return_side,
       court_limit: player.court_limit,
+      court_note: player.court_note,
       unavailable_days: player.unavailable_days || [],
       notes: player.notes,
       partner_ids: ((prefs as { preferred_player_id: string }[]) || []).map(
@@ -99,6 +104,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
   const body = (await req.json().catch(() => ({}))) as {
     return_side?: string;
     court_limit?: string;
+    court_note?: string;
     unavailable_days?: unknown;
     partner_ids?: unknown;
     notes?: string;
@@ -112,16 +118,21 @@ export async function POST(req: Request, { params }: { params: { token: string }
       : null;
 
   const days = Array.isArray(body.unavailable_days)
-    ? (body.unavailable_days as unknown[]).filter(isDayCode)
+    ? (body.unavailable_days as unknown[]).filter(
+        (d): d is string => typeof d === 'string' && DAYS.includes(d),
+      )
     : [];
 
-  // captain_players.court_limit is CHECK-constrained to these three values.
-  // It used to take whatever the player typed, so ANY answer here failed the
-  // constraint and 500'd the whole submission — losing every other answer with
-  // it. Anything unrecognised is dropped to null; nuance belongs in notes.
+  // Only ever write a value the constraint accepts. Free text that used to land
+  // here blew up the insert and showed the player a raw Postgres error.
   const courtLimit =
-    typeof body.court_limit === 'string' && COURT_LIMITS.includes(body.court_limit)
-      ? body.court_limit
+    typeof body.court_limit === 'string' && COURT_LIMITS.includes(body.court_limit.trim())
+      ? body.court_limit.trim()
+      : null;
+
+  const courtNote =
+    typeof body.court_note === 'string' && body.court_note.trim()
+      ? body.court_note.trim().slice(0, 200)
       : null;
 
   const notes =
@@ -150,12 +161,21 @@ export async function POST(req: Request, { params }: { params: { token: string }
     .update({
       return_side: side,
       court_limit: courtLimit,
+      court_note: courtNote,
       unavailable_days: days,
       notes,
       intake_completed_at: new Date().toISOString(),
     })
     .eq('id', player.id);
-  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+  // Never hand a player a database error. They can't act on it and it reads
+  // like the site is broken — which, to them, it is.
+  if (upErr) {
+    console.error('[captain/intake] save failed', { playerId: player.id, error: upErr.message });
+    return NextResponse.json(
+      { error: "Couldn't save your answers. Your captain has been notified — please try again." },
+      { status: 500 },
+    );
+  }
 
   // Replace this player's ranking wholesale — re-submitting is an edit, not an append.
   await admin.from('captain_partner_prefs').delete().eq('player_id', player.id);

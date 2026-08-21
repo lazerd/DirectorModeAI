@@ -19,18 +19,20 @@ export default async function CaptainAvailabilityPage({
 
   if (!playerRow) {
     return (
-      <main
-        style={{
-          fontFamily: 'system-ui, sans-serif',
-          maxWidth: 540,
-          margin: '0 auto',
-          padding: 40,
-          color: '#1f2937',
-        }}
-      >
-        <h1 style={{ fontSize: 22 }}>Link not recognized</h1>
-        <p style={{ color: '#6b7280' }}>Ask your captain to resend your availability link.</p>
-      </main>
+      <div style={{ colorScheme: 'light', background: '#f1f5f9', minHeight: '100vh' }}>
+        <main
+          style={{
+            fontFamily: 'system-ui, sans-serif',
+            maxWidth: 540,
+            margin: '0 auto',
+            padding: 40,
+            color: '#0f172a',
+          }}
+        >
+          <h1 style={{ fontSize: 22 }}>Link not recognized</h1>
+          <p style={{ color: '#475569' }}>Ask your captain to resend your availability link.</p>
+        </main>
+      </div>
     );
   }
   const player = playerRow as { id: string; team_id: string; name: string; active: boolean };

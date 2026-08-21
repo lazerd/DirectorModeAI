@@ -41,6 +41,13 @@ export type QuadEvent = {
   stripe_account_id: string | null;
   round_duration_minutes: number;
   court_names: string[] | null;
+  end_time: string | null;
+  venue: string | null;
+  sponsor_id: string | null;
+  series_slug: string | null;
+  divisions: unknown;
+  total_quads: number | null;
+  entry_flow: 'pay_now' | 'request_then_invite';
 };
 
 export type QuadEntry = {
@@ -57,12 +64,24 @@ export type QuadEntry = {
   ntrp: number | null;
   utr: number | null;
   composite_rating: number | null;
-  position: 'pending_payment' | 'in_flight' | 'waitlist' | 'withdrawn';
+  position:
+    | 'requested'
+    | 'pending_payment'
+    | 'in_flight'
+    | 'waitlist'
+    | 'withdrawn'
+    | 'expired';
   flight_id: string | null;
   flight_seed: number | null;
   payment_status: 'pending' | 'paid' | 'waived' | 'refunded' | 'failed';
   amount_paid_cents: number | null;
   registered_at: string;
+  division: string | null;
+  invited_at: string | null;
+  payment_due_at: string | null;
+  payment_url: string | null;
+  coupon_code: string | null;
+  discount_percent: number | null;
 };
 
 export type QuadFlight = {

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { getCaptainAccess, canAccessTeam } from '@/lib/captain/access';
+import { gateTeam } from '@/lib/captain/access';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
 
 export const dynamic = 'force-dynamic';
@@ -17,9 +17,9 @@ export default async function MatchPage({
   } = await supabase.auth.getUser();
   if (!user) redirect(`/login?redirect=/captain/${params.teamId}/match/${params.matchId}`);
 
-  const access = await getCaptainAccess(user.id);
-  if (!access.active) redirect('/captain/subscribe');
-  if (!(await canAccessTeam(user.id, params.teamId))) notFound();
+  const gate = await gateTeam(user.id, params.teamId);
+  if (gate === 'not_member') notFound();
+  if (gate === 'needs_subscription') redirect('/captain/subscribe');
 
   const db = await createServiceClient();
   const [{ data: teamRow }, { data: matchRow }] = await Promise.all([

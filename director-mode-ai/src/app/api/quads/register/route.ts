@@ -6,9 +6,12 @@
  *   1. Validate the slug + that registration is open
  *   2. Look up UTR by player name (best-effort, soft fail)
  *   3. Insert a quad_entries row in `pending_payment`
- *   4. Either confirm immediately (free tournament) or create a Stripe
- *      Checkout session against the director's Connect account and return
- *      the URL for the client to redirect to.
+ *   4. Branch on the event's entry_flow:
+ *      - 'request_then_invite' — no payment at signup; the entry waits in
+ *        'requested' for the director to send a payment invite.
+ *      - 'pay_now' — confirm immediately (free event) or start checkout.
+ *        Payment rails in priority order: Square-hosted payment link, a
+ *        static external_payment_url, then legacy Stripe Connect.
  *
  * Body:
  *   {
@@ -23,8 +26,21 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { stripe, platformFeeForCents } from '@/lib/stripe';
+import { squareConfigured, createEntryPaymentLink } from '@/lib/square';
 import { computeQuadComposite } from '@/lib/quads';
-import { sendQuadsConfirmEmail, sendQuadsWaitlistEmail } from '@/lib/quadEmails';
+import {
+  sendQuadsConfirmEmail,
+  sendQuadsWaitlistEmail,
+  sendQuadRequestReceivedEmail,
+} from '@/lib/quadEmails';
+import { claimCoupon, releaseCoupon, normalizeCode } from '@/lib/quadCoupons';
+import {
+  parseDivisions,
+  divisionLabel,
+  ageOnDate as ageOnDateDiv,
+  isEligibleForDivision,
+  PLAYERS_PER_QUAD,
+} from '@/lib/quadDivisions';
 
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX = 20;
@@ -118,7 +134,7 @@ export async function POST(request: Request) {
     const { data: ev, error: evErr } = await admin
       .from('events')
       .select(
-        'id, name, slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, event_date, user_id'
+        'id, name, slug, series_slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, external_payment_url, event_date, user_id, divisions, entry_flow, total_quads'
       )
       .eq('slug', slug)
       .maybeSingle();
@@ -171,6 +187,61 @@ export async function POST(request: Request) {
       }
     }
 
+    // Division eligibility (multi-division events only)
+    const divisions = parseDivisions(e.divisions);
+    const requestedDivision = clampText(body.division, 40);
+    let division: string | null = null;
+    if (divisions.length > 0) {
+      const match = divisions.find((d) => d.id === requestedDivision);
+      if (!match) {
+        return NextResponse.json(
+          { error: 'Please choose a division.' },
+          { status: 400 }
+        );
+      }
+      if (!date_of_birth) {
+        return NextResponse.json(
+          { error: "Date of birth is required so we can check the player's division." },
+          { status: 400 }
+        );
+      }
+      const dob = new Date(date_of_birth + 'T00:00:00Z');
+      const eventDay = e.event_date ? new Date(e.event_date + 'T00:00:00Z') : new Date();
+      if (Number.isNaN(dob.getTime())) {
+        return NextResponse.json({ error: 'That date of birth is not valid.' }, { status: 400 });
+      }
+      const age = ageOnDateDiv(dob, eventDay);
+      if (!isEligibleForDivision(age, match)) {
+        return NextResponse.json(
+          {
+            error: `${player_name} turns ${age} by the event date, which doesn't fit ${match.label}. Players may play up an age group but not down.`,
+          },
+          { status: 400 }
+        );
+      }
+      division = match.id;
+    }
+
+    // Comp / discount code. Claimed BEFORE the insert so two people racing a
+    // single-use code can't both get it; released again if the insert fails.
+    const submittedCode = normalizeCode(body.coupon_code);
+    let couponCode: string | null = null;
+    let couponId: string | null = null;
+    let discountPercent: number | null = null;
+    if (submittedCode) {
+      const claim = await claimCoupon(admin, {
+        code: submittedCode,
+        eventId: e.id,
+        seriesSlug: e.series_slug ?? null,
+      });
+      if (!claim.valid) {
+        return NextResponse.json({ error: claim.reason }, { status: 400 });
+      }
+      couponCode = claim.code;
+      couponId = claim.id;
+      discountPercent = claim.discountPercent;
+    }
+
     // UTR auto-lookup (best effort)
     const { utr, utrId } = await lookupUtr(player_name);
     const composite = computeQuadComposite({ utr, ntrp });
@@ -192,20 +263,71 @@ export async function POST(request: Request) {
         utr,
         utr_id: utrId,
         composite_rating: composite || null,
-        position: 'pending_payment',
+        division,
+        coupon_code: couponCode,
+        discount_percent: discountPercent,
+        position: e.entry_flow === 'request_then_invite' ? 'requested' : 'pending_payment',
         payment_status: 'pending',
       })
       .select('id')
       .single();
     if (insErr || !entry) {
+      if (couponId) await releaseCoupon(admin, couponId);
       return NextResponse.json(
         { error: insErr?.message || 'Could not create entry' },
         { status: 500 }
       );
     }
 
-    // Free tournament — skip Stripe entirely
-    const fee = e.entry_fee_cents ?? 0;
+    const origin = new URL(request.url).origin;
+
+    // Request-then-invite: nobody pays at signup. The entry sits in
+    // 'requested' until the director sees which divisions filled and sends
+    // payment invites. See /api/quads/events/[id]/invite.
+    if (e.entry_flow === 'request_then_invite') {
+      const { count: aheadInDivision } = await admin
+        .from('quad_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('event_id', e.id)
+        .eq('division', division)
+        .in('position', ['requested', 'pending_payment', 'in_flight'])
+        .neq('id', (entry as any).id);
+      const positionInLine = (aheadInDivision ?? 0) + 1;
+
+      try {
+        const recipient = parent_email || player_email;
+        if (recipient) {
+          await sendQuadRequestReceivedEmail({
+            to: recipient,
+            playerName: player_name,
+            tournamentName: e.name,
+            divisionLabel: divisionLabel(divisions, division),
+            dateLabel: e.event_date ?? 'date TBD',
+            feeLabel:
+              discountPercent === 100
+                ? 'free (comp code applied)'
+                : `$${((e.entry_fee_cents ?? 0) / 100).toFixed(0)}`,
+            positionInLine,
+            publicUrl: `${origin}/quads/${slug}`,
+          });
+        }
+      } catch (err) {
+        console.error('quad request-received email failed:', err);
+      }
+
+      return NextResponse.json({
+        entry_id: (entry as any).id,
+        requested: true,
+        division,
+        position_in_line: positionInLine,
+        in_first_four: positionInLine <= PLAYERS_PER_QUAD,
+        coupon_code: couponCode,
+        discount_percent: discountPercent,
+      });
+    }
+
+    // A full comp leaves nothing to charge, so it takes the free path.
+    const fee = discountPercent === 100 ? 0 : e.entry_fee_cents ?? 0;
     if (fee <= 0) {
       // Decide flight vs waitlist now.
       let position: 'in_flight' | 'waitlist' = 'in_flight';
@@ -226,7 +348,6 @@ export async function POST(request: Request) {
       try {
         const recipient = player_email || parent_email;
         if (recipient) {
-          const origin = new URL(request.url).origin;
           const args = {
             to: recipient,
             playerName: player_name,
@@ -246,7 +367,64 @@ export async function POST(request: Request) {
       return NextResponse.json({ entry_id: (entry as any).id, free: true, position });
     }
 
-    // Paid: requires director's Stripe account
+    // Helper: seat a paid-but-not-yet-collected entry into a flight (or the
+    // waitlist if the field is already full).
+    const seatEntry = async (): Promise<'in_flight' | 'waitlist'> => {
+      let position: 'in_flight' | 'waitlist' = 'in_flight';
+      if (e.max_players && e.max_players > 0) {
+        const { count } = await admin
+          .from('quad_entries')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', e.id)
+          .in('position', ['in_flight'])
+          .neq('id', (entry as any).id);
+        if ((count ?? 0) >= e.max_players) position = 'waitlist';
+      }
+      await admin
+        .from('quad_entries')
+        .update({ position })
+        .eq('id', (entry as any).id);
+      return position;
+    };
+
+    // Square-hosted checkout — the current payment rail (Stripe is unavailable).
+    // The order's reference_id is this entry's id, so the Square webhook marks
+    // the exact entry paid and seats it, even if the parent closes the tab.
+    if (squareConfigured()) {
+      try {
+        const { url, orderId, paymentLinkId } = await createEntryPaymentLink({
+          entryId: (entry as any).id,
+          amountCents: fee,
+          name: `Entry: ${e.name}`,
+          buyerEmail: player_email || parent_email || null,
+          redirectUrl: `${origin}/quads/${slug}/registered?entry=${(entry as any).id}`,
+        });
+        await admin
+          .from('quad_entries')
+          .update({ square_order_id: orderId, square_payment_link_id: paymentLinkId })
+          .eq('id', (entry as any).id);
+        return NextResponse.json({ url, entry_id: (entry as any).id });
+      } catch (err: any) {
+        return NextResponse.json(
+          { error: `Could not start checkout: ${err?.message || 'Square error'}` },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Static external payment link (Square dashboard / PayPal) — the entry is
+    // seated now and reconciled by hand.
+    if (e.external_payment_url) {
+      const position = await seatEntry();
+      return NextResponse.json({
+        entry_id: (entry as any).id,
+        external_payment: true,
+        external_payment_url: e.external_payment_url,
+        position,
+      });
+    }
+
+    // Legacy Stripe Connect path.
     if (!e.stripe_account_id) {
       return NextResponse.json(
         {
@@ -257,7 +435,6 @@ export async function POST(request: Request) {
       );
     }
 
-    const origin = new URL(request.url).origin;
     const applicationFee = platformFeeForCents(fee);
     const session = await stripe.checkout.sessions.create(
       {

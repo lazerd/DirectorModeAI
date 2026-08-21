@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Trophy, Wand2, Trash2, AlertCircle, Loader2, ArrowRight, ListChecks } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { assignToFlights, generateQuadSingles } from '@/lib/quads';
+import { parseDivisions } from '@/lib/quadDivisions';
 import type { QuadEvent, QuadEntry, QuadFlight, QuadMatch } from '../QuadsAdminDashboard';
 
 export default function QuadsFlightsTab({
@@ -27,15 +28,53 @@ export default function QuadsFlightsTab({
   const supabase = createClient();
   const inFlightEntries = entries.filter((e) => e.position === 'in_flight');
 
+  const divisions = parseDivisions(event.divisions);
+
   const generateFlights = async () => {
     setBusy('generate');
     setError(null);
 
-    // Tier the in_flight entries by composite rating descending
-    const result = assignToFlights(
-      inFlightEntries.map((e) => ({ id: e.id, composite_rating: e.composite_rating })),
-      event.max_players ? { maxFlights: Math.floor(event.max_players / 4) } : undefined
-    );
+    // Flights never mix divisions: a 10U player is only ever grouped with
+    // other 10U players. Within a division we tier by rating as usual.
+    const result = divisions.length > 0
+      ? (() => {
+          const flights: Array<{
+            name: string;
+            tier_label: string;
+            sort_order: number;
+            entryIds: string[];
+          }> = [];
+          const waitlistIds: string[] = [];
+          for (const d of divisions) {
+            const inDivision = inFlightEntries.filter((e) => e.division === d.id);
+            const sub = assignToFlights(
+              inDivision.map((e) => ({ id: e.id, composite_rating: e.composite_rating }))
+            );
+            sub.flights.forEach((f, i) => {
+              flights.push({
+                name:
+                  sub.flights.length === 1
+                    ? d.label
+                    : `${d.label} — ${String.fromCharCode(65 + i)}`,
+                tier_label: sub.flights.length === 1 ? d.label : `${d.label} · tier ${i + 1}`,
+                sort_order: flights.length,
+                entryIds: f.entryIds,
+              });
+            });
+            waitlistIds.push(...sub.waitlistIds);
+          }
+          // Anyone confirmed but sitting in no division at all.
+          waitlistIds.push(
+            ...inFlightEntries
+              .filter((e) => !e.division || !divisions.some((d) => d.id === e.division))
+              .map((e) => e.id)
+          );
+          return { flights, waitlistIds };
+        })()
+      : assignToFlights(
+          inFlightEntries.map((e) => ({ id: e.id, composite_rating: e.composite_rating })),
+          event.max_players ? { maxFlights: Math.floor(event.max_players / 4) } : undefined
+        );
 
     // Wipe existing flights for this event (cascade kills matches + clears flight refs)
     const { error: delErr } = await supabase
@@ -138,7 +177,9 @@ export default function QuadsFlightsTab({
             waitlist.
           </p>
           <p className="text-xs text-gray-500 mt-1">
-            Top 4 by rating → Flight A, next 4 → Flight B, etc. (tier-based, not snake.)
+            {divisions.length > 0
+              ? 'Grouped inside each division first, then tiered by rating — flights never mix divisions.'
+              : 'Top 4 by rating → Flight A, next 4 → Flight B, etc. (tier-based, not snake.)'}
           </p>
         </div>
         <div className="flex gap-2 flex-shrink-0">

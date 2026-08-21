@@ -30,9 +30,10 @@ export default async function CaptainHome() {
   if (!user) redirect('/login?redirect=/captain');
 
   const access = await getCaptainAccess(user.id);
-  if (!access.active) redirect('/captain/subscribe');
-
   const teams = (await listCaptainTeams(user.id)) as unknown as Team[];
+  // Co-captains pay nothing (spec §2) — they ride on the owner's subscription,
+  // so only send someone to the paywall when they have no team at all.
+  if (!access.active && teams.length === 0) redirect('/captain/subscribe');
   const owned = teams.filter((t) => t.captain_user_id === user.id).length;
 
   // Next match per team, so the list is useful at a glance.
@@ -59,10 +60,16 @@ export default async function CaptainHome() {
     <div className="p-6 md:p-10 max-w-4xl">
       <h1 className="text-3xl font-display text-white">My Teams</h1>
       <p className="text-white/50 mt-1">
-        {access.rateType === 'club_linked'
-          ? 'Club plan — $10/month'
-          : 'Standalone — $20/month'}{' '}
-        · {owned} of {MAX_TEAMS_PER_CAPTAIN} teams used
+        {access.active ? (
+          <>
+            {access.rateType === 'club_linked'
+              ? 'Club plan — $10/month'
+              : 'Standalone — $20/month'}{' '}
+            · {owned} of {MAX_TEAMS_PER_CAPTAIN} teams used
+          </>
+        ) : (
+          'Co-captain — free'
+        )}
       </p>
 
       <div className="mt-8 space-y-3">
@@ -111,7 +118,7 @@ export default async function CaptainHome() {
         })}
       </div>
 
-      {owned < MAX_TEAMS_PER_CAPTAIN ? (
+      {!access.active ? null : owned < MAX_TEAMS_PER_CAPTAIN ? (
         <NewTeamForm />
       ) : (
         <p className="mt-8 text-white/40 text-sm">

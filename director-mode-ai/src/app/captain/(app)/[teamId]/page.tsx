@@ -1,7 +1,8 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import { CalendarClock } from 'lucide-react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { getCaptainAccess, canAccessTeam } from '@/lib/captain/access';
+import { gateTeam } from '@/lib/captain/access';
 import { playedCounts, pairRecords, rulesFor } from '@/lib/captain/server';
 import { eligibilityReport, type RatingType } from '@/lib/captain/lineup';
 import RosterPanel from '@/components/captain/RosterPanel';
@@ -12,6 +13,7 @@ import PreseasonPanel from '@/components/captain/PreseasonPanel';
 import TeamSettingsPanel from '@/components/captain/TeamSettingsPanel';
 import StrengthOrderPanel from '@/components/captain/StrengthOrderPanel';
 import NeverPairPanel from '@/components/captain/NeverPairPanel';
+import SeasonAvailabilityPanel from '@/components/captain/SeasonAvailabilityPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,9 +24,9 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
   } = await supabase.auth.getUser();
   if (!user) redirect(`/login?redirect=/captain/${params.teamId}`);
 
-  const access = await getCaptainAccess(user.id);
-  if (!access.active) redirect('/captain/subscribe');
-  if (!(await canAccessTeam(user.id, params.teamId))) notFound();
+  const gate = await gateTeam(user.id, params.teamId);
+  if (gate === 'not_member') notFound();
+  if (gate === 'needs_subscription') redirect('/captain/subscribe');
 
   const db = await createServiceClient();
   const { data: teamRow } = await db
@@ -50,8 +52,8 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
     await Promise.all([
       db
         .from('captain_players')
-        // select('*') so a newly added column (sort_order) can't 400 the whole
-        // team hub if the migration hasn't been run yet.
+        // select('*') so a newly added column (sort_order, court_note) can't 400
+        // the whole team hub if the migration hasn't been run yet.
         .select('*')
         .eq('team_id', team.id)
         .eq('active', true)
@@ -87,17 +89,23 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
   });
 
   const availByMatch: Record<string, number> = {};
+  // How many of the UPCOMING dates each player has answered either way — the
+  // season panel chases gaps, which is a different question from "who said yes".
+  const answeredByPlayer: Record<string, number> = {};
+  const upcomingIds = new Set(upcoming.map((m) => m.id as string));
   if (allMatches.length) {
     const { data: avail } = await db
       .from('captain_availability')
-      .select('match_id, status')
+      .select('match_id, status, player_id')
       .in(
         'match_id',
         allMatches.map((m) => m.id as string),
-      )
-      .eq('status', 'yes');
-    for (const a of (avail as { match_id: string }[]) || []) {
-      availByMatch[a.match_id] = (availByMatch[a.match_id] ?? 0) + 1;
+      );
+    for (const a of (avail as { match_id: string; status: string; player_id: string }[]) || []) {
+      if (a.status === 'yes') availByMatch[a.match_id] = (availByMatch[a.match_id] ?? 0) + 1;
+      if (upcomingIds.has(a.match_id)) {
+        answeredByPlayer[a.player_id] = (answeredByPlayer[a.player_id] ?? 0) + 1;
+      }
     }
   }
 
@@ -114,6 +122,14 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         {roster.filter((p) => !p.is_sub).length} on roster ·{' '}
         {roster.filter((p) => p.is_sub).length} subs
       </p>
+
+      <Link
+        href={`/captain/${team.id}/timeline`}
+        className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-2.5 text-sm text-white/80 hover:border-[#D3FB52]/40 hover:text-white transition-colors"
+      >
+        <CalendarClock size={16} className="text-[#D3FB52]" />
+        Season email timeline
+      </Link>
 
       {atRisk.length > 0 && (
         <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4">
@@ -172,6 +188,19 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         </div>
         <AddMatchForm teamId={team.id} />
       </section>
+
+      <SeasonAvailabilityPanel
+        teamId={team.id}
+        totalMatches={upcoming.length}
+        players={roster
+          .filter((p) => !p.is_sub)
+          .map((p) => ({
+            id: p.id as string,
+            name: p.name as string,
+            email: (p.email as string) || null,
+            answered: answeredByPlayer[p.id as string] ?? 0,
+          }))}
+      />
 
       <PartnershipsPanel
         partnerships={partnerships.map((r) => ({

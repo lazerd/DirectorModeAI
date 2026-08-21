@@ -43,18 +43,26 @@ export async function GET() {
     .order('created_at');
 
   const ids = (members || []).map((m) => m.user_id);
+  // profiles carries the name; there is NO email column on it — emails live in
+  // auth, so fetch them per member (small N) rather than joining a column that
+  // doesn't exist (which used to fail the whole select and blank every name).
   const { data: profs } = ids.length
-    ? await admin.from('profiles').select('id, email, full_name').in('id', ids)
+    ? await admin.from('profiles').select('id, full_name').in('id', ids)
     : { data: [] as any[] };
   const pmap = Object.fromEntries((profs || []).map((p: any) => [p.id, p]));
+
+  const emailPairs = await Promise.all(
+    ids.map(async (id) => [id, (await admin.auth.admin.getUserById(id)).data?.user?.email || null] as const),
+  );
+  const emap = Object.fromEntries(emailPairs);
 
   const roster = (members || []).map((m) => ({
     userId: m.user_id,
     role: m.role,
     isStaff: STAFF_ROLES.includes(m.role as ClubRole),
     isOwner: m.role === 'owner',
-    name: pmap[m.user_id]?.full_name || pmap[m.user_id]?.email || 'Member',
-    email: pmap[m.user_id]?.email || null,
+    name: pmap[m.user_id]?.full_name || emap[m.user_id] || 'Member',
+    email: emap[m.user_id] || null,
   }));
 
   return NextResponse.json({

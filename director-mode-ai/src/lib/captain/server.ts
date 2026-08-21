@@ -5,7 +5,7 @@
  */
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { getCaptainAccess, canAccessTeam } from './access';
+import { getCaptainAccess, gateTeam } from './access';
 import {
   pairRecordsFrom,
   type CaptainingStyle,
@@ -54,8 +54,10 @@ export async function requireTeam(teamId: string): Promise<CaptainCtx | RouteErr
     return { error: NextResponse.json({ error: 'Not signed in.' }, { status: 401 }) };
   }
 
-  const access = await getCaptainAccess(user.id);
-  if (!access.active) {
+  // Co-captains ride on the team owner's subscription, so this is one
+  // team-scoped check rather than "does the viewer pay" + "is the viewer on it".
+  const gate = await gateTeam(user.id, teamId);
+  if (gate === 'needs_subscription') {
     return {
       error: NextResponse.json(
         { error: 'CaptainMode subscription required.', upgrade_url: '/captain/subscribe' },
@@ -63,8 +65,7 @@ export async function requireTeam(teamId: string): Promise<CaptainCtx | RouteErr
       ),
     };
   }
-
-  if (!(await canAccessTeam(user.id, teamId))) {
+  if (gate !== 'ok') {
     return { error: NextResponse.json({ error: 'Team not found.' }, { status: 404 }) };
   }
 

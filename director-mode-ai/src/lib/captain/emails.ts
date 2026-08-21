@@ -25,6 +25,14 @@ export type MatchInfo = {
 
 export type Recipient = { playerId: string; name: string; email: string; token: string };
 
+/**
+ * Club time. NEVER fall back to `undefined` here: that means "the runtime's own
+ * timezone", which on Vercel is UTC — a 9:30am match then goes out to the whole
+ * roster as "4:30 PM". Every formatter in this file defaults to club time so a
+ * caller cannot silently ship the wrong hour by forgetting an argument.
+ */
+export const CLUB_TZ = 'America/Los_Angeles';
+
 export function formatMatchWhen(matchAt: string, timeZone?: string): string {
   const d = new Date(matchAt);
   return new Intl.DateTimeFormat('en-US', {
@@ -33,7 +41,7 @@ export function formatMatchWhen(matchAt: string, timeZone?: string): string {
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: timeZone || undefined,
+    timeZone: timeZone || CLUB_TZ,
   }).format(d);
 }
 
@@ -48,6 +56,61 @@ function shell(title: string, body: string, footer?: string): string {
 
 function button(href: string, label: string, bg: string, color = '#0f172a'): string {
   return `<a href="${href}" style="display:inline-block;padding:14px 22px;margin:4px 6px 4px 0;background:${bg};color:${color};text-decoration:none;border-radius:10px;font-weight:600;font-size:16px">${label}</a>`;
+}
+
+/**
+ * Captain-authored overrides for one email kind.
+ *
+ * Deliberately narrow: a captain may retitle an email and add a note at the
+ * top, but never hand-edit the body. The tokenized Yes/No/Maybe buttons, the
+ * confirm link and the unsubscribe footer are the parts that actually make
+ * these emails work, and a free-form HTML editor is the fastest way to lose
+ * them. Everything below the note stays generated.
+ */
+export type EmailCustom = { subject?: string | null; intro?: string | null };
+
+export type EmailVars = {
+  team: string;
+  name: string;
+  when: string;
+  opponent: string;
+  home_away: string;
+};
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** {team}, {name}, {when}, {opponent}, {home_away} — anything else is left alone. */
+export function renderTemplate(tpl: string, vars: EmailVars): string {
+  return tpl.replace(/\{(team|name|when|opponent|home_away)\}/g, (_, k) => vars[k as keyof EmailVars] ?? '');
+}
+
+function subjectOf(c: EmailCustom | undefined, fallback: string, vars: EmailVars): string {
+  const t = (c?.subject || '').trim();
+  return t ? renderTemplate(t, vars) : fallback;
+}
+
+/** Captain's note, rendered above the generated body. */
+function introBlock(c: EmailCustom | undefined, vars: EmailVars): string {
+  const raw = (c?.intro || '').trim();
+  if (!raw) return '';
+  const html = escapeHtml(renderTemplate(raw, vars)).replace(/\n/g, '<br>');
+  return `<p style="font-size:16px;line-height:1.5;margin:0 0 16px;padding:12px 14px;background:#f8fafc;border-left:3px solid ${BRAND};border-radius:4px">${html}</p>`;
+}
+
+function varsFor(team: string, name: string, m: MatchInfo, tz?: string): EmailVars {
+  return {
+    team,
+    name,
+    when: formatMatchWhen(m.matchAt, tz),
+    opponent: m.opponent || 'TBD',
+    home_away: m.isHome ? 'home' : 'away',
+  };
 }
 
 function matchLines(m: MatchInfo, tz?: string): string {
@@ -74,14 +137,16 @@ export function availabilityEmail(
   m: MatchInfo,
   r: Recipient,
   tz?: string,
+  c?: EmailCustom,
 ): { to: string; subject: string; html: string } {
   const link = `${BASE}/captain/availability/${r.token}`;
+  const vars = varsFor(team, r.name, m, tz);
   return {
     to: r.email,
-    subject: `${team}: can you play ${formatMatchWhen(m.matchAt, tz)}?`,
+    subject: subjectOf(c, `${team}: can you play ${formatMatchWhen(m.matchAt, tz)}?`, vars),
     html: shell(
       `Hi ${r.name} — can you play?`,
-      `${matchLines(m, tz)}
+      `${introBlock(c, vars)}${matchLines(m, tz)}
        <div style="margin:20px 0">
          ${button(`${link}?m=${m.id}&r=yes`, '✓ Yes', BRAND)}
          ${button(`${link}?m=${m.id}&r=no`, '✗ No', '#e2e8f0')}
@@ -99,14 +164,16 @@ export function nudgeEmail(
   m: MatchInfo,
   r: Recipient,
   tz?: string,
+  c?: EmailCustom,
 ): { to: string; subject: string; html: string } {
   const link = `${BASE}/captain/availability/${r.token}`;
+  const vars = varsFor(team, r.name, m, tz);
   return {
     to: r.email,
-    subject: `Still need your answer — ${team} ${formatMatchWhen(m.matchAt, tz)}`,
+    subject: subjectOf(c, `Still need your answer — ${team} ${formatMatchWhen(m.matchAt, tz)}`, vars),
     html: shell(
       `${r.name}, your captain still needs an answer`,
-      `${matchLines(m, tz)}
+      `${introBlock(c, vars)}${matchLines(m, tz)}
        <div style="margin:20px 0">
          ${button(`${link}?m=${m.id}&r=yes`, '✓ Yes', BRAND)}
          ${button(`${link}?m=${m.id}&r=no`, '✗ No', '#e2e8f0')}
@@ -166,6 +233,7 @@ export function lineupEmail(
   r: Recipient,
   isPlaying: boolean,
   tz?: string,
+  c?: EmailCustom,
 ): { to: string; subject: string; html: string } {
   const table = rows
     .map(
@@ -186,12 +254,13 @@ export function lineupEmail(
        <p style="font-size:14px;color:#475569">You're in this lineup — please confirm so your captain knows.</p>`
     : `<p style="font-size:14px;color:#475569">You're not in this lineup, but here it is so you're in the loop.</p>`;
 
+  const vars = varsFor(team, r.name, m, tz);
   return {
     to: r.email,
-    subject: `${team} lineup — ${formatMatchWhen(m.matchAt, tz)}`,
+    subject: subjectOf(c, `${team} lineup — ${formatMatchWhen(m.matchAt, tz)}`, vars),
     html: shell(
       'Here’s the lineup',
-      `${matchLines(m, tz)}
+      `${introBlock(c, vars)}${matchLines(m, tz)}
        <table style="width:100%;border-collapse:collapse;margin:12px 0">${table}</table>
        ${confirm}`,
     ),
@@ -205,13 +274,15 @@ export function matchReminderEmail(
   r: Recipient,
   yourCourt: string | null,
   tz?: string,
+  c?: EmailCustom,
 ): { to: string; subject: string; html: string } {
+  const vars = varsFor(team, r.name, m, tz);
   return {
     to: r.email,
-    subject: `Tomorrow: ${team} ${formatMatchWhen(m.matchAt, tz)}`,
+    subject: subjectOf(c, `Tomorrow: ${team} ${formatMatchWhen(m.matchAt, tz)}`, vars),
     html: shell(
       `See you tomorrow, ${r.name}`,
-      `${matchLines(m, tz)}
+      `${introBlock(c, vars)}${matchLines(m, tz)}
        ${yourCourt ? `<p style="font-size:16px;margin:8px 0"><strong>You're on ${yourCourt}</strong></p>` : ''}`,
     ),
   };
@@ -237,6 +308,82 @@ export function subRequestEmail(
       `${matchLines(m, tz)}
        <div style="margin:20px 0">${button(link, '✓ I can play — claim this spot', BRAND)}</div>
        <p style="font-size:14px;color:#475569">First to claim gets the spot, so tap quickly if you can make it.</p>`,
+    ),
+  };
+}
+
+/**
+ * Season-wide availability request — one email covering the whole schedule.
+ * Cheaper than nine per-match polls and it lets a player block out the season in
+ * a single sitting, which is what actually gets a roster to 100%.
+ */
+export function seasonAvailabilityEmail(
+  team: string,
+  matches: MatchInfo[],
+  r: Recipient,
+  opts?: { tz?: string; reminder?: boolean; answered?: number },
+): { to: string; subject: string; html: string } {
+  const tz = opts?.tz;
+  const link = `${BASE}/captain/availability/${r.token}`;
+  const left = opts?.answered != null ? matches.length - opts.answered : matches.length;
+
+  const rows = matches
+    .map((m) => {
+      const d = new Date(m.matchAt);
+      const day = new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        month: 'short',
+        day: 'numeric',
+        timeZone: tz || CLUB_TZ,
+      }).format(d);
+      const time = new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        timeZone: tz || CLUB_TZ,
+      }).format(d);
+      const where = [m.isHome ? 'Home' : 'Away', m.location || m.opponent || null]
+        .filter(Boolean)
+        .join(' · ');
+      return `
+        <tr>
+          <td style="padding:10px 10px 10px 0;border-bottom:1px solid #e2e8f0;font-size:15px;font-weight:700;color:${INK};white-space:nowrap">${day}</td>
+          <td style="padding:10px;border-bottom:1px solid #e2e8f0;font-size:15px;font-weight:700;color:${INK};white-space:nowrap">${time}</td>
+          <td style="padding:10px 0 10px 10px;border-bottom:1px solid #e2e8f0;font-size:14px;color:#475569">
+            ${m.opponent ? `vs ${m.opponent}<br>` : ''}<span style="color:#64748b">${where}</span>
+          </td>
+        </tr>`;
+    })
+    .join('');
+
+  const title = opts?.reminder
+    ? `${r.name}, we still need ${left} date${left === 1 ? '' : 's'} from you`
+    : `Hi ${r.name} — your ${team} availability`;
+
+  return {
+    to: r.email,
+    subject: opts?.reminder
+      ? `Reminder: ${team} availability (${left} date${left === 1 ? '' : 's'} left)`
+      : `${team}: mark your availability for all ${matches.length} matches`,
+    html: shell(
+      title,
+      `<p style="font-size:16px;line-height:1.5;margin:0 0 18px">
+         The schedule is final. Open your personal page and tap <strong>Yes</strong>,
+         <strong>No</strong>, or <strong>Maybe</strong> for each of the ${matches.length} match dates
+         below. It takes about a minute, and you can change an answer any time.
+       </p>
+       <div style="margin:0 0 24px">${button(link, `Enter my availability →`, BRAND)}</div>
+       <table style="border-collapse:collapse;width:100%;margin:0 0 8px">
+         <tr>
+           <th align="left" style="padding:0 10px 6px 0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748b">Date</th>
+           <th align="left" style="padding:0 10px 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748b">Time</th>
+           <th align="left" style="padding:0 0 6px 10px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#64748b">Match</th>
+         </tr>
+         ${rows}
+       </table>
+       <p style="font-size:14px;color:#475569;margin:18px 0 0">
+         No login, no app — the link above is yours for the whole season. Bookmark it.
+       </p>`,
+      'Sent by your captain through ClubMode.',
     ),
   };
 }

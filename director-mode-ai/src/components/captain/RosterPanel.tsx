@@ -11,6 +11,7 @@ type Player = {
   gender: 'M' | 'F' | null;
   return_side: 'deuce' | 'ad' | null;
   court_limit: string | null;
+  court_note: string | null;
   rating_type: 'computer' | 'self' | 'appeal';
   is_sub: boolean;
   notes: string | null;
@@ -314,6 +315,11 @@ export default function RosterPanel({
                               <option value="doubles_only">Doubles only</option>
                               <option value="no_court_1">Never court 1</option>
                             </select>
+                            {p.court_note && (
+                              <p className="text-xs text-white/50 mt-1 italic">
+                                Player said: “{p.court_note}”
+                              </p>
+                            )}
                           </div>
                           <div>
                             <label className="block text-xs text-white/50 mb-1">Role</label>
