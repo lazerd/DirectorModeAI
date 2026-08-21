@@ -51,7 +51,7 @@ export default async function MatchPage({
     db
       .from('captain_lineups')
       .select(
-        'id, court_number, court_type, player1_id, player2_id, player1_confirmed_at, player2_confirmed_at',
+        'id, court_number, court_type, player1_id, player2_id, player1_confirmed_at, player2_confirmed_at, player1_declined_at, player2_declined_at, player1_decline_note, player2_decline_note',
       )
       .eq('match_id', params.matchId)
       .order('court_number'),
@@ -73,6 +73,18 @@ export default async function MatchPage({
     hasEmail: !!p.email,
     availability: statusOf(p.id as string) as MatchPlayer['availability'],
   }));
+
+  // Withdrawals are per-slot in the DB but per-player everywhere the captain
+  // looks, because a bail follows the person through any swap.
+  const withdrawals = ((lineups as Record<string, unknown>[]) || []).flatMap((l) =>
+    ([1, 2] as const)
+      .filter((slot) => !!l[`player${slot}_declined_at`] && !!l[`player${slot}_id`])
+      .map((slot) => ({
+        playerId: l[`player${slot}_id`] as string,
+        at: l[`player${slot}_declined_at`] as string,
+        note: (l[`player${slot}_decline_note`] as string) || null,
+      })),
+  );
 
   return (
     <div className="p-6 md:p-10 max-w-5xl">
@@ -118,6 +130,7 @@ export default async function MatchPage({
           score: (r.score as string) ?? null,
           won: (r.won as boolean) ?? null,
         }))}
+        withdrawals={withdrawals}
       />
     </div>
   );

@@ -6,6 +6,8 @@
  * handling stay consistent with the rest of the app.
  */
 import { sendBilledEmails, type SafeSendResult } from '@/lib/email';
+import { CLUB_TZ } from './clubTime';
+import { googleCalendarUrl, matchEvent } from './calendar';
 
 const BASE = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
 
@@ -26,12 +28,12 @@ export type MatchInfo = {
 export type Recipient = { playerId: string; name: string; email: string; token: string };
 
 /**
- * Club time. NEVER fall back to `undefined` here: that means "the runtime's own
- * timezone", which on Vercel is UTC — a 9:30am match then goes out to the whole
- * roster as "4:30 PM". Every formatter in this file defaults to club time so a
- * caller cannot silently ship the wrong hour by forgetting an argument.
+ * Every formatter in this file defaults to club time so a caller cannot
+ * silently ship the wrong hour by forgetting an argument. Re-exported because
+ * it used to be declared here; the constant now lives in ./clubTime so the
+ * calendar builder can read it without importing this module back.
  */
-export const CLUB_TZ = 'America/Los_Angeles';
+export { CLUB_TZ };
 
 export function formatMatchWhen(matchAt: string, timeZone?: string): string {
   const d = new Date(matchAt);
@@ -247,11 +249,22 @@ export function lineupEmail(
     )
     .join('');
 
+  const yourCourt =
+    rows.find((row) => row.names.includes(r.name)) ?? null;
+  const courtLabel = yourCourt
+    ? `${yourCourt.courtType === 'singles' ? 'Singles' : 'Doubles'} ${yourCourt.courtNumber}`
+    : null;
+
   const confirm = isPlaying
-    ? `<div style="margin:20px 0">
-         ${button(`${BASE}/captain/confirm/${r.token}/${m.id}`, "✓ I'll be there", BRAND)}
+    ? `<div style="margin:20px 0 8px">
+         ${button(`${BASE}/captain/confirm/${r.token}/${m.id}?a=in`, "✓ Yes — I'll be there", BRAND)}
+         ${button(`${BASE}/captain/confirm/${r.token}/${m.id}?a=out`, '✗ Sorry — I can’t play', '#fee2e2', '#991b1b')}
        </div>
-       <p style="font-size:14px;color:#475569">You're in this lineup — please confirm so your captain knows.</p>`
+       <p style="font-size:14px;color:#475569;margin:0 0 4px">
+         You're in this lineup — please tap one so your captain knows. If you have to pull out,
+         say so now and your captain can find a sub while there's still time.
+       </p>
+       ${calendarBlock(team, m, courtLabel, r.token)}`
     : `<p style="font-size:14px;color:#475569">You're not in this lineup, but here it is so you're in the loop.</p>`;
 
   const vars = varsFor(team, r.name, m, tz);
@@ -265,6 +278,34 @@ export function lineupEmail(
        ${confirm}`,
     ),
   };
+}
+
+/**
+ * Add-to-calendar pair. Two links because no email client will tell us which
+ * ecosystem the reader is in: Google takes a TEMPLATE url, Apple and Outlook
+ * take a served .ics. Both carry the court, the location and the arrival note,
+ * so the event on the player's phone is the whole briefing.
+ */
+function calendarBlock(
+  team: string,
+  m: MatchInfo,
+  court: string | null,
+  token: string,
+): string {
+  const gcal = googleCalendarUrl(matchEvent(team, m, court));
+  const ics = `${BASE}/api/captain/calendar/${token}/${m.id}`;
+  return `
+    <div style="margin:18px 0 4px;padding-top:16px;border-top:1px solid #e2e8f0">
+      <p style="font-size:13px;color:#64748b;margin:0 0 8px;text-transform:uppercase;letter-spacing:.06em">
+        Put it on your calendar
+      </p>
+      ${button(gcal, '📅 Google Calendar', '#e2e8f0')}
+      ${button(ics, '📅 Apple / Outlook', '#e2e8f0')}
+      <p style="font-size:12px;color:#94a3b8;margin:6px 0 0">
+        Includes your court, the address and the arrival time, with reminders the night
+        before and an hour out.
+      </p>
+    </div>`;
 }
 
 /** Day-before reminder for players who are actually playing. */
@@ -283,7 +324,55 @@ export function matchReminderEmail(
     html: shell(
       `See you tomorrow, ${r.name}`,
       `${introBlock(c, vars)}${matchLines(m, tz)}
-       ${yourCourt ? `<p style="font-size:16px;margin:8px 0"><strong>You're on ${yourCourt}</strong></p>` : ''}`,
+       ${yourCourt ? `<p style="font-size:16px;margin:8px 0"><strong>You're on ${yourCourt}</strong></p>` : ''}
+       ${calendarBlock(team, m, yourCourt, r.token)}
+       <p style="font-size:13px;color:#64748b;margin:14px 0 0">
+         Something come up? <a href="${BASE}/captain/confirm/${r.token}/${m.id}?a=out" style="color:#b91c1c">Let your captain know you can't make it</a>.
+       </p>`,
+    ),
+  };
+}
+
+/**
+ * Straight to the captain the moment a player pulls out of a committed lineup.
+ * This is the whole point of the decline button — a withdrawal that sits unread
+ * in a group text until match morning is worse than no button at all.
+ */
+export function withdrawalAlertEmail(
+  to: string,
+  team: string,
+  m: MatchInfo,
+  playerName: string,
+  court: string | null,
+  note: string | null,
+  teamId: string,
+  tz?: string,
+): { to: string; subject: string; html: string } {
+  return {
+    to,
+    subject: `${playerName} pulled out — ${team} ${formatMatchWhen(m.matchAt, tz)}`,
+    html: shell(
+      `${playerName} can’t play`,
+      `${matchLines(m, tz)}
+       <p style="font-size:16px;margin:0 0 8px">
+         <strong>${escapeHtml(playerName)}</strong> was in the lineup${court ? ` on <strong>${court}</strong>` : ''}
+         and has just withdrawn.
+       </p>
+       ${
+         note
+           ? `<p style="font-size:15px;margin:0 0 16px;padding:12px 14px;background:#f8fafc;border-left:3px solid #fca5a5;border-radius:4px">
+                “${escapeHtml(note)}”
+              </p>`
+           : ''
+       }
+       <p style="font-size:14px;color:#475569;margin:0 0 16px">
+         Their availability for this match is now <strong>No</strong>, so the lineup builder won't
+         put them back. Open the match to slot someone else in or blast the subs.
+       </p>
+       <div style="margin:8px 0">
+         ${button(`${BASE}/captain/${teamId}/match/${m.id}`, 'Open the match →', BRAND)}
+       </div>`,
+      'Sent automatically by CaptainMode.',
     ),
   };
 }

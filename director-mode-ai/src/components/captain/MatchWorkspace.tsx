@@ -55,6 +55,7 @@ export default function MatchWorkspace({
   matchAt,
   status,
   initialResults,
+  withdrawals,
 }: {
   teamId: string;
   matchId: string;
@@ -66,8 +67,15 @@ export default function MatchWorkspace({
   matchAt: string;
   status: string;
   initialResults: { courtNumber: number; score: string | null; won: boolean | null }[];
+  /**
+   * Who tapped "I can't play" on the lineup email. Keyed by PLAYER, not by
+   * slot, so a withdrawal survives every swap and line flip below — a bail
+   * belongs to the person, not the seat they happened to be in.
+   */
+  withdrawals: { playerId: string; at: string; note: string | null }[];
 }) {
   const router = useRouter();
+  const withdrawn = new Map(withdrawals.map((w) => [w.playerId, w]));
   const [courts, setCourts] = useState<Court[]>(initialLineup);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [explanation, setExplanation] = useState<Explanation | null>(null);
@@ -104,6 +112,14 @@ export default function MatchWorkspace({
   const needed = singlesCourts + doublesCourts * 2;
 
   const nameOf = (id: string | null) => (id ? players.find((p) => p.id === id)?.name ?? '—' : '—');
+
+  /**
+   * Only bails that still matter: someone who withdrew and has since been
+   * swapped out of every court is handled, so nagging about them is noise.
+   */
+  const bailedInLineup = withdrawals
+    .filter((w) => courts.some((c) => c.player1Id === w.playerId || c.player2Id === w.playerId))
+    .map((w) => ({ ...w, name: nameOf(w.playerId) }));
 
   async function call(
     action: string,
@@ -700,6 +716,29 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           </div>
         )}
 
+        {/* Loud, because a bail after the lineup went out is the thing a captain
+            most needs to act on and it arrives while they aren't looking. */}
+        {bailedInLineup.length > 0 && (
+          <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/[0.09] p-4 text-sm text-red-100">
+            <strong>
+              {bailedInLineup.length === 1
+                ? `${bailedInLineup[0].name} pulled out of this lineup.`
+                : `${bailedInLineup.length} players pulled out of this lineup.`}
+            </strong>
+            <ul className="mt-1.5 space-y-1 text-red-100/80">
+              {bailedInLineup.map((b) => (
+                <li key={b.playerId}>
+                  {b.name} — {fmtWhen(b.at)}
+                  {b.note ? ` · “${b.note}”` : ''}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-red-100/60">
+              Swap someone in below, or use “find a sub” on their court to blast the sub list.
+            </p>
+          </div>
+        )}
+
         {warnings.length > 0 && (
           <ul className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-4 space-y-1 text-sm text-amber-100/85">
             {warnings.map((w, i) => (
@@ -767,6 +806,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                   .map((slot) => {
                     const pid = slot === 1 ? c.player1Id : c.player2Id;
                     const confirmed = slot === 1 ? c.player1Confirmed : c.player2Confirmed;
+                    const bailed = pid ? withdrawn.get(pid) : undefined;
                     const picked =
                       swapPick?.courtNumber === c.courtNumber && swapPick.slot === slot;
                     const pickedCourt = courts.find((x) => x.courtNumber === swapPick?.courtNumber);
@@ -815,21 +855,37 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                               </option>
                             ))}
                           </select>
-                          {confirmed && (
-                            <span className="text-[#D3FB52] text-xs shrink-0" title="Confirmed">
-                              confirmed
+                          {bailed ? (
+                            <span
+                              className="text-red-400 text-xs shrink-0 font-semibold"
+                              title={`Pulled out ${fmtWhen(bailed.at)}`}
+                            >
+                              pulled out
                             </span>
+                          ) : (
+                            confirmed && (
+                              <span className="text-[#D3FB52] text-xs shrink-0" title="Confirmed">
+                                confirmed
+                              </span>
+                            )
                           )}
                         </div>
+                        {bailed?.note && (
+                          <p className="text-red-300/70 text-xs mt-1 pl-10 italic">
+                            “{bailed.note}”
+                          </p>
+                        )}
                         {c.id && pid && (
                           <button
                             onClick={() => findSub(c, slot)}
                             disabled={!!busy}
-                            className="text-white/35 hover:text-white text-xs mt-1.5"
+                            className={`text-xs mt-1.5 ${bailed ? 'text-red-300 hover:text-red-200 font-semibold' : 'text-white/35 hover:text-white'}`}
                           >
                             {busy === `sub-${c.courtNumber}-${slot}`
                               ? 'Asking subs…'
-                              : `${nameOf(pid)} bailed — find a sub`}
+                              : bailed
+                                ? `Find a sub for ${nameOf(pid)} →`
+                                : `${nameOf(pid)} bailed — find a sub`}
                           </button>
                         )}
                       </div>
