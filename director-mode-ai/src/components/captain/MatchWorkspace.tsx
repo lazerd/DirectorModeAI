@@ -19,8 +19,8 @@ type Court = {
   courtType: 'singles' | 'doubles';
   player1Id: string | null;
   player2Id: string | null;
-  player1Confirmed?: boolean;
-  player2Confirmed?: boolean;
+  player1ConfirmedAt?: string | null;
+  player2ConfirmedAt?: string | null;
   notes?: string[];
 };
 
@@ -120,6 +120,33 @@ export default function MatchWorkspace({
   const bailedInLineup = withdrawals
     .filter((w) => courts.some((c) => c.player1Id === w.playerId || c.player2Id === w.playerId))
     .map((w) => ({ ...w, name: nameOf(w.playerId) }));
+
+  /**
+   * Everyone named on a court, with what they told us. Confirmations live on
+   * the slot but read as a roll-call, so flatten them here rather than making a
+   * captain scan eight dropdowns for a badge.
+   */
+  const namedInLineup = courts.flatMap((c) =>
+    ([1, 2] as const)
+      .filter((slot) => slot === 1 || c.courtType === 'doubles')
+      .map((slot) => {
+        const pid = slot === 1 ? c.player1Id : c.player2Id;
+        if (!pid) return null;
+        const bail = withdrawn.get(pid);
+        const ok = slot === 1 ? c.player1ConfirmedAt : c.player2ConfirmedAt;
+        return {
+          playerId: pid,
+          name: nameOf(pid),
+          court: `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`,
+          state: bail ? ('out' as const) : ok ? ('in' as const) : ('waiting' as const),
+          at: bail ? bail.at : ok,
+        };
+      })
+      .filter(Boolean as unknown as (v: unknown) => boolean),
+  ) as { playerId: string; name: string; court: string; state: 'in' | 'out' | 'waiting'; at: string | null }[];
+
+  const confirmedNames = namedInLineup.filter((p) => p.state === 'in');
+  const waitingNames = namedInLineup.filter((p) => p.state === 'waiting').map((p) => p.name);
 
   async function call(
     action: string,
@@ -414,8 +441,8 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         ...seat,
         player1Id: from.player1Id,
         player2Id: from.player2Id,
-        player1Confirmed: from.player1Confirmed,
-        player2Confirmed: from.player2Confirmed,
+        player1ConfirmedAt: from.player1ConfirmedAt,
+        player2ConfirmedAt: from.player2ConfirmedAt,
         notes: from.notes,
       });
       return cs.map((c) =>
@@ -442,12 +469,12 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     setCourts((cs) => {
       const read = (c: Court, s: 1 | 2) =>
         s === 1
-          ? { id: c.player1Id, ok: c.player1Confirmed }
-          : { id: c.player2Id, ok: c.player2Confirmed };
-      const write = (c: Court, s: 1 | 2, v: { id: string | null; ok?: boolean }): Court =>
+          ? { id: c.player1Id, ok: c.player1ConfirmedAt }
+          : { id: c.player2Id, ok: c.player2ConfirmedAt };
+      const write = (c: Court, s: 1 | 2, v: { id: string | null; ok?: string | null }): Court =>
         s === 1
-          ? { ...c, player1Id: v.id, player1Confirmed: v.ok }
-          : { ...c, player2Id: v.id, player2Confirmed: v.ok };
+          ? { ...c, player1Id: v.id, player1ConfirmedAt: v.ok }
+          : { ...c, player2Id: v.id, player2ConfirmedAt: v.ok };
       const a = cs.find((c) => c.courtNumber === from.courtNumber);
       const b = cs.find((c) => c.courtNumber === courtNumber);
       if (!a || !b) return cs;
@@ -716,6 +743,53 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           </div>
         )}
 
+        {/* Who has actually answered the lineup email.
+            This used to be one grey word next to each dropdown, which a captain
+            reported as "I know Stef clicked yes but I can't see it anywhere". */}
+        {lineupSent && namedInLineup.length > 0 && (
+          <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
+            <div className="flex items-baseline justify-between gap-3 flex-wrap">
+              <h3 className="text-white font-medium text-sm">Who has answered the lineup email</h3>
+              <span className="text-white/45 text-xs">
+                {confirmedNames.length} of {namedInLineup.length} confirmed
+              </span>
+            </div>
+            <div className="mt-3 grid gap-1.5">
+              {namedInLineup.map((p) => (
+                <div key={p.playerId} className="flex items-center gap-2 text-sm">
+                  <span
+                    className={
+                      p.state === 'in'
+                        ? 'text-[#D3FB52]'
+                        : p.state === 'out'
+                          ? 'text-red-400'
+                          : 'text-white/25'
+                    }
+                  >
+                    {p.state === 'in' ? '✓' : p.state === 'out' ? '✗' : '·'}
+                  </span>
+                  <span className={p.state === 'out' ? 'text-white/45 line-through' : 'text-white/85'}>
+                    {p.name}
+                  </span>
+                  <span className="text-white/30 text-xs">{p.court}</span>
+                  <span className="ml-auto text-xs text-white/40">
+                    {p.state === 'in'
+                      ? `confirmed ${fmtWhen(p.at as string)}`
+                      : p.state === 'out'
+                        ? `pulled out ${fmtWhen(p.at as string)}`
+                        : 'no answer yet'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {waitingNames.length > 0 && (
+              <p className="text-white/35 text-xs mt-3">
+                Still waiting on {waitingNames.join(', ')}.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Loud, because a bail after the lineup went out is the thing a captain
             most needs to act on and it arrives while they aren't looking. */}
         {bailedInLineup.length > 0 && (
@@ -805,7 +879,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                   .filter((slot) => slot === 1 || c.courtType === 'doubles')
                   .map((slot) => {
                     const pid = slot === 1 ? c.player1Id : c.player2Id;
-                    const confirmed = slot === 1 ? c.player1Confirmed : c.player2Confirmed;
+                    const confirmed = !!(slot === 1 ? c.player1ConfirmedAt : c.player2ConfirmedAt);
                     const bailed = pid ? withdrawn.get(pid) : undefined;
                     const picked =
                       swapPick?.courtNumber === c.courtNumber && swapPick.slot === slot;

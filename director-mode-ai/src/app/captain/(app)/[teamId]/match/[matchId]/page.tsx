@@ -116,8 +116,8 @@ export default async function MatchPage({
             courtType: l.court_type as 'singles' | 'doubles',
             player1Id: (l.player1_id as string) ?? null,
             player2Id: (l.player2_id as string) ?? null,
-            player1Confirmed: !!l.player1_confirmed_at,
-            player2Confirmed: !!l.player2_confirmed_at,
+            player1ConfirmedAt: (l.player1_confirmed_at as string) ?? null,
+            player2ConfirmedAt: (l.player2_confirmed_at as string) ?? null,
           })) as never
         }
         singlesCourts={(match.singles_courts as number) ?? 2}
