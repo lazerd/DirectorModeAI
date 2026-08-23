@@ -27,7 +27,7 @@ const RAW: RawMatchUp = {
 
 function match(p: Partial<NormalisedMatch> & { id: string }): NormalisedMatch {
   return {
-    event: "Girls' 14 & under singles", round: 'Quarterfinals',
+    event: "Girls' 14 & under singles", round: 'Quarterfinals', structure: 'Main',
     court: '5', courtRaw: 'SHSTC 5', status: 'IN_PROGRESS',
     startTime: '16:03', scheduledTime: '15:15', scheduledDate: '2026-08-22',
     playerA: 'A Player', playerB: 'B Player', allCheckedIn: true, ...p,

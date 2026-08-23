@@ -39,6 +39,7 @@ export interface RawMatchUp {
   roundName?: string;
   abbreviatedRoundName?: string;
   matchUpStatus?: MatchUpStatus;
+  structureName?: string;
   readyToScore?: boolean;
   allParticipantsCheckedIn?: boolean;
   checkedInParticipantIds?: string[];
@@ -70,6 +71,8 @@ export interface NormalisedMatch {
   event: string;
   /** "Quarterfinals" */
   round: string;
+  /** "Main" | "Consolation" | "Playoff 3-4" — drives the duration estimate. */
+  structure: string;
   /** "5" — stripped of the venue prefix Serve Tennis prepends. */
   court: string | null;
   courtRaw: string | null;
@@ -110,6 +113,7 @@ export function normalise(raw: RawMatchUp): NormalisedMatch {
     id: raw.matchUpId,
     event: raw.eventName ?? '',
     round: raw.roundName || raw.abbreviatedRoundName || '',
+    structure: raw.structureName ?? '',
     court: shortCourt(raw.schedule?.courtName),
     courtRaw: raw.schedule?.courtName ?? null,
     status: raw.matchUpStatus ?? 'TO_BE_PLAYED',

@@ -20,10 +20,15 @@ import {
   fetchFeed, normaliseFeed, diffForAnnouncement, observeCompletions,
   announcementText, type NormalisedMatch,
 } from '@/lib/ondeck/servetennis';
+import { computeWaitBoard, bucketOf, type Observation } from '@/lib/ondeck/board';
 
 const TOURNAMENT_ID = '55882F65-8F6E-4791-8847-4BEB310376BE';
 const POLL_MS = 15_000;
 const TOKEN_KEY = 'ondeck.token';
+const OBS_KEY = 'ondeck.observations';
+/** Slug the public wait board is published under. */
+const BOARD_SLUG = 'sh-level5-aug-2026';
+const BOARD_TITLE = 'Sleepy Hollow Level 5 — Order of Play';
 const VOICE_KEY = 'ondeck.voice';
 
 /** Loaded from a CDN at runtime so transformers.js never enters the build. */
@@ -55,10 +60,11 @@ export default function AnnouncerClient() {
   const [engine, setEngine] = useState<VoiceEngine>('browser');
   const [kokoroState, setKokoroState] = useState<LoadState>('idle');
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+  const [publishState, setPublishState] = useState<'idle' | 'ok' | 'failed' | 'signed_out'>('idle');
 
   const announced = useRef<Set<string>>(new Set());
   const prevLive = useRef<NormalisedMatch[]>([]);
-  const durations = useRef<number[]>([]);
+  const observations = useRef<Observation[]>([]);
   const ttsRef = useRef<unknown>(null);
   const speakQueue = useRef<Promise<void>>(Promise.resolve());
 
@@ -82,6 +88,12 @@ export default function AnnouncerClient() {
     }
     const v = localStorage.getItem(VOICE_KEY);
     if (v) setVoice(v);
+    // Survive an accidental page reload mid-day without losing what we
+    // have learned about how long matches are actually taking.
+    try {
+      const saved = localStorage.getItem(OBS_KEY);
+      if (saved) observations.current = JSON.parse(saved) as Observation[];
+    } catch { /* corrupt cache just means we relearn */ }
   }, [addLog]);
 
   useEffect(() => { localStorage.setItem(VOICE_KEY, voice); }, [voice]);
@@ -160,6 +172,29 @@ export default function AnnouncerClient() {
     }
   }, [kokoroState, addLog]);
 
+  /**
+   * Push the computed board to the public page. Done from here rather than
+   * server-side because this laptop is the only place the Serve Tennis token
+   * lives — the public board never sees a credential, only the result.
+   */
+  const publishBoard = useCallback(async (nextLive: NormalisedMatch[]) => {
+    const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
+    const board = computeWaitBoard(nextLive, {
+      observations: observations.current,
+      onDate: today,
+    });
+    try {
+      const res = await fetch('/api/ondeck/snapshot', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ slug: BOARD_SLUG, title: BOARD_TITLE, payload: board }),
+      });
+      setPublishState(res.status === 401 ? 'signed_out' : res.ok ? 'ok' : 'failed');
+    } catch {
+      setPublishState('failed');
+    }
+  }, []);
+
   // --- polling -----------------------------------------------------------
   const poll = useCallback(async (isFirst: boolean) => {
     if (!token) return;
@@ -168,13 +203,19 @@ export default function AnnouncerClient() {
       const { live: nextLive } = normaliseFeed(feed);
       setError(null); setTokenExpired(false); setLastPoll(new Date());
 
-      // Time matches ourselves — the feed has a start but never an end.
+      // Time matches ourselves — the feed has a start but never an end —
+      // and tag each one so consolation and main draws learn separately.
       const finished = observeCompletions(prevLive.current, nextLive, new Date());
       for (const f of finished) {
-        const [h, m] = f.startTime.split(':').map(Number);
-        const start = new Date(f.endedAt); start.setHours(h, m, 0, 0);
+        const src = prevLive.current.find((x) => x.id === f.id);
+        if (!src) continue;
+        const [h, mm] = f.startTime.split(':').map(Number);
+        const start = new Date(f.endedAt); start.setHours(h, mm, 0, 0);
         const mins = (new Date(f.endedAt).getTime() - start.getTime()) / 60000;
-        if (mins >= 10 && mins <= 300) durations.current.push(mins);
+        if (mins >= 10 && mins <= 300) {
+          observations.current.push({ bucket: bucketOf(src), minutes: mins });
+          localStorage.setItem(OBS_KEY, JSON.stringify(observations.current));
+        }
       }
 
       const { toAnnounce, nextAnnounced } = diffForAnnouncement(
@@ -192,6 +233,7 @@ export default function AnnouncerClient() {
 
       prevLive.current = nextLive;
       setLive(nextLive);
+      void publishBoard(nextLive);
     } catch (e) {
       const err = e as Error & { code?: string };
       if (err.code === 'TOKEN_EXPIRED') {
@@ -201,7 +243,7 @@ export default function AnnouncerClient() {
         setError(err.message);
       }
     }
-  }, [token, addLog, speak]);
+  }, [token, addLog, speak, publishBoard]);
 
   useEffect(() => {
     if (!token || !armed) return;
@@ -218,12 +260,6 @@ export default function AnnouncerClient() {
   const upcoming = live
     .filter((m) => m.status !== 'IN_PROGRESS')
     .sort((a, b) => (a.scheduledTime ?? '').localeCompare(b.scheduledTime ?? ''));
-
-  const medianDuration = (() => {
-    const d = [...durations.current].sort((a, b) => a - b);
-    if (d.length === 0) return null;
-    return Math.round(d[Math.floor(d.length / 2)]);
-  })();
 
   const bookmarklet = `javascript:(async()=>{const r=await fetch('/account/tokens?clientId=clubspark-app',{credentials:'include'});const t=r.headers.get('X-Api-Token');if(!t){alert('Sign in to Serve Tennis first.');return}location.href='${typeof window !== 'undefined' ? window.location.origin : ''}/tournaments/announce#token='+encodeURIComponent(t)})()`;
 
@@ -333,8 +369,22 @@ export default function AnnouncerClient() {
           Test the PA
         </button>
 
+        <a href={`/tournaments/wait/${BOARD_SLUG}`} target="_blank" rel="noreferrer" style={S.button}>
+          Open public board
+        </a>
+
+        {publishState === 'signed_out' && (
+          <span style={S.warnPill}>
+            Public board not updating — sign in to ClubMode on this laptop
+          </span>
+        )}
+        {publishState === 'failed' && <span style={S.warnPill}>Public board failed to update</span>}
+        {publishState === 'ok' && <span style={S.badge}>Public board live</span>}
+
         <span style={S.muted}>
-          {medianDuration ? `Matches averaging ${medianDuration} min today` : 'Timing matches…'}
+          {observations.current.length
+            ? `${observations.current.length} matches timed today`
+            : 'Using 55/95 min baselines'}
         </span>
       </div>
 
@@ -414,5 +464,6 @@ const S: Record<string, React.CSSProperties> = {
   meta: { fontSize: 13, color: '#6b7280', marginTop: 2 },
   logLine: { fontSize: 14, padding: '5px 0', borderBottom: '1px solid #f3f4f6' },
   logTime: { color: '#9ca3af', marginRight: 8, fontVariantNumeric: 'tabular-nums' },
+  warnPill: { fontSize: 13, background: '#fef3c7', color: '#92400e', padding: '5px 10px', borderRadius: 999, fontWeight: 600 },
   kbd: { background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 4, padding: '2px 7px', fontFamily: 'ui-monospace, monospace', fontSize: 14 },
 };
