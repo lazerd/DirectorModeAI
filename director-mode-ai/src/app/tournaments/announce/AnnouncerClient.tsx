@@ -54,6 +54,7 @@ export default function AnnouncerClient() {
   const [voice, setVoice] = useState('am_michael');
   const [engine, setEngine] = useState<VoiceEngine>('browser');
   const [kokoroState, setKokoroState] = useState<LoadState>('idle');
+  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
 
   const announced = useRef<Set<string>>(new Set());
   const prevLive = useRef<NormalisedMatch[]>([]);
@@ -84,6 +85,23 @@ export default function AnnouncerClient() {
   }, [addLog]);
 
   useEffect(() => { localStorage.setItem(VOICE_KEY, voice); }, [voice]);
+
+  /**
+   * Serve Tennis tokens are ~10h JWTs, so one minted in the evening is dead
+   * before the next morning's play. Read the expiry so the page can say when
+   * it will stop rather than silently going quiet at the worst moment.
+   */
+  useEffect(() => {
+    if (!token) { setExpiresAt(null); return; }
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (payload?.exp) {
+        const d = new Date(payload.exp * 1000);
+        setExpiresAt(d);
+        if (d.getTime() <= Date.now()) setTokenExpired(true);
+      }
+    } catch { /* opaque token — expiry just goes unshown */ }
+  }, [token]);
 
   // --- speech ------------------------------------------------------------
   const speakBrowser = useCallback((text: string) => new Promise<void>((resolve) => {
@@ -214,19 +232,32 @@ export default function AnnouncerClient() {
     return (
       <div style={S.wrap}>
         <h1 style={S.h1}>On Deck Announcer</h1>
+
         <div style={S.card}>
-          <h2 style={S.h2}>One-time setup</h2>
+          <h2 style={S.h2}>Step 1 — install the connect button (once)</h2>
+          <p style={S.lead}>
+            Press <kbd style={S.kbd}>Ctrl</kbd> + <kbd style={S.kbd}>Shift</kbd> + <kbd style={S.kbd}>B</kbd> to
+            show your bookmarks bar, then drag this blue button up onto it:
+          </p>
+          <p style={{ margin: '18px 0' }}>
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+            <a href={bookmarklet} style={S.bookmarklet}>🎙️ Announce</a>
+          </p>
+          <p style={S.muted}>
+            It has to be dragged — clicking it here won&apos;t do anything. You only ever do this once.
+          </p>
+        </div>
+
+        <div style={S.card}>
+          <h2 style={S.h2}>Step 2 — connect (every morning)</h2>
           <ol style={S.ol}>
-            <li>Drag this button to your bookmarks bar:{' '}
-              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-              <a href={bookmarklet} style={S.bookmarklet}>🎙️ Announce</a>
-            </li>
-            <li>Open Serve Tennis and sign in.</li>
-            <li>Click the <strong>🎙️ Announce</strong> bookmark. It brings you back here, connected.</li>
+            <li>Open Serve Tennis and sign in as usual.</li>
+            <li>Click <strong>🎙️ Announce</strong> on your bookmarks bar.</li>
+            <li>You land back here, connected. Press <strong>Start announcing</strong>.</li>
           </ol>
           <p style={S.muted}>
-            The bookmarklet reads your Serve Tennis session token and hands it to this page.
-            Nothing is sent to a server — the token stays in this browser.
+            Serve Tennis logins expire after about 10 hours, so this is a once-a-day thing —
+            two clicks, not a re-install. Nothing is sent to any server; the token stays in this browser.
           </p>
         </div>
       </div>
@@ -268,8 +299,17 @@ export default function AnnouncerClient() {
 
       {tokenExpired && (
         <div style={S.warn}>
-          Session expired. Click the <strong>🎙️ Announce</strong> bookmark on Serve Tennis to reconnect.
-          Announcements are paused until you do.
+          <strong>Announcements are paused — your Serve Tennis login expired.</strong>
+          <br />
+          Open Serve Tennis, then click <strong>🎙️ Announce</strong> on your bookmarks bar. Two clicks and
+          this page picks straight back up.
+        </div>
+      )}
+
+      {!tokenExpired && expiresAt && (
+        <div style={S.muted}>
+          Serve Tennis login good until {expiresAt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
+          {' '}— after that, click the 🎙️ Announce bookmark again.
         </div>
       )}
 
@@ -374,4 +414,5 @@ const S: Record<string, React.CSSProperties> = {
   meta: { fontSize: 13, color: '#6b7280', marginTop: 2 },
   logLine: { fontSize: 14, padding: '5px 0', borderBottom: '1px solid #f3f4f6' },
   logTime: { color: '#9ca3af', marginRight: 8, fontVariantNumeric: 'tabular-nums' },
+  kbd: { background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 4, padding: '2px 7px', fontFamily: 'ui-monospace, monospace', fontSize: 14 },
 };
