@@ -65,6 +65,8 @@ export default function AnnouncerClient() {
   const [publishState, setPublishState] = useState<'idle' | 'ok' | 'failed' | 'signed_out'>('idle');
 
   const announced = useRef<Set<string>>(new Set());
+  // Read inside the poll loop, which must not re-subscribe when arming flips.
+  const armedRef = useRef(false);
   const prevLive = useRef<NormalisedMatch[]>([]);
   const observations = useRef<Observation[]>([]);
   const speakQueue = useRef<Promise<void>>(Promise.resolve());
@@ -98,6 +100,7 @@ export default function AnnouncerClient() {
   }, [addLog]);
 
   useEffect(() => { localStorage.setItem(VOICE_KEY, voice); }, [voice]);
+  useEffect(() => { armedRef.current = armed; }, [armed]);
 
   /**
    * Serve Tennis tokens are ~10h JWTs, so one minted in the evening is dead
@@ -231,7 +234,7 @@ export default function AnnouncerClient() {
       }
       for (const m of toAnnounce) {
         addLog(`Court ${m.court}: ${m.playerA} vs ${m.playerB}`, 'call');
-        void speak(announcementText(m));
+        if (armedRef.current) void speak(announcementText(m));
       }
 
       prevLive.current = nextLive;
@@ -248,13 +251,17 @@ export default function AnnouncerClient() {
     }
   }, [token, addLog, speak, publishBoard]);
 
+  // Polling starts on the token alone. "Start announcing" only unlocks
+  // audio — gating the public board on it meant a page left on the arm
+  // screen published nothing at all, which is exactly what happened on
+  // tournament morning.
   useEffect(() => {
-    if (!token || !armed) return;
+    if (!token) return;
     let cancelled = false;
     void poll(true);
     const t = setInterval(() => { if (!cancelled) void poll(false); }, POLL_MS);
     return () => { cancelled = true; clearInterval(t); };
-  }, [token, armed, poll]);
+  }, [token, poll]);
 
   // --- derived view ------------------------------------------------------
   const onCourt = live
@@ -319,6 +326,10 @@ export default function AnnouncerClient() {
           <p style={S.muted}>
             Browsers block audio until you click something — this is that click.
             Leave the page open all day.
+          </p>
+          <p style={S.muted}>
+            The public board is already updating. This button only turns the
+            spoken announcements on.
           </p>
         </div>
       </div>
