@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeWaitBoard, formatWait, formatAhead, findPlayer, bucketOf, prettyRound,
-  formatClock, waitHeadline, DEFAULT_LENGTHS,
+  formatClock, waitHeadline,
 } from './board';
 import type { NormalisedMatch } from './servetennis';
 
@@ -285,6 +285,29 @@ describe('wording', () => {
     expect(formatAhead(0)).toBe('On next');
     expect(formatAhead(1)).toBe('1 match ahead');
     expect(formatAhead(3)).toBe('3 matches ahead');
+  });
+});
+
+describe('waitHeadline', () => {
+  // A snapshot published by a browser tab running older code can be missing
+  // fields the board expects. It rendered a bare "~" to waiting parents.
+  it('never renders a bare tilde when the estimate is missing', () => {
+    const out = waitHeadline({ etaLowMin: 0, etaHighMin: 0, estimatedStart: null, scheduledTime: '09:30' });
+    expect(out).not.toBe('~');
+    expect(out).toBe('9:30 AM');
+  });
+
+  it('falls back to a dash when it truly knows nothing', () => {
+    expect(waitHeadline({})).toBe('—');
+  });
+
+  it('gives the scheduled time back when a court is free and waiting on the clock', () => {
+    expect(waitHeadline({ onSchedule: true, scheduledTime: '09:00', etaLowMin: 0, etaHighMin: 0 })).toBe('9:00 AM');
+  });
+
+  it('uses minutes close in and a clock time further out', () => {
+    expect(waitHeadline({ etaLowMin: 20, etaHighMin: 35, estimatedStart: '10:00' })).toBe('~20–35 min');
+    expect(waitHeadline({ etaLowMin: 180, etaHighMin: 220, estimatedStart: '13:00' })).toBe('~1:00 PM');
   });
 });
 

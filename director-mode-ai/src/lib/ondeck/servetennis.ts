@@ -108,6 +108,21 @@ export function shortCourt(courtName: string | null | undefined): string | null 
   return m ? m[1] : trimmed;
 }
 
+/**
+ * The feed is inconsistent about times: usually "09:15", but sometimes a
+ * full "2026-08-23T14:00". Anything downstream that formats a clock has to
+ * be handed HH:MM, so it is flattened here rather than in five callers.
+ */
+export function toClock24(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const v = value.trim();
+  const iso = v.match(/T(\d{2}:\d{2})/);
+  if (iso) return iso[1];
+  const hhmm = v.match(/^(\d{1,2}):(\d{2})/);
+  if (hhmm) return `${hhmm[1].padStart(2, '0')}:${hhmm[2]}`;
+  return null;
+}
+
 export function normalise(raw: RawMatchUp): NormalisedMatch {
   const sides = raw.sides ?? [];
   const a = sides.find((s) => s.sideNumber === 1) ?? sides[0];
@@ -120,8 +135,8 @@ export function normalise(raw: RawMatchUp): NormalisedMatch {
     court: shortCourt(raw.schedule?.courtName),
     courtRaw: raw.schedule?.courtName ?? null,
     status: raw.matchUpStatus ?? 'TO_BE_PLAYED',
-    startTime: raw.schedule?.startTime ?? null,
-    scheduledTime: raw.schedule?.scheduledTime ?? null,
+    startTime: toClock24(raw.schedule?.startTime),
+    scheduledTime: toClock24(raw.schedule?.scheduledTime),
     scheduledDate: raw.schedule?.scheduledDate ?? null,
     playerA: sideName(a),
     playerB: sideName(b),

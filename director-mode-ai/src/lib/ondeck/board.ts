@@ -337,8 +337,11 @@ export function prettyRound(roundName: string): string {
  */
 export function formatClock(hhmmStr: string | null): string {
   if (!hhmmStr) return '';
-  const [h, m] = hhmmStr.split(':').map(Number);
-  if (Number.isNaN(h)) return hhmmStr;
+  // Tolerate a full ISO datetime slipping through from the feed.
+  const isoTime = hhmmStr.match(/T(\d{2}:\d{2})/);
+  const value = isoTime ? isoTime[1] : hhmmStr;
+  const [h, m] = value.split(':').map(Number);
+  if (Number.isNaN(h)) return value;
   const suffix = h >= 12 ? 'PM' : 'AM';
   const hour = h % 12 === 0 ? 12 : h % 12;
   return `${hour}:${String(m || 0).padStart(2, '0')} ${suffix}`;
@@ -368,11 +371,21 @@ export function formatAhead(ahead: number): string {
  * answer and the one already printed on the order of play.
  */
 export function waitHeadline(
-  row: Pick<WaitRow, 'etaLowMin' | 'etaHighMin' | 'estimatedStart' | 'onSchedule' | 'scheduledTime'>
+  row: Partial<Pick<WaitRow, 'etaLowMin' | 'etaHighMin' | 'estimatedStart' | 'onSchedule' | 'scheduledTime'>>
 ): string {
-  if (row.onSchedule) return formatClock(row.scheduledTime || row.estimatedStart);
-  if (row.etaHighMin <= MINUTES_USEFUL_UP_TO) return formatWait(row.etaLowMin, row.etaHighMin);
-  return `~${formatClock(row.estimatedStart)}`;
+  const low = row.etaLowMin ?? 0;
+  const high = row.etaHighMin ?? 0;
+  const estimate = formatClock(row.estimatedStart ?? null);
+
+  if (row.onSchedule) return formatClock(row.scheduledTime ?? row.estimatedStart ?? null) || '—';
+  if (high > 0 && high <= MINUTES_USEFUL_UP_TO) return formatWait(low, high);
+
+  // A snapshot published by an older tab can be missing the estimate. Fall
+  // back through what we do have rather than rendering a bare "~", which
+  // tells a waiting parent precisely nothing.
+  if (estimate) return `~${estimate}`;
+  if (high > 0) return formatWait(low, high);
+  return formatClock(row.scheduledTime ?? null) || '—';
 }
 
 /** Everything a player needs, found by typing part of their name. */

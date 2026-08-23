@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalise, shortCourt, spokenEvent, announcementText,
-  diffForAnnouncement, observeCompletions, isAnnounceable, spokenRound,
+  diffForAnnouncement, observeCompletions, isAnnounceable, spokenRound, toClock24,
   type RawMatchUp, type NormalisedMatch,
 } from './servetennis';
 
@@ -46,6 +46,27 @@ describe('normalise', () => {
   it('says TBD rather than inventing a name when a side is unfilled', () => {
     const m = normalise({ ...RAW, sides: [RAW.sides![0]] });
     expect(m.playerB).toBe('TBD');
+  });
+});
+
+describe('toClock24', () => {
+  // The feed is inconsistent: most rows give "09:15", a few give a full
+  // ISO datetime, and one of those reached the public board as
+  // "Sched 2026-08-23T14:00".
+  it('accepts the plain times the feed usually gives', () => {
+    expect(toClock24('09:15')).toBe('09:15');
+    expect(toClock24('9:15')).toBe('09:15');
+  });
+
+  it('flattens a full ISO datetime to the time', () => {
+    expect(toClock24('2026-08-23T14:00')).toBe('14:00');
+    expect(toClock24('2026-08-23T08:05:00.000Z')).toBe('08:05');
+  });
+
+  it('returns null for nothing usable rather than passing junk through', () => {
+    expect(toClock24(null)).toBeNull();
+    expect(toClock24('')).toBeNull();
+    expect(toClock24('later')).toBeNull();
   });
 });
 
