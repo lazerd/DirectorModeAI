@@ -13,6 +13,27 @@ import { formatWait, formatAhead, findPlayer, prettyRound, type WaitBoard } from
 
 const REFRESH_MS = 10_000;
 
+/**
+ * Past this, we stop showing wait estimates at all. A board that has not
+ * been updated in half an hour is not "slightly behind" — the courts have
+ * moved on, and a confident-looking "~20 min" from an hour ago will send a
+ * family away from the club and lose them their match.
+ */
+const TRUST_LIMIT_SECONDS = 30 * 60;
+
+/** "7:54 PM" / "yesterday at 7:54 PM" — never a raw minute count. */
+function lastUpdatedPhrase(updatedAt: string): string {
+  const then = new Date(updatedAt);
+  const now = new Date();
+  const time = then.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const sameDay = then.toDateString() === now.toDateString();
+  if (sameDay) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (then.toDateString() === yesterday.toDateString()) return `yesterday at ${time}`;
+  return `${then.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${time}`;
+}
+
 interface Payload {
   title: string;
   board: WaitBoard;
@@ -65,6 +86,8 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
   }
 
   const { board } = data;
+  // Too old to quote a wait for. Times still shown, estimates withheld.
+  const trustEstimates = data.ageSeconds <= TRUST_LIMIT_SECONDS;
 
   return (
     <div style={S.wrap}>
@@ -72,8 +95,10 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
 
       {data.stale && (
         <div style={S.warn}>
-          These times stopped updating {Math.round(data.ageSeconds / 60)} minutes ago.
-          Please check with the desk before relying on them.
+          <strong>This board isn&apos;t live right now.</strong>
+          <br />
+          Last updated {lastUpdatedPhrase(data.updatedAt)}. Please check the order of play
+          with the tournament desk.
         </div>
       )}
 
@@ -102,12 +127,12 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
         {result?.kind === 'waiting' && (
           <div style={S.answer}>
             <div style={S.answerBig}>
-              {board.isFutureDate
+              {board.isFutureDate || !trustEstimates
                 ? `Scheduled ${result.row.scheduledTime ?? ''}`
                 : formatWait(result.row.etaLowMin, result.row.etaHighMin)}
             </div>
             <div style={S.answerSub}>
-              {board.isFutureDate ? '' : formatAhead(result.row.ahead)}
+              {board.isFutureDate || !trustEstimates ? '' : formatAhead(result.row.ahead)}
               {result.row.court ? ` on court ${result.row.court}` : ''}
               {result.row.scheduledTime ? ` · scheduled ${result.row.scheduledTime}` : ''}
             </div>
@@ -154,7 +179,7 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
               <div style={S.meta}>{r.event}{r.round ? ` · ${prettyRound(r.round)}` : ''}</div>
             </div>
             <div style={S.waitCell}>
-              {board.isFutureDate ? (
+              {board.isFutureDate || !trustEstimates ? (
                 <div style={S.waitBig}>{r.scheduledTime ?? ''}</div>
               ) : (
                 <>
