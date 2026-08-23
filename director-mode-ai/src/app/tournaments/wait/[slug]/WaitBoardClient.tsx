@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatAhead, findPlayer, prettyRound, formatClock, waitHeadline, type WaitBoard } from '@/lib/ondeck/board';
+import { pickVoice, speak, stopSpeaking, reportToDeskText } from '@/lib/ondeck/speech';
 
 const REFRESH_MS = 10_000;
 
@@ -20,6 +21,20 @@ const REFRESH_MS = 10_000;
  * family away from the club and lose them their match.
  */
 const TRUST_LIMIT_SECONDS = 30 * 60;
+
+/**
+ * Desk mode adds a call button to every match. It is remembered per device,
+ * so the desk laptop keeps it and a parent's phone never sees it.
+ *
+ * Safe to expose at all: speech happens in whoever's browser pressed the
+ * button, so the laptop wired to the PA is the only device that can make a
+ * sound in the clubhouse.
+ */
+const DESK_KEY = 'ondeck.deskMode';
+const VOICE_KEY = 'ondeck.voice';
+
+/** A call is read twice — nobody catches a name the first time. */
+const CALL_REPEATS = 2;
 
 /** "7:54 PM" / "yesterday at 7:54 PM" — never a raw minute count. */
 function lastUpdatedPhrase(updatedAt: string): string {
@@ -47,6 +62,9 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
+  const [deskMode, setDeskMode] = useState(false);
+  const [voice, setVoice] = useState('');
+  const [calling, setCalling] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -67,6 +85,28 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
     const t = setInterval(() => void load(), REFRESH_MS);
     return () => clearInterval(t);
   }, [load]);
+
+  // ?desk=1 turns it on and is remembered, so the laptop only needs it once.
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get('desk');
+    if (fromUrl === '1') { localStorage.setItem(DESK_KEY, '1'); setDeskMode(true); }
+    else if (fromUrl === '0') { localStorage.removeItem(DESK_KEY); setDeskMode(false); }
+    else setDeskMode(localStorage.getItem(DESK_KEY) === '1');
+  }, []);
+
+  useEffect(() => {
+    if (!deskMode) return;
+    const choose = () => setVoice(pickVoice(localStorage.getItem(VOICE_KEY)));
+    choose();
+    speechSynthesis.onvoiceschanged = choose;
+    return () => { speechSynthesis.onvoiceschanged = null; };
+  }, [deskMode]);
+
+  const callPlayers = useCallback((id: string, a: string, b: string) => {
+    setCalling(id);
+    void speak(reportToDeskText(a, b), { voice, times: CALL_REPEATS })
+      .finally(() => setCalling((c) => (c === id ? null : c)));
+  }, [voice]);
 
   const result = useMemo(
     () => (data?.board ? findPlayer(data.board, query) : null),
@@ -89,9 +129,28 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
   // Too old to quote a wait for. Times still shown, estimates withheld.
   const trustEstimates = data.ageSeconds <= TRUST_LIMIT_SECONDS;
 
+  const CallButton = ({ id, a, b }: { id: string; a: string; b: string }) => (
+    <button
+      onClick={() => callPlayers(id, a, b)}
+      style={calling === id ? S.micActive : S.mic}
+      title={`Call ${a} and ${b} to the tournament desk`}
+      aria-label={`Call ${a} and ${b} to the tournament desk`}
+    >
+      🎤
+    </button>
+  );
+
   return (
     <div style={S.wrap}>
       <h1 style={S.h1}>{data.title || 'Order of play'}</h1>
+
+      {deskMode && (
+        <div style={S.deskBar}>
+          <span style={S.deskBadge}>Desk mode</span>
+          <span style={S.muted}>Tap 🎤 to call players to the desk.</span>
+          <button style={S.stopBtn} onClick={stopSpeaking}>■ Stop</button>
+        </div>
+      )}
 
       {data.stale && (
         <div style={S.warn}>
@@ -165,6 +224,7 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
                 {r.elapsedMin !== null && ` · ${r.elapsedMin} min in`}
               </div>
             </div>
+            {deskMode && <CallButton id={`c-${r.court}`} a={r.playerA} b={r.playerB} />}
           </div>
         ))}
       </section>
@@ -183,6 +243,7 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
               <div style={S.players}>{r.playerA} <span style={S.vs}>v</span> {r.playerB}</div>
               <div style={S.meta}>{r.event}{r.round ? ` · ${prettyRound(r.round)}` : ''}</div>
             </div>
+            {deskMode && <CallButton id={r.id} a={r.playerA} b={r.playerB} />}
             <div style={S.waitCell}>
               {board.isFutureDate || !trustEstimates ? (
                 <div style={S.waitBig}>{formatClock(r.scheduledTime)}</div>
@@ -236,5 +297,10 @@ const S: Record<string, React.CSSProperties> = {
   waitCell: { textAlign: 'right', flexShrink: 0 },
   waitBig: { fontSize: 16, fontWeight: 800, whiteSpace: 'nowrap', color: '#fbbf24' },
   waitSub: { fontSize: 12.5, color: '#94a3b8', whiteSpace: 'nowrap' },
+  deskBar: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: '#0b2b3d', border: '1px solid #17455f', borderRadius: 10 },
+  deskBadge: { fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', background: '#0284c7', color: '#fff', padding: '4px 9px', borderRadius: 999 },
+  stopBtn: { marginLeft: 'auto', padding: '7px 14px', borderRadius: 8, border: '1px solid #ef4444', background: 'transparent', color: '#fca5a5', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
+  mic: { flexShrink: 0, width: 46, height: 46, borderRadius: 10, border: '1px solid #17455f', background: '#0b2b3d', fontSize: 21, cursor: 'pointer', lineHeight: 1 },
+  micActive: { flexShrink: 0, width: 46, height: 46, borderRadius: 10, border: '1px solid #22c55e', background: '#14532d', fontSize: 21, cursor: 'pointer', lineHeight: 1 },
   footer: { marginTop: 32, fontSize: 13, color: '#7891a5', lineHeight: 1.6 },
 };
