@@ -3,8 +3,12 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
-/** How old a snapshot may be before the board stops presenting it as live. */
-const STALE_AFTER_MS = 3 * 60_000;
+/**
+ * How old a snapshot may be before the board stops presenting it as live.
+ * The desk republishes on change plus a 90-second heartbeat, so this has to
+ * clear the heartbeat comfortably or a quiet spell reads as a failure.
+ */
+const STALE_AFTER_MS = 6 * 60_000;
 
 /**
  * Public read of the current wait board. No auth: this is the page parents

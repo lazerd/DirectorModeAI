@@ -280,11 +280,46 @@ describe('wording', () => {
   });
 
   it('says something a parent can act on', () => {
-    expect(formatWait(0, 5)).toBe('Next up');
+    expect(formatWait(0, 5)).toBe('under 5 min');
     expect(formatWait(45, 70)).toBe('~45–70 min');
     expect(formatAhead(0)).toBe('On next');
     expect(formatAhead(1)).toBe('1 match ahead');
     expect(formatAhead(3)).toBe('3 matches ahead');
+  });
+});
+
+describe('one match at a time is next', () => {
+  it('marks exactly one waiting match as next', () => {
+    // Eight of nine courts busy and several running long: more than one
+    // match is minutes away, but only one actually walks on first.
+    const live = [
+      ...Array.from({ length: 8 }, (_, i) =>
+        m({ id: `p${i}`, court: String(i + 1), status: 'IN_PROGRESS', startTime: '08:05' })
+      ),
+      ...Array.from({ length: 4 }, (_, i) =>
+        m({ id: `w${i}`, court: null, courtRaw: null, scheduledTime: '09:00' })
+      ),
+    ];
+    const b = computeWaitBoard(live, observed);
+    expect(b.waiting.filter((r) => r.isNext)).toHaveLength(1);
+    expect(b.waiting[0].isNext).toBe(true);
+    expect(b.waiting.filter((r) => waitHeadline(r) === 'Next up')).toHaveLength(1);
+  });
+
+  it('staggers courts that are all running past time', () => {
+    // Every court overdue used to collapse to the same instant, so a run of
+    // matches all read as imminent.
+    const live = [
+      ...Array.from({ length: 4 }, (_, i) =>
+        m({ id: `p${i}`, court: String(i + 1), status: 'IN_PROGRESS', startTime: '06:00' })
+      ),
+      ...Array.from({ length: 4 }, (_, i) =>
+        m({ id: `w${i}`, court: null, courtRaw: null, scheduledTime: '09:00' })
+      ),
+    ];
+    const b = computeWaitBoard(live, { ...observed, courtCount: 4 });
+    const starts = b.waiting.map((r) => r.estimatedStart);
+    expect(new Set(starts).size).toBe(starts.length);
   });
 });
 
@@ -303,6 +338,11 @@ describe('waitHeadline', () => {
 
   it('gives the scheduled time back when a court is free and waiting on the clock', () => {
     expect(waitHeadline({ onSchedule: true, scheduledTime: '09:00', etaLowMin: 0, etaHighMin: 0 })).toBe('9:00 AM');
+  });
+
+  it('reserves "Next up" for the match at the front', () => {
+    expect(waitHeadline({ isNext: true, etaLowMin: 0, etaHighMin: 5 })).toBe('Next up');
+    expect(waitHeadline({ isNext: false, etaLowMin: 0, etaHighMin: 5, estimatedStart: '09:40' })).not.toBe('Next up');
   });
 
   it('uses minutes close in and a clock time further out', () => {

@@ -99,6 +99,8 @@ export interface WaitRow {
   etaHighMin: number;
   /** A court is free and only the clock is holding this match back. */
   onSchedule: boolean;
+  /** First in the queue. Exactly one waiting match has this. */
+  isNext: boolean;
 }
 
 export interface CourtRow {
@@ -249,17 +251,27 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
   // The desk sends a match out and the feed records that start time; that is
   // our clock. Soonest-finishing matches occupy the first slots so the next
   // match to be called lands on the court that frees first.
+  // Four matches all running past their expected length are all "about to
+  // finish", but they will not finish at the same instant. Clamping each to
+  // now+2min collapsed them onto one moment and made several matches read
+  // "Next up" at once, so overdue courts are staggered instead.
+  let previousEnd = 0;
   playing
     .map((m) => {
       const startMs = timeMs(m.startTime, now) ?? nowMs;
-      return Math.max(startMs + expectedFor(m) * MS_PER_MIN, nowMs + IMMINENT_MIN * MS_PER_MIN);
+      return startMs + expectedFor(m) * MS_PER_MIN;
     })
     .sort((a, b) => a - b)
     .forEach((end, i) => {
-      if (i < slots.length) { slots[i].freeAt = end; slots[i].stacked = 1; }
+      if (i >= slots.length) return;
+      const floor = Math.max(nowMs + IMMINENT_MIN * MS_PER_MIN, previousEnd + IMMINENT_MIN * MS_PER_MIN);
+      const freeAt = Math.max(end, floor);
+      previousEnd = freeAt;
+      slots[i].freeAt = freeAt;
+      slots[i].stacked = 1;
     });
 
-  const waiting: WaitRow[] = queued.map((m) => {
+  const waiting: WaitRow[] = queued.map((m, index) => {
     // Whichever court frees up soonest is where the desk will send them.
     let slot = slots[0];
     for (const s of slots) if (s.freeAt < slot.freeAt) slot = s;
@@ -289,6 +301,10 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
       etaLowMin: round5(waitMin * lowRatio),
       etaHighMin: Math.max(5, round5(waitMin * highRatio)),
       onSchedule,
+      // Only one match can genuinely be next. Several can be minutes away,
+      // but calling them all "Next up" tells a parent nothing about who
+      // actually walks on first.
+      isNext: index === 0,
     };
   });
 
@@ -351,7 +367,6 @@ export function formatClock(hhmmStr: string | null): string {
 export const MINUTES_USEFUL_UP_TO = 120;
 
 export function formatWait(low: number, high: number): string {
-  if (high <= 5) return 'Next up';
   if (low <= 0) return `under ${high} min`;
   if (low === high) return `~${low} min`;
   return `~${low}–${high} min`;
@@ -371,12 +386,14 @@ export function formatAhead(ahead: number): string {
  * answer and the one already printed on the order of play.
  */
 export function waitHeadline(
-  row: Partial<Pick<WaitRow, 'etaLowMin' | 'etaHighMin' | 'estimatedStart' | 'onSchedule' | 'scheduledTime'>>
+  row: Partial<Pick<WaitRow, 'etaLowMin' | 'etaHighMin' | 'estimatedStart' | 'onSchedule' | 'scheduledTime' | 'isNext'>>
 ): string {
   const low = row.etaLowMin ?? 0;
   const high = row.etaHighMin ?? 0;
   const estimate = formatClock(row.estimatedStart ?? null);
 
+  // "Next up" is reserved for the one match actually at the front.
+  if (row.isNext && high <= 10) return 'Next up';
   if (row.onSchedule) return formatClock(row.scheduledTime ?? row.estimatedStart ?? null) || '—';
   if (high > 0 && high <= MINUTES_USEFUL_UP_TO) return formatWait(low, high);
 

@@ -22,9 +22,23 @@ import {
   announcementText, type NormalisedMatch,
 } from '@/lib/ondeck/servetennis';
 import { computeWaitBoard, bucketOf, DEFAULT_LENGTHS, type Observation, type MatchLengths } from '@/lib/ondeck/board';
+import { pickVoice, speak as speakShared, stopSpeaking as stopShared } from '@/lib/ondeck/speech';
 
 const TOURNAMENT_ID = '55882F65-8F6E-4791-8847-4BEB310376BE';
-const POLL_MS = 10_000;
+/**
+ * How often we read Serve Tennis. This is what decides how quickly the PA
+ * calls a match after a court is assigned, so it stays short — a minute of
+ * lag here means players called a minute late. It is one small request per
+ * tick from one laptop.
+ */
+const POLL_MS = 20_000;
+
+/**
+ * The public board is republished only when something actually changed, plus
+ * a heartbeat so it never looks abandoned during a quiet spell. No point
+ * writing an identical snapshot every tick for 30 phones to re-download.
+ */
+const PUBLISH_HEARTBEAT_MS = 90_000;
 const TOKEN_KEY = 'ondeck.token';
 const OBS_KEY = 'ondeck.observations';
 /** Slug the public wait board is published under. */
@@ -32,22 +46,6 @@ const BOARD_SLUG = 'sh-level5-aug-2026';
 const BOARD_TITLE = 'Sleepy Hollow Level 5 — Order of Play';
 const VOICE_KEY = 'ondeck.voice';
 const SETTINGS_KEY = 'ondeck.settings';
-
-/**
- * Voices the laptop actually has, best first. The Google entries are
- * network voices and are dramatically clearer over a PA than the bundled
- * Microsoft ones, which is what makes them worth preferring by name.
- */
-const VOICE_PREFERENCE = [
-  // US English first — this is a California club and an American accent is
-  // what players' ears expect over a PA.
-  'Google US English',
-  'Google UK English Male',
-  'Google UK English Female',
-  'Microsoft Mark',
-  'Microsoft David',
-  'Microsoft Zira',
-];
 
 interface LogLine { at: string; text: string; kind: 'call' | 'info' | 'error' }
 
@@ -75,7 +73,8 @@ export default function AnnouncerClient() {
   const settingsRef = useRef({ courtCount: 9, lengths: DEFAULT_LENGTHS });
   const prevLive = useRef<NormalisedMatch[]>([]);
   const observations = useRef<Observation[]>([]);
-  const speakQueue = useRef<Promise<void>>(Promise.resolve());
+  // What we last published, so an unchanged board is not rewritten.
+  const lastPublish = useRef<{ signature: string; at: number }>({ signature: '', at: 0 });
 
   const addLog = useCallback((text: string, kind: LogLine['kind'] = 'info') => {
     const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -144,55 +143,20 @@ export default function AnnouncerClient() {
       const all = speechSynthesis.getVoices().filter((v) => v.lang.startsWith('en'));
       if (!all.length) return;
       setVoices(all);
-      setVoice((current) => {
-        if (current && all.some((v) => v.name === current)) return current;
-        const saved = localStorage.getItem(VOICE_KEY);
-        if (saved && all.some((v) => v.name === saved)) return saved;
-        const preferred = VOICE_PREFERENCE.find((name) =>
-          all.some((v) => v.name.startsWith(name))
-        );
-        const match = preferred
-          ? all.find((v) => v.name.startsWith(preferred))
-          : all[0];
-        return match?.name ?? '';
-      });
+      setVoice((current) => (current || pickVoice(localStorage.getItem(VOICE_KEY))));
     };
     pick();
     speechSynthesis.onvoiceschanged = pick;
     return () => { speechSynthesis.onvoiceschanged = null; };
   }, []);
 
-  /**
-   * Speak one announcement.
-   *
-   * Rate is dialled back: over a PA outdoors, against kids and parents
-   * talking, default speed turns names into mush. Announcements are also
-   * strictly serialised — two overlapping voices are worse than silence.
-   */
   const speak = useCallback((text: string) => {
-    speakQueue.current = speakQueue.current
-      .then(() => new Promise<void>((resolve) => {
-        try {
-          const u = new SpeechSynthesisUtterance(text);
-          const v = speechSynthesis.getVoices().find((x) => x.name === voice);
-          if (v) u.voice = v;
-          u.rate = 0.85;
-          u.pitch = 1;
-          u.volume = 1;
-          u.onstart = () => setSpeaking(true);
-          u.onend = () => { setSpeaking(false); resolve(); };
-          u.onerror = () => { setSpeaking(false); resolve(); };
-          speechSynthesis.speak(u);
-        } catch { setSpeaking(false); resolve(); }
-      }))
-      .catch(() => undefined);
-    return speakQueue.current;
+    setSpeaking(true);
+    return speakShared(text, { voice }).finally(() => setSpeaking(false));
   }, [voice]);
 
-  /** Kill everything queued and shut the PA up immediately. */
   const stopSpeaking = useCallback(() => {
-    speechSynthesis.cancel();
-    speakQueue.current = Promise.resolve();
+    stopShared();
     setSpeaking(false);
   }, []);
 
@@ -209,6 +173,20 @@ export default function AnnouncerClient() {
       lengths: settingsRef.current.lengths,
       today,
     });
+
+    // Skip identical republishes. Estimates shift continuously as the clock
+    // moves, so the signature deliberately ignores them and tracks what
+    // actually changed on the ground: who is on which court, and the queue.
+    const signature = JSON.stringify({
+      c: board.onCourt.map((r) => [r.court, r.playerA, r.playerB, r.startedAt]),
+      w: board.waiting.map((r) => [r.id, r.scheduledTime, r.ahead]),
+      n: board.courtCount,
+      l: board.lengths,
+    });
+    const stale = Date.now() - lastPublish.current.at > PUBLISH_HEARTBEAT_MS;
+    if (signature === lastPublish.current.signature && !stale) return;
+    lastPublish.current = { signature, at: Date.now() };
+
     try {
       const res = await fetch('/api/ondeck/snapshot', {
         method: 'POST',

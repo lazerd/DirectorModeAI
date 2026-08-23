@@ -12,7 +12,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatAhead, findPlayer, prettyRound, formatClock, waitHeadline, type WaitBoard } from '@/lib/ondeck/board';
 import { pickVoice, speak, stopSpeaking, reportToDeskText } from '@/lib/ondeck/speech';
 
-const REFRESH_MS = 10_000;
+/**
+ * Wait times move on the scale of whole matches, so a phone in someone's
+ * pocket has nothing to gain from a faster refresh — and a busy Sunday can
+ * put fifty of them on this page at once.
+ */
+const REFRESH_MS = 45_000;
 
 /**
  * Past this, we stop showing wait estimates at all. A board that has not
