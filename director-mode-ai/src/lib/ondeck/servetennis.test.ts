@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalise, shortCourt, spokenEvent, announcementText,
-  diffForAnnouncement, observeCompletions, isAnnounceable,
+  diffForAnnouncement, observeCompletions, isAnnounceable, spokenRound,
   type RawMatchUp, type NormalisedMatch,
 } from './servetennis';
 
@@ -64,6 +64,33 @@ describe('spokenEvent', () => {
   it('makes the event name speakable', () => {
     expect(spokenEvent("Girls' 14 & under singles")).toBe('girls fourteen and under singles');
     expect(spokenEvent("Boys' 12 & under singles")).toBe('boys twelve and under singles');
+  });
+});
+
+describe('spokenRound', () => {
+  // Every round name present in the real 55882F65 draws.
+  it('speaks the consolation and playoff shorthand', () => {
+    expect(spokenRound('Quarterfinals')).toBe('quarterfinal');
+    expect(spokenRound('C-Quarterfinals-Q')).toBe('consolation quarterfinal');
+    expect(spokenRound('C-Quarterfinals')).toBe('consolation quarterfinal');
+    expect(spokenRound('Semifinals')).toBe('semifinal');
+    expect(spokenRound('C-Semifinals')).toBe('consolation semifinal');
+    expect(spokenRound('Final')).toBe('final');
+    expect(spokenRound('C-Final')).toBe('consolation final');
+    expect(spokenRound('PL-Final')).toBe('playoff final');
+    expect(spokenRound('R16')).toBe('round of sixteen');
+  });
+
+  it('never emits raw draw-sheet shorthand', () => {
+    for (const r of ['Quarterfinals','C-Quarterfinals-Q','C-Final','PL-Final','R16']) {
+      const out = spokenRound(r);
+      expect(out).not.toMatch(/-/);
+      expect(out).not.toMatch(/\bC\b|\bPL\b|\bQ\b/);
+    }
+  });
+
+  it('passes unknown names through readably rather than dropping them', () => {
+    expect(spokenRound('Round-Robin')).toBe('round robin');
   });
 });
 

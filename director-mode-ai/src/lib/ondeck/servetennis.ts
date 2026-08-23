@@ -228,8 +228,44 @@ export function timeToDate(hhmm: string, onDate: Date): Date {
 export function announcementText(m: NormalisedMatch): string {
   const court = m.court ?? 'the desk';
   const event = spokenEvent(m.event);
-  const round = m.round ? `, ${m.round}` : '';
+  const round = m.round ? `, ${spokenRound(m.round)}` : '';
   return `Attention please. On court ${court}, ${event}${round}. ${m.playerA} versus ${m.playerB}. Players report to court ${court}.`;
+}
+
+/**
+ * Round names arrive in draw-sheet shorthand — "C-Quarterfinals-Q",
+ * "PL-Final", "R16" — which a speech engine reads out as "see quarterfinals
+ * cue". Over a PA that is worse than saying nothing, so we spell them out.
+ *
+ *   C-   consolation draw
+ *   PL-  playoff (3rd/4th)
+ *   -Q   qualifying marker, meaningless to a player standing on court
+ *
+ * Singular throughout: one match is being called, not the whole round.
+ */
+export function spokenRound(roundName: string): string {
+  if (!roundName) return '';
+  let s = roundName.trim();
+  let prefix = '';
+
+  if (/^C-/i.test(s)) { prefix = 'consolation '; s = s.slice(2); }
+  else if (/^PL-/i.test(s)) { prefix = 'playoff '; s = s.slice(3); }
+
+  s = s.replace(/-Q$/i, '');
+
+  const NAMES: Record<string, string> = {
+    'quarterfinals': 'quarterfinal',
+    'quarterfinal': 'quarterfinal',
+    'semifinals': 'semifinal',
+    'semifinal': 'semifinal',
+    'final': 'final',
+    'r16': 'round of sixteen',
+    'r32': 'round of thirty two',
+    'r64': 'round of sixty four',
+  };
+
+  const key = s.toLowerCase();
+  return (prefix + (NAMES[key] ?? s.replace(/-/g, ' ').toLowerCase())).trim();
 }
 
 /**
