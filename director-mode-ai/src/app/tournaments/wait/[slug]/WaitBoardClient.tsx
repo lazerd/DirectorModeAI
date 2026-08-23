@@ -9,9 +9,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { formatWait, formatAhead, findPlayer, type WaitBoard } from '@/lib/ondeck/board';
+import { formatWait, formatAhead, findPlayer, prettyRound, type WaitBoard } from '@/lib/ondeck/board';
 
-const REFRESH_MS = 20_000;
+const REFRESH_MS = 10_000;
 
 interface Payload {
   title: string;
@@ -101,9 +101,13 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
 
         {result?.kind === 'waiting' && (
           <div style={S.answer}>
-            <div style={S.answerBig}>{formatWait(result.row.etaLowMin, result.row.etaHighMin)}</div>
+            <div style={S.answerBig}>
+              {board.isFutureDate
+                ? `Scheduled ${result.row.scheduledTime ?? ''}`
+                : formatWait(result.row.etaLowMin, result.row.etaHighMin)}
+            </div>
             <div style={S.answerSub}>
-              {formatAhead(result.row.ahead)}
+              {board.isFutureDate ? '' : formatAhead(result.row.ahead)}
               {result.row.court ? ` on court ${result.row.court}` : ''}
               {result.row.scheduledTime ? ` · scheduled ${result.row.scheduledTime}` : ''}
             </div>
@@ -127,7 +131,7 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
             <div style={S.rowBody}>
               <div style={S.players}>{r.playerA} <span style={S.vs}>v</span> {r.playerB}</div>
               <div style={S.meta}>
-                {r.event}{r.round ? ` · ${r.round}` : ''}
+                {r.event}{r.round ? ` · ${prettyRound(r.round)}` : ''}
                 {r.elapsedMin !== null && ` · ${r.elapsedMin} min in`}
               </div>
             </div>
@@ -136,18 +140,28 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
       </section>
 
       <section>
-        <h2 style={S.h2}>Coming up</h2>
-        {board.waiting.length === 0 && <p style={S.muted}>Nothing else scheduled today.</p>}
+        <h2 style={S.h2}>
+          {board.isFutureDate && board.boardDate
+            ? `${new Date(board.boardDate + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })} — order of play`
+            : 'Coming up'}
+        </h2>
+        {board.waiting.length === 0 && <p style={S.muted}>Nothing else scheduled.</p>}
         {board.waiting.map((r) => (
           <div key={r.id} style={S.row}>
             <div style={{ ...S.court, background: '#e5e7eb', color: '#374151' }}>{r.court ?? '–'}</div>
             <div style={S.rowBody}>
               <div style={S.players}>{r.playerA} <span style={S.vs}>v</span> {r.playerB}</div>
-              <div style={S.meta}>{r.event}{r.round ? ` · ${r.round}` : ''}</div>
+              <div style={S.meta}>{r.event}{r.round ? ` · ${prettyRound(r.round)}` : ''}</div>
             </div>
             <div style={S.waitCell}>
-              <div style={S.waitBig}>{formatWait(r.etaLowMin, r.etaHighMin)}</div>
-              <div style={S.waitSub}>{formatAhead(r.ahead)}</div>
+              {board.isFutureDate ? (
+                <div style={S.waitBig}>{r.scheduledTime ?? ''}</div>
+              ) : (
+                <>
+                  <div style={S.waitBig}>{formatWait(r.etaLowMin, r.etaHighMin)}</div>
+                  <div style={S.waitSub}>{formatAhead(r.ahead)}</div>
+                </>
+              )}
             </div>
           </div>
         ))}

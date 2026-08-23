@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeWaitBoard, formatWait, formatAhead, findPlayer, bucketOf, BASELINE_MINUTES } from './board';
+import { computeWaitBoard, formatWait, formatAhead, findPlayer, bucketOf, prettyRound, BASELINE_MINUTES } from './board';
 import type { NormalisedMatch } from './servetennis';
 
 const NOW = new Date('2026-08-23T10:00:00-07:00');
@@ -14,7 +14,7 @@ function m(p: Partial<NormalisedMatch> & { id: string }): NormalisedMatch {
   };
 }
 
-const opts = { observations: [], onDate: DATE, now: NOW };
+const opts = { observations: [], today: DATE, now: NOW };
 const observed = opts; // baselines drive the estimates until a bucket is learned
 
 describe('computeWaitBoard', () => {
@@ -103,9 +103,39 @@ describe('computeWaitBoard', () => {
     expect(b.waiting[0].etaHighMin).toBeLessThan(20);
   });
 
-  it("leaves out another day's matches", () => {
-    const live = [m({ id: 'tomorrow', scheduledDate: '2026-08-24' })];
-    expect(computeWaitBoard(live, opts).waiting).toHaveLength(0);
+  it("shows today's matches, not a later day's", () => {
+    const live = [m({ id: 'today' }), m({ id: 'tomorrow', scheduledDate: '2026-08-24' })];
+    const b = computeWaitBoard(live, opts);
+    expect(b.waiting.map((r) => r.id)).toEqual(['today']);
+    expect(b.boardDate).toBe(DATE);
+    expect(b.isFutureDate).toBe(false);
+  });
+
+  it("rolls on to tomorrow once today's play is done", () => {
+    // The evening of day one: nothing left today, day two already scheduled.
+    const live = [m({ id: 'tomorrow', scheduledDate: '2026-08-24', scheduledTime: '08:00' })];
+    const b = computeWaitBoard(live, opts);
+    expect(b.boardDate).toBe('2026-08-24');
+    expect(b.isFutureDate).toBe(true);
+    expect(b.waiting).toHaveLength(1);
+  });
+
+  it("does not let a match still on court hide tomorrow's order of play", () => {
+    const live = [
+      m({ id: 'grinding', court: '1', status: 'IN_PROGRESS', startTime: '09:00' }),
+      m({ id: 'tomorrow', scheduledDate: '2026-08-24', scheduledTime: '08:00' }),
+    ];
+    const b = computeWaitBoard(live, opts);
+    expect(b.onCourt).toHaveLength(1);
+    expect(b.boardDate).toBe('2026-08-24');
+    expect(b.waiting.map((r) => r.id)).toEqual(['tomorrow']);
+  });
+
+  it('gives no countdown for a future day, since the scheduled time is the answer', () => {
+    const live = [m({ id: 'tomorrow', scheduledDate: '2026-08-24', scheduledTime: '08:00' })];
+    const b = computeWaitBoard(live, opts);
+    expect(b.waiting[0].etaLowMin).toBe(0);
+    expect(b.waiting[0].scheduledTime).toBe('08:00');
   });
 
   it('reports elapsed time for matches on court', () => {
@@ -138,6 +168,17 @@ describe('bucketOf', () => {
 
   it('puts the 3-4 playoff final in the main late bucket', () => {
     expect(bucketOf({ structure: 'Playoff 3-4', round: 'PL-Final' })).toBe('main_late');
+  });
+});
+
+describe('prettyRound', () => {
+  it('never shows draw-sheet codes to a parent', () => {
+    expect(prettyRound('C-Quarterfinals-Q')).toBe('Consolation QF');
+    expect(prettyRound('C-Final')).toBe('Consolation Final');
+    expect(prettyRound('Quarterfinals')).toBe('QF');
+    expect(prettyRound('Semifinals')).toBe('SF');
+    expect(prettyRound('R16')).toBe('Round of 16');
+    expect(prettyRound('PL-Final')).toBe('Playoff Final');
   });
 });
 

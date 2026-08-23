@@ -95,6 +95,14 @@ export interface CourtRow {
 export interface WaitBoard {
   onCourt: CourtRow[];
   waiting: WaitRow[];
+  /** The play date the board is showing, "YYYY-MM-DD". */
+  boardDate: string | null;
+  /**
+   * True when the board has rolled on to a later day — once today's play is
+   * done we show tomorrow's order of play, where a countdown would be
+   * meaningless and the scheduled time is the only useful answer.
+   */
+  isFutureDate: boolean;
   /** Expected length per bucket, after any learning from today's play. */
   expectedMinutes: Record<Bucket, number>;
   sampleSize: number;
@@ -105,8 +113,11 @@ export interface WaitBoard {
 export interface WaitOptions {
   /** Matches timed today, tagged by bucket. */
   observations: Observation[];
-  /** Restrict to one play date, so tomorrow's matches don't appear as waits. */
-  onDate?: string;
+  /**
+   * Today's date, "YYYY-MM-DD". The board shows today while there is still
+   * play left, then rolls forward to the next scheduled day.
+   */
+  today: string;
   now?: Date;
 }
 
@@ -164,11 +175,26 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
   const lowRatio = provisional ? 0.85 : Math.min(1, quantile(allObs, 0.25) / centre);
   const highRatio = provisional ? 1.3 : Math.max(1, quantile(allObs, 0.75) / centre);
 
-  const forDate = (m: NormalisedMatch) => !opts.onDate || m.scheduledDate === opts.onDate;
-
   const playing = live.filter((m) => m.status === 'IN_PROGRESS');
-  const queued = live
-    .filter((m) => m.status !== 'IN_PROGRESS' && forDate(m))
+  const upcoming = live.filter((m) => m.status !== 'IN_PROGRESS');
+
+  // Which day to show. Today, while anything is still on court or still to
+  // be played today; otherwise the next day with matches on it, so the
+  // evening before a tournament day shows tomorrow's order of play rather
+  // than an empty board.
+  const todaysUpcoming = upcoming.filter((m) => m.scheduledDate === opts.today);
+  const futureDates = upcoming
+    .map((m) => m.scheduledDate)
+    .filter((d): d is string => Boolean(d) && d! > opts.today)
+    .sort();
+  // Note: a match still grinding on court does NOT hold the board on today.
+  // Late on day one everything remaining is tomorrow's, and that is what
+  // people are standing there asking about.
+  const boardDate = todaysUpcoming.length ? opts.today : futureDates[0] ?? null;
+  const isFutureDate = boardDate !== null && boardDate > opts.today;
+
+  const queued = upcoming
+    .filter((m) => m.scheduledDate === boardDate)
     .sort((a, b) => (a.scheduledTime ?? '99:99').localeCompare(b.scheduledTime ?? '99:99'));
 
   // When each court is expected to free up.
@@ -211,7 +237,8 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
     const ahead = aheadOn.get(key) ?? 0;
     aheadOn.set(key, ahead + 1);
 
-    const waitMin = (startsAt - nowMs) / MS_PER_MIN;
+    // On a future day a countdown is noise — the scheduled time is the answer.
+    const waitMin = isFutureDate ? 0 : (startsAt - nowMs) / MS_PER_MIN;
     return {
       id: m.id,
       court,
@@ -229,6 +256,8 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
   return {
     onCourt,
     waiting,
+    boardDate,
+    isFutureDate,
     expectedMinutes: {
       consolation_early: expected('consolation_early'),
       consolation_late: expected('consolation_late'),
@@ -239,6 +268,27 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
     provisional,
     generatedAt: now.toISOString(),
   };
+}
+
+/**
+ * Draw-sheet shorthand made readable for the screen: "C-Quarterfinals-Q"
+ * becomes "Consolation QF". Shorter than the spoken form because a phone
+ * screen has no room, but it must never show the raw code to a parent.
+ */
+export function prettyRound(roundName: string): string {
+  if (!roundName) return '';
+  let s = roundName.trim();
+  let prefix = '';
+  if (/^C-/i.test(s)) { prefix = 'Consolation '; s = s.slice(2); }
+  else if (/^PL-/i.test(s)) { prefix = 'Playoff '; s = s.slice(3); }
+  s = s.replace(/-Q$/i, '');
+  const NAMES: Record<string, string> = {
+    quarterfinals: 'QF', quarterfinal: 'QF',
+    semifinals: 'SF', semifinal: 'SF',
+    final: 'Final', r16: 'Round of 16', r32: 'Round of 32', r64: 'Round of 64',
+  };
+  const key = s.toLowerCase();
+  return (prefix + (NAMES[key] ?? s.replace(/-/g, ' '))).trim();
 }
 
 /** "~45–70 min" / "Next up" / "On now" — one wording everywhere. */

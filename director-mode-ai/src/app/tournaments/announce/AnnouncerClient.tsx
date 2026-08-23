@@ -8,8 +8,9 @@
  *
  * No server, no API key, no per-message cost. The Serve Tennis API sends
  * `access-control-allow-origin: *`, so the browser can read the feed
- * directly; the voice is Kokoro-82M (Apache-2.0) running locally via WebGPU
- * or WASM, with the browser's built-in speech engine as an instant fallback.
+ * directly, and the voice is the browser's own speech engine — the best
+ * one the laptop has, which on this machine means a Google network voice
+ * rather than the muddy bundled Microsoft default.
  *
  * Darrin assigns a court in Tournament Desk. Within one poll, the PA calls
  * the players. He does nothing.
@@ -23,7 +24,7 @@ import {
 import { computeWaitBoard, bucketOf, type Observation } from '@/lib/ondeck/board';
 
 const TOURNAMENT_ID = '55882F65-8F6E-4791-8847-4BEB310376BE';
-const POLL_MS = 15_000;
+const POLL_MS = 10_000;
 const TOKEN_KEY = 'ondeck.token';
 const OBS_KEY = 'ondeck.observations';
 /** Slug the public wait board is published under. */
@@ -31,20 +32,19 @@ const BOARD_SLUG = 'sh-level5-aug-2026';
 const BOARD_TITLE = 'Sleepy Hollow Level 5 — Order of Play';
 const VOICE_KEY = 'ondeck.voice';
 
-/** Loaded from a CDN at runtime so transformers.js never enters the build. */
-const KOKORO_CDN = 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm';
-const KOKORO_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
-
-const VOICES = [
-  { id: 'am_michael', label: 'Michael — warm announcer' },
-  { id: 'am_fenrir', label: 'Fenrir — high energy' },
-  { id: 'bm_george', label: 'George — British' },
-  { id: 'am_puck', label: 'Puck — playful' },
-  { id: 'af_heart', label: 'Heart — female' },
+/**
+ * Voices the laptop actually has, best first. The Google entries are
+ * network voices and are dramatically clearer over a PA than the bundled
+ * Microsoft ones, which is what makes them worth preferring by name.
+ */
+const VOICE_PREFERENCE = [
+  'Google UK English Male',
+  'Google US English',
+  'Google UK English Female',
+  'Microsoft Mark',
+  'Microsoft David',
+  'Microsoft Zira',
 ];
-
-type VoiceEngine = 'kokoro' | 'browser';
-type LoadState = 'idle' | 'loading' | 'ready' | 'failed';
 
 interface LogLine { at: string; text: string; kind: 'call' | 'info' | 'error' }
 
@@ -56,16 +56,15 @@ export default function AnnouncerClient() {
   const [tokenExpired, setTokenExpired] = useState(false);
   const [lastPoll, setLastPoll] = useState<Date | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
-  const [voice, setVoice] = useState('am_michael');
-  const [engine, setEngine] = useState<VoiceEngine>('browser');
-  const [kokoroState, setKokoroState] = useState<LoadState>('idle');
+  const [voice, setVoice] = useState('');
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [speaking, setSpeaking] = useState(false);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [publishState, setPublishState] = useState<'idle' | 'ok' | 'failed' | 'signed_out'>('idle');
 
   const announced = useRef<Set<string>>(new Set());
   const prevLive = useRef<NormalisedMatch[]>([]);
   const observations = useRef<Observation[]>([]);
-  const ttsRef = useRef<unknown>(null);
   const speakQueue = useRef<Promise<void>>(Promise.resolve());
 
   const addLog = useCallback((text: string, kind: LogLine['kind'] = 'info') => {
@@ -116,61 +115,63 @@ export default function AnnouncerClient() {
   }, [token]);
 
   // --- speech ------------------------------------------------------------
-  const speakBrowser = useCallback((text: string) => new Promise<void>((resolve) => {
-    try {
-      const u = new SpeechSynthesisUtterance(text);
-      u.rate = 0.95; u.pitch = 1;
-      u.onend = () => resolve();
-      u.onerror = () => resolve();
-      window.speechSynthesis.speak(u);
-    } catch { resolve(); }
-  }), []);
+  /** Voice list arrives asynchronously in Chrome, so wait for it. */
+  useEffect(() => {
+    const pick = () => {
+      const all = speechSynthesis.getVoices().filter((v) => v.lang.startsWith('en'));
+      if (!all.length) return;
+      setVoices(all);
+      setVoice((current) => {
+        if (current && all.some((v) => v.name === current)) return current;
+        const saved = localStorage.getItem(VOICE_KEY);
+        if (saved && all.some((v) => v.name === saved)) return saved;
+        const preferred = VOICE_PREFERENCE.find((name) =>
+          all.some((v) => v.name.startsWith(name))
+        );
+        const match = preferred
+          ? all.find((v) => v.name.startsWith(preferred))
+          : all[0];
+        return match?.name ?? '';
+      });
+    };
+    pick();
+    speechSynthesis.onvoiceschanged = pick;
+    return () => { speechSynthesis.onvoiceschanged = null; };
+  }, []);
 
-  const speakKokoro = useCallback(async (text: string) => {
-    const tts = ttsRef.current as { generate: (t: string, o: { voice: string }) => Promise<{ toBlob: () => Blob }> } | null;
-    if (!tts) return speakBrowser(text);
-    const audio = await tts.generate(text, { voice });
-    const url = URL.createObjectURL(audio.toBlob());
-    await new Promise<void>((resolve) => {
-      const el = new Audio(url);
-      el.onended = () => resolve();
-      el.onerror = () => resolve();
-      void el.play().catch(() => resolve());
-    });
-    URL.revokeObjectURL(url);
-  }, [voice, speakBrowser]);
-
-  /** Announcements are strictly serialised — two voices at once is unusable. */
+  /**
+   * Speak one announcement.
+   *
+   * Rate is dialled back: over a PA outdoors, against kids and parents
+   * talking, default speed turns names into mush. Announcements are also
+   * strictly serialised — two overlapping voices are worse than silence.
+   */
   const speak = useCallback((text: string) => {
     speakQueue.current = speakQueue.current
-      .then(() => (engine === 'kokoro' && ttsRef.current ? speakKokoro(text) : speakBrowser(text)))
+      .then(() => new Promise<void>((resolve) => {
+        try {
+          const u = new SpeechSynthesisUtterance(text);
+          const v = speechSynthesis.getVoices().find((x) => x.name === voice);
+          if (v) u.voice = v;
+          u.rate = 0.85;
+          u.pitch = 1;
+          u.volume = 1;
+          u.onstart = () => setSpeaking(true);
+          u.onend = () => { setSpeaking(false); resolve(); };
+          u.onerror = () => { setSpeaking(false); resolve(); };
+          speechSynthesis.speak(u);
+        } catch { setSpeaking(false); resolve(); }
+      }))
       .catch(() => undefined);
     return speakQueue.current;
-  }, [engine, speakKokoro, speakBrowser]);
+  }, [voice]);
 
-  const loadKokoro = useCallback(async () => {
-    if (kokoroState === 'loading' || kokoroState === 'ready') return;
-    setKokoroState('loading');
-    addLog('Downloading the Kokoro voice (one time, ~90 MB)…');
-    try {
-      // Bypass the bundler so this stays a runtime fetch, not a build dependency.
-      const mod = await (new Function('u', 'return import(u)')(KOKORO_CDN) as Promise<{
-        KokoroTTS: { from_pretrained: (m: string, o: Record<string, unknown>) => Promise<unknown> };
-      }>);
-      const hasWebGPU = 'gpu' in navigator;
-      ttsRef.current = await mod.KokoroTTS.from_pretrained(KOKORO_MODEL, {
-        dtype: hasWebGPU ? 'fp32' : 'q8',
-        device: hasWebGPU ? 'webgpu' : 'wasm',
-      });
-      setKokoroState('ready');
-      setEngine('kokoro');
-      addLog(`Kokoro ready (${hasWebGPU ? 'WebGPU' : 'WASM'}).`);
-    } catch (e) {
-      setKokoroState('failed');
-      setEngine('browser');
-      addLog(`Kokoro failed to load — staying on the built-in voice. ${(e as Error).message}`, 'error');
-    }
-  }, [kokoroState, addLog]);
+  /** Kill everything queued and shut the PA up immediately. */
+  const stopSpeaking = useCallback(() => {
+    speechSynthesis.cancel();
+    speakQueue.current = Promise.resolve();
+    setSpeaking(false);
+  }, []);
 
   /**
    * Push the computed board to the public page. Done from here rather than
@@ -181,7 +182,7 @@ export default function AnnouncerClient() {
     const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
     const board = computeWaitBoard(nextLive, {
       observations: observations.current,
-      onDate: today,
+      today,
     });
     try {
       const res = await fetch('/api/ondeck/snapshot', {
@@ -353,20 +354,19 @@ export default function AnnouncerClient() {
         <label style={S.label}>
           Voice{' '}
           <select value={voice} onChange={(e) => setVoice(e.target.value)} style={S.select}>
-            {VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+            {voices.map((v) => <option key={v.name} value={v.name}>{v.name}</option>)}
           </select>
         </label>
 
-        {kokoroState !== 'ready' ? (
-          <button style={S.button} onClick={() => void loadKokoro()} disabled={kokoroState === 'loading'}>
-            {kokoroState === 'loading' ? 'Loading voice…' : 'Use the good voice'}
-          </button>
-        ) : (
-          <span style={S.badge}>Kokoro voice active</span>
-        )}
-
         <button style={S.button} onClick={() => void speak('Attention please. On court five, boys twelve and under singles, quarterfinal. Test announcement.')}>
           Test the PA
+        </button>
+
+        <button
+          style={speaking ? S.stopButtonActive : S.stopButton}
+          onClick={stopSpeaking}
+        >
+          ■ Stop
         </button>
 
         <a href={`/tournaments/wait/${BOARD_SLUG}`} target="_blank" rel="noreferrer" style={S.button}>
@@ -450,6 +450,8 @@ const S: Record<string, React.CSSProperties> = {
   label: { fontSize: 14, color: '#374151' },
   select: { padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14, color: '#111827', background: '#fff' },
   button: { padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#111827' },
+  stopButton: { padding: '8px 18px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', color: '#374151' },
+  stopButtonActive: { padding: '8px 18px', borderRadius: 8, border: '1px solid #dc2626', background: '#dc2626', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' },
   bigButton: { padding: '20px 40px', borderRadius: 12, border: 'none', background: '#095896', color: '#fff', fontSize: 22, fontWeight: 700, cursor: 'pointer' },
   smallButton: { border: 'none', background: 'transparent', fontSize: 22, cursor: 'pointer', padding: 4 },
   bookmarklet: { display: 'inline-block', padding: '6px 14px', background: '#095896', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 600 },
