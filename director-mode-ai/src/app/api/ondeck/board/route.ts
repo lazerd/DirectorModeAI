@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +17,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'bad_slug' }, { status: 400 });
   }
 
-  const service = await createServiceClient();
+  // Cookie-free admin client — see the note in the snapshot route.
+  const service = getSupabaseAdmin();
   const { data, error } = await service
     .from('td_snapshots')
     .select('slug, title, payload, updated_at')

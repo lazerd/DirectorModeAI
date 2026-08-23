@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'bad_payload' }, { status: 400 });
   }
 
-  const service = await createServiceClient();
+  // Deliberately the cookie-free admin client: createServiceClient() forwards
+  // the signed-in user's JWT, which overrides the service key and makes the
+  // write run as `authenticated` — denied by RLS on this table.
+  const service = getSupabaseAdmin();
   const { error } = await service
     .from('td_snapshots')
     .upsert(
