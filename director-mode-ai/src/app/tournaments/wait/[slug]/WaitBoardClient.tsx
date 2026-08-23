@@ -173,7 +173,7 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
         {board.waiting.length === 0 && <p style={S.muted}>Nothing else scheduled.</p>}
         {board.waiting.map((r) => (
           <div key={r.id} style={S.row}>
-            <div style={{ ...S.court, background: '#e5e7eb', color: '#374151' }}>{r.court ?? '–'}</div>
+            <div style={{ ...S.court, background: '#1e4a63', color: '#cbd5e1' }}>{r.court ?? '–'}</div>
             <div style={S.rowBody}>
               <div style={S.players}>{r.playerA} <span style={S.vs}>v</span> {r.playerB}</div>
               <div style={S.meta}>{r.event}{r.round ? ` · ${prettyRound(r.round)}` : ''}</div>
@@ -201,28 +201,34 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
   );
 }
 
+/**
+ * Palette is explicit and dark-first: the ClubMode shell paints a dark navy
+ * body, so anything relying on a default background renders dark-on-dark and
+ * disappears. Sizes are deliberately large — this is read on a phone, one
+ * handed, in direct sun, by someone who is already annoyed.
+ */
 const S: Record<string, React.CSSProperties> = {
-  wrap: { maxWidth: 720, margin: '0 auto', padding: '20px 16px 60px', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#111827' },
-  h1: { fontSize: 24, fontWeight: 700, margin: '0 0 16px', lineHeight: 1.25 },
-  h2: { fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#6b7280', margin: '28px 0 10px' },
-  muted: { color: '#6b7280', fontSize: 15 },
-  warn: { background: '#fef3c7', border: '1px solid #f59e0b', color: '#92400e', padding: '12px 14px', borderRadius: 8, marginBottom: 16, fontSize: 15 },
-  searchCard: { background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 12, padding: 16 },
-  searchLabel: { display: 'block', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#6b7280', marginBottom: 8 },
-  // Colour set inline: the global stylesheet renders unstyled inputs white-on-white.
-  search: { width: '100%', boxSizing: 'border-box', padding: '14px 16px', fontSize: 17, borderRadius: 10, border: '1px solid #d1d5db', color: '#111827', background: '#fff' },
-  answer: { marginTop: 14, padding: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10 },
-  answerNow: { marginTop: 14, padding: 14, background: '#dcfce7', border: '1px solid #16a34a', borderRadius: 10 },
-  answerBig: { fontSize: 26, fontWeight: 700, lineHeight: 1.2 },
-  answerSub: { fontSize: 15, color: '#4b5563', marginTop: 4 },
-  row: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #f3f4f6' },
-  court: { width: 44, height: 44, flexShrink: 0, borderRadius: 10, background: '#095896', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 19, fontWeight: 700 },
+  wrap: { maxWidth: 720, margin: '0 auto', padding: '20px 16px 60px', fontFamily: 'system-ui, -apple-system, sans-serif', color: '#f1f5f9' },
+  h1: { fontSize: 26, fontWeight: 800, margin: '0 0 16px', lineHeight: 1.2, color: '#ffffff' },
+  h2: { fontSize: 14, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: '#7dd3fc', margin: '30px 0 10px' },
+  muted: { color: '#94a3b8', fontSize: 15 },
+  warn: { background: '#7c2d12', border: '1px solid #fb923c', color: '#ffedd5', padding: '12px 14px', borderRadius: 8, marginBottom: 16, fontSize: 15 },
+  searchCard: { background: '#0b2b3d', border: '1px solid #17455f', borderRadius: 12, padding: 16 },
+  searchLabel: { display: 'block', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.07em', color: '#7dd3fc', marginBottom: 8 },
+  // Colour set inline: globals.css otherwise renders inputs white-on-white.
+  search: { width: '100%', boxSizing: 'border-box', padding: '15px 16px', fontSize: 18, borderRadius: 10, border: '1px solid #38617a', color: '#0f172a', background: '#ffffff' },
+  answer: { marginTop: 14, padding: 16, background: '#0f3a52', border: '1px solid #17455f', borderRadius: 10 },
+  answerNow: { marginTop: 14, padding: 16, background: '#14532d', border: '1px solid #22c55e', borderRadius: 10 },
+  answerBig: { fontSize: 28, fontWeight: 800, lineHeight: 1.15, color: '#ffffff' },
+  answerSub: { fontSize: 16, color: '#cbd5e1', marginTop: 5 },
+  row: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #123a4f' },
+  court: { width: 48, height: 48, flexShrink: 0, borderRadius: 10, background: '#0284c7', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 21, fontWeight: 800 },
   rowBody: { flex: 1, minWidth: 0 },
-  players: { fontSize: 16, fontWeight: 600, lineHeight: 1.3 },
-  vs: { color: '#9ca3af', fontWeight: 400 },
-  meta: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  players: { fontSize: 18, fontWeight: 700, lineHeight: 1.3, color: '#ffffff' },
+  vs: { color: '#7891a5', fontWeight: 400 },
+  meta: { fontSize: 13.5, color: '#94a3b8', marginTop: 3 },
   waitCell: { textAlign: 'right', flexShrink: 0 },
-  waitBig: { fontSize: 15, fontWeight: 700, whiteSpace: 'nowrap' },
-  waitSub: { fontSize: 12, color: '#6b7280', whiteSpace: 'nowrap' },
-  footer: { marginTop: 32, fontSize: 13, color: '#6b7280', lineHeight: 1.6 },
+  waitBig: { fontSize: 16, fontWeight: 800, whiteSpace: 'nowrap', color: '#fbbf24' },
+  waitSub: { fontSize: 12.5, color: '#94a3b8', whiteSpace: 'nowrap' },
+  footer: { marginTop: 32, fontSize: 13, color: '#7891a5', lineHeight: 1.6 },
 };
