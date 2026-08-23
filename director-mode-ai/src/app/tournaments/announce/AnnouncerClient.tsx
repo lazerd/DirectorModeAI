@@ -38,8 +38,10 @@ const VOICE_KEY = 'ondeck.voice';
  * Microsoft ones, which is what makes them worth preferring by name.
  */
 const VOICE_PREFERENCE = [
-  'Google UK English Male',
+  // US English first — this is a California club and an American accent is
+  // what players' ears expect over a PA.
   'Google US English',
+  'Google UK English Male',
   'Google UK English Female',
   'Microsoft Mark',
   'Microsoft David',
