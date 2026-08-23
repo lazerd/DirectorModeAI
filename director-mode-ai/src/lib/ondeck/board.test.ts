@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { computeWaitBoard, formatWait, formatAhead, findPlayer, bucketOf, prettyRound, BASELINE_MINUTES } from './board';
+import {
+  computeWaitBoard, formatWait, formatAhead, findPlayer, bucketOf, prettyRound,
+  formatClock, waitHeadline, DEFAULT_LENGTHS,
+} from './board';
 import type { NormalisedMatch } from './servetennis';
 
 const NOW = new Date('2026-08-23T10:00:00-07:00');
@@ -14,15 +17,28 @@ function m(p: Partial<NormalisedMatch> & { id: string }): NormalisedMatch {
   };
 }
 
-const COURTS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
-const opts = { observations: [], courts: COURTS, today: DATE, now: NOW };
-const observed = opts; // baselines drive the estimates until a bucket is learned
+// Nine courts running, Darrin's figures: main 90 min, consolation 60.
+const opts = { observations: [], courtCount: 9, today: DATE, now: NOW };
+const observed = opts;
 
 describe('computeWaitBoard', () => {
-  it('starts from the baselines for each kind of match', () => {
+  it("starts from the director's figures", () => {
     const b = computeWaitBoard([m({ id: 'a' })], opts);
     expect(b.provisional).toBe(true);
-    expect(b.expectedMinutes).toEqual(BASELINE_MINUTES);
+    expect(b.expectedMinutes.main_early).toBe(90);
+    expect(b.expectedMinutes.consolation_early).toBe(60);
+    // Semis and finals run longer in both draws.
+    expect(b.expectedMinutes.main_late).toBe(100);
+    expect(b.expectedMinutes.consolation_late).toBe(70);
+  });
+
+  it('honours match lengths the director changes', () => {
+    const b = computeWaitBoard([m({ id: 'a' })], {
+      ...opts,
+      lengths: { mainMinutes: 75, consolationMinutes: 45 },
+    });
+    expect(b.expectedMinutes.main_early).toBe(75);
+    expect(b.expectedMinutes.consolation_early).toBe(45);
   });
 
   it('learns a bucket once three of that kind have been timed', () => {
@@ -35,8 +51,8 @@ describe('computeWaitBoard', () => {
       ],
     });
     expect(b.expectedMinutes.main_early).toBe(75);
-    // Untouched buckets keep their baseline.
-    expect(b.expectedMinutes.consolation_early).toBe(55);
+    // Untouched buckets keep the director's figure.
+    expect(b.expectedMinutes.consolation_early).toBe(60);
     expect(b.expectedMinutes.main_late).toBe(100);
   });
 
@@ -45,20 +61,20 @@ describe('computeWaitBoard', () => {
       ...opts,
       observations: [{ bucket: 'main_early' as const, minutes: 20 }],
     });
-    expect(b.expectedMinutes.main_early).toBe(95);
+    expect(b.expectedMinutes.main_early).toBe(90);
   });
 
-  it('queues a waiting match behind the one on its own court', () => {
+  it('does not make a match wait when eight of nine courts are busy', () => {
+    // The old per-court model queued behind the match on "your" court even
+    // with courts standing empty. Capacity is what matters, not court names.
     const live = [
       m({ id: 'playing', court: '1', status: 'IN_PROGRESS', startTime: '09:30' }),
-      m({ id: 'next', court: '1', scheduledTime: '09:00' }),
+      m({ id: 'next', court: null, courtRaw: null, scheduledTime: '09:00' }),
     ];
     const b = computeWaitBoard(live, observed);
     expect(b.onCourt).toHaveLength(1);
-    expect(b.waiting[0].ahead).toBe(1);
-    // Started 09:30, ~68 min median -> frees ~10:38, i.e. ~38 min away.
-    expect(b.waiting[0].etaHighMin).toBeGreaterThan(20);
-    expect(b.waiting[0].etaLowMin).toBeGreaterThan(0);
+    expect(b.waiting[0].ahead).toBe(0);
+    expect(b.waiting[0].etaHighMin).toBeLessThanOrEqual(5);
   });
 
   it('does not make one court wait for a different busy court', () => {
@@ -72,18 +88,20 @@ describe('computeWaitBoard', () => {
     expect(onSeven.etaHighMin).toBeLessThanOrEqual(5);
   });
 
-  it('stacks a court queue so the third match waits longer than the first', () => {
+  it('stacks the queue once capacity runs out', () => {
+    // Two courts, four matches: the third and fourth must wait for the first
+    // two to finish, and the later one waits longer.
     const live = [
-      m({ id: 'p', court: '3', status: 'IN_PROGRESS', startTime: '09:50' }),
-      m({ id: 'w1', court: '3', scheduledTime: '09:00' }),
-      m({ id: 'w2', court: '3', scheduledTime: '09:10' }),
-      m({ id: 'w3', court: '3', scheduledTime: '09:20' }),
+      m({ id: 'w1', court: null, courtRaw: null, scheduledTime: '09:00' }),
+      m({ id: 'w2', court: null, courtRaw: null, scheduledTime: '09:00' }),
+      m({ id: 'w3', court: null, courtRaw: null, scheduledTime: '09:00' }),
+      m({ id: 'w4', court: null, courtRaw: null, scheduledTime: '09:00' }),
     ];
-    const b = computeWaitBoard(live, observed);
-    const [w1, w2, w3] = b.waiting;
-    expect([w1.ahead, w2.ahead, w3.ahead]).toEqual([1, 2, 3]);
-    expect(w1.etaHighMin).toBeLessThan(w2.etaHighMin);
-    expect(w2.etaHighMin).toBeLessThan(w3.etaHighMin);
+    const b = computeWaitBoard(live, { ...observed, courtCount: 2 });
+    const [w1, w2, w3, w4] = b.waiting;
+    expect([w1.ahead, w2.ahead, w3.ahead, w4.ahead]).toEqual([0, 0, 1, 1]);
+    expect(w3.etaHighMin).toBeGreaterThan(w1.etaHighMin);
+    expect(w4.etaHighMin).toBeGreaterThan(w2.etaHighMin);
   });
 
   it('never promises a court before the published start time', () => {
@@ -139,13 +157,38 @@ describe('computeWaitBoard', () => {
     expect(b.waiting[0].scheduledTime).toBe('08:00');
   });
 
-  it('spreads court-less matches across the whole venue, not one imaginary court', () => {
+  it('starts a 9am match at 9am when a court is free', () => {
+    // Nine courts, nothing on them, one match scheduled for 09:00.
+    const nine = new Date('2026-08-23T08:30:00-07:00');
+    const live = [m({ id: 'w', court: null, courtRaw: null, scheduledTime: '09:00' })];
+    const b = computeWaitBoard(live, { ...opts, now: nine });
+    expect(b.waiting[0].estimatedStart).toBe('09:00');
+    expect(b.waiting[0].onSchedule).toBe(true);
+    expect(waitHeadline(b.waiting[0])).toBe('9:00 AM');
+  });
+
+  it('pushes past the scheduled time only when every court is busy', () => {
+    const live = [
+      // All nine courts went out at 09:30 with 90-minute main-draw matches.
+      ...Array.from({ length: 9 }, (_, i) =>
+        m({ id: `p${i}`, court: String(i + 1), status: 'IN_PROGRESS', startTime: '09:30' })
+      ),
+      m({ id: 'w', court: null, courtRaw: null, scheduledTime: '09:00' }),
+    ];
+    const b = computeWaitBoard(live, observed);
+    // 09:30 + 90 = 11:00, so it cannot go on at its scheduled 09:00.
+    expect(b.waiting[0].onSchedule).toBe(false);
+    expect(b.waiting[0].estimatedStart).toBe('11:00');
+    expect(b.waiting[0].ahead).toBe(1);
+  });
+
+  it('spreads court-less matches across the courts in use', () => {
     // The real failure on tournament morning: the desk assigns courts only
     // as it calls matches, so all 34 upcoming matches had court === null.
     // They queued single-file and the board quoted a 37-hour wait.
     const live = [
-      ...COURTS.slice(0, 8).map((c, i) =>
-        m({ id: `p${i}`, court: c, status: 'IN_PROGRESS', startTime: '09:30' })
+      ...Array.from({ length: 8 }, (_, i) =>
+        m({ id: `p${i}`, court: String(i + 1), status: 'IN_PROGRESS', startTime: '09:30' })
       ),
       ...Array.from({ length: 34 }, (_, i) =>
         m({ id: `w${i}`, court: null, courtRaw: null, scheduledTime: '09:00' })
@@ -153,26 +196,24 @@ describe('computeWaitBoard', () => {
     ];
     const b = computeWaitBoard(live, observed);
 
-    // Court 9 is idle, so the first waiting match goes on immediately.
+    // The ninth court is idle, so the first waiting match goes straight on.
     expect(b.waiting[0].etaHighMin).toBeLessThanOrEqual(5);
-    expect(b.waiting[0].predictedCourt).toBeTruthy();
 
-    // Nothing may read as a multi-day wait. Nine courts, 95 min a match,
-    // 34 matches -> roughly four rounds deep, so well under eight hours.
+    // Nothing may read as a multi-day wait. Nine courts, 34 matches, roughly
+    // four deep per court — well under eight hours, never 37.
     const worst = Math.max(...b.waiting.map((r) => r.etaHighMin));
     expect(worst).toBeLessThan(8 * 60);
 
-    // And they must actually be distributed.
-    const used = new Set(b.waiting.map((r) => r.predictedCourt));
-    expect(used.size).toBeGreaterThanOrEqual(9);
+    // Nine courts means nine matches can be waiting on an empty slot.
+    expect(b.waiting.filter((r) => r.ahead === 0).length).toBeGreaterThan(0);
   });
 
   it('takes longer when fewer courts are in play', () => {
     const live = Array.from({ length: 18 }, (_, i) =>
       m({ id: `w${i}`, court: null, courtRaw: null, scheduledTime: '09:00' })
     );
-    const wide = computeWaitBoard(live, { ...observed, courts: COURTS });
-    const narrow = computeWaitBoard(live, { ...observed, courts: ['1', '2'] });
+    const wide = computeWaitBoard(live, { ...observed, courtCount: 9 });
+    const narrow = computeWaitBoard(live, { ...observed, courtCount: 2 });
     const lastOf = (b: ReturnType<typeof computeWaitBoard>) =>
       b.waiting[b.waiting.length - 1].etaHighMin;
     expect(lastOf(narrow)).toBeGreaterThan(lastOf(wide));
@@ -232,6 +273,12 @@ describe('prettyRound', () => {
 });
 
 describe('wording', () => {
+  it('renders clock times, not 24-hour codes', () => {
+    expect(formatClock('09:00')).toBe('9:00 AM');
+    expect(formatClock('13:05')).toBe('1:05 PM');
+    expect(formatClock('00:30')).toBe('12:30 AM');
+  });
+
   it('says something a parent can act on', () => {
     expect(formatWait(0, 5)).toBe('Next up');
     expect(formatWait(45, 70)).toBe('~45–70 min');

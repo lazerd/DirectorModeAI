@@ -19,9 +19,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchFeed, normaliseFeed, diffForAnnouncement, observeCompletions,
-  announcementText, courtsAvailableOn, type NormalisedMatch, type Feed,
+  announcementText, type NormalisedMatch,
 } from '@/lib/ondeck/servetennis';
-import { computeWaitBoard, bucketOf, type Observation } from '@/lib/ondeck/board';
+import { computeWaitBoard, bucketOf, DEFAULT_LENGTHS, type Observation, type MatchLengths } from '@/lib/ondeck/board';
 
 const TOURNAMENT_ID = '55882F65-8F6E-4791-8847-4BEB310376BE';
 const POLL_MS = 10_000;
@@ -31,7 +31,7 @@ const OBS_KEY = 'ondeck.observations';
 const BOARD_SLUG = 'sh-level5-aug-2026';
 const BOARD_TITLE = 'Sleepy Hollow Level 5 — Order of Play';
 const VOICE_KEY = 'ondeck.voice';
-const CLOSED_COURTS_KEY = 'ondeck.closedCourts';
+const SETTINGS_KEY = 'ondeck.settings';
 
 /**
  * Voices the laptop actually has, best first. The Google entries are
@@ -64,16 +64,15 @@ export default function AnnouncerClient() {
   const [speaking, setSpeaking] = useState(false);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [publishState, setPublishState] = useState<'idle' | 'ok' | 'failed' | 'signed_out'>('idle');
-  /** Courts the venue has open today, per Serve Tennis. */
-  const [venueCourts, setVenueCourts] = useState<string[]>([]);
-  /** Courts open on paper but not actually in use today. */
-  const [closedCourts, setClosedCourts] = useState<string[]>([]);
+  /** How many courts the tournament is actually running today. */
+  const [courtCount, setCourtCount] = useState(9);
+  const [lengths, setLengths] = useState<MatchLengths>(DEFAULT_LENGTHS);
 
   const announced = useRef<Set<string>>(new Set());
   // Read inside the poll loop, which must not re-subscribe when arming flips.
   const armedRef = useRef(false);
-  // Read inside the poll loop, which must not re-subscribe on every toggle.
-  const closedRef = useRef<string[]>([]);
+  // Read inside the poll loop, which must not re-subscribe on every keystroke.
+  const settingsRef = useRef({ courtCount: 9, lengths: DEFAULT_LENGTHS });
   const prevLive = useRef<NormalisedMatch[]>([]);
   const observations = useRef<Observation[]>([]);
   const speakQueue = useRef<Promise<void>>(Promise.resolve());
@@ -105,17 +104,21 @@ export default function AnnouncerClient() {
       if (saved) observations.current = JSON.parse(saved) as Observation[];
     } catch { /* corrupt cache just means we relearn */ }
     try {
-      const shut = localStorage.getItem(CLOSED_COURTS_KEY);
-      if (shut) setClosedCourts(JSON.parse(shut) as string[]);
+      const raw = localStorage.getItem(SETTINGS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as { courtCount?: number; lengths?: MatchLengths };
+        if (saved.courtCount) setCourtCount(saved.courtCount);
+        if (saved.lengths) setLengths(saved.lengths);
+      }
     } catch { /* ignore */ }
   }, [addLog]);
 
   useEffect(() => { localStorage.setItem(VOICE_KEY, voice); }, [voice]);
   useEffect(() => { armedRef.current = armed; }, [armed]);
   useEffect(() => {
-    closedRef.current = closedCourts;
-    localStorage.setItem(CLOSED_COURTS_KEY, JSON.stringify(closedCourts));
-  }, [closedCourts]);
+    settingsRef.current = { courtCount, lengths };
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ courtCount, lengths }));
+  }, [courtCount, lengths]);
 
   /**
    * Serve Tennis tokens are ~10h JWTs, so one minted in the evening is dead
@@ -198,16 +201,12 @@ export default function AnnouncerClient() {
    * server-side because this laptop is the only place the Serve Tennis token
    * lives — the public board never sees a credential, only the result.
    */
-  const publishBoard = useCallback(async (nextLive: NormalisedMatch[], feed: Feed) => {
+  const publishBoard = useCallback(async (nextLive: NormalisedMatch[]) => {
     const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
-    const open = courtsAvailableOn(feed, today);
-    setVenueCourts(open);
-    const courts = open.filter((c) => !closedRef.current.includes(c));
     const board = computeWaitBoard(nextLive, {
       observations: observations.current,
-      // Never hand the maths an empty court list — it would stack the whole
-      // day onto one imaginary court.
-      courts: courts.length ? courts : open,
+      courtCount: settingsRef.current.courtCount,
+      lengths: settingsRef.current.lengths,
       today,
     });
     try {
@@ -260,7 +259,7 @@ export default function AnnouncerClient() {
 
       prevLive.current = nextLive;
       setLive(nextLive);
-      void publishBoard(nextLive, feed);
+      void publishBoard(nextLive);
     } catch (e) {
       const err = e as Error & { code?: string };
       if (err.code === 'TOKEN_EXPIRED') {
@@ -415,28 +414,43 @@ export default function AnnouncerClient() {
         {publishState === 'failed' && <span style={S.warnPill}>Public board failed to update</span>}
         {publishState === 'ok' && <span style={S.badge}>Public board live</span>}
 
-        {venueCourts.length > 0 && (
-          <span style={S.courtsRow}>
-            <span style={S.muted}>Courts in play:</span>
-            {venueCourts.map((c) => {
-              const off = closedCourts.includes(c);
-              return (
-                <button
-                  key={c}
-                  onClick={() =>
-                    setClosedCourts((prev) =>
-                      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
-                    )
-                  }
-                  style={off ? S.courtChipOff : S.courtChipOn}
-                  title={off ? `Court ${c} is not in use today` : `Court ${c} is in play`}
-                >
-                  {c}
-                </button>
-              );
-            })}
-          </span>
-        )}
+        <label style={S.label}>
+          Courts in use{' '}
+          <input
+            type="number"
+            min={1}
+            max={30}
+            value={courtCount}
+            onChange={(e) => setCourtCount(Math.max(1, Number(e.target.value) || 1))}
+            style={S.numInput}
+          />
+        </label>
+
+        <label style={S.label}>
+          Main draw{' '}
+          <input
+            type="number"
+            min={20}
+            max={240}
+            step={5}
+            value={lengths.mainMinutes}
+            onChange={(e) => setLengths((l) => ({ ...l, mainMinutes: Number(e.target.value) || l.mainMinutes }))}
+            style={S.numInput}
+          />{' '}min
+        </label>
+
+        <label style={S.label}>
+          Consolation{' '}
+          <input
+            type="number"
+            min={20}
+            max={240}
+            step={5}
+            value={lengths.consolationMinutes}
+            onChange={(e) => setLengths((l) => ({ ...l, consolationMinutes: Number(e.target.value) || l.consolationMinutes }))}
+            style={S.numInput}
+          />{' '}min
+        </label>
 
         <span style={S.muted}>
           {observations.current.length
@@ -523,9 +537,8 @@ const S: Record<string, React.CSSProperties> = {
   meta: { fontSize: 13, color: '#6b7280', marginTop: 2 },
   logLine: { fontSize: 14, padding: '5px 0', borderBottom: '1px solid #f3f4f6' },
   logTime: { color: '#9ca3af', marginRight: 8, fontVariantNumeric: 'tabular-nums' },
-  courtsRow: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
-  courtChipOn: { minWidth: 32, padding: '5px 8px', borderRadius: 7, border: '1px solid #095896', background: '#095896', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
-  courtChipOff: { minWidth: 32, padding: '5px 8px', borderRadius: 7, border: '1px solid #d1d5db', background: '#f3f4f6', color: '#9ca3af', fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'line-through' },
+  // Colour set inline: globals.css otherwise renders inputs white-on-white.
+  numInput: { width: 62, padding: '6px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14, color: '#111827', background: '#fff', fontWeight: 700 },
   warnPill: { fontSize: 13, background: '#fef3c7', color: '#92400e', padding: '5px 10px', borderRadius: 999, fontWeight: 600 },
   kbd: { background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 4, padding: '2px 7px', fontFamily: 'ui-monospace, monospace', fontSize: 14 },
 };

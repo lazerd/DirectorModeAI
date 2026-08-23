@@ -1,52 +1,65 @@
 /**
- * Wait-time board — "how many are in front of me, and how much longer?"
+ * Wait-time board — "when will my match actually start?"
  *
- * Serve Tennis pre-assigns a court to every scheduled match, so a player's
- * wait is not a race against a general pool of courts: it is the queue on
- * THEIR court. That makes the estimate both simpler and more honest —
- * we chain each court's own matches behind whatever is currently on it.
+ * The model is the one a tournament director already carries in their head:
+ * you are running N courts, matches take about so long, and a match goes on
+ * as soon as (a) its scheduled time has arrived and (b) a court is free.
  *
- * Durations come from matches observed finishing today (the feed has a
- * start time but no end time, so the announcer times them itself). Until
- * enough have finished we fall back to a configured default and widen the
- * quoted range to signal that we are still guessing.
+ * So we simulate exactly that. N court slots, each free at some moment; take
+ * the next match in scheduled order, put it on whichever slot frees first,
+ * and never earlier than its published time. The published schedule stays
+ * authoritative — we only say when a court will realistically be free.
+ *
+ * Two things the feed forces on us:
+ *   - Upcoming matches carry NO court. The desk assigns one when it calls
+ *     the match, so capacity has to come from the director, not the data.
+ *   - There is a start time but no end time, so match lengths are observed
+ *     locally by watching matches leave IN_PROGRESS. The clock that drives
+ *     everything is when the desk actually sends a match out.
  */
 
 import type { NormalisedMatch } from './servetennis';
 
 const MS_PER_MIN = 60_000;
 
-/** Below this many observed matches in a bucket we keep the baseline. */
+/** Below this many observed matches in a bucket we keep the director's figure. */
 const MIN_SAMPLE = 3;
 
-/** A match already past its expected length still reads as "about to finish". */
+/** A match already past its expected length is about to finish, not overdue. */
 const IMMINENT_MIN = 2;
 
 /**
- * Match length depends on which draw it is in and how deep it is, not on
- * some single tournament-wide average. Consolation matches are shorter
- * throughout, and both draws slow down at the semifinal and final because
- * the remaining players are evenly matched.
- *
- * Baselines from Darrin, who has run this event before. They are only a
- * starting point: once three matches in a bucket have been timed today,
- * the observed median for that bucket takes over.
+ * Semifinals and finals run longer in both draws — the players left are
+ * evenly matched. Added to the director's figure rather than asking for
+ * four numbers when two will do.
  */
+export const LATE_ROUND_EXTRA_MIN = 10;
+
 export type Bucket = 'consolation_early' | 'consolation_late' | 'main_early' | 'main_late';
 
-export const BASELINE_MINUTES: Record<Bucket, number> = {
-  consolation_early: 55,
-  consolation_late: 60,
-  main_early: 95,
-  main_late: 100,
+/** What the director says a match takes. Everything else derives from these. */
+export interface MatchLengths {
+  mainMinutes: number;
+  consolationMinutes: number;
+}
+
+export const DEFAULT_LENGTHS: MatchLengths = {
+  mainMinutes: 90,
+  consolationMinutes: 60,
 };
 
+export function baselineFor(bucket: Bucket, lengths: MatchLengths): number {
+  switch (bucket) {
+    case 'main_early': return lengths.mainMinutes;
+    case 'main_late': return lengths.mainMinutes + LATE_ROUND_EXTRA_MIN;
+    case 'consolation_early': return lengths.consolationMinutes;
+    case 'consolation_late': return lengths.consolationMinutes + LATE_ROUND_EXTRA_MIN;
+  }
+}
+
 /**
- * Semifinals and finals in either draw run long — the players are closer.
- *
  * Matched on word boundaries on purpose: "Quarterfinals" ends in "finals",
- * so a naive substring test prices every quarterfinal as a late round and
- * inflates half the board's wait times.
+ * so a naive substring test prices every quarterfinal as a late round.
  */
 function isLateRound(round: string): boolean {
   return /(?:^|[^a-z])(?:semi-?finals?|finals?)(?:[^a-z]|$)/i.test(round);
@@ -72,20 +85,20 @@ export interface WaitRow {
   id: string;
   /** Assigned court, when the desk has given it one. Usually null. */
   court: string | null;
-  /** The court we predict it lands on. Advisory, never shown as a promise. */
-  predictedCourt: string | null;
   event: string;
   round: string;
   playerA: string;
   playerB: string;
-  /** Published start time, "HH:MM". The authoritative number. */
+  /** Published start time, "HH:MM". The official number. */
   scheduledTime: string | null;
-  /** Predicted start, "HH:MM" — what people actually want to know. */
+  /** Predicted start, "HH:MM". */
   estimatedStart: string | null;
-  /** Matches ahead of this one on the court it is predicted to use. */
+  /** Matches that must finish on the same court before this one goes on. */
   ahead: number;
   etaLowMin: number;
   etaHighMin: number;
+  /** A court is free and only the clock is holding this match back. */
+  onSchedule: boolean;
 }
 
 export interface CourtRow {
@@ -101,37 +114,29 @@ export interface CourtRow {
 export interface WaitBoard {
   onCourt: CourtRow[];
   waiting: WaitRow[];
-  /** The play date the board is showing, "YYYY-MM-DD". */
   boardDate: string | null;
-  /**
-   * True when the board has rolled on to a later day — once today's play is
-   * done we show tomorrow's order of play, where a countdown would be
-   * meaningless and the scheduled time is the only useful answer.
-   */
   isFutureDate: boolean;
+  /** Courts the director says are running. */
+  courtCount: number;
   /** Expected length per bucket, after any learning from today's play. */
   expectedMinutes: Record<Bucket, number>;
+  lengths: MatchLengths;
   sampleSize: number;
   provisional: boolean;
   generatedAt: string;
 }
 
 export interface WaitOptions {
+  /**
+   * How many courts the tournament is actually running. Not how many the
+   * club has — the director may hold some back for members, and that
+   * difference moves every estimate on the board.
+   */
+  courtCount: number;
+  lengths?: MatchLengths;
   /** Matches timed today, tagged by bucket. */
-  observations: Observation[];
-  /**
-   * Every court in play today. This is capacity, never a quota.
-   *
-   * It matters enormously: the desk assigns courts as matches are called,
-   * so most upcoming matches have no court yet. Without the real court list
-   * they all queue behind one another and a mid-morning match reads as a
-   * 37-hour wait.
-   */
-  courts: string[];
-  /**
-   * Today's date, "YYYY-MM-DD". The board shows today while there is still
-   * play left, then rolls forward to the next scheduled day.
-   */
+  observations?: Observation[];
+  /** Today's date, "YYYY-MM-DD". */
   today: string;
   now?: Date;
 }
@@ -144,14 +149,19 @@ function quantile(sorted: number[], q: number): number {
   return lo === hi ? sorted[lo] : sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
 }
 
-/** "HH:MM" today -> ms. Returns null for anything unparseable. */
-function timeMs(hhmm: string | null, now: Date): number | null {
-  if (!hhmm) return null;
-  const [h, m] = hhmm.split(':').map(Number);
+/** "HH:MM" on the given day -> ms. Null for anything unparseable. */
+function timeMs(hhmmStr: string | null, now: Date): number | null {
+  if (!hhmmStr) return null;
+  const [h, m] = hhmmStr.split(':').map(Number);
   if (Number.isNaN(h)) return null;
   const d = new Date(now);
   d.setHours(h, m || 0, 0, 0);
   return d.getTime();
+}
+
+function toHHMM(ms: number): string {
+  const d = new Date(ms);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 const round5 = (n: number) => Math.max(0, Math.round(n / 5) * 5);
@@ -159,11 +169,13 @@ const round5 = (n: number) => Math.max(0, Math.round(n / 5) * 5);
 export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): WaitBoard {
   const now = opts.now ?? new Date();
   const nowMs = now.getTime();
+  const lengths = opts.lengths ?? DEFAULT_LENGTHS;
+  const observations = opts.observations ?? [];
+  const courtCount = Math.max(1, Math.floor(opts.courtCount) || 1);
 
-  // Per-bucket expected length: observed median once we have enough of that
-  // kind of match today, otherwise Darrin's baseline for it.
+  // --- how long a match takes -------------------------------------------
   const byBucket = new Map<Bucket, number[]>();
-  for (const o of opts.observations) {
+  for (const o of observations) {
     if (o.minutes < 10 || o.minutes > 300) continue;
     const arr = byBucket.get(o.bucket) ?? [];
     arr.push(o.minutes);
@@ -172,39 +184,33 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
 
   const expected = (b: Bucket): number => {
     const arr = (byBucket.get(b) ?? []).slice().sort((x, y) => x - y);
-    return arr.length >= MIN_SAMPLE ? Math.round(quantile(arr, 0.5)) : BASELINE_MINUTES[b];
+    // The director's figure holds until today's play actually disagrees.
+    return arr.length >= MIN_SAMPLE ? Math.round(quantile(arr, 0.5)) : baselineFor(b, lengths);
   };
   const expectedFor = (m: Pick<NormalisedMatch, 'structure' | 'round'>) => expected(bucketOf(m));
 
-  const allObs = opts.observations
+  const allObs = observations
     .filter((o) => o.minutes >= 10 && o.minutes <= 300)
     .map((o) => o.minutes)
     .sort((a, b) => a - b);
-  const sampleSize = allObs.length;
-  const provisional = sampleSize < MIN_SAMPLE;
+  const provisional = allObs.length < MIN_SAMPLE;
 
-  // Spread around each estimate. Observed quartiles once we have them, and
-  // a deliberately generous band before that so nobody reads a baseline as
-  // a promise.
+  // Spread on the estimate: observed quartiles once we have them, otherwise
+  // a deliberately generous band so nobody reads a default as a promise.
   const centre = allObs.length ? quantile(allObs, 0.5) || 1 : 1;
   const lowRatio = provisional ? 0.85 : Math.min(1, quantile(allObs, 0.25) / centre);
-  const highRatio = provisional ? 1.3 : Math.max(1, quantile(allObs, 0.75) / centre);
+  const highRatio = provisional ? 1.25 : Math.max(1, quantile(allObs, 0.75) / centre);
 
+  // --- which day are we showing ------------------------------------------
   const playing = live.filter((m) => m.status === 'IN_PROGRESS');
   const upcoming = live.filter((m) => m.status !== 'IN_PROGRESS');
 
-  // Which day to show. Today, while anything is still on court or still to
-  // be played today; otherwise the next day with matches on it, so the
-  // evening before a tournament day shows tomorrow's order of play rather
-  // than an empty board.
   const todaysUpcoming = upcoming.filter((m) => m.scheduledDate === opts.today);
   const futureDates = upcoming
     .map((m) => m.scheduledDate)
-    .filter((d): d is string => Boolean(d) && d! > opts.today)
+    .filter((d): d is string => typeof d === 'string' && d > opts.today)
     .sort();
-  // Note: a match still grinding on court does NOT hold the board on today.
-  // Late on day one everything remaining is tomorrow's, and that is what
-  // people are standing there asking about.
+  // A match still grinding on court must not pin the board to today.
   const boardDate = todaysUpcoming.length ? opts.today : futureDates[0] ?? null;
   const isFutureDate = boardDate !== null && boardDate > opts.today;
 
@@ -212,83 +218,77 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
     .filter((m) => m.scheduledDate === boardDate)
     .sort((a, b) => (a.scheduledTime ?? '99:99').localeCompare(b.scheduledTime ?? '99:99'));
 
-  // --- simulate the day ---------------------------------------------
-  // Every court starts free now. Courts currently in use become free when
-  // the match on them is expected to end.
-  const courtList = opts.courts.length
-    ? [...opts.courts]
-    : [...new Set(playing.map((m) => m.court).filter((c): c is string => Boolean(c)))];
+  // --- what is already out there -----------------------------------------
+  const onCourt: CourtRow[] = playing
+    .map((m) => {
+      const startMs = timeMs(m.startTime, now);
+      return {
+        court: m.court ?? '—',
+        playerA: m.playerA,
+        playerB: m.playerB,
+        event: m.event,
+        round: m.round,
+        startedAt: m.startTime,
+        elapsedMin: startMs === null ? null : Math.max(0, Math.round((nowMs - startMs) / MS_PER_MIN)),
+      };
+    })
+    .sort((a, b) => a.court.localeCompare(b.court, undefined, { numeric: true }));
 
-  const freeAt = new Map<string, number>();
-  for (const c of courtList) freeAt.set(c, nowMs);
+  /**
+   * One slot per court in play: when it frees up, and how many matches are
+   * stacked on it. Slots are anonymous on purpose — the feed never says
+   * which court an upcoming match will get, and the director thinks in
+   * "I'm running nine courts", not in court numbers.
+   *
+   * If more matches are somehow in progress than courts declared, widen to
+   * fit rather than pretend a court is free.
+   */
+  const slotCount = Math.max(courtCount, playing.length);
+  const slots = Array.from({ length: slotCount }, () => ({ freeAt: nowMs, stacked: 0 }));
 
-  const onCourt: CourtRow[] = [];
-  for (const m of playing) {
-    const court = m.court ?? '—';
-    const startMs = timeMs(m.startTime, now);
-    const predictedEnd = (startMs ?? nowMs) + expectedFor(m) * MS_PER_MIN;
-    // A match already past its expected length is about to finish, not overdue.
-    freeAt.set(court, Math.max(predictedEnd, nowMs + IMMINENT_MIN * MS_PER_MIN));
-    onCourt.push({
-      court,
-      playerA: m.playerA,
-      playerB: m.playerB,
-      event: m.event,
-      round: m.round,
-      startedAt: m.startTime,
-      elapsedMin: startMs === null ? null : Math.max(0, Math.round((nowMs - startMs) / MS_PER_MIN)),
+  // The desk sends a match out and the feed records that start time; that is
+  // our clock. Soonest-finishing matches occupy the first slots so the next
+  // match to be called lands on the court that frees first.
+  playing
+    .map((m) => {
+      const startMs = timeMs(m.startTime, now) ?? nowMs;
+      return Math.max(startMs + expectedFor(m) * MS_PER_MIN, nowMs + IMMINENT_MIN * MS_PER_MIN);
+    })
+    .sort((a, b) => a - b)
+    .forEach((end, i) => {
+      if (i < slots.length) { slots[i].freeAt = end; slots[i].stacked = 1; }
     });
-  }
-  onCourt.sort((a, b) => a.court.localeCompare(b.court, undefined, { numeric: true }));
-
-  // How many matches are already stacked on each court, so "2 ahead" counts
-  // the one being played plus anything we have queued in front.
-  const stacked = new Map<string, number>();
-  for (const m of playing) stacked.set(m.court ?? '—', 1);
-
-  /** The court that frees up soonest — where the desk will realistically send them. */
-  const earliestCourt = (): string => {
-    let best = courtList[0] ?? '—';
-    let bestAt = Number.POSITIVE_INFINITY;
-    for (const c of courtList) {
-      const at = freeAt.get(c) ?? nowMs;
-      if (at < bestAt) { bestAt = at; best = c; }
-    }
-    return best;
-  };
 
   const waiting: WaitRow[] = queued.map((m) => {
-    // Most upcoming matches have no court yet — the desk assigns them as it
-    // calls them — so we place them on whichever court frees up first.
-    const court = m.court && freeAt.has(m.court) ? m.court : earliestCourt();
+    // Whichever court frees up soonest is where the desk will send them.
+    let slot = slots[0];
+    for (const s of slots) if (s.freeAt < slot.freeAt) slot = s;
 
-    const courtFree = freeAt.get(court) ?? nowMs;
     const scheduled = timeMs(m.scheduledTime, now);
-    // Never earlier than the published time, and never in the past.
-    const startsAt = Math.max(courtFree, scheduled ?? 0, nowMs);
+    // Cannot start before its published time, and an empty court beforehand
+    // does not make it start early.
+    const startsAt = Math.max(slot.freeAt, scheduled ?? 0, nowMs);
+    const onSchedule = scheduled !== null && startsAt <= scheduled;
 
-    freeAt.set(court, startsAt + expectedFor(m) * MS_PER_MIN);
-    const ahead = stacked.get(court) ?? 0;
-    stacked.set(court, ahead + 1);
+    const ahead = slot.stacked;
+    slot.freeAt = startsAt + expectedFor(m) * MS_PER_MIN;
+    slot.stacked += 1;
 
     const waitMin = isFutureDate ? 0 : (startsAt - nowMs) / MS_PER_MIN;
-    const startDate = new Date(startsAt);
 
     return {
       id: m.id,
       court: m.court,
-      predictedCourt: court,
       event: m.event,
       round: m.round,
       playerA: m.playerA,
       playerB: m.playerB,
       scheduledTime: m.scheduledTime,
-      estimatedStart: isFutureDate
-        ? m.scheduledTime
-        : `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`,
+      estimatedStart: isFutureDate ? m.scheduledTime : toHHMM(startsAt),
       ahead,
       etaLowMin: round5(waitMin * lowRatio),
       etaHighMin: Math.max(5, round5(waitMin * highRatio)),
+      onSchedule,
     };
   });
 
@@ -297,22 +297,24 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
     waiting,
     boardDate,
     isFutureDate,
+    courtCount,
+    lengths,
     expectedMinutes: {
       consolation_early: expected('consolation_early'),
       consolation_late: expected('consolation_late'),
       main_early: expected('main_early'),
       main_late: expected('main_late'),
     },
-    sampleSize,
+    sampleSize: allObs.length,
     provisional,
     generatedAt: now.toISOString(),
   };
 }
 
 /**
- * Draw-sheet shorthand made readable for the screen: "C-Quarterfinals-Q"
- * becomes "Consolation QF". Shorter than the spoken form because a phone
- * screen has no room, but it must never show the raw code to a parent.
+ * Draw-sheet shorthand made readable: "C-Quarterfinals-Q" -> "Consolation QF".
+ * Short because a phone screen has no room, but it must never show the raw
+ * code to a parent.
  */
 export function prettyRound(roundName: string): string {
   if (!roundName) return '';
@@ -326,28 +328,23 @@ export function prettyRound(roundName: string): string {
     semifinals: 'SF', semifinal: 'SF',
     final: 'Final', r16: 'Round of 16', r32: 'Round of 32', r64: 'Round of 64',
   };
-  const key = s.toLowerCase();
-  return (prefix + (NAMES[key] ?? s.replace(/-/g, ' '))).trim();
+  return (prefix + (NAMES[s.toLowerCase()] ?? s.replace(/-/g, ' '))).trim();
 }
 
 /**
- * "9:45 AM" from a 24-hour "09:45". Clock times beat minute counts: nobody
- * standing on a court wants to convert 145 minutes into when to come back.
+ * "9:45 AM" from "09:45". Clock times beat minute counts: nobody standing on
+ * a court wants to convert 145 minutes into when to come back.
  */
-export function formatClock(hhmm: string | null): string {
-  if (!hhmm) return '';
-  const [h, m] = hhmm.split(':').map(Number);
-  if (Number.isNaN(h)) return hhmm;
+export function formatClock(hhmmStr: string | null): string {
+  if (!hhmmStr) return '';
+  const [h, m] = hhmmStr.split(':').map(Number);
+  if (Number.isNaN(h)) return hhmmStr;
   const suffix = h >= 12 ? 'PM' : 'AM';
   const hour = h % 12 === 0 ? 12 : h % 12;
   return `${hour}:${String(m || 0).padStart(2, '0')} ${suffix}`;
 }
 
-/**
- * Short wait, expressed in minutes. Only used close in — beyond about two
- * hours the minute count stops meaning anything and the clock time is the
- * honest answer, so callers show `estimatedStart` instead.
- */
+/** Beyond this a minute count stops meaning anything; use the clock instead. */
 export const MINUTES_USEFUL_UP_TO = 120;
 
 export function formatWait(low: number, high: number): string {
@@ -364,11 +361,16 @@ export function formatAhead(ahead: number): string {
 }
 
 /**
- * The single line a waiting player should read. Close in, minutes are the
- * most useful thing; further out, a clock time is. Past two hours we stop
- * pretending to a precision we do not have.
+ * The single line a waiting player reads.
+ *
+ * A match whose court is free and is only waiting for its scheduled time
+ * gets its scheduled time back — "9:00 AM" — because that is the honest
+ * answer and the one already printed on the order of play.
  */
-export function waitHeadline(row: Pick<WaitRow, 'etaLowMin' | 'etaHighMin' | 'estimatedStart'>): string {
+export function waitHeadline(
+  row: Pick<WaitRow, 'etaLowMin' | 'etaHighMin' | 'estimatedStart' | 'onSchedule' | 'scheduledTime'>
+): string {
+  if (row.onSchedule) return formatClock(row.scheduledTime || row.estimatedStart);
   if (row.etaHighMin <= MINUTES_USEFUL_UP_TO) return formatWait(row.etaLowMin, row.etaHighMin);
   return `~${formatClock(row.estimatedStart)}`;
 }
