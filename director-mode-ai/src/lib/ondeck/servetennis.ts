@@ -61,8 +61,11 @@ export interface RawMatchUp {
 export interface Feed {
   dateMatchUps?: RawMatchUp[];
   completedMatchUps?: RawMatchUp[];
-  courtsData?: unknown[];
-  venues?: unknown[];
+  courtsData?: Array<{
+    courtName?: string;
+    dateAvailability?: Array<{ date?: string; startTime?: string; endTime?: string }>;
+  }>;
+  venues?: Array<{ courts?: Array<{ courtName?: string }> }>;
 }
 
 export interface NormalisedMatch {
@@ -129,11 +132,54 @@ export function normalise(raw: RawMatchUp): NormalisedMatch {
 export function normaliseFeed(feed: Feed): {
   live: NormalisedMatch[];
   completed: NormalisedMatch[];
+  courts: string[];
 } {
   return {
     live: (feed.dateMatchUps ?? []).map(normalise),
     completed: (feed.completedMatchUps ?? []).map(normalise),
+    courts: courtNames(feed),
   };
+}
+
+/**
+ * Courts Serve Tennis says are available on a given date, shortened for
+ * display. Falls back to every known court when the feed carries no
+ * availability, because an empty court list breaks the wait maths far
+ * worse than an over-generous one.
+ *
+ * Note this is what the venue MADE available, not necessarily what the
+ * director is actually using today — he may hold two back for members. The
+ * announcer lets him switch courts off on top of this.
+ */
+export function courtsAvailableOn(feed: Feed, isoDate: string): string[] {
+  const rows = feed.courtsData ?? [];
+  const available = rows
+    .filter((c) =>
+      (c?.dateAvailability ?? []).some((a) => (a?.date ?? '').slice(0, 10) === isoDate)
+    )
+    .map((c) => shortCourt(c?.courtName))
+    .filter((n): n is string => Boolean(n));
+
+  const list = available.length ? available : courtNames(feed);
+  return [...new Set(list)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+}
+
+/**
+ * Every court at the venue, shortened for display ("SHSTC 7" -> "7").
+ *
+ * The wait maths depends on this being the real count. The desk assigns
+ * courts only as it calls matches, so without the venue's court list the
+ * simulation has nowhere to put anything and stacks the whole day onto one
+ * imaginary court.
+ */
+export function courtNames(feed: Feed): string[] {
+  const raw = [
+    ...(feed.courtsData ?? []).map((c) => c?.courtName),
+    ...(feed.venues ?? []).flatMap((v) => (v?.courts ?? []).map((c) => c?.courtName)),
+  ].filter((n): n is string => Boolean(n));
+
+  const short = raw.map((n) => shortCourt(n)).filter((n): n is string => Boolean(n));
+  return [...new Set(short)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 }
 
 export async function fetchFeed(

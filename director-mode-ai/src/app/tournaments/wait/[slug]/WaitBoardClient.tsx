@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { formatWait, formatAhead, findPlayer, prettyRound, type WaitBoard } from '@/lib/ondeck/board';
+import { formatAhead, findPlayer, prettyRound, formatClock, waitHeadline, type WaitBoard } from '@/lib/ondeck/board';
 
 const REFRESH_MS = 10_000;
 
@@ -128,13 +128,18 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
           <div style={S.answer}>
             <div style={S.answerBig}>
               {board.isFutureDate || !trustEstimates
-                ? `Scheduled ${result.row.scheduledTime ?? ''}`
-                : formatWait(result.row.etaLowMin, result.row.etaHighMin)}
+                ? formatClock(result.row.scheduledTime)
+                : waitHeadline(result.row)}
+            </div>
+            <div style={S.answerSub}>
+              Scheduled {formatClock(result.row.scheduledTime)}
+              {!board.isFutureDate && trustEstimates && result.row.estimatedStart
+                ? ` · estimated ${formatClock(result.row.estimatedStart)}`
+                : ''}
             </div>
             <div style={S.answerSub}>
               {board.isFutureDate || !trustEstimates ? '' : formatAhead(result.row.ahead)}
-              {result.row.court ? ` on court ${result.row.court}` : ''}
-              {result.row.scheduledTime ? ` · scheduled ${result.row.scheduledTime}` : ''}
+              {result.row.court ? ` · court ${result.row.court}` : ''}
             </div>
             <div style={S.answerSub}>{result.row.playerA} v {result.row.playerB}</div>
           </div>
@@ -180,11 +185,11 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
             </div>
             <div style={S.waitCell}>
               {board.isFutureDate || !trustEstimates ? (
-                <div style={S.waitBig}>{r.scheduledTime ?? ''}</div>
+                <div style={S.waitBig}>{formatClock(r.scheduledTime)}</div>
               ) : (
                 <>
-                  <div style={S.waitBig}>{formatWait(r.etaLowMin, r.etaHighMin)}</div>
-                  <div style={S.waitSub}>{formatAhead(r.ahead)}</div>
+                  <div style={S.waitBig}>{waitHeadline(r)}</div>
+                  <div style={S.waitSub}>Sched {formatClock(r.scheduledTime)}</div>
                 </>
               )}
             </div>
@@ -193,8 +198,9 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
       </section>
 
       <p style={S.footer}>
-        Wait times are estimates and move with the tennis — a long three-setter pushes
-        everything back. Updates automatically; no need to refresh.
+        Scheduled times are official. Estimates are our best guess from how long
+        matches are actually taking today, and they move with the tennis — one long
+        three-setter pushes everything back. Updates automatically; no need to refresh.
         {board.provisional && ' Estimates are still settling as today’s matches finish.'}
       </p>
     </div>

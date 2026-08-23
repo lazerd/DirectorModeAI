@@ -19,7 +19,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   fetchFeed, normaliseFeed, diffForAnnouncement, observeCompletions,
-  announcementText, type NormalisedMatch,
+  announcementText, courtsAvailableOn, type NormalisedMatch, type Feed,
 } from '@/lib/ondeck/servetennis';
 import { computeWaitBoard, bucketOf, type Observation } from '@/lib/ondeck/board';
 
@@ -31,6 +31,7 @@ const OBS_KEY = 'ondeck.observations';
 const BOARD_SLUG = 'sh-level5-aug-2026';
 const BOARD_TITLE = 'Sleepy Hollow Level 5 — Order of Play';
 const VOICE_KEY = 'ondeck.voice';
+const CLOSED_COURTS_KEY = 'ondeck.closedCourts';
 
 /**
  * Voices the laptop actually has, best first. The Google entries are
@@ -63,10 +64,16 @@ export default function AnnouncerClient() {
   const [speaking, setSpeaking] = useState(false);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [publishState, setPublishState] = useState<'idle' | 'ok' | 'failed' | 'signed_out'>('idle');
+  /** Courts the venue has open today, per Serve Tennis. */
+  const [venueCourts, setVenueCourts] = useState<string[]>([]);
+  /** Courts open on paper but not actually in use today. */
+  const [closedCourts, setClosedCourts] = useState<string[]>([]);
 
   const announced = useRef<Set<string>>(new Set());
   // Read inside the poll loop, which must not re-subscribe when arming flips.
   const armedRef = useRef(false);
+  // Read inside the poll loop, which must not re-subscribe on every toggle.
+  const closedRef = useRef<string[]>([]);
   const prevLive = useRef<NormalisedMatch[]>([]);
   const observations = useRef<Observation[]>([]);
   const speakQueue = useRef<Promise<void>>(Promise.resolve());
@@ -97,10 +104,18 @@ export default function AnnouncerClient() {
       const saved = localStorage.getItem(OBS_KEY);
       if (saved) observations.current = JSON.parse(saved) as Observation[];
     } catch { /* corrupt cache just means we relearn */ }
+    try {
+      const shut = localStorage.getItem(CLOSED_COURTS_KEY);
+      if (shut) setClosedCourts(JSON.parse(shut) as string[]);
+    } catch { /* ignore */ }
   }, [addLog]);
 
   useEffect(() => { localStorage.setItem(VOICE_KEY, voice); }, [voice]);
   useEffect(() => { armedRef.current = armed; }, [armed]);
+  useEffect(() => {
+    closedRef.current = closedCourts;
+    localStorage.setItem(CLOSED_COURTS_KEY, JSON.stringify(closedCourts));
+  }, [closedCourts]);
 
   /**
    * Serve Tennis tokens are ~10h JWTs, so one minted in the evening is dead
@@ -183,10 +198,16 @@ export default function AnnouncerClient() {
    * server-side because this laptop is the only place the Serve Tennis token
    * lives — the public board never sees a credential, only the result.
    */
-  const publishBoard = useCallback(async (nextLive: NormalisedMatch[]) => {
+  const publishBoard = useCallback(async (nextLive: NormalisedMatch[], feed: Feed) => {
     const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
+    const open = courtsAvailableOn(feed, today);
+    setVenueCourts(open);
+    const courts = open.filter((c) => !closedRef.current.includes(c));
     const board = computeWaitBoard(nextLive, {
       observations: observations.current,
+      // Never hand the maths an empty court list — it would stack the whole
+      // day onto one imaginary court.
+      courts: courts.length ? courts : open,
       today,
     });
     try {
@@ -239,7 +260,7 @@ export default function AnnouncerClient() {
 
       prevLive.current = nextLive;
       setLive(nextLive);
-      void publishBoard(nextLive);
+      void publishBoard(nextLive, feed);
     } catch (e) {
       const err = e as Error & { code?: string };
       if (err.code === 'TOKEN_EXPIRED') {
@@ -394,6 +415,29 @@ export default function AnnouncerClient() {
         {publishState === 'failed' && <span style={S.warnPill}>Public board failed to update</span>}
         {publishState === 'ok' && <span style={S.badge}>Public board live</span>}
 
+        {venueCourts.length > 0 && (
+          <span style={S.courtsRow}>
+            <span style={S.muted}>Courts in play:</span>
+            {venueCourts.map((c) => {
+              const off = closedCourts.includes(c);
+              return (
+                <button
+                  key={c}
+                  onClick={() =>
+                    setClosedCourts((prev) =>
+                      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
+                    )
+                  }
+                  style={off ? S.courtChipOff : S.courtChipOn}
+                  title={off ? `Court ${c} is not in use today` : `Court ${c} is in play`}
+                >
+                  {c}
+                </button>
+              );
+            })}
+          </span>
+        )}
+
         <span style={S.muted}>
           {observations.current.length
             ? `${observations.current.length} matches timed today`
@@ -479,6 +523,9 @@ const S: Record<string, React.CSSProperties> = {
   meta: { fontSize: 13, color: '#6b7280', marginTop: 2 },
   logLine: { fontSize: 14, padding: '5px 0', borderBottom: '1px solid #f3f4f6' },
   logTime: { color: '#9ca3af', marginRight: 8, fontVariantNumeric: 'tabular-nums' },
+  courtsRow: { display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' },
+  courtChipOn: { minWidth: 32, padding: '5px 8px', borderRadius: 7, border: '1px solid #095896', background: '#095896', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+  courtChipOff: { minWidth: 32, padding: '5px 8px', borderRadius: 7, border: '1px solid #d1d5db', background: '#f3f4f6', color: '#9ca3af', fontSize: 13, fontWeight: 700, cursor: 'pointer', textDecoration: 'line-through' },
   warnPill: { fontSize: 13, background: '#fef3c7', color: '#92400e', padding: '5px 10px', borderRadius: 999, fontWeight: 600 },
   kbd: { background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 4, padding: '2px 7px', fontFamily: 'ui-monospace, monospace', fontSize: 14 },
 };

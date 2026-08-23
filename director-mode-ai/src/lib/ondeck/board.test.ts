@@ -14,7 +14,8 @@ function m(p: Partial<NormalisedMatch> & { id: string }): NormalisedMatch {
   };
 }
 
-const opts = { observations: [], today: DATE, now: NOW };
+const COURTS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+const opts = { observations: [], courts: COURTS, today: DATE, now: NOW };
 const observed = opts; // baselines drive the estimates until a bucket is learned
 
 describe('computeWaitBoard', () => {
@@ -136,6 +137,54 @@ describe('computeWaitBoard', () => {
     const b = computeWaitBoard(live, opts);
     expect(b.waiting[0].etaLowMin).toBe(0);
     expect(b.waiting[0].scheduledTime).toBe('08:00');
+  });
+
+  it('spreads court-less matches across the whole venue, not one imaginary court', () => {
+    // The real failure on tournament morning: the desk assigns courts only
+    // as it calls matches, so all 34 upcoming matches had court === null.
+    // They queued single-file and the board quoted a 37-hour wait.
+    const live = [
+      ...COURTS.slice(0, 8).map((c, i) =>
+        m({ id: `p${i}`, court: c, status: 'IN_PROGRESS', startTime: '09:30' })
+      ),
+      ...Array.from({ length: 34 }, (_, i) =>
+        m({ id: `w${i}`, court: null, courtRaw: null, scheduledTime: '09:00' })
+      ),
+    ];
+    const b = computeWaitBoard(live, observed);
+
+    // Court 9 is idle, so the first waiting match goes on immediately.
+    expect(b.waiting[0].etaHighMin).toBeLessThanOrEqual(5);
+    expect(b.waiting[0].predictedCourt).toBeTruthy();
+
+    // Nothing may read as a multi-day wait. Nine courts, 95 min a match,
+    // 34 matches -> roughly four rounds deep, so well under eight hours.
+    const worst = Math.max(...b.waiting.map((r) => r.etaHighMin));
+    expect(worst).toBeLessThan(8 * 60);
+
+    // And they must actually be distributed.
+    const used = new Set(b.waiting.map((r) => r.predictedCourt));
+    expect(used.size).toBeGreaterThanOrEqual(9);
+  });
+
+  it('takes longer when fewer courts are in play', () => {
+    const live = Array.from({ length: 18 }, (_, i) =>
+      m({ id: `w${i}`, court: null, courtRaw: null, scheduledTime: '09:00' })
+    );
+    const wide = computeWaitBoard(live, { ...observed, courts: COURTS });
+    const narrow = computeWaitBoard(live, { ...observed, courts: ['1', '2'] });
+    const lastOf = (b: ReturnType<typeof computeWaitBoard>) =>
+      b.waiting[b.waiting.length - 1].etaHighMin;
+    expect(lastOf(narrow)).toBeGreaterThan(lastOf(wide));
+  });
+
+  it('gives every waiting match an estimated clock time', () => {
+    const live = [
+      m({ id: 'p', court: '1', status: 'IN_PROGRESS', startTime: '09:30' }),
+      m({ id: 'w', court: null, courtRaw: null, scheduledTime: '09:00' }),
+    ];
+    const b = computeWaitBoard(live, observed);
+    expect(b.waiting[0].estimatedStart).toMatch(/^\d{2}:\d{2}$/);
   });
 
   it('reports elapsed time for matches on court', () => {
