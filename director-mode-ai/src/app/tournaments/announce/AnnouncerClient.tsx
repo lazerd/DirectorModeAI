@@ -1,0 +1,377 @@
+'use client';
+
+/**
+ * On Deck Announcer — reads court assignments out loud over the PA.
+ *
+ * Runs entirely in the browser on the tournament desk laptop:
+ *   Serve Tennis desk  ->  this page polls  ->  speaks through the laptop  ->  PA
+ *
+ * No server, no API key, no per-message cost. The Serve Tennis API sends
+ * `access-control-allow-origin: *`, so the browser can read the feed
+ * directly; the voice is Kokoro-82M (Apache-2.0) running locally via WebGPU
+ * or WASM, with the browser's built-in speech engine as an instant fallback.
+ *
+ * Darrin assigns a court in Tournament Desk. Within one poll, the PA calls
+ * the players. He does nothing.
+ */
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  fetchFeed, normaliseFeed, diffForAnnouncement, observeCompletions,
+  announcementText, type NormalisedMatch,
+} from '@/lib/ondeck/servetennis';
+
+const TOURNAMENT_ID = '55882F65-8F6E-4791-8847-4BEB310376BE';
+const POLL_MS = 15_000;
+const TOKEN_KEY = 'ondeck.token';
+const VOICE_KEY = 'ondeck.voice';
+
+/** Loaded from a CDN at runtime so transformers.js never enters the build. */
+const KOKORO_CDN = 'https://cdn.jsdelivr.net/npm/kokoro-js@1.2.1/+esm';
+const KOKORO_MODEL = 'onnx-community/Kokoro-82M-v1.0-ONNX';
+
+const VOICES = [
+  { id: 'am_michael', label: 'Michael — warm announcer' },
+  { id: 'am_fenrir', label: 'Fenrir — high energy' },
+  { id: 'bm_george', label: 'George — British' },
+  { id: 'am_puck', label: 'Puck — playful' },
+  { id: 'af_heart', label: 'Heart — female' },
+];
+
+type VoiceEngine = 'kokoro' | 'browser';
+type LoadState = 'idle' | 'loading' | 'ready' | 'failed';
+
+interface LogLine { at: string; text: string; kind: 'call' | 'info' | 'error' }
+
+export default function AnnouncerClient() {
+  const [token, setToken] = useState<string | null>(null);
+  const [armed, setArmed] = useState(false);           // audio unlocked by a user gesture
+  const [live, setLive] = useState<NormalisedMatch[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [tokenExpired, setTokenExpired] = useState(false);
+  const [lastPoll, setLastPoll] = useState<Date | null>(null);
+  const [log, setLog] = useState<LogLine[]>([]);
+  const [voice, setVoice] = useState('am_michael');
+  const [engine, setEngine] = useState<VoiceEngine>('browser');
+  const [kokoroState, setKokoroState] = useState<LoadState>('idle');
+
+  const announced = useRef<Set<string>>(new Set());
+  const prevLive = useRef<NormalisedMatch[]>([]);
+  const durations = useRef<number[]>([]);
+  const ttsRef = useRef<unknown>(null);
+  const speakQueue = useRef<Promise<void>>(Promise.resolve());
+
+  const addLog = useCallback((text: string, kind: LogLine['kind'] = 'info') => {
+    const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLog((l) => [{ at, text, kind }, ...l].slice(0, 60));
+  }, []);
+
+  // --- token: from the bookmarklet's #token=..., else whatever we stored --
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const fromHash = hash.get('token');
+    if (fromHash) {
+      localStorage.setItem(TOKEN_KEY, fromHash);
+      setToken(fromHash);
+      // Don't leave a session token sitting in the address bar.
+      history.replaceState(null, '', window.location.pathname);
+      addLog('Token received from Serve Tennis.', 'info');
+    } else {
+      setToken(localStorage.getItem(TOKEN_KEY));
+    }
+    const v = localStorage.getItem(VOICE_KEY);
+    if (v) setVoice(v);
+  }, [addLog]);
+
+  useEffect(() => { localStorage.setItem(VOICE_KEY, voice); }, [voice]);
+
+  // --- speech ------------------------------------------------------------
+  const speakBrowser = useCallback((text: string) => new Promise<void>((resolve) => {
+    try {
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = 0.95; u.pitch = 1;
+      u.onend = () => resolve();
+      u.onerror = () => resolve();
+      window.speechSynthesis.speak(u);
+    } catch { resolve(); }
+  }), []);
+
+  const speakKokoro = useCallback(async (text: string) => {
+    const tts = ttsRef.current as { generate: (t: string, o: { voice: string }) => Promise<{ toBlob: () => Blob }> } | null;
+    if (!tts) return speakBrowser(text);
+    const audio = await tts.generate(text, { voice });
+    const url = URL.createObjectURL(audio.toBlob());
+    await new Promise<void>((resolve) => {
+      const el = new Audio(url);
+      el.onended = () => resolve();
+      el.onerror = () => resolve();
+      void el.play().catch(() => resolve());
+    });
+    URL.revokeObjectURL(url);
+  }, [voice, speakBrowser]);
+
+  /** Announcements are strictly serialised — two voices at once is unusable. */
+  const speak = useCallback((text: string) => {
+    speakQueue.current = speakQueue.current
+      .then(() => (engine === 'kokoro' && ttsRef.current ? speakKokoro(text) : speakBrowser(text)))
+      .catch(() => undefined);
+    return speakQueue.current;
+  }, [engine, speakKokoro, speakBrowser]);
+
+  const loadKokoro = useCallback(async () => {
+    if (kokoroState === 'loading' || kokoroState === 'ready') return;
+    setKokoroState('loading');
+    addLog('Downloading the Kokoro voice (one time, ~90 MB)…');
+    try {
+      // Bypass the bundler so this stays a runtime fetch, not a build dependency.
+      const mod = await (new Function('u', 'return import(u)')(KOKORO_CDN) as Promise<{
+        KokoroTTS: { from_pretrained: (m: string, o: Record<string, unknown>) => Promise<unknown> };
+      }>);
+      const hasWebGPU = 'gpu' in navigator;
+      ttsRef.current = await mod.KokoroTTS.from_pretrained(KOKORO_MODEL, {
+        dtype: hasWebGPU ? 'fp32' : 'q8',
+        device: hasWebGPU ? 'webgpu' : 'wasm',
+      });
+      setKokoroState('ready');
+      setEngine('kokoro');
+      addLog(`Kokoro ready (${hasWebGPU ? 'WebGPU' : 'WASM'}).`);
+    } catch (e) {
+      setKokoroState('failed');
+      setEngine('browser');
+      addLog(`Kokoro failed to load — staying on the built-in voice. ${(e as Error).message}`, 'error');
+    }
+  }, [kokoroState, addLog]);
+
+  // --- polling -----------------------------------------------------------
+  const poll = useCallback(async (isFirst: boolean) => {
+    if (!token) return;
+    try {
+      const feed = await fetchFeed(TOURNAMENT_ID, token);
+      const { live: nextLive } = normaliseFeed(feed);
+      setError(null); setTokenExpired(false); setLastPoll(new Date());
+
+      // Time matches ourselves — the feed has a start but never an end.
+      const finished = observeCompletions(prevLive.current, nextLive, new Date());
+      for (const f of finished) {
+        const [h, m] = f.startTime.split(':').map(Number);
+        const start = new Date(f.endedAt); start.setHours(h, m, 0, 0);
+        const mins = (new Date(f.endedAt).getTime() - start.getTime()) / 60000;
+        if (mins >= 10 && mins <= 300) durations.current.push(mins);
+      }
+
+      const { toAnnounce, nextAnnounced } = diffForAnnouncement(
+        nextLive, announced.current, { seedOnly: isFirst }
+      );
+      announced.current = nextAnnounced;
+
+      if (isFirst) {
+        addLog(`Connected. ${nextLive.length} matches on the sheet; existing ones will not be re-announced.`);
+      }
+      for (const m of toAnnounce) {
+        addLog(`Court ${m.court}: ${m.playerA} vs ${m.playerB}`, 'call');
+        void speak(announcementText(m));
+      }
+
+      prevLive.current = nextLive;
+      setLive(nextLive);
+    } catch (e) {
+      const err = e as Error & { code?: string };
+      if (err.code === 'TOKEN_EXPIRED') {
+        setTokenExpired(true);
+        setError('Serve Tennis session expired — click the bookmarklet again.');
+      } else {
+        setError(err.message);
+      }
+    }
+  }, [token, addLog, speak]);
+
+  useEffect(() => {
+    if (!token || !armed) return;
+    let cancelled = false;
+    void poll(true);
+    const t = setInterval(() => { if (!cancelled) void poll(false); }, POLL_MS);
+    return () => { cancelled = true; clearInterval(t); };
+  }, [token, armed, poll]);
+
+  // --- derived view ------------------------------------------------------
+  const onCourt = live
+    .filter((m) => m.status === 'IN_PROGRESS')
+    .sort((a, b) => (a.court ?? '').localeCompare(b.court ?? '', undefined, { numeric: true }));
+  const upcoming = live
+    .filter((m) => m.status !== 'IN_PROGRESS')
+    .sort((a, b) => (a.scheduledTime ?? '').localeCompare(b.scheduledTime ?? ''));
+
+  const medianDuration = (() => {
+    const d = [...durations.current].sort((a, b) => a - b);
+    if (d.length === 0) return null;
+    return Math.round(d[Math.floor(d.length / 2)]);
+  })();
+
+  const bookmarklet = `javascript:(async()=>{const r=await fetch('/account/tokens?clientId=clubspark-app',{credentials:'include'});const t=r.headers.get('X-Api-Token');if(!t){alert('Sign in to Serve Tennis first.');return}location.href='${typeof window !== 'undefined' ? window.location.origin : ''}/tournaments/announce#token='+encodeURIComponent(t)})()`;
+
+  // --- setup screen ------------------------------------------------------
+  if (!token) {
+    return (
+      <div style={S.wrap}>
+        <h1 style={S.h1}>On Deck Announcer</h1>
+        <div style={S.card}>
+          <h2 style={S.h2}>One-time setup</h2>
+          <ol style={S.ol}>
+            <li>Drag this button to your bookmarks bar:{' '}
+              {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+              <a href={bookmarklet} style={S.bookmarklet}>🎙️ Announce</a>
+            </li>
+            <li>Open Serve Tennis and sign in.</li>
+            <li>Click the <strong>🎙️ Announce</strong> bookmark. It brings you back here, connected.</li>
+          </ol>
+          <p style={S.muted}>
+            The bookmarklet reads your Serve Tennis session token and hands it to this page.
+            Nothing is sent to a server — the token stays in this browser.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- arm screen (browsers refuse audio without a gesture) --------------
+  if (!armed) {
+    return (
+      <div style={S.wrap}>
+        <h1 style={S.h1}>On Deck Announcer</h1>
+        <div style={S.card}>
+          <p style={S.lead}>Connect the laptop to the PA, turn the volume up, then start.</p>
+          <button
+            style={S.bigButton}
+            onClick={() => { setArmed(true); void speak('Announcer ready.'); }}
+          >
+            ▶ Start announcing
+          </button>
+          <p style={S.muted}>
+            Browsers block audio until you click something — this is that click.
+            Leave the page open all day.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- running -----------------------------------------------------------
+  return (
+    <div style={S.wrap}>
+      <div style={S.headerRow}>
+        <h1 style={S.h1}>On Deck Announcer</h1>
+        <div style={S.status}>
+          <span style={{ ...S.dot, background: error ? '#dc2626' : '#16a34a' }} />
+          {error ? error : `Listening · last check ${lastPoll?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) ?? '—'}`}
+        </div>
+      </div>
+
+      {tokenExpired && (
+        <div style={S.warn}>
+          Session expired. Click the <strong>🎙️ Announce</strong> bookmark on Serve Tennis to reconnect.
+          Announcements are paused until you do.
+        </div>
+      )}
+
+      <div style={S.controls}>
+        <label style={S.label}>
+          Voice{' '}
+          <select value={voice} onChange={(e) => setVoice(e.target.value)} style={S.select}>
+            {VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+          </select>
+        </label>
+
+        {kokoroState !== 'ready' ? (
+          <button style={S.button} onClick={() => void loadKokoro()} disabled={kokoroState === 'loading'}>
+            {kokoroState === 'loading' ? 'Loading voice…' : 'Use the good voice'}
+          </button>
+        ) : (
+          <span style={S.badge}>Kokoro voice active</span>
+        )}
+
+        <button style={S.button} onClick={() => void speak('Attention please. On court five, boys twelve and under singles, quarterfinal. Test announcement.')}>
+          Test the PA
+        </button>
+
+        <span style={S.muted}>
+          {medianDuration ? `Matches averaging ${medianDuration} min today` : 'Timing matches…'}
+        </span>
+      </div>
+
+      <div style={S.columns}>
+        <section style={S.col}>
+          <h2 style={S.h2}>On court now ({onCourt.length})</h2>
+          {onCourt.length === 0 && <p style={S.muted}>Nothing on court.</p>}
+          {onCourt.map((m) => (
+            <div key={m.id} style={S.matchCard}>
+              <div style={S.court}>{m.court}</div>
+              <div style={S.matchBody}>
+                <div style={S.players}>{m.playerA} <span style={S.vs}>v</span> {m.playerB}</div>
+                <div style={S.meta}>{m.event} · {m.round} · started {m.startTime ?? '—'}</div>
+              </div>
+              <button style={S.smallButton} onClick={() => void speak(announcementText(m))} title="Announce again">
+                🔊
+              </button>
+            </div>
+          ))}
+        </section>
+
+        <section style={S.col}>
+          <h2 style={S.h2}>Waiting ({upcoming.length})</h2>
+          {upcoming.slice(0, 14).map((m) => (
+            <div key={m.id} style={{ ...S.matchCard, opacity: 0.75 }}>
+              <div style={{ ...S.court, background: '#e5e7eb', color: '#374151' }}>{m.court ?? '–'}</div>
+              <div style={S.matchBody}>
+                <div style={S.players}>{m.playerA} <span style={S.vs}>v</span> {m.playerB}</div>
+                <div style={S.meta}>{m.event} · {m.round} · sched {m.scheduledTime ?? '—'}</div>
+              </div>
+            </div>
+          ))}
+          {upcoming.length > 14 && <p style={S.muted}>+{upcoming.length - 14} more</p>}
+        </section>
+
+        <section style={S.col}>
+          <h2 style={S.h2}>Announcements</h2>
+          {log.length === 0 && <p style={S.muted}>Nothing called yet.</p>}
+          {log.map((l, i) => (
+            <div key={i} style={{ ...S.logLine, color: l.kind === 'error' ? '#dc2626' : l.kind === 'call' ? '#111827' : '#6b7280' }}>
+              <span style={S.logTime}>{l.at}</span> {l.text}
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+const S: Record<string, React.CSSProperties> = {
+  wrap: { maxWidth: 1400, margin: '0 auto', padding: 24, fontFamily: 'system-ui, -apple-system, sans-serif', color: '#111827' },
+  headerRow: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 },
+  h1: { fontSize: 30, fontWeight: 700, margin: '0 0 4px' },
+  h2: { fontSize: 15, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: '#6b7280', margin: '0 0 12px' },
+  lead: { fontSize: 18, margin: '0 0 20px' },
+  status: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: '#374151' },
+  dot: { width: 10, height: 10, borderRadius: '50%', display: 'inline-block' },
+  card: { background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: 24, marginTop: 16, boxShadow: '0 1px 2px rgba(0,0,0,.05)' },
+  ol: { lineHeight: 2, fontSize: 16, paddingLeft: 20 },
+  muted: { color: '#6b7280', fontSize: 14 },
+  warn: { background: '#fef3c7', border: '1px solid #f59e0b', color: '#92400e', padding: '12px 16px', borderRadius: 8, marginTop: 16 },
+  controls: { display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap', margin: '20px 0' },
+  label: { fontSize: 14, color: '#374151' },
+  select: { padding: '6px 10px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14, color: '#111827', background: '#fff' },
+  button: { padding: '8px 14px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', fontSize: 14, cursor: 'pointer', color: '#111827' },
+  bigButton: { padding: '20px 40px', borderRadius: 12, border: 'none', background: '#095896', color: '#fff', fontSize: 22, fontWeight: 700, cursor: 'pointer' },
+  smallButton: { border: 'none', background: 'transparent', fontSize: 22, cursor: 'pointer', padding: 4 },
+  bookmarklet: { display: 'inline-block', padding: '6px 14px', background: '#095896', color: '#fff', borderRadius: 8, textDecoration: 'none', fontWeight: 600 },
+  badge: { fontSize: 13, background: '#dcfce7', color: '#166534', padding: '5px 10px', borderRadius: 999, fontWeight: 600 },
+  columns: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 24, marginTop: 8 },
+  col: { minWidth: 0 },
+  matchCard: { display: 'flex', alignItems: 'center', gap: 14, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: 12, marginBottom: 10 },
+  court: { width: 52, height: 52, flexShrink: 0, borderRadius: 10, background: '#095896', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 700 },
+  matchBody: { minWidth: 0, flex: 1 },
+  players: { fontSize: 17, fontWeight: 600, lineHeight: 1.3 },
+  vs: { color: '#9ca3af', fontWeight: 400 },
+  meta: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  logLine: { fontSize: 14, padding: '5px 0', borderBottom: '1px solid #f3f4f6' },
+  logTime: { color: '#9ca3af', marginRight: 8, fontVariantNumeric: 'tabular-nums' },
+};
