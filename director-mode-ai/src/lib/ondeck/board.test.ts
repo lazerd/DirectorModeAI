@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeWaitBoard, formatWait, formatAhead, findPlayer, bucketOf, prettyRound,
-  formatClock, waitHeadline,
+  formatClock, waitHeadline, delayNote,
 } from './board';
 import type { NormalisedMatch } from './servetennis';
 
@@ -165,6 +165,7 @@ describe('computeWaitBoard', () => {
     expect(b.waiting[0].estimatedStart).toBe('09:00');
     expect(b.waiting[0].onSchedule).toBe(true);
     expect(waitHeadline(b.waiting[0])).toBe('9:00 AM');
+    expect(b.waiting[0].delayMin).toBe(0);
   });
 
   it('pushes past the scheduled time only when every court is busy', () => {
@@ -303,7 +304,6 @@ describe('one match at a time is next', () => {
     const b = computeWaitBoard(live, observed);
     expect(b.waiting.filter((r) => r.isNext)).toHaveLength(1);
     expect(b.waiting[0].isNext).toBe(true);
-    expect(b.waiting.filter((r) => waitHeadline(r) === 'Next up')).toHaveLength(1);
   });
 
   it('staggers courts that are all running past time', () => {
@@ -326,9 +326,10 @@ describe('one match at a time is next', () => {
 describe('waitHeadline', () => {
   // A snapshot published by a browser tab running older code can be missing
   // fields the board expects. It rendered a bare "~" to waiting parents.
-  it('never renders a bare tilde when the estimate is missing', () => {
+  it('falls back to the published time when the estimate is missing', () => {
+    // A snapshot from a browser tab running older code can lack the field.
     const out = waitHeadline({ etaLowMin: 0, etaHighMin: 0, estimatedStart: null, scheduledTime: '09:30' });
-    expect(out).not.toBe('~');
+    expect(out).not.toContain('~');
     expect(out).toBe('9:30 AM');
   });
 
@@ -337,17 +338,22 @@ describe('waitHeadline', () => {
   });
 
   it('gives the scheduled time back when a court is free and waiting on the clock', () => {
-    expect(waitHeadline({ onSchedule: true, scheduledTime: '09:00', etaLowMin: 0, etaHighMin: 0 })).toBe('9:00 AM');
+    expect(waitHeadline({ onSchedule: true, scheduledTime: '09:00', estimatedStart: '09:00' })).toBe('9:00 AM');
   });
 
-  it('reserves "Next up" for the match at the front', () => {
-    expect(waitHeadline({ isNext: true, etaLowMin: 0, etaHighMin: 5 })).toBe('Next up');
-    expect(waitHeadline({ isNext: false, etaLowMin: 0, etaHighMin: 5, estimatedStart: '09:40' })).not.toBe('Next up');
+  it('always gives a clock time, whatever the wait', () => {
+    // The column used to mix "10:00 AM", "~20-25 min" and "~11:40 AM",
+    // which is unreadable when scanning a list for your own name.
+    expect(waitHeadline({ etaLowMin: 20, etaHighMin: 35, estimatedStart: '10:00' })).toBe('10:00 AM');
+    expect(waitHeadline({ etaLowMin: 180, etaHighMin: 220, estimatedStart: '13:00' })).toBe('1:00 PM');
+    expect(waitHeadline({ etaLowMin: 0, etaHighMin: 5, estimatedStart: '09:40' })).toBe('9:40 AM');
   });
 
-  it('uses minutes close in and a clock time further out', () => {
-    expect(waitHeadline({ etaLowMin: 20, etaHighMin: 35, estimatedStart: '10:00' })).toBe('~20–35 min');
-    expect(waitHeadline({ etaLowMin: 180, etaHighMin: 220, estimatedStart: '13:00' })).toBe('~1:00 PM');
+  it('keeps lateness out of the headline and in its own note', () => {
+    expect(delayNote({ delayMin: 0 })).toBe('');
+    // A few minutes either way is noise at a junior tournament.
+    expect(delayNote({ delayMin: 8 })).toBe('');
+    expect(delayNote({ delayMin: 40 })).toBe('+40 min');
   });
 });
 

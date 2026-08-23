@@ -101,6 +101,8 @@ export interface WaitRow {
   onSchedule: boolean;
   /** First in the queue. Exactly one waiting match has this. */
   isNext: boolean;
+  /** Minutes later than the published time. 0 when running to schedule. */
+  delayMin: number;
 }
 
 export interface CourtRow {
@@ -305,6 +307,7 @@ export function computeWaitBoard(live: NormalisedMatch[], opts: WaitOptions): Wa
       // but calling them all "Next up" tells a parent nothing about who
       // actually walks on first.
       isNext: index === 0,
+      delayMin: scheduled === null ? 0 : Math.max(0, Math.round((startsAt - scheduled) / MS_PER_MIN)),
     };
   });
 
@@ -379,30 +382,29 @@ export function formatAhead(ahead: number): string {
 }
 
 /**
- * The single line a waiting player reads.
+ * The single line a waiting player reads: always a clock time.
  *
- * A match whose court is free and is only waiting for its scheduled time
- * gets its scheduled time back — "9:00 AM" — because that is the honest
- * answer and the one already printed on the order of play.
+ * An earlier version mixed formats in the same column — "10:00 AM", then
+ * "~20-25 min", then "~11:40 AM" — which is unreadable when you are
+ * scanning a list for your own name. One format, every row, so two matches
+ * can be compared at a glance.
  */
 export function waitHeadline(
   row: Partial<Pick<WaitRow, 'etaLowMin' | 'etaHighMin' | 'estimatedStart' | 'onSchedule' | 'scheduledTime' | 'isNext'>>
 ): string {
-  const low = row.etaLowMin ?? 0;
-  const high = row.etaHighMin ?? 0;
   const estimate = formatClock(row.estimatedStart ?? null);
-
-  // "Next up" is reserved for the one match actually at the front.
-  if (row.isNext && high <= 10) return 'Next up';
-  if (row.onSchedule) return formatClock(row.scheduledTime ?? row.estimatedStart ?? null) || '—';
-  if (high > 0 && high <= MINUTES_USEFUL_UP_TO) return formatWait(low, high);
-
-  // A snapshot published by an older tab can be missing the estimate. Fall
-  // back through what we do have rather than rendering a bare "~", which
-  // tells a waiting parent precisely nothing.
-  if (estimate) return `~${estimate}`;
-  if (high > 0) return formatWait(low, high);
+  if (estimate) return estimate;
+  // A snapshot from an older tab can lack the estimate; the published time
+  // is a better answer than nothing.
   return formatClock(row.scheduledTime ?? null) || '—';
+}
+
+/** "On time" / "+15 min late" — the delta, kept out of the headline. */
+export function delayNote(row: Partial<Pick<WaitRow, 'delayMin'>>): string {
+  const d = row.delayMin ?? 0;
+  // Under a quarter of an hour is noise at a junior tournament.
+  if (d < 15) return '';
+  return `+${d} min`;
 }
 
 /** Everything a player needs, found by typing part of their name. */

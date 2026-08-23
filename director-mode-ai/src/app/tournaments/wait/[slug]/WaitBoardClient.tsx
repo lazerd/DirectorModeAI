@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { formatAhead, findPlayer, prettyRound, formatClock, waitHeadline, type WaitBoard } from '@/lib/ondeck/board';
+import { formatAhead, findPlayer, prettyRound, formatClock, waitHeadline, delayNote, type WaitBoard } from '@/lib/ondeck/board';
 import { pickVoice, speak, stopSpeaking, reportToDeskText } from '@/lib/ondeck/speech';
 
 /**
@@ -28,12 +28,12 @@ const REFRESH_MS = 45_000;
 const TRUST_LIMIT_SECONDS = 30 * 60;
 
 /**
- * Desk mode adds a call button to every match. It is remembered per device,
- * so the desk laptop keeps it and a parent's phone never sees it.
+ * The call button is on by default. It is safe anywhere: speech happens in
+ * whichever browser pressed it, so the laptop wired to the PA is the only
+ * device that can make a sound in the clubhouse — a parent tapping it just
+ * makes their own phone talk.
  *
- * Safe to expose at all: speech happens in whoever's browser pressed the
- * button, so the laptop wired to the PA is the only device that can make a
- * sound in the clubhouse.
+ * ?desk=0 hides it, remembered per device, for anyone who finds it clutter.
  */
 const DESK_KEY = 'ondeck.deskMode';
 const VOICE_KEY = 'ondeck.voice';
@@ -67,7 +67,7 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
-  const [deskMode, setDeskMode] = useState(false);
+  const [deskMode, setDeskMode] = useState(true);
   const [voice, setVoice] = useState('');
   const [calling, setCalling] = useState<string | null>(null);
 
@@ -91,21 +91,20 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
     return () => clearInterval(t);
   }, [load]);
 
-  // ?desk=1 turns it on and is remembered, so the laptop only needs it once.
+  // On unless this device has explicitly turned it off.
   useEffect(() => {
     const fromUrl = new URLSearchParams(window.location.search).get('desk');
-    if (fromUrl === '1') { localStorage.setItem(DESK_KEY, '1'); setDeskMode(true); }
-    else if (fromUrl === '0') { localStorage.removeItem(DESK_KEY); setDeskMode(false); }
-    else setDeskMode(localStorage.getItem(DESK_KEY) === '1');
+    if (fromUrl === '1') { localStorage.removeItem(DESK_KEY); setDeskMode(true); }
+    else if (fromUrl === '0') { localStorage.setItem(DESK_KEY, 'off'); setDeskMode(false); }
+    else setDeskMode(localStorage.getItem(DESK_KEY) !== 'off');
   }, []);
 
   useEffect(() => {
-    if (!deskMode) return;
     const choose = () => setVoice(pickVoice(localStorage.getItem(VOICE_KEY)));
     choose();
     speechSynthesis.onvoiceschanged = choose;
     return () => { speechSynthesis.onvoiceschanged = null; };
-  }, [deskMode]);
+  }, []);
 
   const callPlayers = useCallback((id: string, a: string, b: string) => {
     setCalling(id);
@@ -151,8 +150,7 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
 
       {deskMode && (
         <div style={S.deskBar}>
-          <span style={S.deskBadge}>Desk mode</span>
-          <span style={S.muted}>Tap 🎤 to call players to the desk.</span>
+          <span style={S.muted}>Tap 🎤 to call players to the tournament desk.</span>
           <button style={S.stopBtn} onClick={stopSpeaking}>■ Stop</button>
         </div>
       )}
@@ -197,9 +195,9 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
             </div>
             <div style={S.answerSub}>
               Scheduled {formatClock(result.row.scheduledTime)}
-              {!board.isFutureDate && trustEstimates && result.row.estimatedStart
-                ? ` · estimated ${formatClock(result.row.estimatedStart)}`
-                : ''}
+              {delayNote(result.row) && (
+                <span style={S.late}> · running {delayNote(result.row)} late</span>
+              )}
             </div>
             <div style={S.answerSub}>
               {board.isFutureDate || !trustEstimates ? '' : formatAhead(result.row.ahead)}
@@ -255,7 +253,11 @@ export default function WaitBoardClient({ slug }: { slug: string }) {
               ) : (
                 <>
                   <div style={S.waitBig}>{waitHeadline(r)}</div>
-                  <div style={S.waitSub}>Sched {formatClock(r.scheduledTime)}</div>
+                  <div style={S.waitSub}>
+                    Sched {formatClock(r.scheduledTime)}
+                    {delayNote(r) && <span style={S.late}> {delayNote(r)}</span>}
+                  </div>
+                  {r.isNext && <div style={S.nextTag}>NEXT UP</div>}
                 </>
               )}
             </div>
@@ -301,6 +303,8 @@ const S: Record<string, React.CSSProperties> = {
   meta: { fontSize: 13.5, color: '#94a3b8', marginTop: 3 },
   waitCell: { textAlign: 'right', flexShrink: 0 },
   waitBig: { fontSize: 16, fontWeight: 800, whiteSpace: 'nowrap', color: '#fbbf24' },
+  late: { color: '#fbbf24', fontWeight: 700 },
+  nextTag: { fontSize: 10.5, fontWeight: 800, letterSpacing: '.08em', color: '#052e16', background: '#4ade80', padding: '2px 6px', borderRadius: 4, marginTop: 4, display: 'inline-block' },
   waitSub: { fontSize: 12.5, color: '#94a3b8', whiteSpace: 'nowrap' },
   deskBar: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: '#0b2b3d', border: '1px solid #17455f', borderRadius: 10 },
   deskBadge: { fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', background: '#0284c7', color: '#fff', padding: '4px 9px', borderRadius: 999 },
