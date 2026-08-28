@@ -16,6 +16,8 @@ import { computeRRStandings, type RRStanding } from './tournamentFormats';
 export type PoolMatch = {
   player1_id: string | null;
   player3_id: string | null;
+  winner_feeds_to?: string | null;
+  loser_feeds_to?: string | null;
   score: string | null;
   winner_side: 'a' | 'b' | null;
   status: string;

@@ -105,3 +105,63 @@ describe('tournamentPools', () => {
     expect(isPoolComplete(pools[0], withSelf)).toBe(true);
   });
 });
+
+/**
+ * Regression cover for the Summer Flex League "8 finals" bug.
+ *
+ * mens-singles-flex-2026 is a 16-player COMPASS draw, but scripts/build-compass.mjs
+ * reshaped its matches without rewriting the event row, so match_format stayed
+ * 'rr-singles'. That let syncPlacementPlayoffs past its format guard, and the
+ * compass main bracket then read as exactly TWO POOLS OF EIGHT -- so it invented
+ * an 8-match placement round on top of the draw's real East Final, and did it
+ * again after every single score save.
+ *
+ * These tests pin the fact that made it possible, so the structural guard in
+ * tournamentPlayoffs.ts is never removed as "redundant" with the format check.
+ */
+describe('detectPools on an elimination-shaped draw', () => {
+  const pl = (n: number) => `p${n}`;
+  const mk = (
+    a: string | null, b: string | null, round: number, slot: number, feeds = true,
+  ): PoolMatch => ({
+    player1_id: a, player3_id: b, score: a && b ? '6-0' : null,
+    winner_side: a && b ? 'a' : null, status: a && b ? 'completed' : 'pending',
+    bracket: 'main', round, slot,
+    winner_feeds_to: feeds ? `main:${round + 1}:${Math.ceil(slot / 2)}:a` : null,
+    loser_feeds_to: null,
+  });
+
+  it('reads a 16-player compass main bracket as exactly two pools of eight', () => {
+    const entries = Array.from({ length: 16 }, (_, i) => pl(i + 1));
+    const main: PoolMatch[] = [];
+    for (let i = 0; i < 8; i++) main.push(mk(pl(2 * i + 1), pl(2 * i + 2), 1, i + 1));
+    for (let i = 0; i < 4; i++) main.push(mk(pl(4 * i + 1), pl(4 * i + 3), 2, i + 1));
+    main.push(mk(pl(1), pl(5), 3, 1));
+    main.push(mk(pl(9), pl(13), 3, 2));
+    // The real East Final. Load-bearing: detectPools ignores only the TOP round,
+    // so this row is what lets R3 into the union-find and fuses the halves.
+    main.push(mk(pl(1), null, 4, 1, false));
+
+    const pools = detectPools(entries, main);
+
+    // THE BUG: indistinguishable from a two-pool round robin.
+    expect(pools).toHaveLength(2);
+    expect(pools.map((x) => x.length)).toEqual([8, 8]);
+
+    // ...which is why the guard must read the feed graph, not the pool count.
+    expect(main.some((m) => m.winner_feeds_to || m.loser_feeds_to)).toBe(true);
+  });
+
+  it('a genuine two-pool round robin has the same shape but no feed references', () => {
+    const entries = [pl(1), pl(2), pl(3), pl(4), pl(5), pl(6)];
+    const plain: PoolMatch[] = [
+      mk(pl(1), pl(2), 1, 1, false), mk(pl(1), pl(3), 1, 2, false), mk(pl(2), pl(3), 1, 3, false),
+      mk(pl(4), pl(5), 1, 4, false), mk(pl(4), pl(6), 1, 5, false), mk(pl(5), pl(6), 1, 6, false),
+      mk(null, null, 2, 1, false), // placement skeleton at the top round
+    ];
+
+    expect(detectPools(entries, plain)).toHaveLength(2);
+    // No feeds — so the guard correctly lets this one through to build playoffs.
+    expect(plain.some((m) => m.winner_feeds_to || m.loser_feeds_to)).toBe(false);
+  });
+});

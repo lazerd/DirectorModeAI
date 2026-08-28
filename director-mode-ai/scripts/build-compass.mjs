@@ -59,4 +59,10 @@ if (!COMMIT) { console.log('\nDRY RUN — add --commit to rebuild the Men\'s Sin
 await admin.from('tournament_matches').delete().eq('event_id', ev.id);
 const { error } = await admin.from('tournament_matches').insert(rows);
 if (error) { console.log('ERROR:', error.message); process.exit(1); }
+// The event row must agree with the shape we just wrote. Leaving it on
+// 'rr-singles' made syncPlacementPlayoffs treat this compass as a two-pool
+// round robin and regenerate 7 phantom finals after every score save.
+const { error: fmtErr } = await admin.from('events').update({ match_format: 'compass-singles' }).eq('id', ev.id);
+if (fmtErr) { console.log('ERROR setting match_format:', fmtErr.message); process.exit(1); }
+console.log("✓ event match_format set to 'compass-singles'");
 console.log(`\n✓ Rebuilt Men's Singles as a full compass (${rows.length} matches). Auto-advance is live.`);

@@ -7,6 +7,9 @@ type Admin = ReturnType<typeof getSupabaseAdmin>;
 
 type MatchRow = PoolMatch & { id: string; match_type: string };
 
+/** Rounds at or above this are placement/crossover rows, never round-robin play. */
+const PLACEMENT_BAND = 90;
+
 /**
  * Keep a 2-pool round-robin event's PLACEMENT PLAYOFF in sync with its pools.
  *
@@ -55,10 +58,33 @@ export async function syncPlacementPlayoffs(
 
   const { data: matchRows } = await admin
     .from('tournament_matches')
-    .select('id, bracket, round, slot, match_type, player1_id, player3_id, status, score, winner_side')
+    .select('id, bracket, round, slot, match_type, player1_id, player3_id, status, score, winner_side, winner_feeds_to, loser_feeds_to')
     .eq('event_id', eventId);
   const all = (matchRows || []) as MatchRow[];
-  const main = all.filter((m) => m.bracket === 'main');
+
+  // GUARD 1 — a feed-driven draw is never a set of pools.
+  //
+  // Single-elimination, compass and consolation draws advance through
+  // winner_feeds_to / loser_feeds_to. Their who-played-whom graph collapses
+  // into connected components that are indistinguishable from pools: a
+  // 16-player compass reads as exactly "two pools of eight" (top half vs
+  // bottom half) the moment the semifinals are reached, so this function would
+  // happily invent a placement round on top of the draw's real final.
+  //
+  // `match_format` alone is NOT a sufficient guard. A build script can reshape
+  // an event's matches without rewriting the event row -- which is precisely
+  // how mens-singles-flex-2026 kept match_format 'rr-singles' after
+  // scripts/build-compass.mjs turned it into a compass, and how 7 phantom
+  // finals kept regenerating after every score save. The match graph is the
+  // ground truth, so take the guard from the graph.
+  if (all.some((m) => m.winner_feeds_to || m.loser_feeds_to)) return nothing('feed-driven-draw');
+
+  // GUARD 2 — ignore the placement band when detecting pools.
+  //
+  // Crossover rows written by syncFlexPlayoffs live at round 90+ and join two
+  // flights by design. Counting them as "who played whom" would merge four
+  // flights into two components and trigger a second, bogus placement round.
+  const main = all.filter((m) => m.bracket === 'main' && m.round < PLACEMENT_BAND);
   if (main.length === 0) return nothing('no-matches');
 
   const pools = detectPools(entryIds, main);
