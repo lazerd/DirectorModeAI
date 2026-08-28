@@ -19,8 +19,22 @@ import { CLUB_TZ } from '@/lib/captain/clubTime';
 
 export const dynamic = 'force-dynamic';
 
-/** One SMS segment is 160 chars; this keeps a normal message to one or two. */
-const MAX_BODY = 320;
+/**
+ * Opt-out language, appended to every text.
+ *
+ * The A2P 10DLC campaign registers sample messages, and carriers compare live
+ * traffic against them — samples that carry "Reply STOP to opt out" and real
+ * messages that don't is a filtering risk for the whole campaign. Twilio also
+ * honours STOP at the platform level regardless, so this is telling people
+ * about a thing that already works rather than promising one that doesn't.
+ */
+const OPT_OUT = ' Reply STOP to opt out.';
+
+/**
+ * One SMS segment is 160 chars; this keeps a normal message to one or two,
+ * with room reserved for the opt-out line the captain doesn't have to type.
+ */
+const MAX_BODY = 320 - OPT_OUT.length;
 
 /** How long to give the carrier before asking what happened. */
 const DELIVERY_CHECK_MS = 4000;
@@ -44,8 +58,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Pick at least one player to text.' }, { status: 400 });
   }
 
-  const text = (body.body || '').trim().slice(0, MAX_BODY);
-  if (!text) return NextResponse.json({ error: 'Write the message first.' }, { status: 400 });
+  const typed = (body.body || '').trim().slice(0, MAX_BODY);
+  if (!typed) return NextResponse.json({ error: 'Write the message first.' }, { status: 400 });
+  // Never append it twice — a captain who typed it themselves keeps their wording.
+  const text = /\bstop\b/i.test(typed) ? typed : `${typed}${OPT_OUT}`;
 
   const ctx = await requireTeam(body.team_id);
   if (isError(ctx)) return ctx.error;
