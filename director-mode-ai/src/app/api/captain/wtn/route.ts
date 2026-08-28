@@ -20,6 +20,8 @@ type RosterRow = {
   wtn_doubles: number | null;
   sort_order: number | null;
   is_sub: boolean;
+  /** Link into the identity hub. Null for a player who exists only on this roster. */
+  master_player_id: string | null;
 };
 
 export async function POST(req: Request) {
@@ -40,7 +42,7 @@ export async function POST(req: Request) {
 
   const { data, error } = await ctx.db
     .from('captain_players')
-    .select('id, name, wtn, wtn_doubles, sort_order, is_sub')
+    .select('id, name, wtn, wtn_doubles, sort_order, is_sub, master_player_id')
     .eq('team_id', ctx.teamId)
     .eq('active', true);
 
@@ -109,6 +111,47 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: failed.error.message }, { status: 500 });
   }
 
+  /**
+   * Write the number through to the PERSON, not just this team's roster row.
+   *
+   * A World Tennis Number describes a player, not a membership of one team, so
+   * a captain who pastes it here should never have to paste it again in
+   * PlayerVault, a mixer, or next season's roster. master_players is the
+   * identity hub every other tool already links to, so putting it there is what
+   * makes the number follow them around.
+   *
+   * Best-effort: a roster row with no identity link yet (the nightly sync
+   * creates them) still gets its own copy above, and picks up the shared one on
+   * the next pass. Failing to reach the hub must never lose the paste the
+   * captain just confirmed.
+   */
+  const linked = res.matched
+    .map((m) => ({ m, mpid: roster.find((p) => p.id === m.playerId)?.master_player_id }))
+    .filter((x): x is { m: (typeof res.matched)[number]; mpid: string } => !!x.mpid);
+
+  let sharedWith = 0;
+  if (linked.length) {
+    const hub = await Promise.all(
+      linked.map((x) =>
+        ctx.db
+          .from('master_players')
+          .update({
+            wtn: x.m.wtn,
+            ...(x.m.wtnDoubles != null ? { wtn_doubles: x.m.wtnDoubles } : {}),
+            wtn_updated_at: stamp,
+            wtn_source: 'usta_paste',
+            updated_at: stamp,
+          })
+          .eq('id', x.mpid),
+      ),
+    );
+    sharedWith = hub.filter((h) => !h.error).length;
+    const hubFailed = hub.find((h) => h.error);
+    if (hubFailed?.error) {
+      console.error('[captain/wtn] could not reach the identity hub', hubFailed.error.message);
+    }
+  }
+
   let ranked = 0;
   if (body.rank) {
     // Re-rank off the numbers we just wrote, not the stale ones.
@@ -138,5 +181,12 @@ export async function POST(req: Request) {
     ranked = order.length;
   }
 
-  return NextResponse.json({ ok: true, updated: res.matched.length, ranked });
+  return NextResponse.json({
+    ok: true,
+    updated: res.matched.length,
+    ranked,
+    // How many of those numbers now follow the player across every tool.
+    sharedWith,
+    notLinked: res.matched.length - linked.length,
+  });
 }

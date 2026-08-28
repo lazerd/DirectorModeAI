@@ -269,6 +269,21 @@ export async function GET(request: NextRequest) {
     (r) => ({ email: r.email, phone: r.phone, fullName: r.name })
   );
 
+  /**
+   * captain_players (CaptainMode league rosters).
+   *
+   * These were the only player rows with no route into the identity hub, which
+   * is why a World Tennis Number pasted onto a team roster could not reach
+   * PlayerVault, a mixer, or anything else — the person existed twice and the
+   * two copies had no idea about each other. Linking them is what lets one
+   * number follow a player across every tool.
+   */
+  results.captain_players = await syncTable(
+    'captain_players',
+    'id, name, email, phone',
+    (r) => ({ email: r.email, phone: r.phone, fullName: r.name })
+  );
+
   // cc_players (linked to profile; pull email via profile join)
   try {
     const { data: ccRows } = await supabase

@@ -6,6 +6,7 @@ import { gateTeam } from '@/lib/captain/access';
 import { playedCounts, pairRecords, rulesFor } from '@/lib/captain/server';
 import { eligibilityReport, type RatingType } from '@/lib/captain/lineup';
 import RosterPanel from '@/components/captain/RosterPanel';
+import MissingContactsPanel from '@/components/captain/MissingContactsPanel';
 import AddMatchForm from '@/components/captain/AddMatchForm';
 import PartnershipsPanel from '@/components/captain/PartnershipsPanel';
 import ImportPanel from '@/components/captain/ImportPanel';
@@ -232,6 +233,11 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         players={roster as never}
         neverPairs={(never as never) || []}
       />
+
+      {/* Above the roster on purpose: a missing mobile is the thing that makes
+          every texting feature silently do nothing, and it is invisible when it
+          is buried one Edit panel deep per player. */}
+      <MissingContactsPanel teamId={team.id} players={roster as never} />
 
       <RosterPanel
         teamId={team.id}

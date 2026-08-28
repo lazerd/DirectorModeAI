@@ -69,7 +69,13 @@ export default function WtnPastePanel({ teamId }: { teamId: string }) {
         setText('');
         setMsg(
           `Saved ${j.updated} WTN${j.updated === 1 ? '' : 's'}` +
-            (j.ranked ? ` and ranked ${j.ranked} players strongest-first.` : '.'),
+            (j.ranked ? `, ranked ${j.ranked} players strongest-first` : '') +
+            (j.sharedWith
+              ? `. ${j.sharedWith} now follow${j.sharedWith === 1 ? 's' : ''} the player across every ClubMode tool.`
+              : '.') +
+            (j.notLinked
+              ? ` ${j.notLinked} stayed on this roster only — they join the rest once the nightly player sync links them up.`
+              : ''),
         );
         router.refresh();
       }
