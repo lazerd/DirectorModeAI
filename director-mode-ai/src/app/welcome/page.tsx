@@ -53,6 +53,26 @@ export default function WelcomePage() {
           {allDone ? "You're all set up — your club is ready to run." : "Let's get your club running. Knock these out whenever you're ready."}
         </p>
 
+        {/* A checklist of links still leaves every tool empty. When nothing has
+            been set up yet, lead with the flow that actually creates data. */}
+        {!allDone && doneCount <= 1 && (
+          <Link
+            href="/start"
+            className="mb-8 flex items-center gap-4 rounded-2xl border border-[#D3FB52]/30 bg-[#D3FB52]/[0.07] p-5 transition-colors hover:bg-[#D3FB52]/[0.12]"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#D3FB52]/15">
+              <Sparkles size={20} className="text-[#D3FB52]" />
+            </span>
+            <div className="min-w-0">
+              <p className="font-medium">Let&apos;s set up your first league</p>
+              <p className="text-sm text-white/50">
+                Four questions, about a minute — your club, courts, a league and a few players, all at once.
+              </p>
+            </div>
+            <ArrowRight size={18} className="ml-auto shrink-0 text-[#D3FB52]" />
+          </Link>
+        )}
+
         <div className="mb-8">
           <div className="flex items-center justify-between text-sm text-white/50 mb-2">
             <span>{doneCount} of {steps.length} done</span><span>{pct}%</span>

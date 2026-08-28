@@ -25,10 +25,37 @@ export type Feature =
   // view a club's published calendar — gated at the route/UI, same as above.
   | 'calendar_mode';
 
+/**
+ * FOUNDING MODE — everything is unlocked for everyone.
+ *
+ * ClubMode has zero paying customers. Enforcing caps against nobody costs real
+ * engineering time and can only ever produce one outcome: a new director hits a
+ * wall on their first afternoon and leaves. So every feature gate and every
+ * usage cap below is inert while this is on, and the account state reads
+ * "Founding club — everything unlocked".
+ *
+ * The machinery is deliberately left standing rather than deleted — the limits
+ * in TIER_LIMITS are the real published numbers, so turning this off is a
+ * one-line change that starts enforcing the plan as advertised. Build the first
+ * limit when a real user actually hits it.
+ */
+export const FOUNDING_MODE = true;
+
+/** Shown wherever the plan state is surfaced while FOUNDING_MODE is on. */
+export const FOUNDING_LABEL = 'Founding club — everything unlocked';
+
+/**
+ * The published plan limits (pricing page, Aug 2026). Inert while FOUNDING_MODE
+ * is on; these are what starts applying the moment it is switched off.
+ *   -1 = unlimited.
+ */
 export const TIER_LIMITS = {
-  free: { emails: 25, sms: 0, photos_per_event: 5, vault_size: 25 },
-  pro: { emails: 1000, sms: 200, photos_per_event: -1, vault_size: -1 },
+  free: { emails: 500, sms: 0, photos_per_event: 5, vault_size: 500 },
+  pro: { emails: 5000, sms: 300, photos_per_event: -1, vault_size: -1 },
 } as const;
+
+/** Pro SMS overage, in cents, once the included allowance is spent. */
+export const SMS_OVERAGE_CENTS = 2;
 
 const PRO_FEATURES: ReadonlyArray<Feature> = [
   'dj_console',
@@ -159,6 +186,9 @@ export async function getPlanContext(userId: string): Promise<PlanContext> {
 }
 
 export function hasFeatureForTier(tier: PlanTier, feature: Feature): boolean {
+  // Founding mode: no feature is gated. This is the single switch that makes
+  // CourtSheet editing, CalendarMode, AI and DJ Console free for everyone.
+  if (FOUNDING_MODE) return true;
   return FEATURES_BY_TIER[tier].includes(feature);
 }
 
@@ -276,7 +306,9 @@ export async function consumeEmailCredits(userId: string, count: number): Promis
   if (count <= 0) return;
   const ctx = await getPlanContext(userId);
   const billId = ctx.billingUserId; // pool at the club owner
-  const limit: number = TIER_LIMITS[ctx.effectiveTier].emails;
+  // Usage is still RECORDED in founding mode — we want to know what real demand
+  // looks like before pricing it — but the cap never fires.
+  const limit: number = FOUNDING_MODE ? -1 : TIER_LIMITS[ctx.effectiveTier].emails;
   const supabase = await ensureUsageRow(billId);
   const { data: usage } = await supabase
     .from('usage_credits')
@@ -299,13 +331,13 @@ export async function consumeSmsCredits(
 ): Promise<{ overageCents: number }> {
   if (count <= 0) return { overageCents: 0 };
   const ctx = await getPlanContext(userId);
-  if (ctx.effectiveTier === 'free') {
+  if (!FOUNDING_MODE && ctx.effectiveTier === 'free') {
     throw new CreditLimitError('sms', 'free', 0);
   }
   const billId = ctx.billingUserId; // pool at the club owner
   const supabase = await ensureUsageRow(billId);
   const limit: number = TIER_LIMITS[ctx.effectiveTier].sms;
-  const overagePerSmsCents = 5; // Pro overage = $0.05/SMS
+  const overagePerSmsCents = SMS_OVERAGE_CENTS;
   const { data: usage } = await supabase
     .from('usage_credits')
     .select('sms_used, sms_overage_cents')
@@ -330,7 +362,7 @@ export async function consumeSmsCredits(
 
 export async function consumeAiCall(userId: string): Promise<void> {
   const ctx = await getPlanContext(userId);
-  if (ctx.effectiveTier === 'free') {
+  if (!FOUNDING_MODE && ctx.effectiveTier === 'free') {
     throw new CreditLimitError('ai', 'free', 0);
   }
   const billId = ctx.billingUserId; // pool at the club owner

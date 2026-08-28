@@ -108,6 +108,8 @@ export async function middleware(request: NextRequest) {
     // the same gate the tools themselves have.
     '/run',
     '/tools',
+    // First-run setup wizard — needs a signed-in user to attach the club to.
+    '/start',
   ];
   const isProtectedPath = protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path)

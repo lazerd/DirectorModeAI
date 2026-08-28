@@ -706,7 +706,7 @@ export default function HomePage() {
             Ready to run your club from <span className="hm-gradient-text">one screen?</span>
           </h2>
           <p className="text-white/55 text-lg mb-10 max-w-xl mx-auto">
-            Set up in five minutes. Free forever for clubs — fill courts, run your season, and ditch the spreadsheets.
+            Set up in five minutes. Free plan, forever — fill courts, run your season, and ditch the spreadsheets.
           </p>
           <Link
             href="/login"
@@ -715,7 +715,7 @@ export default function HomePage() {
             Get Started Free <ArrowRight size={18} />
           </Link>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-white/40 mt-8">
-            <span className="flex items-center gap-2"><Check size={16} className="text-[#D3FB52]" /> Free forever for clubs</span>
+            <span className="flex items-center gap-2"><Check size={16} className="text-[#D3FB52]" /> Free plan, forever</span>
             <span className="flex items-center gap-2"><Check size={16} className="text-[#D3FB52]" /> Setup in 5 minutes</span>
             <span className="flex items-center gap-2"><Check size={16} className="text-[#D3FB52]" /> Cancel anytime</span>
           </div>
