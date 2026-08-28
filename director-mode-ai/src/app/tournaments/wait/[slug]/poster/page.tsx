@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
 
+import { APP_URL } from '@/lib/appUrl';
 export const dynamic = 'force-dynamic';
 
 export const metadata = {
@@ -26,7 +27,7 @@ export default async function PosterPage({
   const { slug } = await params;
   const { title, sub } = await searchParams;
 
-  const base = process.env.NEXT_PUBLIC_APP_URL ?? 'https://club.coachmode.ai';
+  const base = APP_URL;
   const url = `${base}/tournaments/wait/${slug}`;
 
   // High error correction: the poster will get taped to a fence, rained on,

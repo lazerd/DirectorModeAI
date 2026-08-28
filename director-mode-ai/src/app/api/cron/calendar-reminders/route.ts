@@ -5,6 +5,7 @@ import { dueToday, sanitizeCadence } from '@/lib/calendar/reminders';
 import { sendReminder, type ReminderContext, type ReminderItem } from '@/lib/calendar/reminderSender';
 import { addDays } from '@/lib/calendar/dates';
 
+import { APP_URL } from '@/lib/appUrl';
 // GET /api/cron/calendar-reminders — the daily reminder run.
 //
 // Walks every calendar item that has a cadence and an upcoming date, works out
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
   }
 
   const db = getSupabaseAdmin();
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+  const appUrl = APP_URL;
 
   // Only look at events near enough to have a reminder due. The widest rule in
   // any preset is 60 days out; 75 gives headroom for a custom one.

@@ -6,6 +6,7 @@ import { Plus, Search, Users, Trash2, ArrowRightCircle, FileUp, Trophy, Crown, G
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 
+import { originOr } from '@/lib/appUrl';
 const SPORTS = [
   { value: '', label: 'All Sports' },
   { value: 'tennis', label: 'Tennis' },
@@ -135,7 +136,7 @@ export default function PlayerVaultPage() {
     } catch { /* no club / not staff — vault still works as a plain roster */ }
   };
 
-  const joinUrl = club ? `${typeof window !== 'undefined' ? window.location.origin : 'https://club.coachmode.ai'}/join/${club.join_code}` : '';
+  const joinUrl = club ? `${originOr()}/join/${club.join_code}` : '';
   const copyJoin = () => { navigator.clipboard.writeText(joinUrl); setCopied(true); setTimeout(() => setCopied(false), 1500); };
 
   // Change a member's role (grant/remove staff access). Optimistic.

@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client';
 import { trackEvent } from '@/lib/analytics';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay } from 'date-fns';
 
+import { APP_HOST } from '@/lib/appUrl';
 type Slot = { 
   id: string; 
   start_time: string; 
@@ -243,7 +244,7 @@ export default function DashboardPage() {
           <div>
             <p className="font-medium text-blue-900">Share your booking link with students</p>
             {coachSlug ? (
-              <p className="text-sm text-blue-600">club.coachmode.ai/coach/{coachSlug}</p>
+              <p className="text-sm text-blue-600">{APP_HOST}/coach/{coachSlug}</p>
             ) : (
               <p className="text-sm text-blue-600">Set up your link in <a href="/lessons/settings" className="underline">Settings</a></p>
             )}

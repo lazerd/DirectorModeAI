@@ -15,6 +15,7 @@ import { stripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendQuadsConfirmEmail, sendQuadsWaitlistEmail } from '@/lib/quadEmails';
 
+import { APP_URL } from '@/lib/appUrl';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
         const e: any = full;
         const recipient = e?.player_email || e?.parent_email;
         if (recipient && (ev as any)?.slug) {
-          const origin = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+          const origin = APP_URL;
           const args = {
             to: recipient,
             playerName: e.player_name,
@@ -163,7 +164,7 @@ export async function POST(req: NextRequest) {
       const recipient = e?.player_email || e?.parent_email;
       if (recipient && e?.event?.slug) {
         const origin =
-          process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+          APP_URL;
         const args = {
           to: recipient,
           playerName: e.player_name,

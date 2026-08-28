@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { sendBilledEmail, CreditLimitError } from '@/lib/email';
 import { sendDueRsvpConfirmations } from '@/lib/jttRsvpConfirmations';
 
+import { APP_URL } from '@/lib/appUrl';
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -29,7 +30,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: 'No events tomorrow', sent: 0, rsvp });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+    const baseUrl = APP_URL;
     let totalSent = 0;
 
     for (const event of events) {

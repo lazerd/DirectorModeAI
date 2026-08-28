@@ -1,9 +1,52 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { APP_URL, LEGACY_HOST } from '@/lib/appUrl';
 
 type CookieToSet = { name: string; value: string; options?: any };
 
+/**
+ * PERMANENT redirect from the old host to clubmode.ai, path and query preserved.
+ *
+ * This is not temporary migration scaffolding — it must stay forever. Links to
+ * club.coachmode.ai are printed on posters, sitting in sent emails, and — the
+ * one that actually matters — embedded in the tokenized scoring links league
+ * coaches and captains use to enter scores without logging in. Those tokens live
+ * in the URL path, so a path-preserving redirect keeps every link ever issued
+ * working. Delete this and you silently break score entry for people who are not
+ * looking at a screen you control.
+ *
+ * Status codes: 301 for page loads (the permanent signal search engines
+ * consolidate on), but 308 for /api/* because 301 lets a browser rewrite a POST
+ * into a GET. A coach with a stale tab open POSTing a score to the old host must
+ * arrive at the new host still as a POST, or the score vanishes with no error.
+ *
+ * GATED ON PURPOSE. docs/DOMAIN-MIGRATION-PLAN.md puts the 301 last in the
+ * cutover order, after Resend, Supabase and link generation have all moved. So
+ * this ships dormant and is switched on with one env var at cutover:
+ *
+ *     LEGACY_HOST_REDIRECT=on
+ *
+ * Off (the default), club.coachmode.ai keeps serving normally, which means
+ * merging and deploying this changes nothing. Once it is on, leave it on
+ * forever — see the note above about what depends on it.
+ */
+function redirectLegacyHost(request: NextRequest): NextResponse | null {
+  if (process.env.LEGACY_HOST_REDIRECT !== 'on') return null;
+
+  const host = request.headers.get('host')?.toLowerCase().split(':')[0];
+  if (host !== LEGACY_HOST) return null;
+
+  const target = new URL(request.nextUrl.pathname + request.nextUrl.search, APP_URL);
+  const isApi = request.nextUrl.pathname.startsWith('/api/');
+  return NextResponse.redirect(target, isApi ? 308 : 301);
+}
+
 export async function middleware(request: NextRequest) {
+  // Runs before anything else: no Supabase round-trip, and no session cookie
+  // written against a host we are trying to retire.
+  const legacy = redirectLegacyHost(request);
+  if (legacy) return legacy;
+
   let supabaseResponse = NextResponse.next({
     request,
   });

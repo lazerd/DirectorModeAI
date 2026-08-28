@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendBilledEmail, resolveCoachUserId, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
+import { APP_URL } from '@/lib/appUrl';
 export async function POST(request: NextRequest) {
   try {
     const {
@@ -35,8 +36,8 @@ export async function POST(request: NextRequest) {
       : `<p><strong>${otherPartyName}</strong> has cancelled your scheduled lesson:</p>`;
 
     const dashboardUrl = isCoachNotification
-      ? 'https://club.coachmode.ai/lessons/dashboard'
-      : 'https://club.coachmode.ai/client/dashboard';
+      ? `${APP_URL}/lessons/dashboard`
+      : `${APP_URL}/client/dashboard`;
 
     const buttonText = isCoachNotification ? 'View Dashboard' : 'Book Another Lesson';
 

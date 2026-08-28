@@ -190,7 +190,7 @@ async function main() {
   await seedCourtSheet(clubId, userId, courtIds);
   await seedCalendar(clubId, userId);
 
-  const base = env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+  const base = env.NEXT_PUBLIC_APP_URL || 'https://clubmode.ai';
   console.log(`\n✅ Demo ready. Log in for the pitch at ${base}/login\n`);
   console.log(`     DIRECTOR view:  ${DEMO_EMAIL}  /  ${DEMO_PASSWORD}`);
   console.log(`     MEMBER view:    ${MEMBER_EMAIL}  /  ${MEMBER_PASSWORD}  (lands on /member)\n`);

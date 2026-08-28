@@ -2,12 +2,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { sendBilledEmail } from '@/lib/email';
 import { evaluate, type Candidate, type Opening, type MatchEdge } from '@/lib/connect/match';
 
+import { APP_URL } from '@/lib/appUrl';
 // DB-facing side of ClubMode Connect: run the pure matcher against live rows,
 // persist the resulting edges, and fire the two-sided notifications. All reads
 // + writes use a service-role client (passed in) so RLS doesn't block the
 // cross-user matchmaking.
 
-const BASE = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+const BASE = APP_URL;
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
 const DEPT_LABEL: Record<string, string> = {
   'Tennis/Racquets': 'Director of Tennis / Racquets',

@@ -8,10 +8,11 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type { CampaignData, CampaignCopy, NudgePerson, Person, Outstanding } from './core';
 import { matchCopy } from './core';
 
+import { APP_URL } from '@/lib/appUrl';
 export type SessionUser = { id: string; email?: string | null };
 export type SourceResult = { ok: true; data: CampaignData } | { ok: false; status: number; error: string };
 
-const APP = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+const APP = APP_URL;
 const firstNameOf = (s: string) => (s || '').trim().split(/\s+/)[0] || 'there';
 const contactBits = (email?: string | null, phone?: string | null) => [email, phone].filter(Boolean).join(' · ');
 

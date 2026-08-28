@@ -13,7 +13,7 @@ export const maxDuration = 300; // 5 minutes — downloading 15 tracks can take 
  * Auth: requires CRON_SECRET in the Authorization header (so this is the
  * same gate as the monthly usage cron). Hit it once after deploy:
  *
- *   curl -X POST https://club.coachmode.ai/api/admin/dj/seed-library \
+ *   curl -X POST https://clubmode.ai/api/admin/dj/seed-library \
  *        -H "Authorization: Bearer $CRON_SECRET"
  *
  * Returns a per-track result list so you can see which sources worked and
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     try {
       const res = await fetch(track.sourceUrl, {
         headers: {
-          'User-Agent': 'ClubModeAI-LibrarySeeder/1.0 (+https://club.coachmode.ai)',
+          'User-Agent': 'ClubModeAI-LibrarySeeder/1.0 (+https://clubmode.ai)',
         },
       });
       if (!res.ok) {

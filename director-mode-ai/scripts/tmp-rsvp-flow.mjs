@@ -5,7 +5,7 @@ for (const line of readFileSync(new URL('../.env.local', import.meta.url), 'utf8
   const m = line.match(/^([A-Z_]+)=(.*)$/); if (m) env[m[1]] = m[2].replace(/^["']|["']$/g, '').trim();
 }
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-const BASE='https://club.coachmode.ai';
+const BASE='https://clubmode.ai';
 const SH_13O_TOKEN='920265ad86a84df782b199e2de083386';
 
 // 1) Register test player via live API

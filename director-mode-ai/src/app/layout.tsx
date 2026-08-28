@@ -5,8 +5,16 @@ import AssistantWidget from "@/components/assistant/AssistantWidget";
 import ClubSidebar from "@/components/shared/ClubSidebar";
 import TrialBanner from "@/components/billing/TrialBanner";
 import { Toaster } from "sonner";
+import { APP_URL } from "@/lib/appUrl";
 
 export const metadata: Metadata = {
+  // metadataBase makes every relative OG image and canonical URL resolve against
+  // the configured host instead of guessing from the request. Without it, Next
+  // falls back to the deployment URL, so social cards on a preview build point at
+  // a *.vercel.app origin and canonicals drift with whatever host served the page.
+  // Sourced from APP_URL so the domain lives in exactly one place.
+  metadataBase: new URL(APP_URL),
+  alternates: { canonical: '/' },
   title: "ClubMode AI — Run Your Entire Racquet Sports Club",
   description: "One platform to run your club: live court sheets, team leagues & junior team tennis, mixers & tournaments, lessons, stringing, player matching, roster CRM, and AI coaching.",
 };

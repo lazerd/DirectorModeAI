@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
+import { APP_HOST, APP_URL } from '@/lib/appUrl';
 // ---- Sleepy Hollow Summer Flex League — shared state + email model ----
 // DB-driven (no hardcoded rosters/contacts): reads events / tournament_entries
 // / tournament_matches for the 4 flex divisions and derives per-player progress
@@ -28,7 +29,7 @@ const ANCHOR: Record<string, string> = {
   'womens-doubles-flex-2026': 'womens-doubles',
 };
 
-export const FLEX_URL = 'https://club.coachmode.ai/flex';
+export const FLEX_URL = `${APP_URL}/flex`;
 export const FLEX_FROM = 'Sleepy Hollow Swim & Tennis Club <noreply@mail.coachmode.ai>';
 export const FLEX_REPLY_TO = 'darrinjco@gmail.com';
 
@@ -303,7 +304,7 @@ export function updateEmailHtml(firstName: string, state: FlexState): { subject:
     <table style="border-collapse:collapse;margin:6px 0 4px">${divLines}</table>
     <p style="margin-top:16px">We're currently in <strong>${round.label}</strong> (through ${fmtDate(round.end)}). A friendly reminder: <strong>you don't have to wait for a round window to open</strong> — if your next opponent is free, go ahead and play early. The sooner matches get in, the better everyone's schedule flows.</p>
     ${flexButton(FLEX_URL, '🎾 View live standings & enter scores')}
-    <p style="font-size:13px;color:#6b7280">The live page has your division, your group, standings, and one-tap score entry — all in one spot: <a href="${FLEX_URL}" style="color:#1F4FA0">club.coachmode.ai/flex</a></p>
+    <p style="font-size:13px;color:#6b7280">The live page has your division, your group, standings, and one-tap score entry — all in one spot: <a href="${FLEX_URL}" style="color:#1F4FA0">${APP_HOST}/flex</a></p>
     <p>Thanks for making this such a fun league. Questions or a problem with your matchup? Just reply to this email. See you on the courts!</p>
     <p style="margin:2px 0 0">— Darrin</p>`;
   return { subject: 'Summer Flex League — Mid-Summer Update 🎾', html: shell(inner) };

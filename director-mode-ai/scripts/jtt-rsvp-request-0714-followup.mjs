@@ -13,7 +13,7 @@ for (const line of readFileSync(new URL('../.env.local', import.meta.url), 'utf8
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const resend = new Resend(env.RESEND_API_KEY);
 const FROM = env.RESEND_FROM_EMAIL || 'CoachMode <noreply@mail.coachmode.ai>';
-const BASE = env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+const BASE = env.NEXT_PUBLIC_APP_URL || 'https://clubmode.ai';
 const SEND = process.argv.includes('--send');
 
 // player_name match → primary parent_email (stored) + any extra recipients (sent, not stored)

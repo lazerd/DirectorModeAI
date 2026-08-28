@@ -10,7 +10,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendBilledEmail } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
 
-const BASE = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+import { APP_URL } from '@/lib/appUrl';
+const BASE = APP_URL;
 
 async function ownerClub(userId: string) {
   const admin = getSupabaseAdmin();

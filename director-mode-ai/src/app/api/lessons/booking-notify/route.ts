@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendBilledEmail, resolveCoachUserId, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
+import { APP_URL } from '@/lib/appUrl';
 function formatDateForCalendar(dateStr: string, timeStr: string): { start: string; end: string } {
   const date = new Date(dateStr);
   const [startTime, endTime] = timeStr.split(' - ');
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
             <a href="${coachCalendarLinks.googleUrl}" style="display: inline-block; background: #4285f4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-right: 10px;">📅 Google Calendar</a>
             <a href="${coachCalendarLinks.outlookUrl}" style="display: inline-block; background: #0078d4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none;">📅 Outlook</a>
           </div>
-          <a href="https://club.coachmode.ai/lessons/dashboard" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View Dashboard</a>
+          <a href="${APP_URL}/lessons/dashboard" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View Dashboard</a>
         </div>
       `
     });
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
               <a href="${clientCalendarLinks.googleUrl}" style="display: inline-block; background: #4285f4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none; margin-right: 10px;">📅 Google Calendar</a>
               <a href="${clientCalendarLinks.outlookUrl}" style="display: inline-block; background: #0078d4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none;">📅 Outlook</a>
             </div>
-            <a href="https://club.coachmode.ai/client/dashboard" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View My Lessons</a>
+            <a href="${APP_URL}/client/dashboard" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">View My Lessons</a>
           </div>
         `
       });

@@ -12,6 +12,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import ProductShowcase from "@/components/shared/ProductShowcase";
 
+import { APP_HOST } from '@/lib/appUrl';
 export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -313,7 +314,7 @@ export default function HomePage() {
                     <span className="w-2.5 h-2.5 rounded-full bg-green-400/70" />
                   </div>
                   <div className="flex-1 flex justify-center">
-                    <span className="bg-white/5 rounded-md px-3 py-1 text-[11px] text-white/40">club.coachmode.ai/courtsheet</span>
+                    <span className="bg-white/5 rounded-md px-3 py-1 text-[11px] text-white/40">{APP_HOST}/courtsheet</span>
                   </div>
                   <span className="flex items-center gap-1 text-[10px] font-semibold text-[#D3FB52]">
                     <Radio size={11} /> LIVE

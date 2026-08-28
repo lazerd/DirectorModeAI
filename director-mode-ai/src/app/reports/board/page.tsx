@@ -10,6 +10,7 @@ import {
   type BoardReportContext,
 } from "@/lib/boardReport/data";
 
+import { APP_HOST } from '@/lib/appUrl';
 export const dynamic = "force-dynamic";
 
 export default async function BoardReportPage() {
@@ -48,7 +49,7 @@ export default async function BoardReportPage() {
 
   // Build an absolute survey URL from the incoming request host.
   const h = await headers();
-  const host = h.get("host") ?? "club.coachmode.ai";
+  const host = h.get("host") ?? APP_HOST;
   const proto = host.includes("localhost") ? "http" : "https";
   const surveyUrl = `${proto}://${host}/nps/${club.slug}`;
 

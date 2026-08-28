@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendBilledEmail, resolveCoachUserId, CreditLimitError } from '@/lib/email';
 
+import { APP_URL } from '@/lib/appUrl';
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
                 <a href="${calendarLinks.outlookUrl}" style="display: inline-block; background: #0078d4; color: white; padding: 10px 20px; border-radius: 6px; text-decoration: none;">📅 Outlook</a>
               </div>
               <p style="color: #666; font-size: 14px; margin-top: 24px;">
-                Need to cancel? <a href="https://club.coachmode.ai/client/dashboard" style="color: #2563eb;">Manage your lessons</a>
+                Need to cancel? <a href="${APP_URL}/client/dashboard" style="color: #2563eb;">Manage your lessons</a>
               </p>
             </div>
           `

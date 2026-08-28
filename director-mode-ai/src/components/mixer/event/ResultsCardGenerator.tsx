@@ -1,3 +1,4 @@
+import { APP_HOST } from '@/lib/appUrl';
 /**
  * generateResultsCard — premium dark redesign
  *
@@ -269,7 +270,7 @@ function drawFooter(ctx: CanvasRenderingContext2D, leftX: number, rightX: number
   tracked(ctx, "RUN YOUR NEXT EVENT AT", leftX, fy - 12, isIG ? 1.8 : 1.6, "left");
   ctx.fillStyle = C.text;
   ctx.font = `800 ${isIG ? 24 : 21}px ${DISP}`;
-  ctx.fillText("club.coachmode.ai", leftX, fy + (isIG ? 12 : 9));
+  ctx.fillText(APP_HOST, leftX, fy + (isIG ? 12 : 9));
   const mark = isIG ? 46 : 40;
   drawFooterMark(ctx, rightX - mark, fy - (isIG ? 4 : 6), mark);
 }

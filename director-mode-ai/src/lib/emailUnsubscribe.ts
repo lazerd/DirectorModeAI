@@ -23,6 +23,7 @@ import crypto from 'crypto';
 import type { Resend } from 'resend';
 import { getSupabaseAdmin } from './supabase/admin';
 
+import { APP_URL } from '@/lib/appUrl';
 export type UnsubscribeScope = 'all';
 
 // ----- token signing -----
@@ -160,7 +161,7 @@ export async function removeUnsubscribe(
  */
 export function buildUnsubscribeFooterHtml(email: string): string {
   const token = signUnsubscribeToken(email);
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+  const baseUrl = APP_URL;
   const url = `${baseUrl}/unsubscribe?token=${token}`;
   return `
     <div style="max-width: 600px; margin: 0 auto; padding: 0 20px;">

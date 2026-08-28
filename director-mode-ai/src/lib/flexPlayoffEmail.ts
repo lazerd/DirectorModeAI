@@ -4,6 +4,7 @@ import {
 } from '@/lib/flexDivisions';
 import { FLEX_URL, flexButton, shell } from '@/lib/flexLeague';
 
+import { APP_HOST } from '@/lib/appUrl';
 // ---- "Playoffs are set" announcement ----
 //
 // Fully DB-driven off the auto-generated placement matches, so this email is
@@ -315,7 +316,7 @@ export function playoffEmailHtml(rec: PlayoffRecipient, snap: PlayoffSnapshot): 
     ${boardBlocks ? `<h3 style="font-size:16px;margin:20px 0 2px;color:#0f172a">The playoff board</h3>${boardBlocks}` : ''}
     ${awaitingBlock}
     ${flexButton(FLEX_URL, '🏆 See the playoff board & enter scores')}
-    <p style="font-size:13px;color:#6b7280">Everything is live at <a href="${FLEX_URL}" style="color:#1F4FA0">club.coachmode.ai/flex</a> — your matchup, contact info for your opponent, and one-tap score entry. Standings and the bracket update the moment a score goes in.</p>
+    <p style="font-size:13px;color:#6b7280">Everything is live at <a href="${FLEX_URL}" style="color:#1F4FA0">${APP_HOST}/flex</a> — your matchup, contact info for your opponent, and one-tap score entry. Standings and the bracket update the moment a score goes in.</p>
     <p>Thanks for a great season — let's finish it off. Questions or a problem with your matchup? Just reply to this email.</p>
     <p style="margin:2px 0 0">— Darrin</p>`;
 

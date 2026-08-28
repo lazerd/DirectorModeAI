@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import DrawView from '@/components/tournament/DrawView';
 import PrintBar from './PrintBar';
 
+import { APP_HOST } from '@/lib/appUrl';
 export const dynamic = 'force-dynamic';
 
 const FORMAT_LABELS: Record<string, string> = {
@@ -114,7 +115,7 @@ export default async function PrintDrawPage({
           />
 
           <footer className="mt-8 pt-4 border-t border-gray-200 text-[10px] text-gray-500 text-center print:mt-3">
-            club.coachmode.ai · printed {format(new Date(), 'MMM d, yyyy h:mm a')}
+            {APP_HOST} · printed {format(new Date(), 'MMM d, yyyy h:mm a')}
           </footer>
         </main>
       </div>

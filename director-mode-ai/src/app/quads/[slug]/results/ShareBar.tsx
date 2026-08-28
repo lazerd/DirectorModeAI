@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Printer, Copy, Share2, Check } from 'lucide-react';
 
+import { APP_HOST } from '@/lib/appUrl';
 type Result = {
   flightName: string;
   players: Array<{ rank: number; name: string }>;
@@ -30,7 +31,7 @@ export default function ShareBar({
       }
       lines.push('');
     }
-    lines.push('via club.coachmode.ai');
+    lines.push(`via ${APP_HOST}`);
     return lines.join('\n');
   };
 

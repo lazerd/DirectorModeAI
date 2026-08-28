@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Save, ExternalLink, Copy, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
+import { APP_HOST, APP_URL } from '@/lib/appUrl';
 const SPORTS_OPTIONS = [
   { value: 'tennis', label: 'Tennis' },
   { value: 'pickleball', label: 'Pickleball' },
@@ -182,7 +183,7 @@ export default function ClubSettingsPage() {
   };
 
   const copyUrl = () => {
-    navigator.clipboard.writeText(`https://club.coachmode.ai/club/${form.slug}`);
+    navigator.clipboard.writeText(`${APP_URL}/club/${form.slug}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -203,7 +204,7 @@ export default function ClubSettingsPage() {
         <div className="card p-4 mb-6 flex items-center justify-between">
           <div>
             <p className="text-white/40 text-xs mb-1">Your public URL</p>
-            <p className="text-[#D3FB52] text-sm font-mono">club.coachmode.ai/club/{form.slug}</p>
+            <p className="text-[#D3FB52] text-sm font-mono">{APP_HOST}/club/{form.slug}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={copyUrl} className="btn btn-sm bg-white/10 text-white hover:bg-white/20">
@@ -230,7 +231,7 @@ export default function ClubSettingsPage() {
           <div>
             <label className="label text-white/70">URL Slug *</label>
             <div className="flex items-center gap-2">
-              <span className="text-white/30 text-sm">club.coachmode.ai/club/</span>
+              <span className="text-white/30 text-sm">{APP_HOST}/club/</span>
               <input type="text" className="input flex-1" value={form.slug} onChange={e => updateForm('slug', e.target.value)} placeholder="your-club" />
             </div>
           </div>

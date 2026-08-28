@@ -3,10 +3,11 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import HubPosters, { type HubPoster } from '@/components/tournaments/HubPosters';
 import { HUB_FORMAT_LABELS, hubSortKey, hubParseName, type HubEvent } from '@/components/tournaments/hubShared';
 
+import { APP_URL } from '@/lib/appUrl';
 export const dynamic = 'force-dynamic';
 
 const DIRECTOR_ID = '7ff5078a-ee6d-46b7-9af7-20b35f62729d';
-const BASE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai').replace(/\/$/, '');
+const BASE_URL = APP_URL;
 
 export default async function SeasonEndPostersPage() {
   const supabase = getSupabaseAdmin();

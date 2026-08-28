@@ -82,7 +82,7 @@ const cover = `
 
       <div class="page-box">
         <p><strong>The whole ladder lives online too.</strong> Every test, every color, no login needed — send it to any parent who asks.</p>
-        <div class="link-chip">club.coachmode.ai/pathway/curriculum</div>
+        <div class="link-chip">clubmode.ai/pathway/curriculum</div>
       </div>
     </div>
   </div>
@@ -228,7 +228,7 @@ const scoreSheet = `
 
   <footer>
     <div class="l">TEST DAY = LAST CLASS OF THE MONTH</div>
-    <div class="r">club.coachmode.ai/pathway/curriculum &nbsp;·&nbsp; page ${TOTAL} of ${TOTAL}</div>
+    <div class="r">clubmode.ai/pathway/curriculum &nbsp;·&nbsp; page ${TOTAL} of ${TOTAL}</div>
   </footer>
 </section>`;
 

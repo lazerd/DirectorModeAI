@@ -6,6 +6,7 @@ import {
   Check, LayoutGrid, Trophy
 } from 'lucide-react';
 
+import { APP_HOST } from '@/lib/appUrl';
 const FEATURES = [
   {
     id: 'courtsheet',
@@ -210,7 +211,7 @@ export default function ProductShowcase() {
                 <div className="w-2.5 h-2.5 rounded-full bg-green-400/60" />
                 <div className="flex-1 mx-4">
                   <div className="bg-white/5 rounded-md px-3 py-1 text-xs text-white/30 text-center max-w-xs mx-auto">
-                    club.coachmode.ai
+                    {APP_HOST}
                   </div>
                 </div>
               </div>

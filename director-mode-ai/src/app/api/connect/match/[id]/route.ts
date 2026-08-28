@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { sendBilledEmail } from '@/lib/email';
 
-const BASE = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+import { APP_URL } from '@/lib/appUrl';
+const BASE = APP_URL;
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
 
 // POST /api/connect/match/[id] — status transitions on a match.

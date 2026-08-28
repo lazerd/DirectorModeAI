@@ -15,7 +15,7 @@ for (const line of readFileSync(new URL('../.env.local', import.meta.url), 'utf8
 const admin = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 const COMMIT = process.argv.includes('--commit');
 const USER_ID = '7ff5078a-ee6d-46b7-9af7-20b35f62729d'; // owner of the existing prod tournament events
-const BASE = 'https://club.coachmode.ai';
+const BASE = 'https://clubmode.ai';
 
 const C = {
   'Vi Le':['vdl314@gmail.com','914-837-3659'],'Walden Browne':['walden.browne@gmail.com','510-418-5650'],

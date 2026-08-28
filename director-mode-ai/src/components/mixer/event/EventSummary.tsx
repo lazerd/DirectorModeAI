@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+import { APP_HOST } from '@/lib/appUrl';
 interface Standing {
   player_id: string;
   player_name: string;
@@ -322,7 +323,7 @@ const EventSummary = ({ eventId, eventName }: EventSummaryProps) => {
         await navigator.share({
           files: [file],
           title: `${eventName} Results`,
-          text: `Check out the results from ${eventName}! Run your next event at club.coachmode.ai`,
+          text: `Check out the results from ${eventName}! Run your next event at ${APP_HOST}`,
         });
         toast({ title: "Results shared!", description: "Image shared successfully." });
       } else {

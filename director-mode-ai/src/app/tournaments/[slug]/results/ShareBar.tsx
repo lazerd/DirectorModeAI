@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Printer, Copy, Share2, Check } from 'lucide-react';
 
+import { APP_HOST } from '@/lib/appUrl';
 export default function ShareBar({
   tournamentName,
   championName,
@@ -16,7 +17,7 @@ export default function ShareBar({
     const lines = [`🎾 ${tournamentName} — Final Results`, ''];
     if (championName) lines.push(`🏆 Champion: ${championName}`);
     lines.push('');
-    lines.push('via club.coachmode.ai');
+    lines.push(`via ${APP_HOST}`);
     return lines.join('\n');
   };
 

@@ -9,7 +9,8 @@ import { sendBilledEmails, type SafeSendResult } from '@/lib/email';
 import { CLUB_TZ } from './clubTime';
 import { googleCalendarUrl, matchEvent } from './calendar';
 
-const BASE = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+import { APP_URL } from '@/lib/appUrl';
+const BASE = APP_URL;
 
 const BRAND = '#D3FB52';
 const INK = '#0f172a';

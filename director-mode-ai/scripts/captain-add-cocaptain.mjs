@@ -71,6 +71,6 @@ if (staffErr) throw staffErr;
 
 console.log(`${email} is now a co-captain of "${team.name}".`);
 console.log(`  user_id: ${user.id}`);
-console.log(`  team:    ${env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai'}/captain/${team.id}`);
+console.log(`  team:    ${env.NEXT_PUBLIC_APP_URL || 'https://clubmode.ai'}/captain/${team.id}`);
 if (tempPassword) console.log(`  TEMP PASSWORD (new account): ${tempPassword}`);
 else console.log('  (existing account — password unchanged)');

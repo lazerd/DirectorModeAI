@@ -156,10 +156,10 @@ async function main() {
 
   console.log('');
   console.log('Done. Next steps:');
-  console.log(`  1. Open https://club.coachmode.ai/mixer/events/${event.id}`);
+  console.log(`  1. Open https://clubmode.ai/mixer/events/${event.id}`);
   console.log('  2. Click "Generate Bracket" on the Entries tab.');
   console.log('  3. Switch to the Matches tab to view the draw.');
-  console.log(`  4. Public bracket URL: https://club.coachmode.ai/tournaments/${event.slug}/draw`);
+  console.log(`  4. Public bracket URL: https://clubmode.ai/tournaments/${event.slug}/draw`);
 }
 
 main().catch((err) => {

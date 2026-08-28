@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { sendBilledEmail, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
+import { APP_URL } from '@/lib/appUrl';
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
       .eq('event_id', eventId)
       .eq('status', 'waitlisted');
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai';
+    const baseUrl = APP_URL;
     const eventUrl = `${baseUrl}/courtconnect/events/${eventId}`;
 
     const statusEmoji = rsvpStatus === 'accepted' ? '✅' : rsvpStatus === 'waitlisted' ? '⏳' : '❌';

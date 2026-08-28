@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, AlertCircle, UserPlus, Trash2, Check, Users, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 
+import { APP_URL } from '@/lib/appUrl';
 type Club = { id: string; name: string; short_code: string };
 type League = { id: string; name: string; slug: string; status: string };
 type Division = { id: string; name: string; short_code: string };
@@ -362,7 +363,7 @@ export default function CoachRosterPage() {
 
       {/* Footer */}
       <div className="text-center text-xs text-gray-400 mt-8">
-        Powered by <a href="https://club.coachmode.ai" className="underline">CoachMode</a>
+        Powered by <a href={APP_URL} className="underline">CoachMode</a>
       </div>
     </div>
   );

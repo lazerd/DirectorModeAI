@@ -7,6 +7,7 @@ import { ArrowLeft, Trophy, Calendar, DollarSign, Link as LinkIcon, AlertCircle,
 import { createClient } from '@/lib/supabase/client';
 import { slugify, CATEGORY_ORDER, CATEGORY_LABELS, isDoubles, type CategoryKey } from '@/lib/leagueUtils';
 
+import { APP_HOST } from '@/lib/appUrl';
 type CategoryConfig = {
   key: CategoryKey;
   enabled: boolean;
@@ -185,7 +186,7 @@ export default function NewLeaguePage() {
             <div>
               <label className="block text-sm font-medium mb-1 text-gray-700">URL slug *</label>
               <div className="flex items-center gap-2">
-                <span className="text-gray-600 text-sm">club.coachmode.ai/leagues/</span>
+                <span className="text-gray-600 text-sm">{APP_HOST}/leagues/</span>
                 <input
                   type="text"
                   value={effectiveSlug}

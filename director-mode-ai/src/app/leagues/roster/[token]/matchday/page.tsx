@@ -17,6 +17,7 @@ import {
   Lightbulb,
 } from 'lucide-react';
 
+import { APP_URL } from '@/lib/appUrl';
 type Club = { id: string; name: string; short_code: string; courts_available: number };
 type Division = { id: string; name: string; short_code: string; start_time: string | null; end_time: string | null; sort_order: number };
 type Matchup = { id: string; division_id: string; match_date: string; home_club_id: string; away_club_id: string; home_lines_won: number; away_lines_won: number; winner: string | null; status: string; courts_override: number | null };
@@ -217,7 +218,7 @@ export default function MatchDayPage() {
         })}
 
       <div className="text-center text-xs text-gray-400 mt-8">
-        Powered by <a href="https://club.coachmode.ai" className="underline">CoachMode</a>
+        Powered by <a href={APP_URL} className="underline">CoachMode</a>
       </div>
     </div>
   );

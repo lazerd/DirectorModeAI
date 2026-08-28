@@ -12,6 +12,7 @@ import {
 import { runCampaign } from '@/lib/campaigns/core';
 import { catalogEntry } from '@/lib/calendar/catalog';
 
+import { APP_URL } from '@/lib/appUrl';
 // GET   /api/calendar/reminders?itemId=…   the cadence + resolved dates + what's sent
 // PATCH /api/calendar/reminders            set the cadence (preset or custom rules)
 // POST  /api/calendar/reminders            preview / send-test-to-me / send-now
@@ -194,7 +195,7 @@ async function context(ctx: any): Promise<ReminderContext> {
     ownerId: ctx.user.id,
     ownerEmail: (profile as any)?.email || ctx.user.email,
     senderName: (profile as any)?.full_name || ctx.club.name,
-    appUrl: process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai',
+    appUrl: APP_URL,
   };
 }
 

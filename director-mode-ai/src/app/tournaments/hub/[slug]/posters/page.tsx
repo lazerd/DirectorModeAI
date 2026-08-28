@@ -4,9 +4,10 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import HubPosters, { type HubPoster } from '@/components/tournaments/HubPosters';
 import { HUB_FORMAT_LABELS, hubSortKey, hubParseName, type HubEvent } from '@/components/tournaments/hubShared';
 
+import { APP_URL } from '@/lib/appUrl';
 export const dynamic = 'force-dynamic';
 
-const BASE_URL = (process.env.NEXT_PUBLIC_APP_URL || 'https://club.coachmode.ai').replace(/\/$/, '');
+const BASE_URL = APP_URL;
 
 export default async function TournamentHubPostersPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
