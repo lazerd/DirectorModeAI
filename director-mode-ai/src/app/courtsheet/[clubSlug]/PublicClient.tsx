@@ -128,6 +128,7 @@ export default function PublicClient({ club, initialCourts }: Props) {
 
       <PublicSignupSheet
         target={signupTarget}
+        clubName={club.name}
         onClose={() => setSignupTarget(null)}
         onJoined={() => {
           setSignupTarget(null);
@@ -216,10 +217,14 @@ function PublicSignupCard({
 
 function PublicSignupSheet({
   target,
+  clubName,
   onClose,
   onJoined,
 }: {
   target: PublicReservation | null;
+  // Named in the SMS consent line: carriers require the opt-in to say who the
+  // messages come from, not just "this club".
+  clubName: string;
   onClose: () => void;
   onJoined: () => void;
 }) {
@@ -299,14 +304,36 @@ function PublicSignupSheet({
             onChange={(e) => setNote(e.target.value)}
             className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#D3FB52]/60"
           />
-          <label className="flex items-center gap-2.5 cursor-pointer pt-1">
+          {/*
+            SMS CONSENT — carrier-mandated wording. Do not shorten this.
+
+            It read "Text me a confirmation", which got the A2P 10DLC campaign
+            rejected (error 30909/30924): the opt-in has to state who is
+            messaging, what the messages are, how often, that rates may apply,
+            how to stop, and link Terms + Privacy. Carriers review this exact
+            string. Unchecked by default is also required (30925) - never
+            initialise smsOptIn to true.
+          */}
+          <label className="flex items-start gap-2.5 cursor-pointer pt-1">
             <input
               type="checkbox"
               checked={smsOptIn}
               onChange={(e) => setSmsOptIn(e.target.checked)}
-              className="h-4 w-4 rounded accent-[#D3FB52]"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[#D3FB52]"
             />
-            <span className="text-sm text-white/80">Text me a confirmation</span>
+            <span className="text-sm text-white/80">
+              Text me a confirmation.
+              <span className="block mt-1 text-[12px] leading-relaxed text-white/50">
+                By checking this box you agree to receive booking confirmations and court
+                updates by text message from {clubName || 'this club'} via ClubMode.
+                Message frequency varies. Msg &amp; data rates may apply. Reply STOP to
+                unsubscribe or HELP for help. See our{' '}
+                <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/80">Terms</a>
+                {' '}and{' '}
+                <a href="/privacy" target="_blank" rel="noopener noreferrer" className="underline hover:text-white/80">Privacy Policy</a>.
+                We never sell or share your mobile number with third parties for marketing.
+              </span>
+            </span>
           </label>
           {smsOptIn && (
             <input

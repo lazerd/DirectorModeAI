@@ -784,8 +784,13 @@ export default function HomePage() {
           </div>
           <div className="border-t border-white/[0.06] pt-6 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-white/30">
             <span>&copy; {new Date().getFullYear()} ClubMode AI. All rights reserved.</span>
-            <div className="flex items-center gap-4">
+            {/* Terms and Privacy existed but nothing linked to them, so to anyone
+                browsing the site -- a payment processor reviewing the store
+                included -- ClubMode appeared to have no policies at all. */}
+            <div className="flex flex-wrap items-center justify-center gap-4">
               <Link href="/pricing" className="hover:text-white/60 transition-colors">Pricing</Link>
+              <Link href="/terms" className="hover:text-white/60 transition-colors">Terms</Link>
+              <Link href="/privacy" className="hover:text-white/60 transition-colors">Privacy</Link>
               <Link href="/login" className="hover:text-white/60 transition-colors">Sign In</Link>
             </div>
           </div>
