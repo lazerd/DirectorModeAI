@@ -500,6 +500,29 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Re-sync the lineup from the server after a refresh.
+   *
+   * `courts` is seeded from a prop with useState, which takes its initial value
+   * and then ignores every later change to that prop. So recording a
+   * confirmation wrote to the database, called router.refresh(), got fresh data
+   * back — and the screen carried on showing "no answer yet", because the state
+   * still held the copy from first mount. Reported on 2026-08-28 as "I'm
+   * clicking mark confirmed but it's not marking her".
+   *
+   * Compared on a serialised signature rather than the array itself: the server
+   * component hands back a new array on every render, so depending on the array
+   * would re-set state forever.
+   *
+   * Never while there are unsaved edits — a background refresh must not throw
+   * away a lineup the captain is halfway through rearranging.
+   */
+  const serverLineup = JSON.stringify(initialLineup);
+  useEffect(() => {
+    if (!dirty) setCourts(initialLineup);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverLineup]);
+
   const setAutoSendSkip = (skip: boolean) =>
     call(
       'autosend',
