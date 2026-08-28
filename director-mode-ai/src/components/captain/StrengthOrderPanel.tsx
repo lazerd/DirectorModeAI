@@ -287,15 +287,15 @@ export default function StrengthOrderPanel({
         the roster shares a rating. Quickest route: <em>Save this order</em> to lock in what&apos;s
         shown, then drag the few that look wrong.
       </p>
-      {withWtn > 0 && (
-        <p className="text-sm text-white/40 mt-2">
-          {withWtn === roster.length
+      <p className="text-sm text-white/40 mt-2">
+        {withWtn === 0
+          ? 'No WTNs on this roster yet — “Order by WTN” appears as soon as there are some. Paste them in below.'
+          : withWtn === roster.length
             ? 'Every player has a WTN, so “Order by WTN” gives you an order nobody can argue with.'
             : `${withWtn} of ${roster.length} players have a WTN — the rest sort to the bottom until you paste theirs in.`}
-        </p>
-      )}
+      </p>
 
-      <WtnPastePanel teamId={teamId} />
+      <WtnPastePanel teamId={teamId} startOpen={withWtn === 0} />
       <RatingsPastePanel teamId={teamId} />
 
       {msg && <p className="text-sm text-[#D3FB52] mt-3">{msg}</p>}

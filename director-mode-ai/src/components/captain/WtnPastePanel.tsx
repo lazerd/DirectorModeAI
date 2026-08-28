@@ -38,9 +38,17 @@ const fmtPrev = (m: Match) =>
       ? `${m.previousWtn} S / ${m.previousWtnDoubles} D`
       : `${m.previousWtn}`;
 
-export default function WtnPastePanel({ teamId }: { teamId: string }) {
+export default function WtnPastePanel({
+  teamId,
+  startOpen = false,
+}: {
+  teamId: string;
+  /** Open by default when nobody on the roster has a WTN yet — a collapsed
+   *  "+" line is indistinguishable from a feature that does not exist. */
+  startOpen?: boolean;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(startOpen);
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
   const [rank, setRank] = useState(true);
@@ -88,9 +96,20 @@ export default function WtnPastePanel({ teamId }: { teamId: string }) {
 
   return (
     <div className="mt-4 rounded-2xl border border-white/[0.08] bg-[#002838] p-5">
-      <button onClick={() => setOpen((v) => !v)} className="text-sm text-white/70 hover:text-white">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className={`text-sm ${startOpen ? 'text-[#D3FB52]' : 'text-white/70'} hover:text-white`}
+      >
         {open ? '− ' : '+ '}Paste WTNs from USTA
       </button>
+
+      {startOpen && (
+        <p className="text-white/50 text-sm mt-2">
+          Nobody on this roster has a World Tennis Number yet, so court order still comes down to
+          your judgement. Paste them in once and lines 1 through 4 sort themselves — and the number
+          follows each player into PlayerVault, mixers and next season.
+        </p>
+      )}
 
       {msg && <p className="text-sm text-[#D3FB52] mt-3">{msg}</p>}
       {error && <p className="text-sm text-red-300 mt-3">{error}</p>}
@@ -98,8 +117,9 @@ export default function WtnPastePanel({ teamId }: { teamId: string }) {
       {open && (
         <div className="mt-4">
           <p className="text-xs text-white/40 mb-2">
-            On usta.com, open each player&rsquo;s profile (or your team page) and copy the name and
-            World Tennis Number across. One player per line, any column order. Two numbers on a line
+            On <span className="text-white/60">usta.com</span>, sign in and open each
+            player&rsquo;s profile (or your team page) and copy the name and World Tennis Number
+            across. One player per line, any column order. Two numbers on a line
             are read as <strong className="text-white/60">singles then doubles</strong>.{' '}
             <strong className="text-white/60">Lower is stronger</strong> — WTN runs 40 (beginner) to
             1 (pro), the opposite way to NTRP. Nothing is saved until you confirm.
