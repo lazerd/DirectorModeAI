@@ -7,7 +7,12 @@ type Player = {
   id: string;
   name: string;
   email: string | null;
+  /** mobile number, for texting one player about a late change */
+  phone: string | null;
   rating: number | null;
+  /** World Tennis Number — LOWER is stronger, opposite way to NTRP */
+  wtn: number | null;
+  wtn_doubles: number | null;
   gender: 'M' | 'F' | null;
   return_side: 'deuce' | 'ad' | null;
   court_limit: string | null;
@@ -210,12 +215,19 @@ export default function RosterPanel({
                             {p.rating != null && (
                               <span className="text-white/40 font-normal"> · {p.rating}</span>
                             )}
+                            {(p.wtn_doubles ?? p.wtn) != null && (
+                              <span className="text-[#D3FB52]/70 font-normal">
+                                {' '}
+                                · WTN {p.wtn_doubles ?? p.wtn}
+                              </span>
+                            )}
                             {p.return_side && (
                               <span className="text-white/40 font-normal"> · {p.return_side}</span>
                             )}
                           </div>
                           <div className="text-white/35 text-sm truncate">
                             {p.email || 'no email — cannot be polled'}
+                            {p.phone ? ` · ${p.phone}` : ''}
                           </div>
                           {prefsFor(p.id).length > 0 && (
                             <div className="text-white/35 text-xs mt-1">
@@ -245,6 +257,33 @@ export default function RosterPanel({
 
                       {isEditing && (
                         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div>
+                            <label className="block text-xs text-white/50 mb-1">Mobile</label>
+                            <input
+                              type="tel"
+                              defaultValue={p.phone ?? ''}
+                              placeholder="925-555-0148"
+                              onBlur={(ev) => patch(p.id, { phone: ev.target.value.trim() || null })}
+                              className={field}
+                            />
+                          </div>
+                          <div>
+                            {/* Lower is stronger here. Labelled so nobody types
+                                an NTRP rating into the box that orders courts. */}
+                            <label className="block text-xs text-white/50 mb-1">
+                              WTN <span className="text-white/25">(lower = stronger)</span>
+                            </label>
+                            <input
+                              defaultValue={p.wtn_doubles ?? p.wtn ?? ''}
+                              placeholder="18.4"
+                              onBlur={(ev) =>
+                                patch(p.id, {
+                                  wtn_doubles: ev.target.value ? Number(ev.target.value) : null,
+                                })
+                              }
+                              className={field}
+                            />
+                          </div>
                           <div>
                             <label className="block text-xs text-white/50 mb-1">Rating</label>
                             <input

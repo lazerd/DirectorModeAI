@@ -21,6 +21,81 @@ export interface SmsResult {
   sid?: string;
 }
 
+/**
+ * Twilio failure codes in plain English.
+ *
+ * Worth the table because the two that actually happen in production say
+ * nothing useful on their own. 30034 in particular is not a bug in this app and
+ * no amount of retrying fixes it: US carriers reject application-to-person
+ * traffic from an unregistered 10-digit number, so the number has to be
+ * attached to a registered A2P brand and campaign before a single text lands.
+ */
+const SMS_ERRORS: Record<number, string> = {
+  30034:
+    'Blocked by the carrier: this number is not registered for A2P 10DLC. Register a brand and campaign in Twilio (Messaging → Regulatory Compliance) and attach the number — until then US carriers reject every text.',
+  30032: 'Blocked by the carrier: this Twilio number is not permitted to send to that destination.',
+  30007: 'Filtered as spam by the carrier. Shorten the message and drop any link.',
+  30003: 'That handset is unreachable — off, out of coverage, or the number is dead.',
+  30005: 'That number does not exist on any carrier.',
+  30006: 'That is a landline, or the carrier cannot receive texts on it.',
+  21610: 'They replied STOP to this number, so Twilio will not deliver to them. Only they can undo it by texting START.',
+  21614: 'That is not a mobile number.',
+  21211: 'That phone number is not valid.',
+  21608:
+    'The Twilio account is still on trial, which can only text verified numbers. Upgrade the account or verify this number first.',
+};
+
+/** Plain-English reason for a Twilio error code, falling back to Twilio's own text. */
+export function describeSmsError(code: number | null | undefined, fallback?: string | null): string {
+  if (code && SMS_ERRORS[code]) return SMS_ERRORS[code];
+  if (code) return `${fallback || 'Carrier rejected the message'} (Twilio error ${code}).`;
+  return fallback || 'The carrier rejected the message.';
+}
+
+export type SmsDelivery = {
+  sid: string;
+  to: string;
+  status: string;
+  errorCode: number | null;
+  reason: string | null;
+};
+
+/**
+ * Re-read what actually happened to a batch of messages.
+ *
+ * `messages.create` only ever says "queued" — carrier rejections (an
+ * unregistered 10DLC number, a STOP list, a dead handset) come back
+ * asynchronously seconds later. Without this the app would tell a captain their
+ * text was sent every single time, including the times it was never delivered.
+ */
+export async function checkSmsDelivery(sids: string[]): Promise<SmsDelivery[]> {
+  if (!sids.length) return [];
+  const c = getClient();
+  return Promise.all(
+    sids.map(async (sid) => {
+      try {
+        const m = await c.messages(sid).fetch();
+        const code = (m.errorCode as number | null) ?? null;
+        return {
+          sid,
+          to: m.to,
+          status: m.status,
+          errorCode: code,
+          reason: code ? describeSmsError(code, m.errorMessage) : null,
+        };
+      } catch (err) {
+        return {
+          sid,
+          to: '',
+          status: 'unknown',
+          errorCode: null,
+          reason: (err as Error)?.message ?? 'Could not read the delivery status.',
+        };
+      }
+    }),
+  );
+}
+
 function normalize(phone: string | null | undefined): string | null {
   if (!phone) return null;
   const digits = phone.replace(/[^\d+]/g, '');
@@ -51,7 +126,7 @@ export async function sendSms(userId: string, to: string, body: string): Promise
     });
     return { to: number, status: 'sent', sid: msg.sid };
   } catch (err: any) {
-    return { to: number, status: 'failed', reason: err?.message };
+    return { to: number, status: 'failed', reason: describeSmsError(err?.code, err?.message) };
   }
 }
 
@@ -82,7 +157,11 @@ export async function sendSmsBatch(userId: string, recipients: { phone: string; 
         const msg = await c.messages.create({ body: r.body, from: fromNumber, to: r.normalized });
         return { to: r.normalized, status: 'sent' as const, sid: msg.sid };
       } catch (err: any) {
-        return { to: r.normalized, status: 'failed' as const, reason: err?.message };
+        return {
+          to: r.normalized,
+          status: 'failed' as const,
+          reason: describeSmsError(err?.code, err?.message),
+        };
       }
     })
   );

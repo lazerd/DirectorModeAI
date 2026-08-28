@@ -14,6 +14,7 @@ import TeamSettingsPanel from '@/components/captain/TeamSettingsPanel';
 import StrengthOrderPanel from '@/components/captain/StrengthOrderPanel';
 import NeverPairPanel from '@/components/captain/NeverPairPanel';
 import SeasonAvailabilityPanel from '@/components/captain/SeasonAvailabilityPanel';
+import { CLUB_TZ } from '@/lib/captain/clubTime';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,12 +164,15 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
             >
               <div>
                 <div className="text-white font-medium">
+                  {/* Vercel runs UTC. Without an explicit zone a 9:30am match
+                      renders as 4:30 PM. */}
                   {new Intl.DateTimeFormat('en-US', {
                     weekday: 'short',
                     month: 'short',
                     day: 'numeric',
                     hour: 'numeric',
                     minute: '2-digit',
+                    timeZone: CLUB_TZ,
                   }).format(new Date(m.match_at as string))}
                 </div>
                 <div className="text-white/40 text-sm">

@@ -184,6 +184,13 @@ export function payloadsFor(
   kind: EmailKind,
   ctx: TeamEmailContext,
   matchId: string,
+  /**
+   * Narrow the send to specific players. The email BODY is unchanged — a
+   * targeted lineup still shows every court — only the recipient list shrinks.
+   * This is the "one player came in late, tell just her" path: re-mailing 23
+   * people about a swap they aren't in trains a team to stop opening these.
+   */
+  onlyPlayerIds?: string[] | null,
 ): { to: string; subject: string; html: string }[] {
   const info = ctx.matchInfo.get(matchId);
   if (!info) return [];
@@ -193,13 +200,16 @@ export function payloadsFor(
   const courts = ctx.courts.get(matchId) || [];
   const teamName = ctx.team.name;
 
+  const only = onlyPlayerIds?.length ? new Set(onlyPlayerIds) : null;
+  const audience = only ? ctx.roster.filter((p) => only.has(p.id)) : ctx.roster;
+
   if (kind === 'poll') {
-    return ctx.roster.map((p) => availabilityEmail(teamName, info, recipientOf(p), undefined, custom));
+    return audience.map((p) => availabilityEmail(teamName, info, recipientOf(p), undefined, custom));
   }
 
   if (kind === 'nudge') {
     const done = ctx.answered.get(matchId) || new Set<string>();
-    return ctx.roster
+    return audience
       .filter((p) => !done.has(p.id))
       .map((p) => nudgeEmail(teamName, info, recipientOf(p), undefined, custom));
   }
@@ -217,7 +227,7 @@ export function payloadsFor(
     const playing = new Set(
       courts.flatMap((c) => [c.player1_id, c.player2_id]).filter(Boolean) as string[],
     );
-    return ctx.roster.map((p) =>
+    return audience.map((p) =>
       lineupEmail(teamName, info, rows, recipientOf(p), playing.has(p.id), undefined, custom),
     );
   }
@@ -227,29 +237,37 @@ export function payloadsFor(
     const c = courts.find((x) => x.player1_id === pid || x.player2_id === pid);
     return c ? `${c.court_type === 'singles' ? 'Singles' : 'Doubles'} ${c.court_number}` : null;
   };
-  return ctx.roster
+  return audience
     .filter((p) => !!courtFor(p.id))
     .map((p) => matchReminderEmail(teamName, info, recipientOf(p), courtFor(p.id), undefined, custom));
 }
 
-/** Who a given send would actually reach, for the preview's recipient list. */
+/**
+ * Who a given send would actually reach, for the preview's recipient list.
+ * Mirrors payloadsFor exactly, including the targeted-send filter — the two
+ * lists are shown side by side in the preview and must never disagree.
+ */
 export function recipientsFor(
   kind: EmailKind,
   ctx: TeamEmailContext,
   matchId: string,
+  onlyPlayerIds?: string[] | null,
 ): { name: string; email: string | null }[] {
   const courts = ctx.courts.get(matchId) || [];
+  const only = onlyPlayerIds?.length ? new Set(onlyPlayerIds) : null;
+  const audience = only ? ctx.roster.filter((p) => only.has(p.id)) : ctx.roster;
+
   if (kind === 'nudge') {
     const done = ctx.answered.get(matchId) || new Set<string>();
-    return ctx.roster.filter((p) => !done.has(p.id)).map((p) => ({ name: p.name, email: p.email }));
+    return audience.filter((p) => !done.has(p.id)).map((p) => ({ name: p.name, email: p.email }));
   }
   if (kind === 'reminder') {
     const named = new Set(
       courts.flatMap((c) => [c.player1_id, c.player2_id]).filter(Boolean) as string[],
     );
-    return ctx.roster.filter((p) => named.has(p.id)).map((p) => ({ name: p.name, email: p.email }));
+    return audience.filter((p) => named.has(p.id)).map((p) => ({ name: p.name, email: p.email }));
   }
-  return ctx.roster.map((p) => ({ name: p.name, email: p.email }));
+  return audience.map((p) => ({ name: p.name, email: p.email }));
 }
 
 /** The season timeline, with every subject line rendered from the real builder. */

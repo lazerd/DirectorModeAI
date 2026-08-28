@@ -8,9 +8,22 @@ export type MatchPlayer = {
   id: string;
   name: string;
   rating: number | null;
+  /** World Tennis Number — LOWER is stronger, the opposite way to NTRP. */
+  wtn: number | null;
+  wtnDoubles: number | null;
   isSub: boolean;
   hasEmail: boolean;
+  email: string | null;
+  phone: string | null;
   availability: 'yes' | 'no' | 'maybe' | null;
+};
+
+/** The WTN a doubles court should be ordered on: doubles number, else singles. */
+const wtnOf = (p: MatchPlayer | undefined): number | null => {
+  if (!p) return null;
+  const d = p.wtnDoubles;
+  if (typeof d === 'number' && !Number.isNaN(d)) return d;
+  return typeof p.wtn === 'number' && !Number.isNaN(p.wtn) ? p.wtn : null;
 };
 
 type Court = {
@@ -21,10 +34,34 @@ type Court = {
   player2Id: string | null;
   player1ConfirmedAt?: string | null;
   player2ConfirmedAt?: string | null;
+  /** 'player' when they tapped it themselves, 'captain' when it was recorded for them. */
+  player1ConfirmedSource?: string | null;
+  player2ConfirmedSource?: string | null;
   notes?: string[];
 };
 
 type Explanation = { summary: string[]; benched: { name: string; reason: string }[] };
+
+/** One person on a court, with everything needed to chase them. */
+type RollCallRow = {
+  playerId: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  court: string;
+  state: 'in' | 'out' | 'waiting';
+  at: string | null;
+  byCaptain: boolean;
+};
+
+/** What a text WOULD be, before it is one. */
+type SmsPreview = {
+  body: string;
+  count: number;
+  segments: number;
+  recipients: { name: string; phone: string | null }[];
+  noPhone: string[];
+};
 
 /** The lineup email's row on the season timeline, for this match. */
 type AutoSend = { status: string; sendAt: string; sentAt: string | null };
@@ -88,7 +125,12 @@ export default function MatchWorkspace({
   const [dirty, setDirty] = useState(false);
   const [preview, setPreview] = useState<EmailPreview | null>(null);
   const [pendingOnlyMissing, setPendingOnlyMissing] = useState(false);
-  const [previewKind, setPreviewKind] = useState<'poll' | 'lineup'>('poll');
+  const [previewKind, setPreviewKind] = useState<'poll' | 'lineup' | 'lineup-targeted'>('poll');
+  /** Who the next targeted email or text goes to. Empty = nobody picked yet. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [smsOpen, setSmsOpen] = useState(false);
+  const [smsBody, setSmsBody] = useState('');
+  const [smsPreview, setSmsPreview] = useState<SmsPreview | null>(null);
   const [swapPick, setSwapPick] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
   const [rescheduling, setRescheduling] = useState(false);
   // datetime-local wants local wall-clock, not an ISO string with a zone.
@@ -132,21 +174,187 @@ export default function MatchWorkspace({
       .map((slot) => {
         const pid = slot === 1 ? c.player1Id : c.player2Id;
         if (!pid) return null;
+        const player = players.find((p) => p.id === pid);
         const bail = withdrawn.get(pid);
         const ok = slot === 1 ? c.player1ConfirmedAt : c.player2ConfirmedAt;
+        const src = slot === 1 ? c.player1ConfirmedSource : c.player2ConfirmedSource;
         return {
           playerId: pid,
           name: nameOf(pid),
+          email: player?.email ?? null,
+          phone: player?.phone ?? null,
           court: `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`,
           state: bail ? ('out' as const) : ok ? ('in' as const) : ('waiting' as const),
           at: bail ? bail.at : ok,
+          // A yes the captain typed in is a weaker fact than one the player
+          // tapped, and the roll-call says which it was rather than blurring
+          // the two into the same tick.
+          byCaptain: src === 'captain',
         };
       })
       .filter(Boolean as unknown as (v: unknown) => boolean),
-  ) as { playerId: string; name: string; court: string; state: 'in' | 'out' | 'waiting'; at: string | null }[];
+  ) as RollCallRow[];
 
   const confirmedNames = namedInLineup.filter((p) => p.state === 'in');
   const waitingNames = namedInLineup.filter((p) => p.state === 'waiting').map((p) => p.name);
+
+  // ---------------------------------------------------------- reaching people
+  /**
+   * Everything below is about talking to SOME of the team rather than all of it.
+   *
+   * Re-mailing 23 people every time one player is swapped in is how a team
+   * learns to stop opening these emails, and by the time it matters the lineup
+   * email is just another thing nobody reads. So: pick who, then send.
+   */
+  const selectedNames = namedInLineup.filter((p) => selected.has(p.playerId)).map((p) => p.name);
+  const selectedIds = [...selected];
+
+  const toggle = (playerId: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(playerId)) next.delete(playerId);
+      else next.add(playerId);
+      return next;
+    });
+
+  const selectWaiting = () =>
+    setSelected(new Set(namedInLineup.filter((p) => p.state === 'waiting').map((p) => p.playerId)));
+
+  /** Preview the real lineup email, addressed only to the people ticked. */
+  const previewTargeted = () =>
+    call(
+      'send-some',
+      '/api/captain/timeline/send',
+      { team_id: teamId, match_id: matchId, kind: 'lineup', preview: true, player_ids: selectedIds },
+      (j) => {
+        setPreviewKind('lineup-targeted');
+        setPreview(j as unknown as EmailPreview);
+      },
+    );
+
+  const confirmSendTargeted = () =>
+    call(
+      'send-some',
+      '/api/captain/timeline/send',
+      { team_id: teamId, match_id: matchId, kind: 'lineup', player_ids: selectedIds },
+      async (j) => {
+        setPreview(null);
+        setSelected(new Set());
+        setNote(
+          `Lineup emailed to ${j.sent as number} ${
+            (j.sent as number) === 1 ? 'player' : 'players'
+          }. The rest of the team was not emailed again.`,
+        );
+        router.refresh();
+      },
+    );
+
+  /** Record a yes (or a no) the captain collected by text, or in person. */
+  const recordAnswer = (playerId: string, state: 'in' | 'out' | 'clear') =>
+    call(
+      `confirm-${playerId}`,
+      '/api/captain/confirm-for',
+      { team_id: teamId, match_id: matchId, player_id: playerId, state },
+      (j) => {
+        setNote(
+          state === 'clear'
+            ? `Cleared ${j.name as string}'s answer — back to no answer yet.`
+            : state === 'in'
+              ? `Marked ${j.name as string} confirmed. Recorded as your answer for her, not a tap of her own.`
+              : `Marked ${j.name as string} out.`,
+        );
+        router.refresh();
+      },
+    );
+
+  const previewText = () =>
+    call(
+      'text',
+      '/api/captain/text',
+      { team_id: teamId, match_id: matchId, player_ids: selectedIds, body: smsBody, preview: true },
+      (j) => setSmsPreview(j as unknown as SmsPreview),
+    );
+
+  const confirmSendText = () =>
+    call(
+      'text',
+      '/api/captain/text',
+      { team_id: teamId, match_id: matchId, player_ids: selectedIds, body: smsBody },
+      (j) => {
+        setSmsPreview(null);
+        const failures = (
+          j.report as { name: string; ok: boolean; reason: string | null }[]
+        ).filter((r) => !r.ok);
+        if (failures.length && j.commonFailure) {
+          // One shared cause is a setup problem, not N separate mishaps.
+          setError(`No texts got through — ${j.commonFailure as string}`);
+        } else if (failures.length) {
+          setError(
+            `Sent ${j.sent as number}. Did not reach: ${failures
+              .map((f) => `${f.name} (${f.reason})`)
+              .join('; ')}`,
+          );
+        } else {
+          setSelected(new Set());
+          setSmsOpen(false);
+          setSmsBody('');
+          setNote(`Texted ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`);
+        }
+      },
+    );
+
+  /**
+   * Reorder the doubles courts by the pair's average WTN, lowest on court 1.
+   *
+   * This is the objective version of the judgement call a captain otherwise
+   * makes every week. Singles courts are left alone — they are ordered by the
+   * individual, not by a pair — and the button only appears when every doubles
+   * player on the sheet has a WTN, because averaging a WTN with a blank would
+   * quietly promote whichever pair happens to be missing a number.
+   */
+  const doublesCourtRows = courts.filter((c) => c.courtType === 'doubles');
+
+  const avgWtn = (c: Court): number | null => {
+    const a = wtnOf(players.find((p) => p.id === c.player1Id));
+    const b = wtnOf(players.find((p) => p.id === c.player2Id));
+    if (a === null || b === null) return null;
+    return (a + b) / 2;
+  };
+
+  const wtnReady = doublesCourtRows.length > 1 && doublesCourtRows.every((c) => avgWtn(c) !== null);
+
+  function orderLinesByWtn() {
+    setCourts((cs) => {
+      const doubles = cs.filter((c) => c.courtType === 'doubles');
+      // Sort the PEOPLE, then pour them back into the courts in number order,
+      // so court identity (row id, number) never moves — only who is on it.
+      // Confirmations travel with the player, because a confirmation belongs to
+      // the person and not to the seat.
+      const byStrength = [...doubles].sort(
+        (x, y) => (avgWtn(x) ?? Infinity) - (avgWtn(y) ?? Infinity),
+      );
+      const seats = [...doubles].sort((x, y) => x.courtNumber - y.courtNumber);
+      const moved = new Map<number, Court>();
+      seats.forEach((seat, i) => {
+        const from = byStrength[i];
+        moved.set(seat.courtNumber, {
+          ...seat,
+          player1Id: from.player1Id,
+          player2Id: from.player2Id,
+          player1ConfirmedAt: from.player1ConfirmedAt,
+          player2ConfirmedAt: from.player2ConfirmedAt,
+          player1ConfirmedSource: from.player1ConfirmedSource,
+          player2ConfirmedSource: from.player2ConfirmedSource,
+          notes: from.notes,
+        });
+      });
+      return cs.map((c) => moved.get(c.courtNumber) ?? c);
+    });
+    setSwapPick(null);
+    setDirty(true);
+    setHandEdited(true);
+    setNote('Doubles courts reordered by average WTN, strongest pair on court 1. Save to keep it.');
+  }
 
   async function call(
     action: string,
@@ -525,8 +733,14 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     <div className="mt-8 space-y-8">
       <EmailPreviewModal
         preview={preview}
-        sending={busy === 'poll'}
-        onSend={previewKind === 'lineup' ? confirmSendLineup : confirmPoll}
+        sending={busy === 'poll' || busy === 'send' || busy === 'send-some'}
+        onSend={
+          previewKind === 'lineup-targeted'
+            ? confirmSendTargeted
+            : previewKind === 'lineup'
+              ? confirmSendLineup
+              : confirmPoll
+        }
         onCancel={() => setPreview(null)}
       />
       {/* ---------------------------------------------------------- availability */}
@@ -625,6 +839,18 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
             <button onClick={generate} disabled={!!busy} className={courts.length ? ghost : primary}>
               {busy === 'generate' ? 'Building…' : courts.length ? 'Regenerate' : 'Generate lineup'}
             </button>
+            {/* Only offered when every doubles player has a WTN. A pair with a
+                blank would average out ahead of everyone and look deliberate. */}
+            {wtnReady && (
+              <button
+                onClick={orderLinesByWtn}
+                disabled={!!busy}
+                title="Sort the doubles courts by each pair's average WTN — lowest average on court 1"
+                className={`${btn} border border-[#D3FB52]/30 text-[#D3FB52] hover:border-[#D3FB52]/60`}
+              >
+                Order lines by WTN
+              </button>
+            )}
             {courts.length > 0 && (
               <>
                 <button onClick={save} disabled={!!busy || !dirty} className={ghost}>
@@ -746,46 +972,244 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         {/* Who has actually answered the lineup email.
             This used to be one grey word next to each dropdown, which a captain
             reported as "I know Stef clicked yes but I can't see it anywhere". */}
-        {lineupSent && namedInLineup.length > 0 && (
+        {namedInLineup.length > 0 && (
           <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
             <div className="flex items-baseline justify-between gap-3 flex-wrap">
-              <h3 className="text-white font-medium text-sm">Who has answered the lineup email</h3>
-              <span className="text-white/45 text-xs">
-                {confirmedNames.length} of {namedInLineup.length} confirmed
-              </span>
-            </div>
-            <div className="mt-3 grid gap-1.5">
-              {namedInLineup.map((p) => (
-                <div key={p.playerId} className="flex items-center gap-2 text-sm">
-                  <span
-                    className={
-                      p.state === 'in'
-                        ? 'text-[#D3FB52]'
-                        : p.state === 'out'
-                          ? 'text-red-400'
-                          : 'text-white/25'
-                    }
+              <h3 className="text-white font-medium text-sm">
+                {lineupSent ? 'Who has answered the lineup email' : 'Who is in this lineup'}
+              </h3>
+              <div className="flex items-baseline gap-3">
+                <span className="text-white/45 text-xs">
+                  {confirmedNames.length} of {namedInLineup.length} confirmed
+                </span>
+                {waitingNames.length > 0 && (
+                  <button
+                    onClick={selectWaiting}
+                    className="text-xs text-[#D3FB52]/80 hover:text-[#D3FB52] underline"
                   >
-                    {p.state === 'in' ? '✓' : p.state === 'out' ? '✗' : '·'}
-                  </span>
-                  <span className={p.state === 'out' ? 'text-white/45 line-through' : 'text-white/85'}>
-                    {p.name}
-                  </span>
-                  <span className="text-white/30 text-xs">{p.court}</span>
-                  <span className="ml-auto text-xs text-white/40">
-                    {p.state === 'in'
-                      ? `confirmed ${fmtWhen(p.at as string)}`
-                      : p.state === 'out'
-                        ? `pulled out ${fmtWhen(p.at as string)}`
-                        : 'no answer yet'}
-                  </span>
-                </div>
-              ))}
+                    tick the {waitingNames.length} still waiting
+                  </button>
+                )}
+              </div>
             </div>
+
+            <p className="text-white/35 text-xs mt-2">
+              Tick anyone to email or text just them. A confirmation they gave you by text or in
+              person can be recorded here — the roll-call is only useful if it matches what you
+              actually know.
+            </p>
+
+            <div className="mt-3 grid gap-1">
+              {namedInLineup.map((p) => {
+                const picked = selected.has(p.playerId);
+                const working = busy === `confirm-${p.playerId}`;
+                return (
+                  <div
+                    key={p.playerId}
+                    className={`rounded-lg px-2 py-1.5 ${picked ? 'bg-[#D3FB52]/[0.07]' : ''}`}
+                  >
+                    <div className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={picked}
+                        onChange={() => toggle(p.playerId)}
+                        aria-label={`Pick ${p.name} to contact`}
+                        className="w-4 h-4 shrink-0"
+                      />
+                      <span
+                        className={
+                          p.state === 'in'
+                            ? 'text-[#D3FB52]'
+                            : p.state === 'out'
+                              ? 'text-red-400'
+                              : 'text-white/25'
+                        }
+                      >
+                        {p.state === 'in' ? '✓' : p.state === 'out' ? '✗' : '·'}
+                      </span>
+                      <span
+                        className={p.state === 'out' ? 'text-white/45 line-through' : 'text-white/85'}
+                      >
+                        {p.name}
+                      </span>
+                      <span className="text-white/30 text-xs">{p.court}</span>
+                      <span className="ml-auto text-xs text-white/40 text-right">
+                        {p.state === 'in'
+                          ? `confirmed ${fmtWhen(p.at as string)}${p.byCaptain ? ' · by you' : ''}`
+                          : p.state === 'out'
+                            ? `pulled out ${fmtWhen(p.at as string)}`
+                            : 'no answer yet'}
+                      </span>
+                    </div>
+
+                    {/* One row of ways to reach this person. mailto: and sms:
+                        open the captain's own apps and cost nothing — they work
+                        whether or not texting is switched on in ClubMode. */}
+                    <div className="flex flex-wrap items-center gap-3 pl-8 mt-1 text-xs">
+                      {p.email && (
+                        <a
+                          href={`mailto:${p.email}?subject=${encodeURIComponent(
+                            `${p.court} — ${fmtWhen(matchAt)}`,
+                          )}`}
+                          className="text-white/40 hover:text-white underline"
+                        >
+                          email
+                        </a>
+                      )}
+                      {p.phone && (
+                        <>
+                          <a
+                            href={`sms:${p.phone.replace(/[^\d+]/g, '')}`}
+                            className="text-white/40 hover:text-white underline"
+                          >
+                            text from my phone
+                          </a>
+                          <a
+                            href={`tel:${p.phone.replace(/[^\d+]/g, '')}`}
+                            className="text-white/40 hover:text-white underline"
+                          >
+                            call
+                          </a>
+                        </>
+                      )}
+                      {!p.phone && (
+                        <span className="text-white/20">no mobile on the roster</span>
+                      )}
+                      {p.state === 'waiting' ? (
+                        <button
+                          onClick={() => recordAnswer(p.playerId, 'in')}
+                          disabled={!!busy}
+                          className="text-[#D3FB52]/80 hover:text-[#D3FB52] underline disabled:opacity-40"
+                        >
+                          {working ? 'saving…' : 'she told me yes — mark confirmed'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => recordAnswer(p.playerId, 'clear')}
+                          disabled={!!busy}
+                          className="text-white/30 hover:text-white underline disabled:opacity-40"
+                        >
+                          {working ? 'saving…' : 'undo'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
             {waitingNames.length > 0 && (
               <p className="text-white/35 text-xs mt-3">
                 Still waiting on {waitingNames.join(', ')}.
               </p>
+            )}
+
+            {/* --------------------------------------- act on who is ticked */}
+            {selected.size > 0 && (
+              <div className="mt-4 pt-4 border-t border-white/[0.08]">
+                <div className="text-white/70 text-sm">
+                  {selectedNames.length === 1
+                    ? `${selectedNames[0]} only.`
+                    : `${selectedNames.length} picked: ${selectedNames.join(', ')}.`}{' '}
+                  <button
+                    onClick={() => setSelected(new Set())}
+                    className="text-white/35 hover:text-white underline text-xs"
+                  >
+                    clear
+                  </button>
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={previewTargeted}
+                    disabled={!!busy || dirty}
+                    title={
+                      dirty
+                        ? 'Save the lineup first — otherwise the email would show the old one.'
+                        : undefined
+                    }
+                    className={primary}
+                  >
+                    {busy === 'send-some'
+                      ? 'Opening…'
+                      : `Preview & email the lineup to ${selected.size === 1 ? 'her' : `these ${selected.size}`}`}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSmsOpen((v) => !v);
+                      if (!smsBody) {
+                        const one = namedInLineup.find((x) => x.playerId === selectedIds[0]);
+                        setSmsBody(
+                          selected.size === 1 && one
+                            ? `${one.name.split(' ')[0]} — you're on ${one.court} for ${fmtWhen(matchAt)}. Can you confirm?`
+                            : `Lineup for ${fmtWhen(matchAt)} is up — please confirm.`,
+                        );
+                      }
+                    }}
+                    disabled={!!busy}
+                    className={ghost}
+                  >
+                    {smsOpen ? 'Cancel text' : 'Text them from ClubMode'}
+                  </button>
+                </div>
+
+                {dirty && (
+                  <p className="text-amber-300/70 text-xs mt-2">
+                    Save the lineup first — an email sent now would show the version you have
+                    already changed.
+                  </p>
+                )}
+
+                {smsOpen && (
+                  <div className="mt-3 rounded-xl border border-white/10 bg-[#001820] p-3">
+                    <label htmlFor="sms-body" className="block text-xs text-white/50 mb-1">
+                      Message ({smsBody.length}/320 · {Math.max(1, Math.ceil(smsBody.length / 160))}{' '}
+                      segment{smsBody.length > 160 ? 's' : ''})
+                    </label>
+                    <textarea
+                      id="sms-body"
+                      rows={3}
+                      maxLength={320}
+                      value={smsBody}
+                      onChange={(e) => {
+                        setSmsBody(e.target.value);
+                        setSmsPreview(null);
+                      }}
+                      style={{ color: '#ffffff' }}
+                      className="w-full px-3 py-2 rounded-lg bg-[#002838] border border-white/10 placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none text-sm"
+                    />
+                    <div className="mt-2 flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={previewText}
+                        disabled={!!busy || !smsBody.trim()}
+                        className={ghost}
+                      >
+                        {busy === 'text' && !smsPreview ? 'Checking…' : 'Preview'}
+                      </button>
+                      {smsPreview && (
+                        <button onClick={confirmSendText} disabled={!!busy} className={primary}>
+                          {busy === 'text'
+                            ? 'Sending…'
+                            : `Send to ${smsPreview.count} ${smsPreview.count === 1 ? 'number' : 'numbers'}`}
+                        </button>
+                      )}
+                    </div>
+                    {smsPreview && (
+                      <div className="mt-3 text-xs text-white/50 space-y-1">
+                        <div>
+                          To: {smsPreview.recipients.map((r) => `${r.name} ${r.phone}`).join(', ')}
+                        </div>
+                        {smsPreview.noPhone.length > 0 && (
+                          <div className="text-amber-300/80">
+                            No mobile number for {smsPreview.noPhone.join(', ')} — add one on the
+                            roster, or use their email.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -869,9 +1293,18 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                     })}
                   </div>
                 </div>
-                {c.notes && c.notes.length > 0 && (
-                  <div className="text-white/35 text-xs text-right">{c.notes.join(' · ')}</div>
-                )}
+                <div className="flex items-center gap-3 text-right">
+                  {/* The number this court was ranked on, so the order can be
+                      checked rather than taken on trust. */}
+                  {c.courtType === 'doubles' && avgWtn(c) !== null && (
+                    <span className="text-[#D3FB52]/60 text-xs shrink-0">
+                      avg WTN {avgWtn(c)!.toFixed(1)}
+                    </span>
+                  )}
+                  {c.notes && c.notes.length > 0 && (
+                    <span className="text-white/35 text-xs">{c.notes.join(' · ')}</span>
+                  )}
+                </div>
               </div>
 
               <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">

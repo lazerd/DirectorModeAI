@@ -20,7 +20,7 @@ export async function GET(req: Request) {
       db
         .from('captain_players')
         .select(
-          'id, name, email, rating, rating_type, gender, return_side, court_limit, is_sub, notes, active',
+          'id, name, email, phone, rating, wtn, wtn_doubles, rating_type, gender, return_side, court_limit, is_sub, notes, active',
         )
         .eq('team_id', teamId)
         .eq('active', true)
@@ -139,7 +139,10 @@ export async function PATCH(req: Request) {
   const allowed = [
     'name',
     'email',
+    'phone',
     'rating',
+    'wtn',
+    'wtn_doubles',
     'rating_type',
     'gender',
     'return_side',

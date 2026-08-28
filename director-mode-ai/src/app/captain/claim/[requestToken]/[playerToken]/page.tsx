@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import ClaimButton from './ClaimButton';
+import { CLUB_TZ } from '@/lib/captain/clubTime';
 
 export const dynamic = 'force-dynamic';
 
@@ -66,12 +67,14 @@ export default async function ClaimPage({
   } | null;
 
   const when = m
-    ? new Intl.DateTimeFormat('en-US', {
+    ? // Vercel runs UTC. Without an explicit zone a 9:30am match reads as 4:30 PM.
+      new Intl.DateTimeFormat('en-US', {
         weekday: 'long',
         month: 'short',
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
+        timeZone: CLUB_TZ,
       }).format(new Date(m.match_at))
     : '';
 

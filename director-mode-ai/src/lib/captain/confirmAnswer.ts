@@ -78,12 +78,16 @@ export async function applyAnswer(
       action === 'in'
         ? {
             [`player${slot}_confirmed_at`]: now,
+            // The player tapped it themselves — the strongest kind of yes, and
+            // the captain's roll-call says so.
+            [`player${slot}_confirmed_source`]: 'player',
             [`player${slot}_declined_at`]: null,
             [`player${slot}_decline_note`]: null,
           }
         : {
             [`player${slot}_declined_at`]: now,
             [`player${slot}_confirmed_at`]: null,
+            [`player${slot}_confirmed_source`]: null,
             [`player${slot}_decline_note`]: note,
           };
 

@@ -27,6 +27,11 @@ export async function POST(req: Request) {
     match_id?: string;
     kind?: EmailKind;
     preview?: boolean;
+    /**
+     * Send to these players only. Used when one substitution happened and the
+     * other 22 people don't need another email about it.
+     */
+    player_ids?: string[];
   };
 
   if (!body.team_id || !body.match_id || !body.kind || !EMAIL_KINDS.includes(body.kind)) {
@@ -54,19 +59,26 @@ export async function POST(req: Request) {
     [matchRow as unknown as Record<string, unknown>],
   );
 
-  const payloads = payloadsFor(body.kind, emailCtx, body.match_id);
+  const only = Array.isArray(body.player_ids)
+    ? body.player_ids.filter((id): id is string => typeof id === 'string' && !!id)
+    : null;
+  const targeted = !!only?.length;
+
+  const payloads = payloadsFor(body.kind, emailCtx, body.match_id, only);
   if (!payloads.length) {
     return NextResponse.json(
       {
-        error: KIND_META[body.kind].needsLineup
-          ? 'Build the lineup first — this email lists the court assignments.'
-          : 'There is nobody to send this to right now.',
+        error: targeted
+          ? 'Nobody to send to — those players may have no email address on the roster.'
+          : KIND_META[body.kind].needsLineup
+            ? 'Build the lineup first — this email lists the court assignments.'
+            : 'There is nobody to send this to right now.',
       },
       { status: 400 },
     );
   }
 
-  const recipients = recipientsFor(body.kind, emailCtx, body.match_id);
+  const recipients = recipientsFor(body.kind, emailCtx, body.match_id, only);
 
   if (body.preview) {
     return NextResponse.json({
@@ -76,7 +88,36 @@ export async function POST(req: Request) {
       sample_for: recipients[0]?.name,
       count: payloads.length,
       recipients,
+      targeted,
     });
+  }
+
+  /**
+   * A targeted send deliberately leaves the match's sent-stamp alone.
+   *
+   * That stamp answers "has the TEAM seen this lineup", and it is what stops
+   * the cron mailing it again. Telling one late addition about her court has
+   * not answered that question either way, so writing it would silently cancel
+   * the scheduled send to everyone else — the exact failure that looks like the
+   * app quietly losing an email.
+   */
+  if (targeted) {
+    try {
+      const results = await sendAll(team.captain_user_id, payloads);
+      const sent = results.filter((r) => r.sent).length;
+      return NextResponse.json({
+        ok: true,
+        sent,
+        targeted: true,
+        failed: results.length - sent,
+        failedNames: results
+          .map((r, i) => (r.sent ? null : recipients[i]?.name))
+          .filter(Boolean) as string[],
+      });
+    } catch (err) {
+      if (err instanceof CreditLimitError) return creditLimitResponse(err);
+      return NextResponse.json({ error: 'Could not send that email.' }, { status: 502 });
+    }
   }
 
   /**

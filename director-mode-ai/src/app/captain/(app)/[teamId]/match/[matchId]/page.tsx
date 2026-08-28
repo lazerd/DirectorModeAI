@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { gateTeam } from '@/lib/captain/access';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
+import { CLUB_TZ } from '@/lib/captain/clubTime';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,7 @@ export default async function MatchPage({
     await Promise.all([
     db
       .from('captain_players')
-      .select('id, name, email, rating, gender, return_side, court_limit, is_sub')
+      .select('id, name, email, phone, rating, wtn, wtn_doubles, gender, return_side, court_limit, is_sub')
       .eq('team_id', params.teamId)
       .eq('active', true)
       .order('name'),
@@ -51,7 +52,7 @@ export default async function MatchPage({
     db
       .from('captain_lineups')
       .select(
-        'id, court_number, court_type, player1_id, player2_id, player1_confirmed_at, player2_confirmed_at, player1_declined_at, player2_declined_at, player1_decline_note, player2_decline_note',
+        'id, court_number, court_type, player1_id, player2_id, player1_confirmed_at, player2_confirmed_at, player1_confirmed_source, player2_confirmed_source, player1_declined_at, player2_declined_at, player1_decline_note, player2_decline_note',
       )
       .eq('match_id', params.matchId)
       .order('court_number'),
@@ -69,8 +70,15 @@ export default async function MatchPage({
     id: p.id as string,
     name: p.name as string,
     rating: p.rating == null ? null : Number(p.rating),
+    // WTN runs the other way to NTRP — lower is stronger — and orders courts.
+    wtn: p.wtn == null ? null : Number(p.wtn),
+    wtnDoubles: p.wtn_doubles == null ? null : Number(p.wtn_doubles),
     isSub: p.is_sub as boolean,
     hasEmail: !!p.email,
+    // The contact panel needs the real address and number, not just a flag:
+    // reaching one player who never tapped Confirm is the whole point of it.
+    email: (p.email as string) || null,
+    phone: (p.phone as string) || null,
     availability: statusOf(p.id as string) as MatchPlayer['availability'],
   }));
 
@@ -92,12 +100,15 @@ export default async function MatchPage({
         ← {team.name}
       </Link>
       <h1 className="text-3xl font-display text-white mt-2">
+        {/* Vercel runs UTC. Without an explicit zone a 9:30am match renders
+            as 4:30 PM — which is exactly what this page did. */}
         {new Intl.DateTimeFormat('en-US', {
           weekday: 'long',
           month: 'short',
           day: 'numeric',
           hour: 'numeric',
           minute: '2-digit',
+          timeZone: CLUB_TZ,
         }).format(new Date(match.match_at as string))}
       </h1>
       <p className="text-white/50 mt-1">
@@ -118,6 +129,8 @@ export default async function MatchPage({
             player2Id: (l.player2_id as string) ?? null,
             player1ConfirmedAt: (l.player1_confirmed_at as string) ?? null,
             player2ConfirmedAt: (l.player2_confirmed_at as string) ?? null,
+            player1ConfirmedSource: (l.player1_confirmed_source as string) ?? null,
+            player2ConfirmedSource: (l.player2_confirmed_source as string) ?? null,
           })) as never
         }
         singlesCourts={(match.singles_courts as number) ?? 2}

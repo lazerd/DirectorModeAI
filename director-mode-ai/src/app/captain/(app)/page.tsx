@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getCaptainAccess, listCaptainTeams, MAX_TEAMS_PER_CAPTAIN } from '@/lib/captain/access';
 import NewTeamForm from '@/components/captain/NewTeamForm';
+import { CLUB_TZ } from '@/lib/captain/clubTime';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,10 +101,13 @@ export default async function CaptainHome() {
                   {next ? (
                     <>
                       <div className="text-[#D3FB52] font-medium">
+                        {/* Vercel runs UTC. Without an explicit zone a 9:30am
+                            match renders as 4:30 PM. */}
                         {new Intl.DateTimeFormat('en-US', {
                           month: 'short',
                           day: 'numeric',
                           hour: 'numeric',
+                          timeZone: CLUB_TZ,
                         }).format(new Date(next.match_at))}
                       </div>
                       <div className="text-white/40">{next.opponent || 'next match'}</div>

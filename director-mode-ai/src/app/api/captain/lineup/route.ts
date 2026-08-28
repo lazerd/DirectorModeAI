@@ -114,6 +114,10 @@ export async function POST(req: Request) {
           needsEligibility: need > 0 && booked < need,
           // captain's manual strength rank; null falls back to rating
           sortOrder: p.sort_order == null ? null : Number(p.sort_order),
+          // WTN is the objective court-order input: lower is stronger, and the
+          // generator only uses it when the whole sheet has one.
+          wtn: p.wtn == null ? null : Number(p.wtn),
+          wtnDoubles: p.wtn_doubles == null ? null : Number(p.wtn_doubles),
         };
       });
 
@@ -191,7 +195,23 @@ export async function POST(req: Request) {
     summary.push(
       'Doubles pairs were then scored on partner preference, complementary return sides (a deuce player with an ad player), and how past pairings have actually done.',
     );
-    summary.push('Courts are ordered strongest pair first, so court 1 is your best pairing.');
+    // Which number actually decided court 1 — the thing a captain gets asked
+    // about most, and the whole reason for importing WTNs.
+    const doublesPool = available.filter((p) => p.courtLimit !== 'singles_only');
+    const wtnOfPlayer = (p: (typeof available)[number]) => p.wtnDoubles ?? p.wtn ?? null;
+    const withWtn = doublesPool.filter((p) => wtnOfPlayer(p) != null).length;
+    if (doublesPool.length > 0 && withWtn === doublesPool.length) {
+      summary.push(
+        'Courts are ordered by each pair’s average WTN, lowest average on court 1 — objective, not a judgement call. Each court shows the average it was ranked on.',
+      );
+    } else {
+      summary.push('Courts are ordered strongest pair first, so court 1 is your best pairing.');
+      if (withWtn > 0) {
+        summary.push(
+          `Court order fell back to rating because ${doublesPool.length - withWtn} of ${doublesPool.length} available players have no WTN. Paste the rest in on the team page and courts get ordered by average WTN instead.`,
+        );
+      }
+    }
     if (cap != null) {
       summary.push(`Every pair was checked against the ${cap} combined-rating cap for this level.`);
     }

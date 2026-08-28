@@ -47,6 +47,15 @@ export type Player = {
    */
   sortOrder?: number | null;
   /**
+   * World Tennis Number. Runs the OPPOSITE way to NTRP — 40 is a beginner and
+   * 1 is a pro — so LOWER is stronger everywhere it is read. Kept apart from
+   * `rating` for exactly that reason: one sign flip would seat the weakest pair
+   * on court 1 and look perfectly reasonable.
+   */
+  wtn?: number | null;
+  /** doubles WTN, when the player has a separate one */
+  wtnDoubles?: number | null;
+  /**
    * Set internally by equalPlayPool — this player is behind the rest of the
    * pool on matches played and must be seated. Not something a caller sets.
    */
@@ -141,6 +150,14 @@ const key = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
 function ratingOf(p: Player): number {
   return typeof p.rating === 'number' && !Number.isNaN(p.rating) ? p.rating : 0;
+}
+
+/** The WTN a doubles court should be ordered on: doubles number, else singles. */
+function wtnOf(p: Player): number | null {
+  const d = p.wtnDoubles;
+  if (typeof d === 'number' && !Number.isNaN(d)) return d;
+  const s = p.wtn;
+  return typeof s === 'number' && !Number.isNaN(s) ? s : null;
 }
 
 /**
@@ -452,7 +469,19 @@ export function generateLineup(input: LineupInput): LineupResult {
   // --- court numbering: strongest on the lowest court number ---------------
   const courts: CourtAssignment[] = [];
 
-  const singlesSorted = [...singlesPicked].sort(byStrength);
+  /**
+   * Same all-or-nothing rule as the doubles courts below: WTN orders the
+   * singles courts only when every player picked has one, and a captain's own
+   * strength ranking still wins over both, because it is the one input that
+   * knows what a number cannot.
+   */
+  const singlesWtnComplete =
+    singlesPicked.length > 0 &&
+    singlesPicked.every((p) => wtnOf(p) !== null) &&
+    singlesPicked.every((p) => typeof p.sortOrder !== 'number');
+  const singlesSorted = singlesWtnComplete
+    ? [...singlesPicked].sort((a, b) => wtnOf(a)! - wtnOf(b)! || a.name.localeCompare(b.name))
+    : [...singlesPicked].sort(byStrength);
   singlesSorted.forEach((p, i) => {
     const notes: string[] = [];
     if (p.needsEligibility) notes.push(`${p.name} needs matches for playoff eligibility`);
@@ -465,10 +494,29 @@ export function generateLineup(input: LineupInput): LineupResult {
     });
   });
 
-  const pairStrength = (pr: [Player, Player]) => ratingOf(pr[0]) + ratingOf(pr[1]);
-  const sortedPairs = [...pairs].sort(
-    (x, y) => pairStrength(y) - pairStrength(x) || x[0].name.localeCompare(y[0].name),
-  );
+  /**
+   * Court order for doubles: average WTN when the sheet supports it, combined
+   * NTRP otherwise.
+   *
+   * WTN is used only when EVERY player on EVERY pair has one. Half a roster's
+   * worth would mean comparing an average WTN against a combined NTRP — two
+   * numbers that run in opposite directions on different scales — and the
+   * ordering that fell out would be meaningless while looking authoritative.
+   * All-or-nothing keeps the comparison transitive and the reason explainable.
+   */
+  const wtnComplete = pairs.length > 0 && pairs.every((pr) => pr.every((p) => wtnOf(p) !== null));
+  const sortedPairs = wtnComplete
+    ? // Lower average WTN is the stronger pair, so it takes the lower court.
+      [...pairs].sort(
+        (x, y) =>
+          (wtnOf(x[0])! + wtnOf(x[1])!) / 2 - (wtnOf(y[0])! + wtnOf(y[1])!) / 2 ||
+          x[0].name.localeCompare(y[0].name),
+      )
+    : [...pairs].sort(
+        (x, y) =>
+          ratingOf(y[0]) + ratingOf(y[1]) - (ratingOf(x[0]) + ratingOf(x[1])) ||
+          x[0].name.localeCompare(y[0].name),
+      );
 
   // Honour "never court 1": if the strongest pair contains such a player and
   // there is another doubles court to move them to, swap it down.
@@ -489,6 +537,9 @@ export function generateLineup(input: LineupInput): LineupResult {
   sortedPairs.forEach((pr, i) => {
     const [a, b] = pr;
     const notes: string[] = [];
+    if (wtnComplete) {
+      notes.push(`avg WTN ${(((wtnOf(a)! + wtnOf(b)!) / 2)).toFixed(1)}`);
+    }
     const ps = prefScore(prefs, a.id, b.id);
     if (ps >= W_PREF_MUTUAL * 0.5) notes.push('mutual partner preference');
     else if (ps > 0) notes.push('partner preference');

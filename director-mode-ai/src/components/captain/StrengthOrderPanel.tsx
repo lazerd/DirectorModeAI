@@ -33,19 +33,28 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import RatingsPastePanel from './RatingsPastePanel';
+import WtnPastePanel from './WtnPastePanel';
+import { doublesWtnOf } from '@/lib/captain/wtnPaste';
 
 export type RankablePlayer = {
   id: string;
   name: string;
   rating: number | null;
+  /** World Tennis Number — LOWER is stronger. Null until one is imported. */
+  wtn: number | null;
+  wtn_doubles: number | null;
   sort_order: number | null;
   is_sub: boolean;
 };
+
+/** The WTN this roster should be ordered on: doubles when there is one. */
+const wtnOf = (p: RankablePlayer) => doublesWtnOf({ wtn: p.wtn, wtnDoubles: p.wtn_doubles });
 
 function Row({
   id,
   name,
   rating,
+  wtn,
   rank,
   ranked,
   onUp,
@@ -56,6 +65,7 @@ function Row({
   id: string;
   name: string;
   rating: number | null;
+  wtn: number | null;
   rank: number;
   ranked: boolean;
   onUp: () => void;
@@ -91,6 +101,7 @@ function Row({
       <span className="w-7 text-right text-xs text-white/40 shrink-0">#{rank}</span>
       <span className="flex-1 min-w-0 truncate text-white text-sm">
         {name}
+        {wtn != null && <span className="text-[#D3FB52]/70"> · WTN {wtn}</span>}
         {rating != null && <span className="text-white/35"> · {rating}</span>}
         {!ranked && <span className="text-white/25 text-xs"> · unranked</span>}
       </span>
@@ -138,6 +149,7 @@ export default function StrengthOrderPanel({
 }) {
   const router = useRouter();
   const roster = players.filter((p) => !p.is_sub);
+  const withWtn = roster.filter((p) => wtnOf(p) !== null).length;
   const [order, setOrder] = useState<RankablePlayer[]>(() => initialOrder(roster));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -170,6 +182,24 @@ export default function StrengthOrderPanel({
       [...o].sort((a, b) => {
         const d = (b.rating ?? 0) - (a.rating ?? 0);
         return d !== 0 ? d : a.name.localeCompare(b.name);
+      }),
+    );
+    setDirty(true);
+    setMsg(null);
+  }
+
+  /** Re-sort by WTN, strongest (lowest number) first. Players without one fall
+   *  to the bottom rather than being read as a 0, which on an inverted scale
+   *  would make them the strongest on the team. Not saved until you hit save. */
+  function sortByWtn() {
+    setOrder((o) =>
+      [...o].sort((a, b) => {
+        const wa = wtnOf(a);
+        const wb = wtnOf(b);
+        if (wa === null && wb === null) return a.name.localeCompare(b.name);
+        if (wa === null) return 1;
+        if (wb === null) return -1;
+        return wa - wb || a.name.localeCompare(b.name);
       }),
     );
     setDirty(true);
@@ -220,6 +250,19 @@ export default function StrengthOrderPanel({
           {/* Nobody should have to look up 23 players to get a usable order.
               The list already shows rating order, so this just commits it —
               then drag the handful that are wrong. */}
+          {/* WTN separates players a shared NTRP rating cannot, so when the
+              roster has the numbers this is the objective order and rating is
+              the fallback. */}
+          {withWtn > 0 && (
+            <button
+              onClick={sortByWtn}
+              disabled={busy}
+              title={`${withWtn} of ${roster.length} players have a WTN`}
+              className="text-sm px-4 py-2 rounded-xl border border-[#D3FB52]/30 text-[#D3FB52] hover:border-[#D3FB52]/60 disabled:opacity-50"
+            >
+              Order by WTN
+            </button>
+          )}
           <button
             onClick={sortByRating}
             disabled={busy}
@@ -244,7 +287,15 @@ export default function StrengthOrderPanel({
         the roster shares a rating. Quickest route: <em>Save this order</em> to lock in what&apos;s
         shown, then drag the few that look wrong.
       </p>
+      {withWtn > 0 && (
+        <p className="text-sm text-white/40 mt-2">
+          {withWtn === roster.length
+            ? 'Every player has a WTN, so “Order by WTN” gives you an order nobody can argue with.'
+            : `${withWtn} of ${roster.length} players have a WTN — the rest sort to the bottom until you paste theirs in.`}
+        </p>
+      )}
 
+      <WtnPastePanel teamId={teamId} />
       <RatingsPastePanel teamId={teamId} />
 
       {msg && <p className="text-sm text-[#D3FB52] mt-3">{msg}</p>}
@@ -263,6 +314,7 @@ export default function StrengthOrderPanel({
                   id={p.id}
                   name={p.name}
                   rating={p.rating}
+                  wtn={wtnOf(p)}
                   rank={i + 1}
                   ranked={p.sort_order != null}
                   first={i === 0}

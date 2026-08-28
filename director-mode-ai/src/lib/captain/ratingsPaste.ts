@@ -20,12 +20,14 @@ const MAX_RATING = 7.0;
 
 export type ParsedRating = { name: string; rating: number };
 
+/** What a name was matched on, so a preview can show why. */
+export type MatchedOn = 'exact' | 'reversed' | 'last-name + initial';
+
 export type RatingMatch = {
   playerId: string;
   playerName: string;
   rating: number;
-  /** what we matched on, so the preview can show why */
-  matchedOn: 'exact' | 'reversed' | 'last-name + initial';
+  matchedOn: MatchedOn;
   previousRating: number | null;
 };
 
@@ -50,7 +52,7 @@ function normalize(s: string): string {
 }
 
 /** "Smith, Jane" -> "jane smith"; otherwise just normalized. */
-function canonical(name: string): string {
+export function canonical(name: string): string {
   const n = name.includes(',')
     ? name.split(',').map((p) => p.trim()).reverse().join(' ')
     : name;
@@ -123,28 +125,32 @@ export function parseRatingsBlock(text: string): { parsed: ParsedRating[]; ignor
 }
 
 /**
- * Match parsed names to the roster.
+ * The name-matching engine, shared by every paste-in importer (NTRP ratings,
+ * WTN, anything that arrives as "a name and a number per line").
  *
  * Three rules, tried in order and never combined: exact, first/last reversed,
  * then last name plus first initial. That last one is what catches "J. Smith"
  * and "Jane Smith" being the same person — but only when exactly one roster
  * player fits, because two Smiths make it a coin flip and a coin flip here
- * silently hands someone the wrong rating.
+ * silently hands someone else's number to a player.
  */
-export function resolveRatings(
-  parsed: ParsedRating[],
-  roster: { id: string; name: string; rating: number | null }[],
-  ignoredLines: string[] = [],
-): RatingsResolution {
-  const matched: RatingMatch[] = [];
-  const unmatched: ParsedRating[] = [];
-  const ambiguous: { parsed: ParsedRating; candidates: string[] }[] = [];
+export function matchByName<T extends { name: string }, R extends { id: string; name: string }>(
+  parsed: T[],
+  roster: R[],
+): {
+  matched: { parsed: T; player: R; matchedOn: MatchedOn }[];
+  unmatched: T[];
+  ambiguous: { parsed: T; candidates: string[] }[];
+} {
+  const matched: { parsed: T; player: R; matchedOn: MatchedOn }[] = [];
+  const unmatched: T[] = [];
+  const ambiguous: { parsed: T; candidates: string[] }[] = [];
 
   const entries = roster.map((p) => {
     const c = canonical(p.name);
     const parts = c.split(' ').filter(Boolean);
     return {
-      ...p,
+      player: p,
       canonical: c,
       first: parts[0] ?? '',
       last: parts.length > 1 ? parts[parts.length - 1] : '',
@@ -159,18 +165,12 @@ export function resolveRatings(
     const first = parts[0] ?? '';
     const last = parts.length > 1 ? parts[parts.length - 1] : '';
 
-    const add = (e: (typeof entries)[number], how: RatingMatch['matchedOn']) => {
-      taken.add(e.id);
-      matched.push({
-        playerId: e.id,
-        playerName: e.name,
-        rating: p.rating,
-        matchedOn: how,
-        previousRating: e.rating,
-      });
+    const add = (e: (typeof entries)[number], how: MatchedOn) => {
+      taken.add(e.player.id);
+      matched.push({ parsed: p, player: e.player, matchedOn: how });
     };
 
-    const free = entries.filter((e) => !taken.has(e.id));
+    const free = entries.filter((e) => !taken.has(e.player.id));
 
     const exact = free.filter((e) => e.canonical === c);
     if (exact.length === 1) {
@@ -178,7 +178,7 @@ export function resolveRatings(
       continue;
     }
     if (exact.length > 1) {
-      ambiguous.push({ parsed: p, candidates: exact.map((e) => e.name) });
+      ambiguous.push({ parsed: p, candidates: exact.map((e) => e.player.name) });
       continue;
     }
 
@@ -195,7 +195,7 @@ export function resolveRatings(
         continue;
       }
       if (byLast.length > 1) {
-        ambiguous.push({ parsed: p, candidates: byLast.map((e) => e.name) });
+        ambiguous.push({ parsed: p, candidates: byLast.map((e) => e.player.name) });
         continue;
       }
     }
@@ -203,7 +203,28 @@ export function resolveRatings(
     unmatched.push(p);
   }
 
-  return { matched, unmatched, ambiguous, ignoredLines };
+  return { matched, unmatched, ambiguous };
+}
+
+/** Match parsed names to the roster and attach the rating each one carries. */
+export function resolveRatings(
+  parsed: ParsedRating[],
+  roster: { id: string; name: string; rating: number | null }[],
+  ignoredLines: string[] = [],
+): RatingsResolution {
+  const res = matchByName(parsed, roster);
+  return {
+    matched: res.matched.map((m) => ({
+      playerId: m.player.id,
+      playerName: m.player.name,
+      rating: m.parsed.rating,
+      matchedOn: m.matchedOn,
+      previousRating: m.player.rating,
+    })),
+    unmatched: res.unmatched,
+    ambiguous: res.ambiguous,
+    ignoredLines,
+  };
 }
 
 /**
