@@ -60,6 +60,9 @@ export async function middleware(request: NextRequest) {
     // (app) route group, whose layout does the auth redirect — same split as
     // CourtSheet above.
     '/captain/subscribe',
+    // "Run the club" section landing pages (/run/courts, /run/programs, ...).
+    // They only list staff tools, so they get the same gate the tools have.
+    '/run',
   ];
   const isProtectedPath = protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path)
@@ -89,6 +92,7 @@ export async function middleware(request: NextRequest) {
   const DIRECTOR_PATHS = [
     '/calendar', '/mixer', '/courtsheet/staff', '/lessons/dashboard',
     '/stringing', '/club-hub', '/club/members', '/connect/clubs',
+    '/run',
   ];
   const isDirectorPath = DIRECTOR_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
   if (isDirectorPath && user && (user.email_confirmed_at || user.confirmed_at)) {

@@ -805,7 +805,11 @@ export default function HomePage() {
       {/* ===================== FOOTER ===================== */}
       <footer className="border-t border-white/[0.06] bg-[#001016] py-14 px-5 sm:px-6">
         <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-10">
+          {/* Footer columns mirror the three audience spaces in src/config/nav.ts:
+              Run the club / For players / For you. "For you" (Benchmarks,
+              Recruiting) is the director's own career — it lives here rather
+              than in the primary nav on purpose. */}
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-8 mb-10">
             <div className="col-span-2 md:col-span-2">
               <div className="flex items-center gap-2.5 mb-4">
                 <div className="w-8 h-8 bg-[#D3FB52] rounded-lg flex items-center justify-center">
@@ -818,23 +822,29 @@ export default function HomePage() {
               </p>
             </div>
             <div>
-              <h4 className="font-semibold text-sm mb-3 text-white/70">Run the Club</h4>
+              <h4 className="font-semibold text-sm mb-3 text-white/70">Run the club</h4>
               <ul className="space-y-2 text-sm text-white/40">
-                <li><button onClick={() => goToTool("/courtsheet/staff")} className="hover:text-white transition-colors">CourtSheet AI</button></li>
-                <li><Link href="/mixer/leagues" className="hover:text-white transition-colors">Leagues &amp; JTT</Link></li>
-                <li><Link href="/mixer/home" className="hover:text-white transition-colors">MixerMode AI</Link></li>
-                <li><Link href="/lessons/dashboard" className="hover:text-white transition-colors">LastMinuteLesson</Link></li>
-                <li><Link href="/stringing/jobs" className="hover:text-white transition-colors">StringingMode AI</Link></li>
+                <li><button onClick={() => goToTool("/run/courts")} className="hover:text-white transition-colors">Courts</button></li>
+                <li><button onClick={() => goToTool("/run/programs")} className="hover:text-white transition-colors">Programs</button></li>
+                <li><button onClick={() => goToTool("/run/members")} className="hover:text-white transition-colors">Members</button></li>
+                <li><button onClick={() => goToTool("/run/coaching")} className="hover:text-white transition-colors">Coaching</button></li>
+                <li><button onClick={() => goToTool("/run/pro-shop")} className="hover:text-white transition-colors">Pro shop</button></li>
+                <li><button onClick={() => goToTool("/run/tools")} className="hover:text-white transition-colors">All tools</button></li>
               </ul>
             </div>
             <div>
-              <h4 className="font-semibold text-sm mb-3 text-white/70">Players &amp; More</h4>
+              <h4 className="font-semibold text-sm mb-3 text-white/70">For players</h4>
               <ul className="space-y-2 text-sm text-white/40">
-                <li><Link href="/courtconnect/home" className="hover:text-white transition-colors">CourtConnect</Link></li>
-                <li><Link href="/courtconnect/vault" className="hover:text-white transition-colors">PlayerVault</Link></li>
-                <li><Link href="/swim" className="hover:text-white transition-colors">SwimMode</Link></li>
-                <li><Link href="/find-coach" className="hover:text-white transition-colors">Find a Coach</Link></li>
-                <li><Link href="/lessons/dashboard" className="hover:text-white transition-colors">Coach Mode</Link></li>
+                <li><Link href="/client/dashboard" className="hover:text-white transition-colors">My account</Link></li>
+                <li><Link href="/courtconnect/events" className="hover:text-white transition-colors">Events</Link></li>
+                <li><Link href="/find-coach" className="hover:text-white transition-colors">Find a coach</Link></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="font-semibold text-sm mb-3 text-white/70">For you</h4>
+              <ul className="space-y-2 text-sm text-white/40">
+                <li><Link href="/benchmarks" className="hover:text-white transition-colors">Benchmarks</Link></li>
+                <li><Link href="/connect" className="hover:text-white transition-colors">Recruiting</Link></li>
               </ul>
             </div>
             <div className="md:hidden col-span-2">

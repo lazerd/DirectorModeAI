@@ -6,13 +6,23 @@
  * Mounted ONCE globally in the root layout (src/app/layout.tsx), so it appears
  * on every page. Do not also mount it per-page (you'd get two overlapping rails).
  * It's a fixed, brand-styled (dark teal + lime) app shell that:
- *   - shows every tool with an icon + label, highlighting the active one
+ *   - shows the three audience spaces from src/config/nav.ts
  *   - collapses to a thin icon rail (toggle persisted to localStorage)
  *   - becomes an off-canvas drawer on phones, opened by a floating button
  *   - shifts page content right via body padding so nothing is hidden behind it
  *
- * It is intentionally self-contained (no Supabase / auth coupling) so it can be
- * mounted on server-rendered or public pages without extra wiring.
+ * NAV STRUCTURE (see src/config/nav.ts for the full rationale):
+ *   "Run the club" — five plain-English sections + All tools. Each section item
+ *                    opens a /run/* landing page that lists the branded tools
+ *                    inside it. No tool URL changed; this is grouping only.
+ *   "For players"  — the member-facing surfaces.
+ *   "For you"      — the director's career (Benchmarks, Recruiting). Rendered in
+ *                    the rail FOOTER, visually separated from club operations,
+ *                    because it is a different value proposition and does not
+ *                    belong in the primary nav.
+ *
+ * It is intentionally self-contained (no Supabase / auth coupling for the nav
+ * shape itself) so it can be mounted on server-rendered or public pages.
  */
 
 import { useEffect, useState } from 'react';
@@ -20,43 +30,64 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import {
-  Zap, Home, LayoutGrid, Trophy, Shuffle, Clock, Wrench, Users, Database,
-  Waves, GraduationCap, BarChart3, Sparkles, ExternalLink, Calendar, Mountain,
-  CalendarDays, MessagesSquare, ClipboardList, ChevronLeft, ChevronRight, Menu, X,
+  SECTIONS, FOR_PLAYERS, FOR_YOU, ALL_TOOLS_ITEM, activeHref, type NavIcon,
+} from '@/config/nav';
+import {
+  Zap, Home, LayoutGrid, Calendar, GraduationCap,
+  ChevronLeft, ChevronRight, Menu, X,
 } from 'lucide-react';
 
 type Item = {
   name: string;
   href: string;
-  /** path prefix used to decide the active item (defaults to href) */
-  match?: string;
-  icon: typeof Home;
+  /** path prefixes used to decide the active item */
+  matches: string[];
+  icon: NavIcon;
   color: string;
-  external?: boolean;
 };
 
-// Mirrors the tool list on the marketing home page. `match` is the longest
-// path prefix that should light this item up as active.
-const ITEMS: Item[] = [
-  { name: 'Home', href: '/', match: '/', icon: Home, color: '#D3FB52' },
-  { name: 'CalendarMode', href: '/calendar', match: '/calendar', icon: CalendarDays, color: '#c084fc' },
-  { name: 'CourtSheet', href: '/courtsheet/staff', match: '/courtsheet', icon: LayoutGrid, color: '#22d3ee' },
-  { name: 'MixerMode', href: '/mixer/home', match: '/mixer/home', icon: Shuffle, color: '#fb923c' },
-  { name: 'LeagueMode', href: '/mixer/leagues', match: '/mixer/leagues', icon: Calendar, color: '#34d399' },
-  { name: 'TournamentMode', href: '/mixer/tournaments', match: '/mixer/tournaments', icon: Trophy, color: '#eab308' },
-  { name: 'Lessons', href: '/lessons/dashboard', match: '/lessons/dashboard', icon: Clock, color: '#60a5fa' },
-  { name: 'CoachMode', href: '/lessons/recap', match: '/lessons/recap', icon: GraduationCap, color: '#a78bfa' },
-  { name: 'Members', href: '/club/members', match: '/club/members', icon: Users, color: '#38bdf8' },
-  { name: 'Stringing', href: '/stringing/jobs', match: '/stringing', icon: Wrench, color: '#f472b6' },
-  { name: 'CaptainMode', href: '/captain', match: '/captain', icon: ClipboardList, color: '#D3FB52' },
-  { name: 'CourtConnect', href: '/courtconnect/home', match: '/courtconnect/home', icon: Users, color: '#34d399' },
-  { name: 'PlayerVault', href: '/courtconnect/vault', match: '/courtconnect/vault', icon: Database, color: '#2dd4bf' },
-  { name: 'SwimMode', href: '/swim', match: '/swim', icon: Waves, color: '#38bdf8' },
-  { name: 'PathwayMode', href: '/pathway', match: '/pathway', icon: Mountain, color: '#eab308' },
-  { name: 'Benchmarks', href: '/benchmarks', match: '/benchmarks', icon: BarChart3, color: '#f59e0b' },
-  { name: 'Recruiting', href: '/connect', match: '/connect', icon: Sparkles, color: '#2dd4bf' },
-  { name: 'ClubHub', href: '/club-hub', match: '/club-hub', icon: MessagesSquare, color: '#D3FB52' },
+type Group = { heading: string | null; items: Item[] };
+
+/** "Run the club" (default space) + "For players". "For you" lives in the footer. */
+const PRIMARY_GROUPS: Group[] = [
+  {
+    heading: 'Run the club',
+    items: [
+      ...SECTIONS.map((s) => ({
+        name: s.label,
+        href: s.href,
+        matches: s.matches,
+        icon: s.icon,
+        color: s.color,
+      })),
+      {
+        name: ALL_TOOLS_ITEM.label,
+        href: ALL_TOOLS_ITEM.href,
+        matches: ALL_TOOLS_ITEM.matches,
+        icon: ALL_TOOLS_ITEM.icon,
+        color: ALL_TOOLS_ITEM.color,
+      },
+    ],
+  },
+  {
+    heading: 'For players',
+    items: FOR_PLAYERS.map((t) => ({
+      name: t.name,
+      href: t.href,
+      matches: [t.match ?? t.href],
+      icon: t.icon,
+      color: t.color,
+    })),
+  },
 ];
+
+const FOOTER_ITEMS: Item[] = FOR_YOU.map((t) => ({
+  name: t.name,
+  href: t.href,
+  matches: [t.match ?? t.href],
+  icon: t.icon,
+  color: t.color,
+}));
 
 const EXPANDED = 248;
 const COLLAPSED = 72;
@@ -78,18 +109,6 @@ const PUBLIC_PREFIXES = [
   '/pathway/curriculum',
 ];
 
-function activeHref(pathname: string, items: Item[]): string | null {
-  let best: string | null = null;
-  let bestLen = -1;
-  for (const it of items) {
-    if (it.external) continue;
-    const m = it.match ?? it.href;
-    const hit = m === '/' ? pathname === '/' : pathname === m || pathname.startsWith(m + '/') || pathname === m;
-    if (hit && m.length > bestLen) { best = it.href; bestLen = m.length; }
-  }
-  return best;
-}
-
 export default function ClubSidebar() {
   const pathname = usePathname() || '/';
   const isPublic = PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
@@ -99,7 +118,7 @@ export default function ClubSidebar() {
   const [mounted, setMounted] = useState(false);
   // When the signed-in user is a club MEMBER (not a director/owner), show a
   // member-appropriate nav instead of the full director toolset. null = show all.
-  const [memberNav, setMemberNav] = useState<Item[] | null>(null);
+  const [memberNav, setMemberNav] = useState<Group[] | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -117,23 +136,28 @@ export default function ClubSidebar() {
           .maybeSingle();
         if (mem && (mem as any).role === 'member') {
           const slug = (mem as any).cc_clubs?.slug as string | undefined;
-          setMemberNav([
-            { name: 'My Club', href: '/member', match: '/member', icon: Home, color: '#22d3ee' },
-            ...(slug ? [{ name: 'Book a Court', href: `/courtsheet/${slug}`, match: '/courtsheet', icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
-            { name: 'My Account', href: '/client/dashboard', match: '/client/dashboard', icon: Calendar, color: '#60a5fa' },
-            { name: 'Find a Coach', href: '/find-coach', match: '/find-coach', icon: GraduationCap, color: '#a78bfa' },
-          ]);
+          setMemberNav([{
+            heading: null,
+            items: [
+              { name: 'My Club', href: '/member', matches: ['/member'], icon: Home, color: '#22d3ee' },
+              ...(slug ? [{ name: 'Book a Court', href: `/courtsheet/${slug}`, matches: ['/courtsheet'], icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
+              { name: 'My Account', href: '/client/dashboard', matches: ['/client/dashboard'], icon: Calendar, color: '#60a5fa' },
+              { name: 'Find a Coach', href: '/find-coach', matches: ['/find-coach'], icon: GraduationCap, color: '#a78bfa' },
+            ],
+          }]);
         }
       } catch { /* keep full nav on any error */ }
     })();
   }, []);
 
-  const visibleItems = memberNav ?? ITEMS;
-  const active = activeHref(pathname, visibleItems);
+  const isMember = memberNav !== null;
+  const groups = memberNav ?? PRIMARY_GROUPS;
+  const footerItems = isMember ? [] : FOOTER_ITEMS;
+  const active = activeHref(pathname, [...groups.flatMap((g) => g.items), ...footerItems]);
 
   // Restore the pinned/collapsed preference before first paint of the rail.
   // Default is COLLAPSED (a thin icon rail) so the nav stays out of the way and
-  // reveals every tool on hover; users who pin it open are remembered.
+  // reveals every section on hover; users who pin it open are remembered.
   useEffect(() => {
     setCollapsed(localStorage.getItem('clubnav-collapsed') !== '0');
     setMounted(true);
@@ -167,10 +191,46 @@ export default function ClubSidebar() {
   };
 
   // When collapsed, hovering the rail temporarily expands it (overlaying page
-  // content) so you can see/click every tool without un-pinning.
+  // content) so you can see/click everything without un-pinning.
   const peeking = collapsed && hovering && !mobileOpen;
   const showLabels = !collapsed || mobileOpen || peeking;
   const width = mobileOpen ? EXPANDED : (collapsed && !peeking) ? COLLAPSED : EXPANDED;
+
+  const renderItem = (it: Item) => {
+    const Icon = it.icon;
+    const isActive = it.href === active;
+    const cls = [
+      'group relative flex items-center gap-2.5 rounded-xl px-1.5 py-1.5 transition-colors',
+      isActive ? 'bg-white/[0.06]' : 'hover:bg-white/[0.05]',
+      collapsed && !mobileOpen && !peeking ? 'justify-center' : '',
+    ].join(' ');
+
+    return (
+      <Link
+        key={it.href}
+        href={it.href}
+        className={cls}
+        title={collapsed && !mobileOpen && !peeking ? it.name : undefined}
+      >
+        {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full bg-[#D3FB52]" />}
+        <span
+          className="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center transition-colors"
+          style={{ background: isActive ? `${it.color}22` : 'transparent' }}
+        >
+          <Icon
+            size={19}
+            style={{ color: isActive ? it.color : undefined }}
+            className={isActive ? '' : 'text-white/60 group-hover:text-white'}
+          />
+        </span>
+        {showLabels && (
+          <span className={`truncate text-[14px] font-medium ${isActive ? 'text-white' : 'text-white/70 group-hover:text-white'}`}>
+            {it.name}
+          </span>
+        )}
+      </Link>
+    );
+  };
 
   if (isPublic) return null;
 
@@ -226,48 +286,37 @@ export default function ClubSidebar() {
           </button>
         </div>
 
-        {/* Tools */}
-        <nav className="flex-1 overflow-y-auto py-3 px-2.5 space-y-1">
-          {visibleItems.map((it) => {
-            const Icon = it.icon;
-            const isActive = !it.external && it.href === active;
-            const inner = (
-              <>
-                <span
-                  className="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center transition-colors"
-                  style={{
-                    background: isActive ? `${it.color}22` : 'transparent',
-                  }}
-                >
-                  <Icon size={19} style={{ color: isActive ? it.color : undefined }} className={isActive ? '' : 'text-white/60 group-hover:text-white'} />
-                </span>
-                {showLabels && (
-                  <span className={`truncate text-[14px] font-medium ${isActive ? 'text-white' : 'text-white/70 group-hover:text-white'}`}>
-                    {it.name}
-                  </span>
-                )}
-                {showLabels && it.external && <ExternalLink size={13} className="ml-auto text-white/30" />}
-              </>
-            );
-            const cls = [
-              'group relative flex items-center gap-2.5 rounded-xl px-1.5 py-1.5 transition-colors',
-              isActive ? 'bg-white/[0.06]' : 'hover:bg-white/[0.05]',
-              collapsed && !mobileOpen && !peeking ? 'justify-center' : '',
-            ].join(' ');
-
-            return it.external ? (
-              <a key={it.name} href={it.href} target="_blank" rel="noopener noreferrer" className={cls} title={collapsed && !mobileOpen && !peeking ? it.name : undefined}>
-                {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full bg-[#D3FB52]" />}
-                {inner}
-              </a>
-            ) : (
-              <Link key={it.name} href={it.href} className={cls} title={collapsed && !mobileOpen && !peeking ? it.name : undefined}>
-                {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full bg-[#D3FB52]" />}
-                {inner}
-              </Link>
-            );
-          })}
+        {/* Spaces */}
+        <nav className="flex-1 overflow-y-auto py-3 px-2.5">
+          {groups.map((group, gi) => (
+            <div key={group.heading ?? `g${gi}`} className={gi > 0 ? 'mt-4 pt-4 border-t border-white/[0.07]' : ''}>
+              {group.heading && (
+                showLabels ? (
+                  <p className="px-2.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/30">
+                    {group.heading}
+                  </p>
+                ) : (
+                  // Collapsed rail: the heading becomes a hairline so the groups
+                  // still read as separate without stealing width.
+                  gi > 0 ? null : <div className="h-1" />
+                )
+              )}
+              <div className="space-y-1">{group.items.map(renderItem)}</div>
+            </div>
+          ))}
         </nav>
+
+        {/* "For you" — the director's own career, kept out of the primary nav */}
+        {footerItems.length > 0 && (
+          <div className="border-t border-white/[0.07] px-2.5 py-2.5">
+            {showLabels && (
+              <p className="px-2.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/25">
+                For you
+              </p>
+            )}
+            <div className="space-y-1">{footerItems.map(renderItem)}</div>
+          </div>
+        )}
 
         {/* Collapse toggle — desktop only */}
         <div className="hidden md:block border-t border-white/[0.07] p-2.5">

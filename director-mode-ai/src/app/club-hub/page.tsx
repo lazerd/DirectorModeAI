@@ -5,6 +5,17 @@ import ClubHubRoom, { type HubMsg } from '@/components/clubhub/ClubHubRoom';
 
 export const dynamic = 'force-dynamic';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INTENTIONALLY UNLINKED. As of the pre-launch nav restructure, /club-hub is no
+// longer reachable from the sidebar, the homepage, or the footer — a shared
+// cross-club room reads as dead space until there are enough directors in it to
+// keep a conversation alive. The route, its API and its cron are all left fully
+// intact and it still loads if you visit the URL directly.
+//
+// To put it back: add an entry to src/config/nav.ts. Nothing else is required.
+// Revisit once signup volume is high enough that the room won't be empty.
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Club Hub — the one shared, cross-club space. Every authenticated director sees
 // the same community room (contrast with the rest of the app, which is siloed
 // per club). Server component: auth-gate, fetch the initial message list via the
