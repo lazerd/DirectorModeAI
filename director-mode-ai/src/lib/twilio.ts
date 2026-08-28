@@ -5,6 +5,32 @@ const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const fromNumber = process.env.TWILIO_PHONE_NUMBER;
 
+/**
+ * Send through the Messaging Service, not the bare number.
+ *
+ * US A2P 10DLC registration attaches to the SERVICE. Traffic sent with a plain
+ * `from` number is unregistered traffic as far as the carriers are concerned
+ * and gets filtered with error 30034 — the campaign being approved changes
+ * nothing about that. This is the switch that makes an approved campaign
+ * actually apply, and the failure mode without it is silent: Twilio accepts the
+ * message, the carrier drops it.
+ *
+ * Falls back to `from` when unset so a deployment without the service
+ * configured still behaves exactly as it did before.
+ */
+const messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+
+/** Whichever sender this deployment is configured for, service first. */
+function sender(): { messagingServiceSid: string } | { from: string } {
+  if (messagingServiceSid) return { messagingServiceSid };
+  if (!fromNumber) {
+    throw new Error(
+      'No SMS sender configured — set TWILIO_MESSAGING_SERVICE_SID (preferred) or TWILIO_PHONE_NUMBER.',
+    );
+  }
+  return { from: fromNumber };
+}
+
 let client: ReturnType<typeof twilio> | null = null;
 function getClient() {
   if (!accountSid || !authToken) {
@@ -115,13 +141,10 @@ export async function sendSms(userId: string, to: string, body: string): Promise
     if (err instanceof CreditLimitError) throw err;
     throw err;
   }
-  if (!fromNumber) {
-    throw new Error('TWILIO_PHONE_NUMBER not set');
-  }
   try {
     const msg = await getClient().messages.create({
       body,
-      from: fromNumber,
+      ...sender(),
       to: number,
     });
     return { to: number, status: 'sent', sid: msg.sid };
@@ -147,14 +170,12 @@ export async function sendSmsBatch(userId: string, recipients: { phone: string; 
 
   const { overageCents } = await consumeSmsCredits(userId, valid.length);
 
-  if (!fromNumber) {
-    throw new Error('TWILIO_PHONE_NUMBER not set');
-  }
+  const from = sender();
   const c = getClient();
   const results: SmsResult[] = await Promise.all(
     valid.map(async (r) => {
       try {
-        const msg = await c.messages.create({ body: r.body, from: fromNumber, to: r.normalized });
+        const msg = await c.messages.create({ body: r.body, ...from, to: r.normalized });
         return { to: r.normalized, status: 'sent' as const, sid: msg.sid };
       } catch (err: any) {
         return {
