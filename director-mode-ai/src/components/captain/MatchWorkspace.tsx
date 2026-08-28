@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
+import { lineupAsText } from '@/lib/captain/lineupText';
 
 export type MatchPlayer = {
   id: string;
@@ -93,6 +94,11 @@ export default function MatchWorkspace({
   status,
   initialResults,
   withdrawals,
+  teamName,
+  opponent,
+  isHome,
+  location,
+  arrivalNote,
 }: {
   teamId: string;
   matchId: string;
@@ -110,6 +116,12 @@ export default function MatchWorkspace({
    * belongs to the person, not the seat they happened to be in.
    */
   withdrawals: { playerId: string; at: string; note: string | null }[];
+  /** Everything the shareable text needs to stand on its own outside the app. */
+  teamName: string;
+  opponent: string | null;
+  isHome: boolean;
+  location: string | null;
+  arrivalNote: string | null;
 }) {
   const router = useRouter();
   const withdrawn = new Map(withdrawals.map((w) => [w.playerId, w]));
@@ -130,6 +142,9 @@ export default function MatchWorkspace({
   const [pendingIds, setPendingIds] = useState<string[]>([]);
   const [smsBody, setSmsBody] = useState('');
   const [smsPreview, setSmsPreview] = useState<SmsPreview | null>(null);
+  /** The shareable text, once the captain has asked to see it. */
+  const [shareText, setShareText] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const [swapPick, setSwapPick] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
   const [rescheduling, setRescheduling] = useState(false);
   // datetime-local wants local wall-clock, not an ISO string with a zone.
@@ -297,6 +312,41 @@ export default function MatchWorkspace({
         }
       },
     );
+
+  /**
+   * The lineup as plain text, for pasting into the group chat the team actually
+   * reads. Built from what is on screen right now, so it matches the sheet even
+   * before it is saved.
+   */
+  const buildShareText = () =>
+    lineupAsText({
+      teamName,
+      matchAt,
+      opponent,
+      isHome,
+      location,
+      arrivalNote,
+      courts: courts.map((c) => ({
+        courtNumber: c.courtNumber,
+        courtType: c.courtType,
+        names: ([c.player1Id] as (string | null)[])
+          .concat(c.courtType === 'doubles' ? [c.player2Id] : [])
+          .map((id) => nameOf(id)),
+      })),
+    });
+
+  async function copyShareText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Clipboard access is refused in some browsers and every insecure
+      // context. The text is already on screen and selectable, so say that
+      // rather than pretending the copy worked.
+      setError('Could not reach the clipboard — select the text above and copy it by hand.');
+    }
+  }
 
   /**
    * Reorder the doubles courts by the pair's average WTN, lowest on court 1.
@@ -922,6 +972,19 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                 <button onClick={save} disabled={!!busy || !dirty} className={ghost}>
                   {busy === 'save' ? 'Saving…' : dirty ? 'Save draft' : 'Saved'}
                 </button>
+                {/* For the group chat the team already lives in. No API can post
+                    into a WhatsApp group somebody created, so hand the captain
+                    the message and let them paste it. */}
+                <button
+                  onClick={() => {
+                    setShareText(buildShareText());
+                    setCopied(false);
+                  }}
+                  disabled={!!busy}
+                  className={ghost}
+                >
+                  Copy for the group chat
+                </button>
                 <button onClick={previewLineup} disabled={!!busy || dirty} className={primary}>
                   {busy === 'send'
                     ? 'Opening…'
@@ -1012,6 +1075,37 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {shareText !== null && (
+          <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
+            <div className="flex items-baseline justify-between gap-3 flex-wrap">
+              <h3 className="text-white font-medium text-sm">Paste this into your group chat</h3>
+              <button
+                onClick={() => setShareText(null)}
+                className="text-white/35 hover:text-white text-xs"
+              >
+                close
+              </button>
+            </div>
+            <textarea
+              readOnly
+              value={shareText}
+              rows={Math.min(18, shareText.split('\n').length + 1)}
+              onFocus={(e) => e.currentTarget.select()}
+              style={{ color: '#ffffff' }}
+              className="mt-3 w-full px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-sm font-mono leading-relaxed focus:border-[#D3FB52]/50 focus:outline-none"
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button onClick={() => copyShareText(shareText)} className={primary}>
+                {copied ? 'Copied ✓' : 'Copy'}
+              </button>
+              <span className="text-white/35 text-xs">
+                No personal confirm links in here on purpose — anyone in a group could tap someone
+                else&rsquo;s. Confirming stays in their own email or text.
+              </span>
+            </div>
           </div>
         )}
 

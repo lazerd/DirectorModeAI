@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { repairWtnMirrors } from '@/lib/ratings/wtn';
 
 // Service-role client (bypasses RLS — this job is the system of record for
 // master_players). Resolved lazily through a proxy so merely importing this
@@ -331,6 +332,22 @@ export async function GET(request: NextRequest) {
     }),
     { processed: 0, matched: 0, created: 0 }
   );
+
+  /**
+   * Push the hub's WTN back out to every club-scoped copy that disagrees.
+   *
+   * The mirrors are best-effort at write time — a table briefly unavailable, a
+   * row linked to its person after the number was set, or a copy edited
+   * directly all leave a stale value behind. Running it here means those
+   * converge overnight instead of a captain finding two tools quoting different
+   * numbers for the same player. Only rows that actually differ are written.
+   */
+  try {
+    const mirrors = await repairWtnMirrors();
+    (results as Record<string, unknown>).wtn_mirrors = mirrors;
+  } catch (err: any) {
+    console.error('[sync-master-players] WTN mirror repair failed', err?.message);
+  }
 
   return NextResponse.json({
     ok: true,

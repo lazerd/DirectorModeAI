@@ -59,6 +59,8 @@ export default function AddVaultPlayerPage() {
     usta_rating: '',
     utr_singles: '',
     utr_doubles: '',
+    wtn: '',
+    wtn_doubles: '',
     utr_id: '',
     primary_sport: 'tennis',
     membership_status: 'active',
@@ -88,6 +90,8 @@ export default function AddVaultPlayerPage() {
         usta_rating: data.usta_rating?.toString() || '',
         utr_singles: data.utr_singles?.toString() || data.utr_rating?.toString() || '',
         utr_doubles: data.utr_doubles?.toString() || '',
+        wtn: data.wtn?.toString() || '',
+        wtn_doubles: data.wtn_doubles?.toString() || '',
         utr_id: data.utr_id || '',
         primary_sport: data.primary_sport || 'tennis',
         membership_status: data.membership_status || 'active',
@@ -164,12 +168,16 @@ export default function AddVaultPlayerPage() {
       usta_rating: form.usta_rating ? parseFloat(form.usta_rating) : null,
       utr_singles: form.utr_singles ? parseFloat(form.utr_singles) : null,
       utr_doubles: form.utr_doubles ? parseFloat(form.utr_doubles) : null,
+      wtn: form.wtn ? parseFloat(form.wtn) : null,
+      wtn_doubles: form.wtn_doubles ? parseFloat(form.wtn_doubles) : null,
       utr_id: form.utr_id || null,
       rating_source: form.utr_id ? 'utr_api' : 'manual',
       primary_sport: form.primary_sport,
       membership_status: form.membership_status,
       notes: form.notes || null,
     };
+
+    let savedId = editId;
 
     if (editId) {
       const { error: updateError } = await supabase
@@ -178,10 +186,38 @@ export default function AddVaultPlayerPage() {
         .eq('id', editId);
       if (updateError) { setError(updateError.message); setSaving(false); return; }
     } else {
-      const { error: insertError } = await supabase
+      const { data: inserted, error: insertError } = await supabase
         .from('cc_vault_players')
-        .insert(playerData);
+        .insert(playerData)
+        .select('id')
+        .maybeSingle();
       if (insertError) { setError(insertError.message); setSaving(false); return; }
+      savedId = (inserted as { id: string } | null)?.id ?? null;
+    }
+
+    /**
+     * A WTN describes the PLAYER, so it has to leave this table.
+     *
+     * The row above only updates this club's vault copy; this pushes the number
+     * up to master_players and back out to every other tool that knows this
+     * person — CaptainMode rosters, mixers, socials. Best-effort on purpose: the
+     * vault row is already saved, and failing to share the number must never
+     * look like failing to save it.
+     */
+    if (savedId && playerData.wtn != null) {
+      try {
+        await fetch('/api/ratings/wtn', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vault_player_id: savedId,
+            wtn: playerData.wtn,
+            wtn_doubles: playerData.wtn_doubles,
+          }),
+        });
+      } catch {
+        /* saved locally; the nightly repair pass reconciles it */
+      }
     }
 
     setSaving(false);
@@ -198,6 +234,8 @@ export default function AddVaultPlayerPage() {
         usta_rating: '',
         utr_singles: '',
         utr_doubles: '',
+        wtn: '',
+        wtn_doubles: '',
         utr_id: '',
         primary_sport: prev.primary_sport,
         membership_status: prev.membership_status,
@@ -425,6 +463,39 @@ export default function AddVaultPlayerPage() {
               value={form.utr_doubles}
               onChange={e => updateForm('utr_doubles', e.target.value)}
               placeholder="e.g. 7.20"
+            />
+          </div>
+          {/* WTN runs the OTHER WAY to everything above it — 40 is a beginner
+              and 1 is a pro — so both labels say so. Somebody typing an NTRP
+              here would be recorded as one of the strongest players alive. */}
+          <div>
+            <label className="label">
+              Singles WTN <span className="text-xs text-gray-400">(lower = stronger)</span>
+            </label>
+            <input
+              type="number"
+              className="input"
+              min={1}
+              max={40}
+              step={0.1}
+              value={form.wtn}
+              onChange={e => updateForm('wtn', e.target.value)}
+              placeholder="e.g. 18.4"
+            />
+          </div>
+          <div>
+            <label className="label">
+              Doubles WTN <span className="text-xs text-gray-400">(lower = stronger)</span>
+            </label>
+            <input
+              type="number"
+              className="input"
+              min={1}
+              max={40}
+              step={0.1}
+              value={form.wtn_doubles}
+              onChange={e => updateForm('wtn_doubles', e.target.value)}
+              placeholder="e.g. 17.9"
             />
           </div>
         </div>

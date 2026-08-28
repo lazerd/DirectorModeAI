@@ -144,6 +144,11 @@ export default async function MatchPage({
           won: (r.won as boolean) ?? null,
         }))}
         withdrawals={withdrawals}
+        teamName={team.name}
+        opponent={(match.opponent as string) || null}
+        isHome={!!match.is_home}
+        location={(match.location as string) || null}
+        arrivalNote={(match.arrival_note as string) || null}
       />
     </div>
   );

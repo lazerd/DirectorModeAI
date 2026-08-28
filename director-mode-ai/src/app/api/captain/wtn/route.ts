@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { parseWtnBlock, resolveWtn, rankByWtn } from '@/lib/captain/wtnPaste';
+import { setWtnForPerson } from '@/lib/ratings/wtn';
 
 const MAX_TEXT = 20000;
 
@@ -116,40 +117,33 @@ export async function POST(req: Request) {
    *
    * A World Tennis Number describes a player, not a membership of one team, so
    * a captain who pastes it here should never have to paste it again in
-   * PlayerVault, a mixer, or next season's roster. master_players is the
-   * identity hub every other tool already links to, so putting it there is what
-   * makes the number follow them around.
+   * PlayerVault, a mixer, or next season's roster. setWtnForPerson puts it on
+   * master_players and pushes a copy out to every club-scoped table linked to
+   * that person — the hub itself is RLS-locked to service_role, so the mirrors
+   * are how a browser ever gets to see it.
    *
-   * Best-effort: a roster row with no identity link yet (the nightly sync
-   * creates them) still gets its own copy above, and picks up the shared one on
-   * the next pass. Failing to reach the hub must never lose the paste the
-   * captain just confirmed.
+   * Best-effort: a roster row not yet linked to its person (the nightly sync
+   * creates the link) still gets its own copy above and joins the rest on the
+   * next pass. Failing to reach the hub must never lose the paste the captain
+   * has already confirmed.
    */
   const linked = res.matched
     .map((m) => ({ m, mpid: roster.find((p) => p.id === m.playerId)?.master_player_id }))
     .filter((x): x is { m: (typeof res.matched)[number]; mpid: string } => !!x.mpid);
 
   let sharedWith = 0;
-  if (linked.length) {
-    const hub = await Promise.all(
-      linked.map((x) =>
-        ctx.db
-          .from('master_players')
-          .update({
-            wtn: x.m.wtn,
-            ...(x.m.wtnDoubles != null ? { wtn_doubles: x.m.wtnDoubles } : {}),
-            wtn_updated_at: stamp,
-            wtn_source: 'usta_paste',
-            updated_at: stamp,
-          })
-          .eq('id', x.mpid),
-      ),
+  const shareErrors: string[] = [];
+  for (const { m, mpid } of linked) {
+    const out = await setWtnForPerson(
+      mpid,
+      { wtn: m.wtn, wtnDoubles: m.wtnDoubles },
+      'usta_paste',
     );
-    sharedWith = hub.filter((h) => !h.error).length;
-    const hubFailed = hub.find((h) => h.error);
-    if (hubFailed?.error) {
-      console.error('[captain/wtn] could not reach the identity hub', hubFailed.error.message);
-    }
+    if (out.errors.length) shareErrors.push(...out.errors);
+    else sharedWith += 1;
+  }
+  if (shareErrors.length) {
+    console.error('[captain/wtn] could not share every number', shareErrors);
   }
 
   let ranked = 0;

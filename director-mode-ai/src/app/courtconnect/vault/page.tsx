@@ -7,6 +7,16 @@ import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 
 import { originOr } from '@/lib/appUrl';
+import { doublesWtn, formatWtn } from '@/lib/ratings/wtn';
+
+/**
+ * The number to show for a player: their doubles WTN when they have one, else
+ * singles. Read through the shared helper so every surface in ClubMode picks
+ * the same one — and so an out-of-band value is ignored rather than displayed
+ * as if it were real.
+ */
+const wtnOf = (p: { wtn: number | null; wtn_doubles: number | null }) =>
+  doublesWtn({ wtn: p.wtn, wtn_doubles: p.wtn_doubles });
 const SPORTS = [
   { value: '', label: 'All Sports' },
   { value: 'tennis', label: 'Tennis' },
@@ -42,6 +52,9 @@ type VaultPlayer = {
   usta_rating: number | null;
   utr_singles: number | null;
   utr_doubles: number | null;
+  /** World Tennis Number — LOWER is stronger, the opposite way to NTRP and UTR. */
+  wtn: number | null;
+  wtn_doubles: number | null;
   primary_sport: string;
   membership_status: string;
   cc_player_id: string | null;
@@ -70,7 +83,9 @@ type SortKey =
   | 'utr_singles_desc'
   | 'utr_singles_asc'
   | 'utr_doubles_desc'
-  | 'utr_doubles_asc';
+  | 'utr_doubles_asc'
+  | 'wtn_asc'
+  | 'wtn_desc';
 
 const getLastName = (fullName: string): string => {
   const parts = fullName.trim().split(/\s+/);
@@ -185,7 +200,7 @@ export default function PlayerVaultPage() {
     .filter((m) => !m.email || !rosterEmails.has(m.email.toLowerCase()))
     .map((m) => ({
       id: `member:${m.userId}`, full_name: m.name, email: m.email, phone: null, gender: null, age: null,
-      usta_rating: null, utr_singles: null, utr_doubles: null, primary_sport: 'tennis',
+      usta_rating: null, utr_singles: null, utr_doubles: null, wtn: null, wtn_doubles: null, primary_sport: 'tennis',
       membership_status: 'active', cc_player_id: null, notes: null, created_at: '',
       _account: { userId: m.userId, role: m.role, isStaff: m.isStaff, isOwner: m.isOwner }, _memberOnly: true,
     }));
@@ -231,6 +246,13 @@ export default function PlayerVaultPage() {
         case 'utr_singles_asc':  return byNum(a.utr_singles, b.utr_singles, false);
         case 'utr_doubles_desc': return byNum(a.utr_doubles, b.utr_doubles, true);
         case 'utr_doubles_asc':  return byNum(a.utr_doubles, b.utr_doubles, false);
+        // WTN is inverted: the LOWEST number is the strongest player, so
+        // "strongest first" is ascending here where every other rating on this
+        // page is descending. byNum already sinks nulls to the bottom, which
+        // matters more on this scale — a missing number read as 0 would
+        // outrank a professional.
+        case 'wtn_asc':          return byNum(wtnOf(a), wtnOf(b), false);
+        case 'wtn_desc':         return byNum(wtnOf(a), wtnOf(b), true);
         default:                 return a.full_name.localeCompare(b.full_name);
       }
     });
@@ -367,6 +389,8 @@ export default function PlayerVaultPage() {
               <option value="utr_singles_asc">Singles UTR (low → high)</option>
               <option value="utr_doubles_desc">Doubles UTR (high → low)</option>
               <option value="utr_doubles_asc">Doubles UTR (low → high)</option>
+              <option value="wtn_asc">WTN (strongest first)</option>
+              <option value="wtn_desc">WTN (weakest first)</option>
             </optgroup>
             <optgroup label="Added">
               <option value="created_desc">Date added (newest first)</option>
@@ -446,6 +470,7 @@ export default function PlayerVaultPage() {
                 <th>NTRP</th>
                 <th>Singles UTR</th>
                 <th>Doubles UTR</th>
+                <th title="World Tennis Number — lower is stronger">WTN</th>
                 <th>Gender</th>
                 <th>Age</th>
                 <th>Access</th>
@@ -486,7 +511,9 @@ export default function PlayerVaultPage() {
                   </td>
                   <td className="text-sm">{player.usta_rating || '—'}</td>
                   <td className="text-sm">{player.utr_singles || '—'}</td>
-                  <td className="text-sm">{player.utr_doubles || '—'}</td>
+                  <td className="text-sm" title="World Tennis Number — lower is stronger">
+                    {formatWtn(wtnOf(player))}
+                  </td>
                   <td className="text-sm text-gray-500">{genderLabel(player.gender)}</td>
                   <td className="text-sm text-gray-500">{player.age || '—'}</td>
                   <td onClick={e => e.stopPropagation()}>
