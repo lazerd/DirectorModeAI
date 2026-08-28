@@ -8,6 +8,9 @@ import {
   ShieldCheck,
   Check,
 } from 'lucide-react';
+import {
+  PRO_PRICE_USD, FOUNDING_PRICE_USD, FOUNDING_CLUB_LIMIT, FOUNDING_LOCK_MONTHS,
+} from '@/config/pricing';
 
 const FREE_FEATURES = [
   'Unlimited events, round robins, leagues & JTT',
@@ -50,11 +53,11 @@ export default function PricingPage() {
       {/* Hero */}
       <section className="max-w-3xl mx-auto px-6 pt-16 pb-8 text-center">
         <div className="inline-flex items-center gap-2 text-xs font-medium text-yellow-300/90 bg-yellow-300/10 border border-yellow-300/20 rounded-full px-3 py-1">
-          <Sparkles size={13} /> Founding pricing — first 25 clubs
+          <Sparkles size={13} /> Founding pricing — first {FOUNDING_CLUB_LIMIT} clubs
         </div>
         <h1 className="mt-5 font-display text-4xl md:text-5xl tracking-tight">
           Free to run your club.{' '}
-          <span className="text-yellow-300">$49/mo when you want to reach everyone.</span>
+          <span className="text-yellow-300">${PRO_PRICE_USD}/mo when you want to reach everyone.</span>
         </h1>
         <p className="mt-4 text-white/60 max-w-xl mx-auto">
           Every tool to run your racquet-sports club in one login. Start free, run your whole
@@ -94,11 +97,12 @@ export default function PricingPage() {
             </div>
             <div className="font-display text-xl">ClubMode Pro</div>
             <div className="mt-2 flex items-baseline gap-1">
-              <span className="font-display text-4xl">$49</span>
+              <span className="font-display text-4xl">${PRO_PRICE_USD}</span>
               <span className="text-white/40 text-sm">/ month</span>
             </div>
             <p className="mt-2 text-white/50 text-sm">
-              Founding pricing — first 25 clubs. $25/month, locked for 24 months. Included
+              Founding pricing — first {FOUNDING_CLUB_LIMIT} clubs. ${FOUNDING_PRICE_USD}/month, locked for{' '}
+              {FOUNDING_LOCK_MONTHS} months. Included
               texts and emails are covered at that rate; overage rates may change with
               30 days&apos; notice.
             </p>

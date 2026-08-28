@@ -1,4 +1,5 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import { INCLUDED_TEXTS, TEXT_OVERAGE_CENTS } from '@/config/pricing';
 
 export type PlanTier = 'free' | 'pro';
 export type RawPlanTier = PlanTier | 'grandfathered';
@@ -51,11 +52,11 @@ export const FOUNDING_LABEL = 'Founding club — everything unlocked';
  */
 export const TIER_LIMITS = {
   free: { emails: 500, sms: 0, photos_per_event: 5, vault_size: 500 },
-  pro: { emails: 5000, sms: 300, photos_per_event: -1, vault_size: -1 },
+  pro: { emails: 5000, sms: INCLUDED_TEXTS, photos_per_event: -1, vault_size: -1 },
 } as const;
 
 /** Pro SMS overage, in cents, once the included allowance is spent. */
-export const SMS_OVERAGE_CENTS = 2;
+export const SMS_OVERAGE_CENTS = TEXT_OVERAGE_CENTS;
 
 const PRO_FEATURES: ReadonlyArray<Feature> = [
   'dj_console',
