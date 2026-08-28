@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import ProductShowcase from "@/components/shared/ProductShowcase";
+import { PRODUCTS, PRODUCT_COUNT, SECTIONS, FOR_PLAYERS, FOR_YOU, ALL_TOOLS_ITEM, type Tool } from "@/config/nav";
 
 import { APP_HOST } from '@/lib/appUrl';
 export default function HomePage() {
@@ -86,99 +87,13 @@ export default function HomePage() {
     router.push('/find-coach');
   };
 
-  const tools = [
-    {
-      name: "CourtSheet AI",
-      tag: "COURTS",
-      description: "The live grid of every court reservation across the club. Type or speak a command to book, move, or block.",
-      icon: LayoutGrid,
-      color: "text-cyan-400",
-      bg: "bg-cyan-400/10",
-      tagColor: "bg-cyan-400/10 text-cyan-400",
-      onClick: () => goToTool("/courtsheet/staff"),
-    },
-    {
-      name: "Leagues & JTT",
-      tag: "LEAGUES",
-      badge: "NEW",
-      description: "Run full team leagues and Junior Team Tennis — strength-ordered rosters, auto-laddering, two-site match days, and magic-link coach scoring.",
-      icon: Trophy,
-      color: "text-[#D3FB52]",
-      bg: "bg-[#D3FB52]/10",
-      tagColor: "bg-[#D3FB52]/10 text-[#D3FB52]",
-      onClick: () => goToTool("/mixer/leagues"),
-    },
-    {
-      name: "MixerMode AI",
-      tag: "EVENTS",
-      description: "Round robins, balanced team generation, tournaments and quads — live scores and standings across every format.",
-      icon: Shuffle,
-      color: "text-orange-400",
-      bg: "bg-orange-400/10",
-      tagColor: "bg-orange-400/10 text-orange-400",
-      onClick: () => goToTool("/mixer/home"),
-    },
-    {
-      name: "LastMinuteLesson",
-      tag: "LESSONS",
-      description: "Post open lesson slots, notify clients instantly, and let them book in one tap.",
-      icon: Clock,
-      color: "text-blue-400",
-      bg: "bg-blue-400/10",
-      tagColor: "bg-blue-400/10 text-blue-400",
-      onClick: goToLessons,
-    },
-    {
-      name: "StringingMode AI",
-      tag: "PRO SHOP",
-      description: "AI string recommendations, job tracking from drop-off to pickup, customer history, and inventory.",
-      icon: Wrench,
-      color: "text-pink-400",
-      bg: "bg-pink-400/10",
-      tagColor: "bg-pink-400/10 text-pink-400",
-      onClick: () => goToTool("/stringing/jobs"),
-    },
-    {
-      name: "CourtConnect",
-      tag: "PLAYERS",
-      description: "Match players by skill level, create events, and manage RSVPs with automatic waitlists.",
-      icon: Users,
-      color: "text-emerald-400",
-      bg: "bg-emerald-400/10",
-      tagColor: "bg-emerald-400/10 text-emerald-400",
-      onClick: () => goToTool("/courtconnect/home"),
-    },
-    {
-      name: "PlayerVault",
-      tag: "ROSTER",
-      description: "Club roster CRM with NTRP/UTR ratings, UTR auto-lookup, and bulk CourtConnect import.",
-      icon: Database,
-      color: "text-teal-400",
-      bg: "bg-teal-400/10",
-      tagColor: "bg-teal-400/10 text-teal-400",
-      onClick: () => goToTool("/courtconnect/vault"),
-    },
-    {
-      name: "SwimMode",
-      tag: "SWIM TEAM",
-      description: "Volunteer points tracker for swim team leads — define jobs, track family points all season, CSV in and out.",
-      icon: Waves,
-      color: "text-sky-400",
-      bg: "bg-sky-400/10",
-      tagColor: "bg-sky-400/10 text-sky-400",
-      onClick: () => goToTool("/swim"),
-    },
-    {
-      name: "Coach Mode",
-      tag: "DEVELOPMENT",
-      description: "Track each player's development over time and get an AI summary after every lesson.",
-      icon: GraduationCap,
-      color: "text-violet-400",
-      bg: "bg-violet-400/10",
-      tagColor: "bg-violet-400/10 text-violet-400",
-      onClick: () => goToTool("/lessons/recap"),
-    },
-  ];
+  // The toolkit grid renders THE canonical product list — same list the hero
+  // counter, the footer and /tools read. Adding a tool in src/config/nav.ts adds
+  // it here automatically; there is no local array to fall out of sync.
+  // LastMinuteLesson keeps its bespoke handler: it routes coach vs client vs
+  // neither after a lookup, which a plain href can't do.
+  const openTool = (t: Tool) =>
+    t.href === '/lessons/dashboard' ? goToLessons() : goToTool(t.href);
 
   return (
     <div className="min-h-screen bg-[#001820] text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -291,7 +206,7 @@ export default function HomePage() {
 
             {/* Stat strip */}
             <div className="hm-fade-up grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-5 max-w-lg mx-auto lg:mx-0" style={{ animationDelay: "0.24s" }}>
-              <HeroStat value="9" label="connected tools" />
+              <HeroStat value={String(PRODUCT_COUNT)} label="connected tools" />
               <HeroStat value="4" label="event formats" />
               <HeroStat value="All" label="racquet sports" />
               <HeroStat value="0" label="spreadsheets" />
@@ -501,25 +416,25 @@ export default function HomePage() {
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-            {tools.map((tool: any) => {
+            {PRODUCTS.map((tool) => {
               const Icon = tool.icon;
-              const CardTag = tool.external ? 'a' : 'div';
-              const cardProps = tool.external
-                ? { href: tool.href, target: "_blank", rel: "noopener noreferrer" }
-                : { onClick: tool.onClick };
-
               return (
-                <CardTag
-                  key={tool.name}
-                  {...(cardProps as any)}
+                <div
+                  key={tool.href}
+                  onClick={() => openTool(tool)}
                   className="group relative bg-white/[0.03] border border-white/[0.07] rounded-2xl p-6 sm:p-7 cursor-pointer
                     hover:bg-white/[0.06] hover:border-white/[0.14] hover:shadow-2xl hover:shadow-black/30 hover:-translate-y-1
                     transition-all duration-300 overflow-hidden"
                 >
                   <div aria-hidden className="absolute -right-10 -top-10 w-28 h-28 rounded-full bg-white/[0.02] group-hover:bg-white/[0.04] blur-2xl transition-colors" />
                   <div className="relative flex items-start justify-between mb-5">
-                    <div className={`w-12 h-12 ${tool.bg} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                      <Icon className={tool.color} size={22} />
+                    {/* Colors come from the config as hex and are applied inline:
+                        Tailwind cannot JIT a class name built at runtime. */}
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform"
+                      style={{ background: `${tool.color}1a` }}
+                    >
+                      <Icon size={22} style={{ color: tool.color }} />
                     </div>
                     <div className="flex items-center gap-2">
                       {tool.badge && (
@@ -527,21 +442,25 @@ export default function HomePage() {
                           {tool.badge}
                         </span>
                       )}
-                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${tool.tagColor}`}>
-                        {tool.tag}
-                      </span>
+                      {tool.tag && (
+                        <span
+                          className="px-3 py-1 rounded-full text-xs font-semibold"
+                          style={{ background: `${tool.color}1a`, color: tool.color }}
+                        >
+                          {tool.tag}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <h3 className="relative text-xl font-bold mb-2 tracking-tight">{tool.name}</h3>
-                  <p className="relative text-white/50 text-sm leading-relaxed mb-5">{tool.description}</p>
-                  <div className={`relative flex items-center gap-2 text-sm font-semibold ${tool.color} group-hover:gap-3 transition-all`}>
-                    {tool.external ? (
-                      <>Visit Site <ExternalLink size={14} /></>
-                    ) : (
-                      <>{user ? "Open Tool" : "Get Started"} <ArrowRight size={14} /></>
-                    )}
+                  <p className="relative text-white/50 text-sm leading-relaxed mb-5">{tool.pitch ?? tool.description}</p>
+                  <div
+                    className="relative flex items-center gap-2 text-sm font-semibold group-hover:gap-3 transition-all"
+                    style={{ color: tool.color }}
+                  >
+                    {user ? "Open Tool" : "Get Started"} <ArrowRight size={14} />
                   </div>
-                </CardTag>
+                </div>
               );
             })}
           </div>
@@ -822,30 +741,37 @@ export default function HomePage() {
                 The complete platform for racquet sports clubs, coaches, and directors — courts, leagues, lessons, and more in one login.
               </p>
             </div>
+            {/* All three columns render from src/config/nav.ts. There is no
+                hand-kept list here to drift out of sync with the nav or /tools. */}
             <div>
               <h4 className="font-semibold text-sm mb-3 text-white/70">Run the club</h4>
               <ul className="space-y-2 text-sm text-white/40">
-                <li><button onClick={() => goToTool("/run/courts")} className="hover:text-white transition-colors">Courts</button></li>
-                <li><button onClick={() => goToTool("/run/programs")} className="hover:text-white transition-colors">Programs</button></li>
-                <li><button onClick={() => goToTool("/run/members")} className="hover:text-white transition-colors">Members</button></li>
-                <li><button onClick={() => goToTool("/run/coaching")} className="hover:text-white transition-colors">Coaching</button></li>
-                <li><button onClick={() => goToTool("/run/pro-shop")} className="hover:text-white transition-colors">Pro shop</button></li>
-                <li><button onClick={() => goToTool("/run/tools")} className="hover:text-white transition-colors">All tools</button></li>
+                {SECTIONS.map((s) => (
+                  <li key={s.href}>
+                    <button onClick={() => goToTool(s.href)} className="hover:text-white transition-colors">{s.label}</button>
+                  </li>
+                ))}
+                <li>
+                  <button onClick={() => goToTool(ALL_TOOLS_ITEM.href)} className="hover:text-white transition-colors">
+                    {ALL_TOOLS_ITEM.label}
+                  </button>
+                </li>
               </ul>
             </div>
             <div>
               <h4 className="font-semibold text-sm mb-3 text-white/70">For players</h4>
               <ul className="space-y-2 text-sm text-white/40">
-                <li><Link href="/client/dashboard" className="hover:text-white transition-colors">My account</Link></li>
-                <li><Link href="/courtconnect/events" className="hover:text-white transition-colors">Events</Link></li>
-                <li><Link href="/find-coach" className="hover:text-white transition-colors">Find a coach</Link></li>
+                {FOR_PLAYERS.map((t) => (
+                  <li key={t.href}><Link href={t.href} className="hover:text-white transition-colors">{t.name}</Link></li>
+                ))}
               </ul>
             </div>
             <div>
               <h4 className="font-semibold text-sm mb-3 text-white/70">For you</h4>
               <ul className="space-y-2 text-sm text-white/40">
-                <li><Link href="/benchmarks" className="hover:text-white transition-colors">Benchmarks</Link></li>
-                <li><Link href="/connect" className="hover:text-white transition-colors">Recruiting</Link></li>
+                {FOR_YOU.map((t) => (
+                  <li key={t.href}><Link href={t.href} className="hover:text-white transition-colors">{t.name}</Link></li>
+                ))}
               </ul>
             </div>
             <div className="md:hidden col-span-2">

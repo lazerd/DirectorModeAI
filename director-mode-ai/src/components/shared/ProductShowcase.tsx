@@ -7,6 +7,18 @@ import {
 } from 'lucide-react';
 
 import { APP_HOST } from '@/lib/appUrl';
+
+/**
+ * A CURATED DEMO CAROUSEL — NOT the product list.
+ *
+ * Each entry here carries bespoke mock UI (fake roster rows, fake event cards)
+ * to show a product in motion, so it only covers the handful that have a demo
+ * built. It is intentionally a subset and must never be used to count tools or
+ * to decide what ClubMode offers.
+ *
+ * The canonical list is PRODUCTS in src/config/nav.ts, which drives the hero
+ * counter, the toolkit grid, the footer and /tools.
+ */
 const FEATURES = [
   {
     id: 'courtsheet',

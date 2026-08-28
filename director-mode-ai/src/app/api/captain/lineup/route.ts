@@ -22,6 +22,7 @@ import {
   type RatingType,
 } from '@/lib/captain/lineup';
 import { resolveAvailability } from '@/lib/captain/availability';
+import { answersByPlayer, rowsWithAnswers, answerTally } from '@/lib/captain/lineupSave';
 import { lineupEmail, sendAll, type LineupRow, type MatchInfo } from '@/lib/captain/emails';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
@@ -267,21 +268,31 @@ export async function POST(req: Request) {
   // -------------------------------------------------------------------- save
   if (body.action === 'save') {
     const courts = body.courts || [];
+
+    /**
+     * Saving is a delete-and-reinsert, so every answer a player has given about
+     * this match has to be carried across by hand or it is destroyed. See
+     * lineupSave.ts for the rule and what it cost the first time it was missed.
+     */
+    const { data: previous } = await db
+      .from('captain_lineups')
+      .select(
+        'player1_id, player2_id, player1_confirmed_at, player2_confirmed_at, player1_confirmed_source, player2_confirmed_source, player1_declined_at, player2_declined_at, player1_decline_note, player2_decline_note',
+      )
+      .eq('match_id', body.match_id);
+
+    const answers = answersByPlayer((previous as Record<string, unknown>[]) || []);
+    const { kept, dropped } = answerTally(courts, answers);
+
     await db.from('captain_lineups').delete().eq('match_id', body.match_id);
     if (courts.length) {
-      const { error } = await db.from('captain_lineups').insert(
-        courts.map((c) => ({
-          team_id: teamId,
-          match_id: body.match_id,
-          court_number: c.courtNumber,
-          court_type: c.courtType,
-          player1_id: c.player1Id,
-          player2_id: c.player2Id,
-        })),
-      );
+      const { error } = await db
+        .from('captain_lineups')
+        .insert(rowsWithAnswers(courts, answers, { team_id: teamId, match_id: body.match_id }));
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    return NextResponse.json({ ok: true, saved: courts.length });
+
+    return NextResponse.json({ ok: true, saved: courts.length, kept, dropped });
   }
 
   // -------------------------------------------------------------------- send

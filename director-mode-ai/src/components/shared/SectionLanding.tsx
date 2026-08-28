@@ -69,7 +69,7 @@ export function SectionShell({
 
         <div className="mt-12 border-t border-white/[0.07] pt-6">
           <Link
-            href="/run/tools"
+            href="/tools"
             className="inline-flex items-center gap-1.5 text-[13.5px] font-medium text-white/40 transition-colors hover:text-white"
           >
             See all tools <ArrowRight size={14} />

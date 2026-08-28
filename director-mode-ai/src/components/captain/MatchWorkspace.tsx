@@ -126,9 +126,8 @@ export default function MatchWorkspace({
   const [preview, setPreview] = useState<EmailPreview | null>(null);
   const [pendingOnlyMissing, setPendingOnlyMissing] = useState(false);
   const [previewKind, setPreviewKind] = useState<'poll' | 'lineup' | 'lineup-targeted'>('poll');
-  /** Who the next targeted email or text goes to. Empty = nobody picked yet. */
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [smsOpen, setSmsOpen] = useState(false);
+  /** Who the open preview is addressed to — set when it opens, used when it sends. */
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
   const [smsBody, setSmsBody] = useState('');
   const [smsPreview, setSmsPreview] = useState<SmsPreview | null>(null);
   const [swapPick, setSwapPick] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
@@ -200,46 +199,40 @@ export default function MatchWorkspace({
 
   // ---------------------------------------------------------- reaching people
   /**
-   * Everything below is about talking to SOME of the team rather than all of it.
+   * Talking to SOME of the team rather than all of it.
    *
    * Re-mailing 23 people every time one player is swapped in is how a team
    * learns to stop opening these emails, and by the time it matters the lineup
-   * email is just another thing nobody reads. So: pick who, then send.
+   * email is just another thing nobody reads. Every one of these sends is
+   * addressed to named players and shows the real email first.
+   *
+   * `pending` holds who the open preview is for, so confirming the send does
+   * not have to re-derive it.
    */
-  const selectedNames = namedInLineup.filter((p) => selected.has(p.playerId)).map((p) => p.name);
-  const selectedIds = [...selected];
+  const waiting = namedInLineup.filter((p) => p.state === 'waiting');
 
-  const toggle = (playerId: string) =>
-    setSelected((s) => {
-      const next = new Set(s);
-      if (next.has(playerId)) next.delete(playerId);
-      else next.add(playerId);
-      return next;
-    });
-
-  const selectWaiting = () =>
-    setSelected(new Set(namedInLineup.filter((p) => p.state === 'waiting').map((p) => p.playerId)));
-
-  /** Preview the real lineup email, addressed only to the people ticked. */
-  const previewTargeted = () =>
-    call(
+  /** Preview the real lineup email, addressed only to these players. */
+  const previewLineupFor = (ids: string[]) => {
+    setPendingIds(ids);
+    return call(
       'send-some',
       '/api/captain/timeline/send',
-      { team_id: teamId, match_id: matchId, kind: 'lineup', preview: true, player_ids: selectedIds },
+      { team_id: teamId, match_id: matchId, kind: 'lineup', preview: true, player_ids: ids },
       (j) => {
         setPreviewKind('lineup-targeted');
         setPreview(j as unknown as EmailPreview);
       },
     );
+  };
 
   const confirmSendTargeted = () =>
     call(
       'send-some',
       '/api/captain/timeline/send',
-      { team_id: teamId, match_id: matchId, kind: 'lineup', player_ids: selectedIds },
+      { team_id: teamId, match_id: matchId, kind: 'lineup', player_ids: pendingIds },
       async (j) => {
         setPreview(null);
-        setSelected(new Set());
+        setPendingIds([]);
         setNote(
           `Lineup emailed to ${j.sent as number} ${
             (j.sent as number) === 1 ? 'player' : 'players'
@@ -267,21 +260,24 @@ export default function MatchWorkspace({
       },
     );
 
-  const previewText = () =>
-    call(
+  const openText = (ids: string[], body: string) => {
+    setPendingIds(ids);
+    setSmsBody(body);
+    setSmsPreview(null);
+    return call(
       'text',
       '/api/captain/text',
-      { team_id: teamId, match_id: matchId, player_ids: selectedIds, body: smsBody, preview: true },
+      { team_id: teamId, match_id: matchId, player_ids: ids, body, preview: true },
       (j) => setSmsPreview(j as unknown as SmsPreview),
     );
+  };
 
   const confirmSendText = () =>
     call(
       'text',
       '/api/captain/text',
-      { team_id: teamId, match_id: matchId, player_ids: selectedIds, body: smsBody },
+      { team_id: teamId, match_id: matchId, player_ids: pendingIds, body: smsBody },
       (j) => {
-        setSmsPreview(null);
         const failures = (
           j.report as { name: string; ok: boolean; reason: string | null }[]
         ).filter((r) => !r.ok);
@@ -295,9 +291,8 @@ export default function MatchWorkspace({
               .join('; ')}`,
           );
         } else {
-          setSelected(new Set());
-          setSmsOpen(false);
-          setSmsBody('');
+          setSmsPreview(null);
+          setPendingIds([]);
           setNote(`Texted ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`);
         }
       },
@@ -731,6 +726,54 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
 
   return (
     <div className="mt-8 space-y-8">
+      {/* A text costs money and cannot be unsent, so it gets the same
+          see-it-first treatment as every email in CaptainMode. */}
+      {smsPreview && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-6"
+          onClick={() => busy !== 'text' && setSmsPreview(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-[#002838] border border-white/10 p-5"
+          >
+            <div className="text-xs uppercase tracking-wider text-[#D3FB52] font-semibold">
+              Preview — nothing has been sent
+            </div>
+            <p className="text-white/50 text-sm mt-2">
+              To {smsPreview.recipients.map((r) => r.name).join(', ') || 'nobody'} ·{' '}
+              {smsPreview.segments} segment{smsPreview.segments === 1 ? '' : 's'}
+            </p>
+            <div className="mt-3 rounded-xl bg-[#D3FB52]/10 border border-[#D3FB52]/20 p-3 text-white text-sm whitespace-pre-wrap">
+              {smsPreview.body}
+            </div>
+            {smsPreview.noPhone.length > 0 && (
+              <p className="text-amber-300/80 text-xs mt-3">
+                No mobile number for {smsPreview.noPhone.join(', ')} — add one on the roster.
+              </p>
+            )}
+            <div className="mt-4 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setSmsPreview(null)}
+                disabled={busy === 'text'}
+                className="px-4 py-2.5 rounded-xl text-white/70 hover:text-white disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmSendText}
+                disabled={busy === 'text' || smsPreview.count === 0}
+                className="px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold disabled:opacity-50"
+              >
+                {busy === 'text'
+                  ? 'Sending…'
+                  : `Send to ${smsPreview.count} ${smsPreview.count === 1 ? 'number' : 'numbers'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <EmailPreviewModal
         preview={preview}
         sending={busy === 'poll' || busy === 'send' || busy === 'send-some'}
@@ -886,6 +929,24 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                   : 'Saved draft — no player has seen this.'}
             </div>
 
+            {lineupSent && namedInLineup.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
+                <span className="text-white/60">
+                  {confirmedNames.length} of {namedInLineup.length} confirmed
+                  {waiting.length > 0 && ` · waiting on ${waiting.map((w) => w.name).join(', ')}`}
+                </span>
+                {waiting.length > 0 && (
+                  <button
+                    onClick={() => previewLineupFor(waiting.map((w) => w.playerId))}
+                    disabled={!!busy || dirty}
+                    className="text-xs text-[#D3FB52]/80 hover:text-[#D3FB52] underline disabled:opacity-30 disabled:no-underline"
+                  >
+                    email the {waiting.length} who haven&rsquo;t
+                  </button>
+                )}
+              </div>
+            )}
+
             {!lineupSent && (
               <div className="text-white/60 text-sm mt-2">
                 Generating, editing and saving never email anyone. The only things that do are the
@@ -972,248 +1033,10 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         {/* Who has actually answered the lineup email.
             This used to be one grey word next to each dropdown, which a captain
             reported as "I know Stef clicked yes but I can't see it anywhere". */}
-        {namedInLineup.length > 0 && (
-          <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
-            <div className="flex items-baseline justify-between gap-3 flex-wrap">
-              <h3 className="text-white font-medium text-sm">
-                {lineupSent ? 'Who has answered the lineup email' : 'Who is in this lineup'}
-              </h3>
-              <div className="flex items-baseline gap-3">
-                <span className="text-white/45 text-xs">
-                  {confirmedNames.length} of {namedInLineup.length} confirmed
-                </span>
-                {waitingNames.length > 0 && (
-                  <button
-                    onClick={selectWaiting}
-                    className="text-xs text-[#D3FB52]/80 hover:text-[#D3FB52] underline"
-                  >
-                    tick the {waitingNames.length} still waiting
-                  </button>
-                )}
-              </div>
-            </div>
-
-            <p className="text-white/35 text-xs mt-2">
-              Tick anyone to email or text just them. A confirmation they gave you by text or in
-              person can be recorded here — the roll-call is only useful if it matches what you
-              actually know.
-            </p>
-
-            <div className="mt-3 grid gap-1">
-              {namedInLineup.map((p) => {
-                const picked = selected.has(p.playerId);
-                const working = busy === `confirm-${p.playerId}`;
-                return (
-                  <div
-                    key={p.playerId}
-                    className={`rounded-lg px-2 py-1.5 ${picked ? 'bg-[#D3FB52]/[0.07]' : ''}`}
-                  >
-                    <div className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={picked}
-                        onChange={() => toggle(p.playerId)}
-                        aria-label={`Pick ${p.name} to contact`}
-                        className="w-4 h-4 shrink-0"
-                      />
-                      <span
-                        className={
-                          p.state === 'in'
-                            ? 'text-[#D3FB52]'
-                            : p.state === 'out'
-                              ? 'text-red-400'
-                              : 'text-white/25'
-                        }
-                      >
-                        {p.state === 'in' ? '✓' : p.state === 'out' ? '✗' : '·'}
-                      </span>
-                      <span
-                        className={p.state === 'out' ? 'text-white/45 line-through' : 'text-white/85'}
-                      >
-                        {p.name}
-                      </span>
-                      <span className="text-white/30 text-xs">{p.court}</span>
-                      <span className="ml-auto text-xs text-white/40 text-right">
-                        {p.state === 'in'
-                          ? `confirmed ${fmtWhen(p.at as string)}${p.byCaptain ? ' · by you' : ''}`
-                          : p.state === 'out'
-                            ? `pulled out ${fmtWhen(p.at as string)}`
-                            : 'no answer yet'}
-                      </span>
-                    </div>
-
-                    {/* One row of ways to reach this person. mailto: and sms:
-                        open the captain's own apps and cost nothing — they work
-                        whether or not texting is switched on in ClubMode. */}
-                    <div className="flex flex-wrap items-center gap-3 pl-8 mt-1 text-xs">
-                      {p.email && (
-                        <a
-                          href={`mailto:${p.email}?subject=${encodeURIComponent(
-                            `${p.court} — ${fmtWhen(matchAt)}`,
-                          )}`}
-                          className="text-white/40 hover:text-white underline"
-                        >
-                          email
-                        </a>
-                      )}
-                      {p.phone && (
-                        <>
-                          <a
-                            href={`sms:${p.phone.replace(/[^\d+]/g, '')}`}
-                            className="text-white/40 hover:text-white underline"
-                          >
-                            text from my phone
-                          </a>
-                          <a
-                            href={`tel:${p.phone.replace(/[^\d+]/g, '')}`}
-                            className="text-white/40 hover:text-white underline"
-                          >
-                            call
-                          </a>
-                        </>
-                      )}
-                      {!p.phone && (
-                        <span className="text-white/20">no mobile on the roster</span>
-                      )}
-                      {p.state === 'waiting' ? (
-                        <button
-                          onClick={() => recordAnswer(p.playerId, 'in')}
-                          disabled={!!busy}
-                          className="text-[#D3FB52]/80 hover:text-[#D3FB52] underline disabled:opacity-40"
-                        >
-                          {working ? 'saving…' : 'she told me yes — mark confirmed'}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => recordAnswer(p.playerId, 'clear')}
-                          disabled={!!busy}
-                          className="text-white/30 hover:text-white underline disabled:opacity-40"
-                        >
-                          {working ? 'saving…' : 'undo'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {waitingNames.length > 0 && (
-              <p className="text-white/35 text-xs mt-3">
-                Still waiting on {waitingNames.join(', ')}.
-              </p>
-            )}
-
-            {/* --------------------------------------- act on who is ticked */}
-            {selected.size > 0 && (
-              <div className="mt-4 pt-4 border-t border-white/[0.08]">
-                <div className="text-white/70 text-sm">
-                  {selectedNames.length === 1
-                    ? `${selectedNames[0]} only.`
-                    : `${selectedNames.length} picked: ${selectedNames.join(', ')}.`}{' '}
-                  <button
-                    onClick={() => setSelected(new Set())}
-                    className="text-white/35 hover:text-white underline text-xs"
-                  >
-                    clear
-                  </button>
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    onClick={previewTargeted}
-                    disabled={!!busy || dirty}
-                    title={
-                      dirty
-                        ? 'Save the lineup first — otherwise the email would show the old one.'
-                        : undefined
-                    }
-                    className={primary}
-                  >
-                    {busy === 'send-some'
-                      ? 'Opening…'
-                      : `Preview & email the lineup to ${selected.size === 1 ? 'her' : `these ${selected.size}`}`}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSmsOpen((v) => !v);
-                      if (!smsBody) {
-                        const one = namedInLineup.find((x) => x.playerId === selectedIds[0]);
-                        setSmsBody(
-                          selected.size === 1 && one
-                            ? `${one.name.split(' ')[0]} — you're on ${one.court} for ${fmtWhen(matchAt)}. Can you confirm?`
-                            : `Lineup for ${fmtWhen(matchAt)} is up — please confirm.`,
-                        );
-                      }
-                    }}
-                    disabled={!!busy}
-                    className={ghost}
-                  >
-                    {smsOpen ? 'Cancel text' : 'Text them from ClubMode'}
-                  </button>
-                </div>
-
-                {dirty && (
-                  <p className="text-amber-300/70 text-xs mt-2">
-                    Save the lineup first — an email sent now would show the version you have
-                    already changed.
-                  </p>
-                )}
-
-                {smsOpen && (
-                  <div className="mt-3 rounded-xl border border-white/10 bg-[#001820] p-3">
-                    <label htmlFor="sms-body" className="block text-xs text-white/50 mb-1">
-                      Message ({smsBody.length}/320 · {Math.max(1, Math.ceil(smsBody.length / 160))}{' '}
-                      segment{smsBody.length > 160 ? 's' : ''})
-                    </label>
-                    <textarea
-                      id="sms-body"
-                      rows={3}
-                      maxLength={320}
-                      value={smsBody}
-                      onChange={(e) => {
-                        setSmsBody(e.target.value);
-                        setSmsPreview(null);
-                      }}
-                      style={{ color: '#ffffff' }}
-                      className="w-full px-3 py-2 rounded-lg bg-[#002838] border border-white/10 placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none text-sm"
-                    />
-                    <div className="mt-2 flex flex-wrap items-center gap-3">
-                      <button
-                        onClick={previewText}
-                        disabled={!!busy || !smsBody.trim()}
-                        className={ghost}
-                      >
-                        {busy === 'text' && !smsPreview ? 'Checking…' : 'Preview'}
-                      </button>
-                      {smsPreview && (
-                        <button onClick={confirmSendText} disabled={!!busy} className={primary}>
-                          {busy === 'text'
-                            ? 'Sending…'
-                            : `Send to ${smsPreview.count} ${smsPreview.count === 1 ? 'number' : 'numbers'}`}
-                        </button>
-                      )}
-                    </div>
-                    {smsPreview && (
-                      <div className="mt-3 text-xs text-white/50 space-y-1">
-                        <div>
-                          To: {smsPreview.recipients.map((r) => `${r.name} ${r.phone}`).join(', ')}
-                        </div>
-                        {smsPreview.noPhone.length > 0 && (
-                          <div className="text-amber-300/80">
-                            No mobile number for {smsPreview.noPhone.join(', ')} — add one on the
-                            roster, or use their email.
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
+        {/* The roll-call used to live here as its own list. It was a second copy
+            of the lineup a captain had to keep in their head alongside the real
+            one, so it now lives ON each court instead — who confirmed, and every
+            way to chase them, next to the person's name. */}
         {/* Loud, because a bail after the lineup went out is the thing a captain
             most needs to act on and it arrives while they aren't looking. */}
         {bailedInLineup.length > 0 && (
@@ -1312,7 +1135,13 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                   .filter((slot) => slot === 1 || c.courtType === 'doubles')
                   .map((slot) => {
                     const pid = slot === 1 ? c.player1Id : c.player2Id;
-                    const confirmed = !!(slot === 1 ? c.player1ConfirmedAt : c.player2ConfirmedAt);
+                    const confirmedAt = slot === 1 ? c.player1ConfirmedAt : c.player2ConfirmedAt;
+                    const confirmed = !!confirmedAt;
+                    // A yes the captain typed in is a weaker fact than one the
+                    // player tapped, so the badge says which it was.
+                    const confirmedByCaptain =
+                      (slot === 1 ? c.player1ConfirmedSource : c.player2ConfirmedSource) ===
+                      'captain';
                     const bailed = pid ? withdrawn.get(pid) : undefined;
                     const picked =
                       swapPick?.courtNumber === c.courtNumber && swapPick.slot === slot;
@@ -1369,11 +1198,18 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                             >
                               pulled out
                             </span>
+                          ) : confirmed ? (
+                            <span
+                              className="text-[#D3FB52] text-xs shrink-0"
+                              title={`Confirmed ${fmtWhen(confirmedAt as string)}${
+                                confirmedByCaptain ? ' — recorded by you' : ''
+                              }`}
+                            >
+                              confirmed{confirmedByCaptain ? ' ·  by you' : ''}
+                            </span>
                           ) : (
-                            confirmed && (
-                              <span className="text-[#D3FB52] text-xs shrink-0" title="Confirmed">
-                                confirmed
-                              </span>
+                            pid && (
+                              <span className="text-white/25 text-xs shrink-0">no answer yet</span>
                             )
                           )}
                         </div>
@@ -1382,18 +1218,80 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                             “{bailed.note}”
                           </p>
                         )}
-                        {c.id && pid && (
-                          <button
-                            onClick={() => findSub(c, slot)}
-                            disabled={!!busy}
-                            className={`text-xs mt-1.5 ${bailed ? 'text-red-300 hover:text-red-200 font-semibold' : 'text-white/35 hover:text-white'}`}
-                          >
-                            {busy === `sub-${c.courtNumber}-${slot}`
-                              ? 'Asking subs…'
-                              : bailed
-                                ? `Find a sub for ${nameOf(pid)} →`
-                                : `${nameOf(pid)} bailed — find a sub`}
-                          </button>
+
+                        {/* Everything a captain does about THIS person, next to
+                            their name. Both send buttons open the same preview
+                            the whole-team send uses — nothing leaves without
+                            being seen, and nothing hands off to a mail app. */}
+                        {pid && (
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 pl-10 text-xs">
+                            <button
+                              onClick={() => previewLineupFor([pid])}
+                              disabled={!!busy || dirty}
+                              title={
+                                dirty
+                                  ? 'Save the lineup first — the email would show the version you have already changed.'
+                                  : `Show ${nameOf(pid)} the current lineup`
+                              }
+                              className="text-[#D3FB52]/80 hover:text-[#D3FB52] underline disabled:opacity-30 disabled:no-underline"
+                            >
+                              {busy === 'send-some' ? 'opening…' : 'send updated lineup'}
+                            </button>
+
+                            {players.find((x) => x.id === pid)?.phone && (
+                              <button
+                                onClick={() =>
+                                  openText(
+                                    [pid],
+                                    `${nameOf(pid).split(' ')[0]} — you're on ${labelOf(c)} for ${fmtWhen(matchAt)}. Can you confirm?`,
+                                  )
+                                }
+                                disabled={!!busy}
+                                className="text-white/40 hover:text-white underline disabled:opacity-30"
+                              >
+                                text
+                              </button>
+                            )}
+
+                            {!bailed &&
+                              (confirmed ? (
+                                <button
+                                  onClick={() => recordAnswer(pid, 'clear')}
+                                  disabled={!!busy}
+                                  className="text-white/30 hover:text-white underline disabled:opacity-30"
+                                >
+                                  {busy === `confirm-${pid}` ? 'saving…' : 'undo'}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => recordAnswer(pid, 'in')}
+                                  disabled={!!busy}
+                                  className="text-white/40 hover:text-white underline disabled:opacity-30"
+                                >
+                                  {busy === `confirm-${pid}`
+                                    ? 'saving…'
+                                    : 'she told me yes — mark confirmed'}
+                                </button>
+                              ))}
+
+                            {c.id && (
+                              <button
+                                onClick={() => findSub(c, slot)}
+                                disabled={!!busy}
+                                className={
+                                  bailed
+                                    ? 'text-red-300 hover:text-red-200 font-semibold underline'
+                                    : 'text-white/30 hover:text-white underline disabled:opacity-30'
+                                }
+                              >
+                                {busy === `sub-${c.courtNumber}-${slot}`
+                                  ? 'asking subs…'
+                                  : bailed
+                                    ? `find a sub for ${nameOf(pid)} →`
+                                    : 'find a sub'}
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     );
