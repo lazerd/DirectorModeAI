@@ -557,14 +557,19 @@ export function opponentHostingEmail(
    * converts far better than any ad we could buy, and it earns its place
    * because the email it sits under is genuinely useful to them.
    *
+   * The wording leans on the email itself as the proof: it arrived early,
+   * complete, and unprompted, which is exactly what the reader never manages
+   * with a group text. A feature list would be weaker — she does not want
+   * availability tracking, she wants her evenings back.
+   *
    * Kept to one muted line: the moment it looks like an ad, the email stops
    * reading as a courtesy from a fellow captain and starts reading as spam,
    * which costs us the goodwill AND the click.
    */
   const promo =
     `<a href="${BASE}/captainmode?ref=match" style="color:#64748b;text-decoration:underline">` +
-    `${team} is organised with CaptainMode</a> — availability, lineups and reminders, ` +
-    `without the group text.`;
+    `Captained with CaptainMode</a> — this email, the lineup, and every reminder, ` +
+    `without one group text.`;
 
   const vars = varsFor(team, opts.opposingCaptainName || 'Captain', m, tz);
 

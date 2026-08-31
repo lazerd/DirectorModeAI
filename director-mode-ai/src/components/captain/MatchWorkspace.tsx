@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import MatchNextStep, { matchStage } from '@/components/captain/MatchNextStep';
 import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 import { lineupAsText } from '@/lib/captain/lineupText';
@@ -154,6 +155,16 @@ export default function MatchWorkspace({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   });
   const [scoring, setScoring] = useState(status === 'played');
+  /**
+   * Which player row has its actions open.
+   *
+   * Every row used to render up to four underlined links permanently — with
+   * eight players that is thirty-odd controls competing with the eight names
+   * the captain actually came to read. Nothing is removed; it is one tap away,
+   * and a row whose player has pulled out opens itself because that one is not
+   * optional.
+   */
+  const [rowMenu, setRowMenu] = useState<string | null>(null);
   const [scores, setScores] = useState<Record<number, { score: string; won: boolean | null }>>(
     Object.fromEntries(
       initialResults.map((r) => [r.courtNumber, { score: r.score ?? '', won: r.won }]),
@@ -210,6 +221,24 @@ export default function MatchWorkspace({
   ) as RollCallRow[];
 
   const confirmedNames = namedInLineup.filter((p) => p.state === 'in');
+
+  /**
+   * One derived answer to "what do I do next", so the page can lead with it
+   * instead of showing three equally-loud sections and making the captain
+   * work it out. Everything below stays reachable — captains skip steps.
+   */
+  const lineupFilled = namedInLineup.length;
+  const stage = matchStage({
+    answered: yes.length + no.length + maybe.length,
+    available: yes.length,
+    needed,
+    lineupFilled,
+    lineupSent,
+    confirmed: confirmedNames.length,
+    bailed: bailedInLineup.length,
+    played: status === 'played',
+    matchPast: new Date(matchAt).getTime() < Date.now(),
+  });
   const waitingNames = namedInLineup.filter((p) => p.state === 'waiting').map((p) => p.name);
 
   // ---------------------------------------------------------- reaching people
@@ -859,6 +888,17 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         }
         onCancel={() => setPreview(null)}
       />
+      <MatchNextStep
+        stage={stage}
+        counts={{
+          available: yes.length,
+          needed,
+          confirmed: confirmedNames.length,
+          lineupFilled,
+          bailed: bailedInLineup.length,
+        }}
+      />
+
       {/* ---------------------------------------------------------- availability */}
       <section>
         <div className="flex items-center justify-between gap-4 flex-wrap">
@@ -919,23 +959,35 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
             : `Need ${needed - yes.length} more for a full lineup of ${needed}.`}
         </p>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {players
-            .filter((p) => p.availability)
-            .map((p) => (
-              <span
-                key={p.id}
-                className={`text-xs px-2.5 py-1 rounded-full border ${
-                  p.availability === 'yes'
-                    ? 'border-[#D3FB52]/40 text-[#D3FB52]'
-                    : p.availability === 'no'
-                      ? 'border-red-400/30 text-red-300'
-                      : 'border-amber-400/30 text-amber-300'
-                }`}
-              >
-                {p.name}
-                {p.isSub ? ' (sub)' : ''}
-              </span>
+        {/*
+          Grouped by answer rather than one long colour-coded blob. Two dozen
+          names in a single wrap forced the captain to decode chip colours to
+          answer "who said no?" — a question they ask every single week.
+          Nobody-answered is included, because that group is the one that needs
+          chasing and it was invisible before.
+        */}
+        <div className="mt-4 space-y-3">
+          {[
+            { key: 'yes', label: 'Available', rows: yes, cls: 'border-[#D3FB52]/40 text-[#D3FB52]' },
+            { key: 'maybe', label: 'Maybe', rows: maybe, cls: 'border-amber-400/30 text-amber-300' },
+            { key: 'no', label: 'Out', rows: no, cls: 'border-red-400/30 text-red-300' },
+            { key: 'silent', label: 'No answer', rows: silent, cls: 'border-white/15 text-white/45' },
+          ]
+            .filter((g) => g.rows.length > 0)
+            .map((g) => (
+              <div key={g.key}>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/30">
+                  {g.label} · {g.rows.length}
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-2">
+                  {g.rows.map((p) => (
+                    <span key={p.id} className={`text-xs px-2.5 py-1 rounded-full border ${g.cls}`}>
+                      {p.name}
+                      {p.isSub ? ' (sub)' : ''}
+                    </span>
+                  ))}
+                </div>
+              </div>
             ))}
         </div>
 
@@ -1340,8 +1392,21 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                             their name. Both send buttons open the same preview
                             the whole-team send uses — nothing leaves without
                             being seen, and nothing hands off to a mail app. */}
-                        {pid && (
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 pl-10 text-xs">
+                        {pid && (() => {
+                          const rowKey = `${c.courtNumber}-${slot}`;
+                          const rowOpen = !!bailed || rowMenu === rowKey;
+                          return (
+                          <div className="mt-1.5 pl-10">
+                            {!bailed && (
+                              <button
+                                onClick={() => setRowMenu(rowOpen ? null : rowKey)}
+                                className="text-white/25 hover:text-white/70 text-xs underline"
+                              >
+                                {rowOpen ? 'hide actions' : 'actions'}
+                              </button>
+                            )}
+                            {rowOpen && (
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-xs">
                             <button
                               onClick={() => previewLineupFor([pid])}
                               disabled={!!busy || dirty}
@@ -1409,7 +1474,10 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                               </button>
                             )}
                           </div>
-                        )}
+                            )}
+                          </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
