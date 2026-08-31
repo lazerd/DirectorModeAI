@@ -485,3 +485,104 @@ export async function sendAll(
   if (!payloads.length) return [];
   return sendBilledEmails(billingUserId, payloads);
 }
+
+/**
+ * The pre-match note to the OPPOSING captain when we're hosting.
+ *
+ * Unlike every other email in this file, the recipient is not one of our
+ * players and has no token — they are a captain at another club. So there are
+ * no Yes/No buttons, no confirm link and no unsubscribe footer: this is a
+ * person-to-person courtesy note, and dressing it up as a system email makes it
+ * read worse, not better.
+ *
+ * `hostNotes` is the venue blurb (parking, ice, restrooms, warmup courts) and
+ * lives on the team, because it is identical for every home match and nobody
+ * should retype it eight times a season.
+ */
+export function opponentHostingEmail(
+  team: string,
+  m: MatchInfo,
+  opts: {
+    to: string;
+    opposingCaptainName?: string | null;
+    clubName: string;
+    address?: string | null;
+    hostNotes?: string | null;
+    lineCount?: number | null;
+    fromName?: string | null;
+    fromTitle?: string | null;
+  },
+  tz?: string,
+  c?: EmailCustom,
+): { to: string; subject: string; html: string } {
+  const when = formatMatchWhen(m.matchAt, tz);
+  const greeting = opts.opposingCaptainName?.trim()
+    ? `Hi ${opts.opposingCaptainName.trim().split(/\s+/)[0]},`
+    : 'Hi there,';
+
+  // Free-text notes are captain-authored, so newlines become paragraphs and
+  // bullet-ish lines keep their shape rather than collapsing into one block.
+  const notesHtml = (opts.hostNotes || '')
+    .split(/\n{2,}/)
+    .map((para) => para.trim())
+    .filter(Boolean)
+    .map((para) => {
+      const lines = para.split(/\n/).map((l) => l.trim()).filter(Boolean);
+      const bulleted = lines.length > 1 && lines.every((l) => /^[-•*]/.test(l));
+      if (bulleted) {
+        return `<ul style="font-size:15px;margin:10px 0;padding-left:20px">${lines
+          .map((l) => `<li style="margin:4px 0">${l.replace(/^[-•*]\s*/, '')}</li>`)
+          .join('')}</ul>`;
+      }
+      return `<p style="font-size:15px;margin:10px 0">${lines.join('<br>')}</p>`;
+    })
+    .join('');
+
+  const lines = opts.lineCount && opts.lineCount > 0
+    ? `<p style="font-size:15px;margin:10px 0">We've filled all ${opts.lineCount} lines. If you're bringing fewer than ${opts.lineCount} teams, please let us know at your earliest convenience so we can plan the courts.</p>`
+    : '';
+
+  const sig = opts.fromName
+    ? `<p style="font-size:15px;margin:18px 0 0">Thanks, and see you then!<br><br>${opts.fromName}${
+        opts.fromTitle ? `<br><span style="color:#64748b">${opts.fromTitle}</span>` : ''
+      }</p>`
+    : `<p style="font-size:15px;margin:18px 0 0">Thanks, and see you then!</p>`;
+
+  /**
+   * The only marketing surface in CaptainMode, and the best one we have.
+   *
+   * This email lands in the inbox of a captain at ANOTHER club, someone who is
+   * doing all of this by group text and a spreadsheet, roughly eight times a
+   * season, from a club that is a plausible customer. A quiet one-line credit
+   * converts far better than any ad we could buy, and it earns its place
+   * because the email it sits under is genuinely useful to them.
+   *
+   * Kept to one muted line: the moment it looks like an ad, the email stops
+   * reading as a courtesy from a fellow captain and starts reading as spam,
+   * which costs us the goodwill AND the click.
+   */
+  const promo =
+    `<a href="${BASE}/captainmode?ref=match" style="color:#64748b;text-decoration:underline">` +
+    `${team} is organised with CaptainMode</a> — availability, lineups and reminders, ` +
+    `without the group text.`;
+
+  const vars = varsFor(team, opts.opposingCaptainName || 'Captain', m, tz);
+
+  return {
+    to: opts.to,
+    subject: subjectOf(c, `${when} — ${team} vs ${m.opponent || 'your team'} at ${opts.clubName}`, vars),
+    html: shell(
+      `Looking forward to hosting you`,
+      `<p style="font-size:15px;margin:0 0 10px">${greeting}</p>
+       <p style="font-size:15px;margin:10px 0">Looking forward to hosting your team <strong>${when}</strong>.</p>
+       <p style="font-size:15px;margin:10px 0"><strong>${opts.clubName}</strong>${
+         opts.address ? `<br>${opts.address}` : ''
+       }</p>
+       ${c?.intro ? `<p style="font-size:15px;margin:10px 0">${c.intro}</p>` : ''}
+       ${notesHtml}
+       ${lines}
+       ${sig}`,
+      promo,
+    ),
+  };
+}

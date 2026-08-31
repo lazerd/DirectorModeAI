@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { CalendarClock } from 'lucide-react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
+import OpponentDirectory, { type OpponentContact } from '@/components/captain/OpponentDirectory';
 import { gateTeam } from '@/lib/captain/access';
 import { playedCounts, pairRecords, rulesFor } from '@/lib/captain/server';
 import { eligibilityReport, type RatingType } from '@/lib/captain/lineup';
@@ -69,6 +70,15 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       db.from('captain_never_pair').select('id, player_a_id, player_b_id').eq('team_id', team.id),
     ]);
 
+  // League contacts are pulled off the league site once a season and kept
+  // here so match morning doesn't mean three logins on a phone.
+  const { data: opponentRows } = await db
+    .from('captain_opponents')
+    .select('opponent, captain_name, captain_email, captain_phone, cocaptain_name, cocaptain_email, cocaptain_phone, home_club, club_phone')
+    .eq('team_id', team.id)
+    .order('opponent');
+  const opponentContacts = (opponentRows as OpponentContact[] | null) ?? [];
+
   const roster = (players as Record<string, unknown>[]) || [];
   const allMatches = (matches as Record<string, unknown>[]) || [];
   const upcoming = allMatches.filter(
@@ -132,6 +142,8 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         <CalendarClock size={16} className="text-[#D3FB52]" />
         Season email timeline
       </Link>
+
+      <OpponentDirectory contacts={opponentContacts} />
 
       {atRisk.length > 0 && (
         <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4">

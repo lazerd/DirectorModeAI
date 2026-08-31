@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { gateTeam } from '@/lib/captain/access';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
+import HostEmailPanel from '@/components/captain/HostEmailPanel';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
 
 export const dynamic = 'force-dynamic';
@@ -115,6 +116,17 @@ export default async function MatchPage({
         {(match.opponent as string) || 'TBD'} · {match.is_home ? 'Home' : 'Away'}
         {match.location ? ` · ${match.location}` : ''}
       </p>
+
+      {/* Hosting a visiting team: one tap to send them the venue note. Renders
+          only for home matches - an away match is someone else's hosting job. */}
+      <div className="mt-5">
+        <HostEmailPanel
+          matchId={params.matchId}
+          isHome={!!match.is_home}
+          opponent={(match.opponent as string) || null}
+          sentAt={(match.host_email_sent_at as string) || null}
+        />
+      </div>
 
       <MatchWorkspace
         teamId={team.id}
