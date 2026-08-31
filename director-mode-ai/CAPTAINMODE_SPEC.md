@@ -21,19 +21,23 @@ Every feature should remove a recurring weekly chore.
 | Situation | Price |
 |---|---|
 | Captain's club is on ClubMode Pro | **$10/month** |
-| Captain's club is not a ClubMode customer | **$20/month** |
+| Captain's club is not a ClubMode customer | **$12/month** |
 
 - **Captain pays their own card.** No director approval required, no club billing.
 - **Up to 3 teams** per captain subscription. Beyond 3 requires a second subscription (OPEN: or a higher tier).
 - **Co-captains are free** and get full access to the teams they're added to. They are future paying captains — do not charge them.
 
-Strategic intent: captains at non-ClubMode clubs pay the $20 rate and become inbound pressure on
-their club to adopt ClubMode ("I can get this for half price if you'd just use ClubMode").
+Strategic intent (CURRENTLY DORMANT): the price gap was meant to make captains at
+non-ClubMode clubs into inbound pressure on their club. At a $2 gap that lever does not
+pull -- nobody switches club software to save $24 a year -- so the club-linked rate is
+presently a courtesy, not a wedge. Reviving it means raising the standalone price, which
+is the hard direction to move on existing subscribers.
+
 
 ### Two entry points
 
 1. **Director-invited** — director invites captains from the ClubMode dashboard. Club/Pro link is automatic, captain lands on the $10 rate.
-2. **Self-signup** — captain finds CaptainMode on the public site, signs up, searches for their club. If the club is on Pro they get $10; otherwise $20. No director involvement.
+2. **Self-signup** — captain finds CaptainMode at `/captainmode` (linked from the footer of every hosting email we send to opposing captains), signs up, searches for their club. If the club is on Pro they get $10; otherwise $12. No director involvement.
 
 Both paths land in the same product. The only difference is price and whether the club link is pre-established.
 
@@ -334,7 +338,7 @@ at a different price**, and a captain may be on ClubMode free while paying for C
 **Built:**
 
 - **`captain_subscriptions`** table: `user_id` (PK), `club_id`, `rate_type 'club_linked'|'standalone'`, `status`, `current_period_end`, plus `stripe_customer_id` / `stripe_subscription_id` which hold the **LemonSqueezy** customer and subscription ids (same column-reuse convention the rest of the app follows).
-- **Two price keys** in `src/lib/lemonsqueezy.ts`: `captain_club` ($10/mo) and `captain_solo` ($20/mo), resolved through `BUY_LINKS` from `LEMONSQUEEZY_BUY_LINK_CAPTAIN_CLUB` / `..._CAPTAIN_SOLO`.
+- **Two price keys** in `src/lib/lemonsqueezy.ts`: `captain_club` ($10/mo) and `captain_solo` ($12/mo), resolved through `BUY_LINKS` from `LEMONSQUEEZY_BUY_LINK_CAPTAIN_CLUB` / `..._CAPTAIN_SOLO`.
 - **`hasCaptainAccess(userId)`** / `getCaptainAccess()` in `src/lib/captain/access.ts`, which every authenticated captain route gates on via `requireTeam()`.
 - **Checkout** (`/api/billing/checkout`): CaptainMode is exempt from the owner-only guard, because a captain is normally just a club member paying with their own card. **The rate is re-resolved server-side** via `resolveCaptainRate(clubId)` — the client's `priceKey` is only a hint, so a tampered request cannot buy the $10 plan without a qualifying club. The supplied `clubId` is verified against `cc_club_members` / `cc_clubs.owner_id` before it counts.
 - **Webhook** (`/api/webhooks/lemonsqueezy`): a CaptainMode branch keyed on `custom.price_key` upserts `captain_subscriptions` and **never touches `profiles.plan_tier`**. `club_id` and `rate_type` come from the checkout's custom data.
@@ -342,7 +346,7 @@ at a different price**, and a captain may be on ClubMode free while paying for C
 
 **Remaining setup (needs the LemonSqueezy dashboard):**
 
-1. Create two subscription products — $10/mo and $20/mo.
+1. Create two subscription products — $10/mo and $12/mo. Prices also live in `src/config/pricing.ts`; the config is what the UI claims, the LemonSqueezy product is what is charged. Change both.
 2. Copy their buy links into Vercel env as `LEMONSQUEEZY_BUY_LINK_CAPTAIN_CLUB` and `LEMONSQUEEZY_BUY_LINK_CAPTAIN_SOLO`. Until then checkout returns `price_not_configured` and the subscribe page says so plainly.
 3. The webhook URL is already subscribed for the subscription lifecycle events; no new events are needed.
 

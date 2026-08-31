@@ -5,6 +5,7 @@ import {
   ShieldCheck, CalendarClock, ArrowRight, Trophy, RefreshCw,
 } from 'lucide-react';
 import { APP_HOST } from '@/lib/appUrl';
+import { CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD } from '@/config/pricing';
 
 /**
  * /captainmode — the public landing page for CaptainMode.
@@ -213,10 +214,10 @@ export default function CaptainModePage() {
                 Your club uses ClubMode
               </p>
               <p className="mt-3 text-4xl font-bold">
-                $10<span className="text-base font-normal text-white/40"> / month</span>
+                ${CAPTAIN_CLUB_PRICE_USD}<span className="text-base font-normal text-white/40"> / month</span>
               </p>
               <p className="mt-3 text-[14px] leading-relaxed text-white/55">
-                Half price, because your club already carries the platform.
+                A little less, because your club already carries the platform.
               </p>
             </div>
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-7 text-left">
@@ -224,10 +225,10 @@ export default function CaptainModePage() {
                 Your club doesn&apos;t
               </p>
               <p className="mt-3 text-4xl font-bold">
-                $20<span className="text-base font-normal text-white/40"> / month</span>
+                ${CAPTAIN_SOLO_PRICE_USD}<span className="text-base font-normal text-white/40"> / month</span>
               </p>
               <p className="mt-3 text-[14px] leading-relaxed text-white/55">
-                Works exactly the same. And it&apos;s a decent argument to bring your director.
+                Works exactly the same. Nothing is held back.
               </p>
             </div>
           </div>

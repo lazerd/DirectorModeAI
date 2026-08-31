@@ -41,3 +41,18 @@ export const RATE_CHANGE_NOTICE_DAYS = 30;
  * fail.
  */
 export const ANNUAL_PLAN_OFFERED = false;
+
+/* ----------------------------- CaptainMode ----------------------------- */
+/**
+ * CaptainMode is billed to the CAPTAIN, not the club, and the rate depends on
+ * whether their club is on ClubMode Pro. Which rate applies is resolved
+ * server-side in resolveCaptainRate() — never chosen by the client.
+ *
+ * Note the gap is deliberately small for now. It means the club-linked rate is
+ * a courtesy rather than a lever: nobody switches club software to save $2 a
+ * month. If CaptainMode is ever meant to pull clubs onto ClubMode, the
+ * standalone price is the one that has to move, and moving it upward on
+ * existing subscribers is the hard direction.
+ */
+export const CAPTAIN_CLUB_PRICE_USD = 10;
+export const CAPTAIN_SOLO_PRICE_USD = 12;
