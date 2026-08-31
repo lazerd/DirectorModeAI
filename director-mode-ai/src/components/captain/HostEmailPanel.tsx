@@ -31,7 +31,13 @@ type Preview = {
   html: string;
   missing_recipient: boolean;
   already_sent_at: string | null;
-  defaults: { host_notes: string; name: string; club_name: string; line_count: number };
+  defaults: {
+    host_notes: string;
+    name: string;
+    club_name: string;
+    line_count: number;
+    lines_note: string;
+  };
 };
 
 export default function HostEmailPanel({
@@ -54,6 +60,9 @@ export default function HostEmailPanel({
   const [to, setTo] = useState('');
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
+  // Editable because the opponent often announces a default before the
+  // match, which makes the generated line-count sentence wrong.
+  const [linesNote, setLinesNote] = useState('');
   const [loaded, setLoaded] = useState(false);
 
   // Away matches are somebody else's hosting job.
@@ -74,6 +83,7 @@ export default function HostEmailPanel({
       setTo(j.to || '');
       setName(j.defaults?.name || '');
       setNotes(j.defaults?.host_notes || '');
+      setLinesNote(j.defaults?.lines_note ?? '');
       setPreview(j);
       setLoaded(true);
     } catch (e: any) {
@@ -89,7 +99,9 @@ export default function HostEmailPanel({
       const res = await fetch('/api/captain/host-email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ match_id: matchId, preview: true, to, name, host_notes: notes }),
+        body: JSON.stringify({
+          match_id: matchId, preview: true, to, name, host_notes: notes, lines_note: linesNote,
+        }),
       });
       const j = (await res.json()) as Preview & { error?: string };
       if (!res.ok) throw new Error(j.error || 'Preview failed');
@@ -109,7 +121,8 @@ export default function HostEmailPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          match_id: matchId, preview: false, to, name, host_notes: notes, save_notes: true,
+          match_id: matchId, preview: false, to, name, host_notes: notes,
+          lines_note: linesNote, save_notes: true,
         }),
       });
       const j = await res.json();
@@ -195,6 +208,24 @@ export default function HostEmailPanel({
         />
         <span className="mt-1 block text-[12px] text-slate-500">
           Lines starting with &ldquo;-&rdquo; become bullets. Blank lines start a new paragraph.
+        </span>
+      </label>
+
+      <label className="mt-3 block">
+        <span className="text-[12.5px] font-medium text-slate-600">
+          Lines note — clear it to leave this out
+        </span>
+        <textarea
+          value={linesNote}
+          onChange={(e) => setLinesNote(e.target.value)}
+          rows={3}
+          placeholder="We've filled all 4 lines…"
+          style={INPUT}
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-[14px] leading-relaxed outline-none focus:border-slate-500"
+        />
+        <span className="mt-1 block text-[12px] text-slate-500">
+          Pre-filled from your court count. Change it if they&rsquo;ve already told you
+          they&rsquo;re defaulting a line.
         </span>
       </label>
 

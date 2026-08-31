@@ -499,6 +499,12 @@ export async function sendAll(
  * lives on the team, because it is identical for every home match and nobody
  * should retype it eight times a season.
  */
+/** The sentence the hosting email uses when the captain hasn't written their own. */
+export function defaultLinesNote(lineCount?: number | null): string {
+  if (!lineCount || lineCount <= 0) return '';
+  return `We've filled all ${lineCount} lines. If you're bringing fewer than ${lineCount} teams, please let us know at your earliest convenience so we can plan the courts.`;
+}
+
 export function opponentHostingEmail(
   team: string,
   m: MatchInfo,
@@ -509,6 +515,14 @@ export function opponentHostingEmail(
     address?: string | null;
     hostNotes?: string | null;
     lineCount?: number | null;
+    /**
+     * Overrides the generated "we've filled N lines" sentence. Pass '' to drop
+     * it entirely. Needed because the count is often wrong by the time you
+     * send: opponents announce a default days ahead, and a note claiming all
+     * four lines are filled when the other captain has already told you they
+     * are defaulting one reads as if nobody is paying attention.
+     */
+    linesNote?: string | null;
     fromName?: string | null;
     fromTitle?: string | null;
   },
@@ -538,8 +552,12 @@ export function opponentHostingEmail(
     })
     .join('');
 
-  const lines = opts.lineCount && opts.lineCount > 0
-    ? `<p style="font-size:15px;margin:10px 0">We've filled all ${opts.lineCount} lines. If you're bringing fewer than ${opts.lineCount} teams, please let us know at your earliest convenience so we can plan the courts.</p>`
+  const linesText =
+    opts.linesNote !== undefined && opts.linesNote !== null
+      ? opts.linesNote.trim()
+      : defaultLinesNote(opts.lineCount);
+  const lines = linesText
+    ? `<p style="font-size:15px;margin:10px 0">${linesText.replace(/\n/g, '<br>')}</p>`
     : '';
 
   const sig = opts.fromName

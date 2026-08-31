@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { APP_HOST } from '@/lib/appUrl';
 import { CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD } from '@/config/pricing';
+import ProductShots from '@/components/captain/ProductShots';
 
 /**
  * /captainmode — the public landing page for CaptainMode.
@@ -102,6 +103,8 @@ export default function CaptainModePage() {
           </div>
         </div>
       </section>
+
+      <ProductShots />
 
       {/* ============================ THE WEEK ============================ */}
       <section id="week" className="border-t border-white/[0.06] px-5 py-16 sm:px-8 sm:py-20">

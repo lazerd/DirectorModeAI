@@ -15,7 +15,7 @@ import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { opponentHostingEmail, type MatchInfo } from '@/lib/captain/emails';
+import { opponentHostingEmail, defaultLinesNote, type MatchInfo } from '@/lib/captain/emails';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
 import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
@@ -28,6 +28,7 @@ type Body = {
   to?: string;
   name?: string;
   host_notes?: string;
+  lines_note?: string;
   intro?: string;
   subject?: string;
   from_name?: string;
@@ -163,6 +164,7 @@ export async function POST(req: Request) {
       address,
       hostNotes,
       lineCount,
+      linesNote: body.lines_note,
       fromName,
       fromTitle,
     },
@@ -179,7 +181,16 @@ export async function POST(req: Request) {
       // Surfaced so the UI can warn instead of the send failing at the last step.
       missing_recipient: !to,
       already_sent_at: matchRow.host_email_sent_at ?? null,
-      defaults: { host_notes: hostNotes, name, club_name: clubName, address, line_count: lineCount },
+      defaults: {
+        host_notes: hostNotes,
+        name,
+        club_name: clubName,
+        address,
+        line_count: lineCount,
+        // Prefills the editor. The captain edits it when the opponent has
+        // already announced a default, which happens often enough to matter.
+        lines_note: body.lines_note ?? defaultLinesNote(lineCount),
+      },
     });
   }
 
