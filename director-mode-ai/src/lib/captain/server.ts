@@ -238,11 +238,34 @@ export async function committedCounts(
 
   const { data: rows } = await db
     .from('captain_lineups')
-    .select('player1_id, player2_id, match_id')
+    .select('player1_id, player2_id, match_id, court_number')
     .in('match_id', ids);
 
+  /**
+   * A defaulted court is a result without a match: the point is won or lost,
+   * but nobody played. Crediting it would tell a captain that a player is
+   * covered for playoff eligibility when they are still on zero, and would
+   * push them down the fairness order for a match they never got.
+   */
+  const { data: defaults } = await db
+    .from('captain_results')
+    .select('match_id, court_number')
+    .in('match_id', ids)
+    .eq('defaulted', true);
+  const skip = new Set(
+    ((defaults as { match_id: string; court_number: number }[]) || []).map(
+      (d) => `${d.match_id}:${d.court_number}`,
+    ),
+  );
+
   const counts: Record<string, number> = {};
-  for (const r of (rows as { player1_id: string | null; player2_id: string | null }[]) || []) {
+  for (const r of (rows as {
+    player1_id: string | null;
+    player2_id: string | null;
+    match_id: string;
+    court_number: number;
+  }[]) || []) {
+    if (skip.has(`${r.match_id}:${r.court_number}`)) continue;
     for (const id of [r.player1_id, r.player2_id]) {
       if (id) counts[id] = (counts[id] ?? 0) + 1;
     }

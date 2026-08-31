@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     team_id?: string;
     match_id?: string;
     mark_played?: boolean;
-    results?: { court_number: number; score?: string | null; won?: boolean | null }[];
+    results?: { court_number: number; score?: string | null; won?: boolean | null; defaulted?: boolean; default_by?: 'us' | 'them' }[];
   };
   if (!body.team_id || !body.match_id) {
     return NextResponse.json({ error: 'team_id and match_id are required.' }, { status: 400 });
@@ -67,6 +67,11 @@ export async function POST(req: Request) {
         court_number: r.court_number,
         score: r.score?.trim() || null,
         won: r.won ?? null,
+        // A defaulted court still carries a win/loss for the team, but the two
+        // players on it did not play — playedCounts() skips it so fairness and
+        // playoff eligibility stay honest.
+        defaulted: r.defaulted === true,
+        default_by: r.defaulted === true ? (r.default_by === 'us' ? 'us' : 'them') : null,
       })),
       { onConflict: 'match_id,court_number' },
     );

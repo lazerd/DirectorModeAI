@@ -110,7 +110,13 @@ export default function MatchWorkspace({
   lineupSent: boolean;
   matchAt: string;
   status: string;
-  initialResults: { courtNumber: number; score: string | null; won: boolean | null }[];
+  initialResults: {
+    courtNumber: number;
+    score: string | null;
+    won: boolean | null;
+    defaulted?: boolean;
+    default_by?: 'us' | 'them' | null;
+  }[];
   /**
    * Who tapped "I can't play" on the lineup email. Keyed by PLAYER, not by
    * slot, so a withdrawal survives every swap and line flip below — a bail
@@ -165,6 +171,33 @@ export default function MatchWorkspace({
    * optional.
    */
   const [rowMenu, setRowMenu] = useState<string | null>(null);
+
+  /**
+   * Only one lime button on the page at a time.
+   *
+   * Availability, Lineup and Results each had their own `primary`, so three
+   * things shouted equally and none of them read as "the thing to do now".
+   * Emphasis follows the stage the banner names, so the page has exactly one
+   * obvious next click and everything else is a calm outline.
+   */
+  const emphasise = (...stages: string[]) => (stages.includes(stage) ? primary : ghost);
+  /**
+   * Courts won or lost without being played.
+   *
+   * The opposing team defaults a line often enough that it needs a first-class
+   * control: the point counts for the team, the two players named on that court
+   * do not get a match. Without this they are credited with a match they never
+   * played, and a captain reading eligibility is told someone is covered when
+   * they are still on zero.
+   */
+  const [defaulted, setDefaulted] = useState<Record<number, 'us' | 'them' | null>>(
+    () =>
+      Object.fromEntries(
+        initialResults
+          .filter((r) => (r as { defaulted?: boolean }).defaulted)
+          .map((r) => [r.courtNumber, ((r as { default_by?: 'us' | 'them' }).default_by ?? 'them')]),
+      ) as Record<number, 'us' | 'them' | null>,
+  );
   const [scores, setScores] = useState<Record<number, { score: string; won: boolean | null }>>(
     Object.fromEntries(
       initialResults.map((r) => [r.courtNumber, { score: r.score ?? '', won: r.won }]),
@@ -697,6 +730,8 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           court_number: c.courtNumber,
           score: scores[c.courtNumber]?.score ?? null,
           won: scores[c.courtNumber]?.won ?? null,
+          defaulted: !!defaulted[c.courtNumber],
+          default_by: defaulted[c.courtNumber] ?? undefined,
         })),
       },
       (j) => {
@@ -904,16 +939,18 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-display text-white">Availability</h2>
           <div className="flex gap-2">
-            <button onClick={() => sendPoll(false)} disabled={!!busy} className={ghost}>
-              {busy === 'poll' ? 'Working…' : 'Preview & ask the team'}
+            <button onClick={() => sendPoll(false)} disabled={!!busy} className={emphasise('poll')}>
+              {busy === 'poll' ? 'Working…' : 'Ask the team who can play'}
             </button>
             {silent.length > 0 && (
-              <button onClick={() => sendPoll(true)} disabled={!!busy} className={ghost}>
-                {busy === 'nudge' ? 'Working…' : `Preview nudge to ${silent.length}`}
+              <button onClick={() => sendPoll(true)} disabled={!!busy} className={emphasise('waiting')}>
+                {busy === 'nudge'
+                  ? 'Working…'
+                  : `Nudge the ${silent.length} who haven't replied`}
               </button>
             )}
             <button onClick={() => setRescheduling((v) => !v)} disabled={!!busy} className={ghost}>
-              {rescheduling ? 'Cancel' : 'Reschedule'}
+              {rescheduling ? 'Cancel' : 'Move this match'}
             </button>
           </div>
         </div>
@@ -939,16 +976,40 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           </div>
         )}
 
-        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/*
+          One column per answer, each showing its own count and its own names.
+          Previously the counts lived in four tiles and the names in a single
+          colour-coded wrap underneath, so "who said no?" meant reading a total
+          in one place and decoding chip colours in another. Now the question
+          and the answer are in the same column.
+        */}
+        <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
           {[
-            { label: 'Available', n: yes.length, tone: 'text-[#D3FB52]' },
-            { label: 'Out', n: no.length, tone: 'text-red-300' },
-            { label: 'Maybe', n: maybe.length, tone: 'text-amber-300' },
-            { label: 'No answer', n: silent.length, tone: 'text-white/40' },
-          ].map((s) => (
-            <div key={s.label} className="rounded-xl border border-white/[0.08] bg-[#002838] p-4">
-              <div className={`text-2xl font-semibold ${s.tone}`}>{s.n}</div>
-              <div className="text-white/40 text-xs uppercase tracking-wide mt-0.5">{s.label}</div>
+            { key: 'yes', label: 'Available', rows: yes, tone: '#D3FB52' },
+            { key: 'maybe', label: 'Maybe', rows: maybe, tone: '#fbbf24' },
+            { key: 'no', label: 'Out', rows: no, tone: '#f87171' },
+            { key: 'silent', label: 'No answer', rows: silent, tone: '#94a3b8' },
+          ].map((g) => (
+            <div
+              key={g.key}
+              className="rounded-xl border border-white/[0.08] bg-[#002838] p-4 flex flex-col"
+            >
+              <div className="text-2xl font-semibold" style={{ color: g.tone }}>
+                {g.rows.length}
+              </div>
+              <div className="text-white/40 text-xs uppercase tracking-wide mt-0.5">{g.label}</div>
+              <div className="mt-3 space-y-1">
+                {g.rows.length === 0 ? (
+                  <p className="text-white/20 text-xs">—</p>
+                ) : (
+                  g.rows.map((p) => (
+                    <p key={p.id} className="text-[13px] leading-snug text-white/75">
+                      {p.name}
+                      {p.isSub ? <span className="text-white/35"> (sub)</span> : ''}
+                    </p>
+                  ))
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -958,38 +1019,6 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
             ? `Enough to field a lineup (${needed} spots).`
             : `Need ${needed - yes.length} more for a full lineup of ${needed}.`}
         </p>
-
-        {/*
-          Grouped by answer rather than one long colour-coded blob. Two dozen
-          names in a single wrap forced the captain to decode chip colours to
-          answer "who said no?" — a question they ask every single week.
-          Nobody-answered is included, because that group is the one that needs
-          chasing and it was invisible before.
-        */}
-        <div className="mt-4 space-y-3">
-          {[
-            { key: 'yes', label: 'Available', rows: yes, cls: 'border-[#D3FB52]/40 text-[#D3FB52]' },
-            { key: 'maybe', label: 'Maybe', rows: maybe, cls: 'border-amber-400/30 text-amber-300' },
-            { key: 'no', label: 'Out', rows: no, cls: 'border-red-400/30 text-red-300' },
-            { key: 'silent', label: 'No answer', rows: silent, cls: 'border-white/15 text-white/45' },
-          ]
-            .filter((g) => g.rows.length > 0)
-            .map((g) => (
-              <div key={g.key}>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/30">
-                  {g.label} · {g.rows.length}
-                </p>
-                <div className="mt-1.5 flex flex-wrap gap-2">
-                  {g.rows.map((p) => (
-                    <span key={p.id} className={`text-xs px-2.5 py-1 rounded-full border ${g.cls}`}>
-                      {p.name}
-                      {p.isSub ? ' (sub)' : ''}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-        </div>
 
         {players.some((p) => !p.hasEmail) && (
           <p className="text-amber-300/70 text-xs mt-3">
@@ -1037,7 +1066,11 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                 >
                   Copy for the group chat
                 </button>
-                <button onClick={previewLineup} disabled={!!busy || dirty} className={primary}>
+                <button
+                  onClick={previewLineup}
+                  disabled={!!busy || dirty}
+                  className={emphasise('send', 'build')}
+                >
                   {busy === 'send'
                     ? 'Opening…'
                     : lineupSent
@@ -1504,15 +1537,23 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
               )}
             </h2>
             {!scoring ? (
-              <button onClick={() => setScoring(true)} disabled={!!busy} className={ghost}>
-                Enter scores
+              <button
+                onClick={() => setScoring(true)}
+                disabled={!!busy}
+                className={emphasise('results')}
+              >
+                Enter the scores
               </button>
             ) : (
               <div className="flex gap-2 flex-wrap">
                 <button onClick={() => saveResults(false)} disabled={!!busy} className={ghost}>
                   {busy === 'scores' ? 'Saving…' : 'Save scores'}
                 </button>
-                <button onClick={() => saveResults(true)} disabled={!!busy} className={primary}>
+                <button
+                  onClick={() => saveResults(true)}
+                  disabled={!!busy}
+                  className={emphasise('results')}
+                >
                   {busy === 'play'
                     ? 'Recording…'
                     : status === 'played'
@@ -1546,12 +1587,51 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                         {c.courtType === 'doubles' ? ` / ${nameOf(c.player2Id)}` : ''}
                       </div>
                       <input
-                        value={s.score}
+                        value={defaulted[c.courtNumber] ? 'Default' : s.score}
                         onChange={(e) => setScore(c.courtNumber, { score: e.target.value })}
+                        disabled={!!defaulted[c.courtNumber]}
                         placeholder="6-4, 6-3"
                         aria-label={`Score for court ${c.courtNumber}`}
-                        className="w-32 px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-white placeholder-white/25 text-sm focus:border-[#D3FB52]/50 focus:outline-none"
+                        className="w-32 px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-white placeholder-white/25 text-sm focus:border-[#D3FB52]/50 focus:outline-none disabled:opacity-40"
                       />
+                      {/* Defaulting sets the win/loss for the team but takes the
+                          match away from the two players on the court. */}
+                      <button
+                        onClick={() => {
+                          const next = defaulted[c.courtNumber] ? null : 'them';
+                          setDefaulted((d) => ({ ...d, [c.courtNumber]: next }));
+                          if (next) setScore(c.courtNumber, { won: true });
+                        }}
+                        title={
+                          defaulted[c.courtNumber]
+                            ? 'This court was defaulted — the players on it are not credited with a match'
+                            : 'Nobody played this court'
+                        }
+                        className={`px-2.5 py-1.5 rounded-lg text-xs border ${
+                          defaulted[c.courtNumber]
+                            ? 'border-amber-400/50 bg-amber-400/10 text-amber-200'
+                            : 'border-white/10 text-white/40 hover:text-white/80'
+                        }`}
+                      >
+                        {defaulted[c.courtNumber] ? 'Defaulted' : 'Default'}
+                      </button>
+                      {defaulted[c.courtNumber] && (
+                        <select
+                          value={defaulted[c.courtNumber] ?? 'them'}
+                          onChange={(e) => {
+                            const who = e.target.value as 'us' | 'them';
+                            setDefaulted((d) => ({ ...d, [c.courtNumber]: who }));
+                            // Who defaulted decides the point: they default, we win.
+                            setScore(c.courtNumber, { won: who === 'them' });
+                          }}
+                          aria-label={`Who defaulted court ${c.courtNumber}`}
+                          style={{ color: '#ffffff', backgroundColor: '#001820' }}
+                          className="px-2 py-1.5 rounded-lg border border-white/10 text-xs focus:border-[#D3FB52]/50 focus:outline-none"
+                        >
+                          <option value="them">they defaulted</option>
+                          <option value="us">we defaulted</option>
+                        </select>
+                      )}
                       <div className="flex gap-1">
                         {[
                           { label: 'W', val: true },
