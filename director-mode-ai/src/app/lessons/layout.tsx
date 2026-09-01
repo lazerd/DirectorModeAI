@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Clock, Calendar, Users, Mail, History, Settings, Zap } from 'lucide-react';
+import { Clock, Calendar, CalendarCheck, Users, Mail, History, Settings, Zap } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import LessonsMobileNav from '@/components/lessons/LessonsMobileNav';
@@ -61,6 +61,9 @@ export default async function LessonsLayout({
           <ul className="space-y-1">
             <NavItem href="/lessons/dashboard" icon={Calendar}>
               My Calendar
+            </NavItem>
+            <NavItem href="/lessons/open" icon={CalendarCheck}>
+              Open Lesson Time
             </NavItem>
             <NavItem href="/lessons/clients" icon={Users}>
               Clients

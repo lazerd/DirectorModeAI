@@ -120,6 +120,8 @@ const PUBLIC_PREFIXES = [
   '/quads/player',
   '/swim-family',
   '/book',
+  // A client booking an open lesson time is not running the club.
+  '/open',
   '/join',
   '/event',
   '/nps',

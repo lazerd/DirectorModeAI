@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Clock, Calendar, Users, Mail, History, Settings, Zap, Menu, X } from 'lucide-react';
+import { Clock, Calendar, Users, Mail, History, Settings, Zap, Menu, X, CalendarCheck } from 'lucide-react';
 
 interface LessonsMobileNavProps {
   userName: string;
@@ -49,6 +49,7 @@ export default function LessonsMobileNav({ userName, userInitial }: LessonsMobil
             <nav className="p-3">
               <ul className="space-y-1">
                 <MobileNavItem href="/lessons/dashboard" icon={Calendar} onClick={() => setIsOpen(false)}>My Calendar</MobileNavItem>
+                <MobileNavItem href="/lessons/open" icon={CalendarCheck} onClick={() => setIsOpen(false)}>Open Lesson Time</MobileNavItem>
                 <MobileNavItem href="/lessons/clients" icon={Users} onClick={() => setIsOpen(false)}>Clients</MobileNavItem>
                 <MobileNavItem href="/lessons/blast" icon={Mail} onClick={() => setIsOpen(false)}>Email Blast</MobileNavItem>
                 <MobileNavItem href="/lessons/history" icon={History} onClick={() => setIsOpen(false)}>History</MobileNavItem>

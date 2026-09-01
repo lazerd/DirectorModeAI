@@ -38,7 +38,7 @@
 import {
   LayoutGrid, CalendarDays, Shuffle, Calendar, Trophy, ClipboardList, Waves,
   Users, Database, Wrench, Clock, GraduationCap, Mountain, BarChart3, Sparkles,
-  Grid3x3, User, CalendarRange, Search,
+  Grid3x3, User, CalendarRange, Search, CalendarCheck,
 } from 'lucide-react';
 
 export type NavIcon = typeof LayoutGrid;
@@ -239,6 +239,17 @@ export const SECTIONS: Section[] = [
         pitch: 'Post open lesson slots, notify clients instantly, and let them book in one tap.',
         icon: Clock,
         color: '#60a5fa',
+        product: true,
+        tag: 'LESSONS',
+      },
+      {
+        name: 'Open Lesson Time',
+        href: '/lessons/open',
+        match: '/lessons/open',
+        description: 'Your Google Calendar is the booking page — block "Open Lesson Time" and clients book 30, 60 or 90 minutes of it.',
+        pitch: "Every instructor connects their own calendar; clients book the club's open times in one tap, no account.",
+        icon: CalendarCheck,
+        color: '#34d399',
         product: true,
         tag: 'LESSONS',
       },
