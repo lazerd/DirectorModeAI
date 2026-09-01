@@ -6,6 +6,7 @@ import { gateTeam } from '@/lib/captain/access';
 import { loadTeamEmailContext, timelineFor, MATCH_COLUMNS } from '@/lib/captain/timelineSend';
 import { EMAIL_KINDS, KIND_META } from '@/lib/captain/timeline';
 import TimelinePanel from '@/components/captain/TimelinePanel';
+import RecapTemplatesPanel, { type RecapTemplateRow } from '@/components/captain/RecapTemplatesPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,11 @@ export default async function TimelinePage({ params }: { params: { teamId: strin
     .maybeSingle();
   if (!teamRow) notFound();
   const team = teamRow as { id: string; name: string; captain_user_id: string };
+
+  const { data: recapTemplates } = await db
+    .from('captain_recap_templates')
+    .select('outcome, subject, body')
+    .eq('team_id', team.id);
 
   const { data: matches } = await db
     .from('captain_matches')
@@ -63,6 +69,14 @@ export default async function TimelinePage({ params }: { params: { teamId: strin
         initialEvents={events}
         initialSettings={settings}
         rosterWithEmail={ctx.counts.roster}
+      />
+
+      {/* The recap is triggered from the match page, not scheduled — but its
+          wording belongs with every other email's wording, not buried in a
+          panel a captain only sees twenty minutes after a match. */}
+      <RecapTemplatesPanel
+        teamId={team.id}
+        initial={((recapTemplates as RecapTemplateRow[]) || [])}
       />
     </div>
   );

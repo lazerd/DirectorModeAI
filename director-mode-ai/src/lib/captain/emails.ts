@@ -624,3 +624,101 @@ export function opponentHostingEmail(
     html: shell('Looking forward to hosting you', textToHtml(opts.bodyText), promo),
   };
 }
+
+/**
+ * The match recap — the only email in this file that goes out AFTER a match.
+ *
+ * The captain owns the voice (subject + body, from her win or loss template);
+ * the scoreboard, the season record and the next fixture are generated, because
+ * those are the parts she would otherwise be retyping from the app she just
+ * typed them into.
+ *
+ * The reader's own court is highlighted. A recap that makes each player find
+ * their line in a table of six gets skimmed; one that says "you took court 3"
+ * gets read.
+ */
+export function matchRecapEmail(
+  team: string,
+  m: MatchInfo,
+  r: Recipient,
+  opts: {
+    subject: string;
+    /** The captain's words, already variable-substituted. */
+    bodyText: string;
+    outcome: 'win' | 'loss' | 'tie';
+    scoreline: string;
+    courts: RecapCourtRow[];
+    /** Season record label ("3-1"), or null to leave it out. */
+    record?: string | null;
+    nextMatch?: MatchInfo | null;
+  },
+  tz?: string,
+): { to: string; subject: string; html: string } {
+  const headline =
+    opts.outcome === 'win'
+      ? `We beat ${m.opponent || 'them'} ${opts.scoreline}`
+      : opts.outcome === 'loss'
+        ? `${m.opponent || 'They'} took it ${opts.scoreline}`
+        : `We split with ${m.opponent || 'them'} ${opts.scoreline}`;
+
+  const accent =
+    opts.outcome === 'win' ? BRAND : opts.outcome === 'loss' ? '#fca5a5' : '#7dd3fc';
+
+  const rows = opts.courts
+    .map((c) => {
+      const mine = c.playerIds.includes(r.playerId);
+      const result =
+        c.won === true
+          ? `<span style="color:#15803d;font-weight:700">W</span>`
+          : c.won === false
+            ? `<span style="color:#b91c1c;font-weight:700">L</span>`
+            : `<span style="color:#94a3b8">—</span>`;
+      const score = c.defaulted ? 'Default' : c.score || '—';
+      return `
+      <tr${mine ? ` style="background:#f8fafc"` : ''}>
+        <td style="padding:9px 12px 9px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;color:#64748b;font-size:12px">
+          ${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}
+        </td>
+        <td style="padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:15px${mine ? ';font-weight:700' : ''}">
+          ${escapeHtml(c.names.join(' / '))}${mine ? ' <span style="color:#64748b;font-weight:400;font-size:12px">(you)</span>' : ''}
+        </td>
+        <td style="padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:14px;color:#475569;white-space:nowrap">${escapeHtml(score)}</td>
+        <td style="padding:9px 10px 9px 12px;border-bottom:1px solid #e2e8f0;font-size:14px;text-align:right">${result}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const next = opts.nextMatch
+    ? `<p style="font-size:14px;color:#475569;margin:16px 0 0">
+         <strong>Next up:</strong> ${formatMatchWhen(opts.nextMatch.matchAt, tz)}${
+           opts.nextMatch.opponent ? ` vs ${escapeHtml(opts.nextMatch.opponent)}` : ''
+         } · ${opts.nextMatch.isHome ? 'home' : 'away'}
+       </p>`
+    : '';
+
+  return {
+    to: r.email,
+    subject: opts.subject,
+    html: shell(
+      headline,
+      `<p style="font-size:13px;color:#64748b;margin:-8px 0 16px">
+         ${formatMatchWhen(m.matchAt, tz)} · ${m.isHome ? 'home' : 'away'}
+       </p>
+       ${textToHtml(opts.bodyText)}
+       <table style="width:100%;border-collapse:collapse;margin:16px 0 0;border-top:2px solid ${accent}">${rows}</table>
+       ${opts.record ? `<p style="font-size:14px;color:#475569;margin:14px 0 0"><strong>Season record:</strong> ${escapeHtml(opts.record)}</p>` : ''}
+       ${next}`,
+      'Sent by your captain through CaptainMode.',
+    ),
+  };
+}
+
+export type RecapCourtRow = {
+  courtNumber: number;
+  courtType: 'singles' | 'doubles';
+  names: string[];
+  playerIds: string[];
+  score: string | null;
+  won: boolean | null;
+  defaulted: boolean;
+};

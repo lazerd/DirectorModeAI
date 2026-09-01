@@ -157,6 +157,7 @@ export default async function MatchPage({
           defaulted: (r.defaulted as boolean) ?? false,
           default_by: (r.default_by as 'us' | 'them' | null) ?? null,
         }))}
+        recapSentAt={(match.recap_sent_at as string) ?? null}
         withdrawals={withdrawals}
         teamName={team.name}
         opponent={(match.opponent as string) || null}

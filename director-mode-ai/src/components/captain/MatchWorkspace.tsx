@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import MatchNextStep, { matchStage } from '@/components/captain/MatchNextStep';
+import RecapPanel from '@/components/captain/RecapPanel';
 import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 import { lineupAsText } from '@/lib/captain/lineupText';
@@ -94,6 +95,7 @@ export default function MatchWorkspace({
   matchAt,
   status,
   initialResults,
+  recapSentAt,
   withdrawals,
   teamName,
   opponent,
@@ -117,6 +119,8 @@ export default function MatchWorkspace({
     defaulted?: boolean;
     default_by?: 'us' | 'them' | null;
   }[];
+  /** When the post-match recap last went to the team, if it has. */
+  recapSentAt: string | null;
   /**
    * Who tapped "I can't play" on the lineup email. Keyed by PLAYER, not by
    * slot, so a withdrawal survives every swap and line flip below — a bail
@@ -271,6 +275,8 @@ export default function MatchWorkspace({
     bailed: bailedInLineup.length,
     played: status === 'played',
     matchPast: new Date(matchAt).getTime() < Date.now(),
+    scoresIn: initialResults.length > 0,
+    recapSent: !!recapSentAt,
   });
   const waitingNames = namedInLineup.filter((p) => p.state === 'waiting').map((p) => p.name);
 
@@ -1752,6 +1758,15 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
               </div>
             </>
           )}
+
+          {/* The one email that goes out AFTER a match. Hidden until there are
+              saved scores to recap — the scoreboard is built from the database,
+              not from the unsaved form above. */}
+          <RecapPanel
+            matchId={matchId}
+            hasResults={initialResults.length > 0}
+            recapSentAt={recapSentAt}
+          />
         </section>
       )}
 

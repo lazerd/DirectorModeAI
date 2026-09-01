@@ -1,4 +1,4 @@
-import { CalendarClock, Users, ListOrdered, Send, CheckCircle2, Trophy, AlertTriangle } from 'lucide-react';
+import { CalendarClock, Users, ListOrdered, Send, CheckCircle2, Trophy, AlertTriangle, Mail } from 'lucide-react';
 
 /**
  * "What do I do next" — the one line the match page was missing.
@@ -21,7 +21,8 @@ export type MatchStage =
   | 'confirm'       // sent, waiting on players to confirm
   | 'bailed'        // someone withdrew from a sent lineup — needs a sub
   | 'ready'         // everyone confirmed, match not played
-  | 'results';      // match is done, scores outstanding
+  | 'results'       // match is done, scores outstanding
+  | 'recap';        // scores are in, the team has not been told
 
 export function matchStage(x: {
   answered: number;
@@ -33,7 +34,14 @@ export function matchStage(x: {
   bailed: number;
   played: boolean;
   matchPast: boolean;
+  /** Court scores saved for this match. */
+  scoresIn?: boolean;
+  /** The post-match recap has already gone to the team. */
+  recapSent?: boolean;
 }): MatchStage {
+  // Scores in but nobody told: the twenty minutes after a match is the only
+  // window in which a recap actually gets sent, so the page asks for it.
+  if (x.scoresIn && !x.recapSent) return 'recap';
   if (x.played || (x.matchPast && x.lineupSent)) return 'results';
   if (x.bailed > 0 && x.lineupSent) return 'bailed';
   if (!x.answered) return 'poll';
@@ -86,6 +94,11 @@ const COPY: Record<
     icon: Trophy, tone: '#D3FB52',
     title: 'Enter the scores',
     body: () => 'Court by court. This is what feeds play counts, playoff eligibility and partnership records.',
+  },
+  recap: {
+    icon: Mail, tone: '#D3FB52',
+    title: 'Tell the team how it went',
+    body: () => 'Scores are in. One tap sends the recap — the scoreboard, the season record and who is next.',
   },
 };
 
