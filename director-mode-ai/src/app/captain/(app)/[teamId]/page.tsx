@@ -104,6 +104,25 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
   // How many of the UPCOMING dates each player has answered either way — the
   // season panel chases gaps, which is a different question from "who said yes".
   const answeredByPlayer: Record<string, number> = {};
+  /**
+   * Played and past matches, newest first.
+   *
+   * The schedule rendered `upcoming` only, so a match disappeared the moment
+   * its start time passed — taking score entry and the post-match recap with
+   * it, at exactly the moment a captain reaches for them. They stay listed now,
+   * visually stepped back so the next match is still the obvious one.
+   *
+   * `upcoming` itself is untouched: it drives matchesRemaining and the
+   * playoff-eligibility warnings, which must only ever count matches still to
+   * be played.
+   */
+  const past = allMatches
+    .filter((m) => !upcoming.some((u) => u.id === m.id))
+    .sort(
+      (a, b) =>
+        new Date(b.match_at as string).getTime() - new Date(a.match_at as string).getTime(),
+    );
+
   const upcomingIds = new Set(upcoming.map((m) => m.id as string));
   if (allMatches.length) {
     const { data: avail } = await db
@@ -203,6 +222,49 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
             </Link>
           ))}
         </div>
+
+        {past.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-white/35 text-xs font-semibold uppercase tracking-[0.14em] mb-2">
+              Played
+            </h3>
+            <div className="space-y-2">
+              {past.map((m) => {
+                const scored = (m.status as string) === 'played';
+                return (
+                  <Link
+                    key={m.id as string}
+                    href={`/captain/${team.id}/match/${m.id}`}
+                    className="flex items-center justify-between gap-4 rounded-xl border border-white/[0.05] bg-[#002838]/40 p-4 opacity-60 hover:opacity-100 hover:border-white/20 transition-all"
+                  >
+                    <div>
+                      <div className="text-white/70 font-medium">
+                        {new Intl.DateTimeFormat('en-US', {
+                          weekday: 'short',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          timeZone: CLUB_TZ,
+                        }).format(new Date(m.match_at as string))}
+                      </div>
+                      <div className="text-white/30 text-sm">
+                        {(m.opponent as string) || 'TBD'} · {m.is_home ? 'Home' : 'Away'}
+                      </div>
+                    </div>
+                    <div className="text-right text-sm">
+                      {/* The one thing a captain is looking for here is whether
+                          they still owe this match a score. */}
+                      <div className={scored ? 'text-white/40' : 'text-[#D3FB52] font-medium'}>
+                        {scored ? 'recorded' : 'scores needed'}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <AddMatchForm teamId={team.id} />
       </section>
 
