@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Trophy, Calendar } from 'lucide-react';
-import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   computeDivisionStandings,
   computePlayerRecords,
@@ -26,7 +26,17 @@ export default async function PublicStandingsPage({
 }: {
   params: { slug: string };
 }) {
-  const supabase = await createClient();
+  /**
+   * Public standings page, read with the service role like every sibling page
+   * under /leagues/[slug]. It used the anon key, which was the ONLY anon
+   * dependency on league_clubs / league_division_clubs / league_matchup_lines
+   * and blocked locking those tables down — they carry roster and score tokens
+   * that were readable by anyone holding the public key.
+   *
+   * Columns are named explicitly rather than select('*') precisely because the
+   * service role would otherwise fetch those tokens into a public page's render.
+   */
+  const supabase = getSupabaseAdmin();
 
   const { data: league } = await supabase
     .from('leagues')
@@ -51,11 +61,11 @@ export default async function PublicStandingsPage({
   }
 
   const [clubsRes, divisionsRes, dcRes, matchupsRes, rostersRes] = await Promise.all([
-    supabase.from('league_clubs').select('*').eq('league_id', leagueRow.id).order('sort_order'),
+    supabase.from('league_clubs').select('id, league_id, name, short_code, sort_order').eq('league_id', leagueRow.id).order('sort_order'),
     supabase.from('league_divisions').select('*').eq('league_id', leagueRow.id).order('sort_order'),
-    supabase.from('league_division_clubs').select('*'),
+    supabase.from('league_division_clubs').select('id, division_id, club_id'),
     supabase.from('league_team_matchups').select('*').order('match_date'),
-    supabase.from('league_team_rosters').select('*'),
+    supabase.from('league_team_rosters').select('id, division_id, club_id, player_name'),
   ]);
 
   const clubs = (clubsRes.data as any[]) || [];
@@ -72,7 +82,7 @@ export default async function PublicStandingsPage({
   const { data: linesRes } = matchups.length
     ? await supabase
         .from('league_matchup_lines')
-        .select('*')
+        .select('id, matchup_id, line_type, home_player1_id, home_player2_id, away_player1_id, away_player2_id, winner, status')
         .in(
           'matchup_id',
           matchups.map(m => m.id)
