@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { CreditCard, ArrowRight, Sparkles, Calendar, Mail, MessageSquare } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { getPlanContext, getUsage, TIER_LIMITS } from '@/lib/billing';
+import { PRO_PRICE_USD } from '@/config/pricing';
 import ManagePlanButton from '@/components/billing/ManagePlanButton';
 import UpgradeButton from '@/components/billing/UpgradeButton';
 import { lsCheckoutMode } from '@/lib/lemonsqueezy';
@@ -22,7 +23,7 @@ export default async function MixerSubscriptionPage() {
 
   const tierLabel = {
     free: 'Free',
-    pro: 'Pro — $29/mo',
+    pro: `Pro — $${PRO_PRICE_USD}/mo`,
   }[ctx.effectiveTier];
 
   const onTrial = ctx.rawTier === 'grandfathered' && (ctx.grandfatheredDaysRemaining ?? 0) > 0;

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { PRO_PRICE_USD } from '@/config/pricing';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -132,7 +133,7 @@ export default function UpgradeDialog({ open, onOpenChange, feature, eventId }: 
             disabled={loadingPro}
             className="w-full py-3 rounded-xl bg-yellow-300 text-[#001820] font-medium text-sm flex items-center justify-center gap-2 hover:bg-yellow-200 disabled:opacity-60"
           >
-            {loadingPro ? <Loader2 size={16} className="animate-spin" /> : <>Go Pro — $29/mo <ArrowRight size={14} /></>}
+            {loadingPro ? <Loader2 size={16} className="animate-spin" /> : <>Go Pro — ${PRO_PRICE_USD}/mo <ArrowRight size={14} /></>}
           </button>
           {eventId && feature !== 'multi_coach_org' && feature !== 'csv_vault_import' && (
             <button

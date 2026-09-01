@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { PRO_PRICE_USD } from '@/config/pricing';
 import { usePathname } from 'next/navigation';
 import { Sparkles, X, Loader2, ArrowRight } from 'lucide-react';
 
@@ -51,7 +52,7 @@ export default function TrialBanner() {
   return (
     <div className="fixed bottom-0 left-0 right-0 md:left-[72px] z-[55] bg-[#002838] border-t border-yellow-300/30 px-4 py-2.5 flex items-center justify-center gap-3 text-sm">
       <Sparkles size={15} className="text-yellow-300 shrink-0" />
-      <span className="text-white/80">{msg} — unlock everything for <b className="text-white">$29/mo</b>.</span>
+      <span className="text-white/80">{msg} — unlock everything for <b className="text-white">${PRO_PRICE_USD}/mo</b>.</span>
       <button onClick={goPro} disabled={loading} className="px-3 py-1.5 rounded-lg bg-yellow-300 text-[#001820] font-semibold text-xs flex items-center gap-1.5 hover:bg-yellow-200 disabled:opacity-60 shrink-0">
         {loading ? <Loader2 size={13} className="animate-spin" /> : <>Go Pro <ArrowRight size={13} /></>}
       </button>

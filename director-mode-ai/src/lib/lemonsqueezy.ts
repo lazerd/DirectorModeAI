@@ -112,6 +112,25 @@ export function buildCheckoutUrl(
   if (opts.email) u.searchParams.set('checkout[email]', opts.email);
   if (opts.eventId) u.searchParams.set('checkout[custom][event_id]', opts.eventId);
   if (opts.clubId) u.searchParams.set('checkout[custom][club_id]', opts.clubId);
+
+  /**
+   * Founding-club discount, pre-applied to the Pro checkout.
+   *
+   * /pricing advertises "$25/month, locked for 24 months" for the first 25
+   * clubs. Nothing in the code ever applied it — the customer read $25 on the
+   * page and was charged $49 at the till. LemonSqueezy owns the actual terms
+   * (amount, 24-month duration, the 25-redemption cap); this only pre-fills the
+   * code so the buyer never has to know it exists.
+   *
+   * Controlled by env so it can be retired without a deploy: unset
+   * LEMONSQUEEZY_FOUNDING_DISCOUNT_CODE and Pro simply sells at list. Only
+   * pro_monthly — the CaptainMode rates are already the discounted ones.
+   */
+  const founding = process.env.LEMONSQUEEZY_FOUNDING_DISCOUNT_CODE;
+  if (founding && priceKey === 'pro_monthly') {
+    u.searchParams.set('checkout[discount_code]', founding);
+  }
+
   return u.toString();
 }
 

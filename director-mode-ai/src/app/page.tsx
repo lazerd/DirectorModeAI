@@ -147,7 +147,7 @@ export default function HomePage() {
                 <Link href="/login" className="block text-white/80 hover:text-white text-sm font-semibold transition-colors px-2 sm:px-3 py-2.5">
                   Sign In
                 </Link>
-                <Link href="/login" className="px-4 sm:px-5 py-2.5 bg-[#D3FB52] text-[#002838] rounded-lg font-semibold text-sm hover:bg-[#c5f035] hover:shadow-lg hover:shadow-[#D3FB52]/25 transition-all">
+                <Link href="/register" className="px-4 sm:px-5 py-2.5 bg-[#D3FB52] text-[#002838] rounded-lg font-semibold text-sm hover:bg-[#c5f035] hover:shadow-lg hover:shadow-[#D3FB52]/25 transition-all">
                   Get Started Free
                 </Link>
               </>
@@ -191,7 +191,7 @@ export default function HomePage() {
 
             <div className="hm-fade-up flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5 mb-10" style={{ animationDelay: "0.18s" }}>
               <Link
-                href="/login"
+                href="/register"
                 className="w-full sm:w-auto px-8 py-4 bg-[#D3FB52] text-[#002838] rounded-xl font-semibold text-base hover:bg-[#c5f035] transition-all shadow-xl shadow-[#D3FB52]/20 hover:shadow-2xl hover:shadow-[#D3FB52]/30 hover:-translate-y-0.5 inline-flex items-center justify-center gap-2"
               >
                 Get Started Free <ArrowRight size={18} />
@@ -368,16 +368,20 @@ export default function HomePage() {
               <div className="flex items-center justify-between px-5 py-3.5 bg-[#0a1822] border-b border-white/[0.06]">
                 <div className="flex items-center gap-2">
                   <Trophy size={15} className="text-[#D3FB52]" />
-                  <span className="text-sm font-semibold">Sleepy Hollow vs Meadow</span>
+                  <span className="text-sm font-semibold">Riverbend vs Northside</span>
                 </div>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#D3FB52]/15 text-[#D3FB52]">12U</span>
               </div>
               <div className="p-4 space-y-2">
+                {/* Invented names and clubs. This mockup previously used a real
+                    Lamorinda 10U match — ten named minors from a live roster,
+                    with two results reversed to flatter the home side. A public
+                    marketing page is not the place for either. */}
                 {[
-                  { court: "1", line: "Emmett d. Will", score: "8–2", done: true },
-                  { court: "2", line: "Anand d. Luke", score: "8–4", done: true },
-                  { court: "3", line: "Niam vs Ryan", score: "5–3", done: false },
-                  { court: "4", line: "Dean/Lucas vs Bennett/Van", score: "7–6", done: true },
+                  { court: "1", line: "Theo d. Dario", score: "8–2", done: true },
+                  { court: "2", line: "Ada d. Simone", score: "8–4", done: true },
+                  { court: "3", line: "Jonah vs Ellis", score: "5–3", done: false },
+                  { court: "4", line: "Ines/Otto d. Renn/Sasha", score: "8–6", done: true },
                 ].map((m) => (
                   <div key={m.court} className="flex items-center justify-between p-3 bg-white/[0.03] rounded-lg border border-white/[0.06]">
                     <div className="flex items-center gap-3 min-w-0">
@@ -391,13 +395,13 @@ export default function HomePage() {
                 ))}
                 <div className="flex items-center justify-between pt-2 px-1">
                   <span className="text-xs text-white/40 flex items-center gap-1.5"><ListOrdered size={13} /> Ladder updating…</span>
-                  <span className="text-xs font-semibold text-[#D3FB52]">SH leads 3–1</span>
+                  <span className="text-xs font-semibold text-[#D3FB52]">Riverbend leads 3–0</span>
                 </div>
               </div>
             </div>
             <div className="absolute -top-4 -right-3 bg-[#0a1822] border border-white/10 rounded-xl px-3 py-2 shadow-xl hidden sm:flex items-center gap-2">
               <Star size={13} className="text-[#D3FB52]" />
-              <span className="text-[11px] text-white/70 font-medium">5 clubs · Lamorinda</span>
+              <span className="text-[11px] text-white/70 font-medium">Live match day</span>
             </div>
           </div>
         </div>
@@ -499,7 +503,7 @@ export default function HomePage() {
               ))}
             </div>
             <Link
-              href="/login"
+              href="/register"
               className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#D3FB52] text-[#002838] rounded-xl font-semibold hover:bg-[#c5f035] hover:-translate-y-0.5 transition-all shadow-lg shadow-[#D3FB52]/20"
             >
               Try it free <ArrowRight size={17} />
@@ -709,7 +713,7 @@ export default function HomePage() {
             Set up in five minutes. Free plan, forever — fill courts, run your season, and ditch the spreadsheets.
           </p>
           <Link
-            href="/login"
+            href="/register"
             className="inline-flex items-center gap-2 px-9 py-4 bg-[#D3FB52] text-[#002838] rounded-xl font-semibold text-base hover:bg-[#c5f035] hover:-translate-y-0.5 transition-all shadow-xl shadow-[#D3FB52]/25"
           >
             Get Started Free <ArrowRight size={18} />

@@ -55,7 +55,7 @@ export default function ForgotPasswordPage() {
           <div className="w-10 h-10 rounded-xl bg-[#D3FB52] flex items-center justify-center">
             <Trophy size={22} className="text-[#002838]" />
           </div>
-          <span className="font-semibold text-2xl text-white">CoachMode AI</span>
+          <span className="font-semibold text-2xl text-white">ClubMode AI</span>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
