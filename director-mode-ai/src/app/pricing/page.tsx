@@ -127,13 +127,12 @@ export default function PricingPage() {
         <div className="rounded-2xl border border-white/10 bg-[#002838] p-7">
           <div className="flex items-center gap-2 text-yellow-300">
             <MessageSquare size={18} />
-            <span className="font-display text-xl">The only meter is texting — and you set the cap</span>
+            <span className="font-display text-xl">The only meter is texting</span>
           </div>
           <p className="mt-3 text-white/60 text-sm max-w-2xl">
-            Pro includes 300 text messages a month. Past that it&apos;s 2&cent; per text, and you pick a
-            monthly ceiling you&apos;re comfortable with. We warn you as you approach it and never charge a
-            penny more without your say-so. Everything else — AI actions, the live event screen, email — is
-            included. No surprise bills, ever.
+            Pro includes 300 text messages a month. Past that it&apos;s 2&cent; per text. Your usage is
+            metered live on your account page, so you can see exactly where you are before the month is
+            out. Everything else — AI actions, the live event screen, email — is included.
           </p>
           <p className="mt-3 text-white/40 text-xs max-w-2xl">
             Overage rates can change with 30 days&apos; notice — carriers change what they charge us,
@@ -141,9 +140,9 @@ export default function PricingPage() {
           </p>
           <ul className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             <Bullet>A live meter of texts used this month</Bullet>
-            <Bullet>A heads-up at 80% of your cap</Bullet>
-            <Bullet>Raise or lower your ceiling any time</Bullet>
+            <Bullet>Texting is the only thing that meters at all</Bullet>
             <Bullet>Unlimited AI actions included in Pro</Bullet>
+            <Bullet>Email, events and court sheets never meter</Bullet>
           </ul>
         </div>
       </section>
@@ -153,12 +152,27 @@ export default function PricingPage() {
         <div className="inline-flex items-start gap-2 text-white/50 text-sm">
           <ShieldCheck size={16} className="mt-0.5 flex-shrink-0 text-emerald-400" />
           <p>
-            Collecting entry fees online? Players pay by card and the money goes straight to your account.
-            ClubMode never takes a cut of your entry fees and never holds your funds — we make our money on
-            the subscription, not on your players.
+            Collecting entry fees online? Players pay by card, and{' '}
+            <strong className="text-white/80">ClubMode never takes a percentage</strong> — no per-registration
+            fee, no cut of your gate. We make our money on the subscription, not on your players. Card
+            processing is handled by Square, and payouts are settled with you directly.
           </p>
         </div>
       </section>
+
+      {/* This page had no footer at all — so no Terms and no Privacy link on the
+          one page a payment processor and a club's finance lead both read. */}
+      <footer className="border-t border-white/[0.06] px-6 py-10">
+        <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-3 text-[13px] text-white/30 sm:flex-row">
+          <p>&copy; {new Date().getFullYear()} ClubMode AI</p>
+          <div className="flex flex-wrap items-center justify-center gap-4">
+            <Link href="/" className="hover:text-white/60 transition-colors">Home</Link>
+            <Link href="/terms" className="hover:text-white/60 transition-colors">Terms</Link>
+            <Link href="/privacy" className="hover:text-white/60 transition-colors">Privacy</Link>
+            <Link href="/login" className="hover:text-white/60 transition-colors">Sign in</Link>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -98,6 +98,31 @@ const COLLAPSED = 72;
  * business covering their screen.
  */
 const PUBLIC_PREFIXES = [
+  // --- marketing and auth: a stranger from a cold email should never see the
+  // director rail, and on a phone its floating opener sat on top of the logo.
+  '/pricing',
+  '/captainmode',
+  '/terms',
+  '/privacy',
+  '/login',
+  '/register',
+  '/verify-email',
+  '/forgot-password',
+  '/reset-password',
+  // --- tokenized player pages. '/enter' was a dead entry: the real route is
+  // /tournaments/[slug]/enter, so the rail was rendering over score entry.
+  '/tournaments/player',
+  '/leagues/line',
+  '/leagues/match',
+  '/leagues/roster',
+  '/leagues/confirm-partner',
+  '/quads/match',
+  '/quads/player',
+  '/swim-family',
+  '/book',
+  '/join',
+  '/event',
+  '/nps',
   '/captain/availability',
   '/captain/intake',
   '/captain/claim',
@@ -111,7 +136,14 @@ const PUBLIC_PREFIXES = [
 
 export default function ClubSidebar() {
   const pathname = usePathname() || '/';
-  const isPublic = PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+  /**
+   * The marketing homepage is matched exactly, not by prefix — '/' as a prefix
+   * would be every page in the app. A visitor arriving from a cold email should
+   * see the landing page, not fifteen director tools they cannot open.
+   */
+  const isPublic =
+    pathname === '/' ||
+    PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hovering, setHovering] = useState(false); // hover-to-peek when collapsed

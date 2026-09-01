@@ -27,7 +27,23 @@ function greetingFor(path: string | null): string {
 // Public marketing surfaces — the live assistant is for directors inside the app,
 // not for prospects. The homepage advertises it instead. Add prefixes here to
 // hide it elsewhere (e.g. participant share pages).
-const HIDDEN_PATHS = (path: string) => path === '/' || path.startsWith('/pricing');
+/**
+ * Public pages. The assistant requires a session — /api/assistant/chat returns
+ * 401 "Please log in" — so on a marketing page the bubble is an invitation to
+ * tap your headline AI feature and receive an auth error. Tokenized player
+ * pages are excluded for the same reason plus a second one: a parent entering a
+ * score has no account and never will.
+ */
+const PUBLIC = [
+  '/pricing', '/captainmode', '/terms', '/privacy',
+  '/login', '/register', '/verify-email', '/forgot-password', '/reset-password',
+  '/tournaments/player', '/leagues/line', '/leagues/match', '/leagues/roster',
+  '/leagues/confirm-partner', '/quads/match', '/quads/player', '/swim-family',
+  '/captain/availability', '/captain/intake', '/captain/claim', '/captain/confirm',
+  '/pathway/p', '/pathway/curriculum', '/book', '/join', '/event', '/nps',
+];
+const HIDDEN_PATHS = (path: string) =>
+  path === '/' || PUBLIC.some((p) => path === p || path.startsWith(p + '/'));
 
 export default function AssistantWidget() {
   const pathname = usePathname();
