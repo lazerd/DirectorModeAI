@@ -92,8 +92,13 @@ export default function HomePage() {
   // it here automatically; there is no local array to fall out of sync.
   // LastMinuteLesson keeps its bespoke handler: it routes coach vs client vs
   // neither after a lookup, which a plain href can't do.
-  const openTool = (t: Tool) =>
-    t.href === '/lessons/dashboard' ? goToLessons() : goToTool(t.href);
+  const openTool = (t: Tool) => {
+    // A logged-out visitor clicking CaptainMode should meet the product, not a
+    // login wall — it is the one tool with its own public landing page, and the
+    // one most likely to be clicked by a captain rather than a director.
+    if (!user && t.name === 'CaptainMode') return router.push('/captainmode');
+    return t.href === '/lessons/dashboard' ? goToLessons() : goToTool(t.href);
+  };
 
   return (
     <div className="min-h-screen bg-[#001820] text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>

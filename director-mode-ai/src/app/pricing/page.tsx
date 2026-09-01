@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import {
   PRO_PRICE_USD, FOUNDING_PRICE_USD, FOUNDING_CLUB_LIMIT, FOUNDING_LOCK_MONTHS,
+  CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD,
 } from '@/config/pricing';
 
 const FREE_FEATURES = [
@@ -118,6 +119,53 @@ export default function PricingPage() {
               Start 14-day Pro trial <ArrowRight size={16} />
             </Link>
             <p className="mt-2 text-center text-white/40 text-xs">No card required. Cancel anytime.</p>
+          </div>
+        </div>
+      </section>
+
+      {/* CaptainMode — a separate subscription, bought by the captain, not the
+          club. It had no pricing on this page at all, which meant the only way
+          to learn what it costs was to find /captainmode by accident. */}
+      <section className="max-w-4xl mx-auto px-6 pt-8">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-7">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <h2 className="font-display text-xl">CaptainMode — for your team captains</h2>
+              <p className="mt-1 text-white/55 text-sm max-w-xl">
+                A separate tool for the volunteer running a league team: availability polls,
+                lineups, confirmations and last-minute subs. Captains pay for it themselves —
+                no club approval, no line on your budget.
+              </p>
+            </div>
+            <Link
+              href="/captainmode"
+              className="text-sm text-yellow-300 hover:text-yellow-200 whitespace-nowrap"
+            >
+              See CaptainMode →
+            </Link>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="rounded-xl border border-yellow-300/30 bg-yellow-300/[0.05] p-5">
+              <p className="text-xs uppercase tracking-widest text-yellow-300 font-semibold">
+                Your club is on ClubMode
+              </p>
+              <p className="mt-2 font-display text-3xl">
+                ${CAPTAIN_CLUB_PRICE_USD}
+                <span className="text-sm font-normal text-white/40"> / month</span>
+              </p>
+              <p className="mt-2 text-sm text-white/55">Per captain, up to 3 teams. Co-captains free.</p>
+            </div>
+            <div className="rounded-xl border border-white/10 p-5">
+              <p className="text-xs uppercase tracking-widest text-white/40 font-semibold">
+                Your club isn&apos;t
+              </p>
+              <p className="mt-2 font-display text-3xl">
+                ${CAPTAIN_SOLO_PRICE_USD}
+                <span className="text-sm font-normal text-white/40"> / month</span>
+              </p>
+              <p className="mt-2 text-sm text-white/55">Identical product. Nothing held back.</p>
+            </div>
           </div>
         </div>
       </section>
