@@ -98,6 +98,7 @@ export default function CaptainModePage() {
               <li>Tap <em>generate</em>. A legal, fair lineup appears. Drag to change anything.</li>
               <li>It emails the whole team, so nobody has to ask.</li>
               <li>Someone bails? One tap blasts every eligible sub. First to claim gets it.</li>
+              <li>Scores in? One tap sends the team the recap — in the right tone for the day.</li>
               <li>Eligibility and play counts are tracked for you, all season.</li>
             </ul>
           </div>
@@ -147,8 +148,8 @@ export default function CaptainModePage() {
               n="5"
               icon={<Trophy size={19} />}
               title="After the match"
-              body="Enter court-by-court scores. That feeds your record, everyone's match count, playoff eligibility, and which pairs actually win together."
-              detail="Rained out? One button re-polls availability from scratch and rebuilds — because last week's answers were for a different day."
+              body="Photograph the paper scorecard and the scores fill themselves in. Then one tap sends the team the recap: the court-by-court scoreboard with each player's own line marked, your season record, and who's next."
+              detail="Two templates, and the result picks one — the winning recap celebrates, the losing one says we'll get 'em next time. Write them once in your own words, or tap once and have them written for you. Scores also feed your record, everyone's match count, playoff eligibility, and which pairs actually win together."
             />
           </ol>
         </div>
