@@ -15,7 +15,12 @@ import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { opponentHostingEmail, defaultLinesNote, type MatchInfo } from '@/lib/captain/emails';
+import {
+  opponentHostingEmail,
+  hostingBodyText,
+  defaultHostingSubject,
+  type MatchInfo,
+} from '@/lib/captain/emails';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
 import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
@@ -29,6 +34,8 @@ type Body = {
   name?: string;
   host_notes?: string;
   lines_note?: string;
+  /** The captain's own words. Sent verbatim. */
+  body?: string;
   intro?: string;
   subject?: string;
   from_name?: string;
@@ -154,11 +161,15 @@ export async function POST(req: Request) {
   const lineCount =
     ((matchRow.doubles_courts as number) || 0) + ((matchRow.singles_courts as number) || 0);
 
-  const email = opponentHostingEmail(
-    team.name as string,
+  /**
+   * The default body, fully rendered for THIS match. The captain edits real
+   * prose rather than filling slots around a fixed skeleton — match details
+   * change enough week to week that a rigid template is wrong at the worst
+   * possible moment.
+   */
+  const defaultBody = hostingBodyText(
     m,
     {
-      to: to || 'captain@example.com',
       opposingCaptainName: name || null,
       clubName,
       address,
@@ -169,7 +180,15 @@ export async function POST(req: Request) {
       fromTitle,
     },
     CLUB_TZ,
-    { subject: body.subject ?? null, intro: body.intro ?? null },
+  );
+  const bodyText = body.body !== undefined ? body.body : defaultBody;
+  const subject = body.subject ?? defaultHostingSubject(team.name as string, m, clubName, CLUB_TZ);
+
+  const email = opponentHostingEmail(
+    team.name as string,
+    m,
+    { to: to || 'captain@example.com', clubName, bodyText, subject },
+    CLUB_TZ,
   );
 
   if (body.preview !== false) {
@@ -189,7 +208,8 @@ export async function POST(req: Request) {
         line_count: lineCount,
         // Prefills the editor. The captain edits it when the opponent has
         // already announced a default, which happens often enough to matter.
-        lines_note: body.lines_note ?? defaultLinesNote(lineCount),
+        body: bodyText,
+        subject,
       },
     });
   }

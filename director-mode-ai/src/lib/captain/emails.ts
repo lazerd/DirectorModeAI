@@ -505,38 +505,55 @@ export function defaultLinesNote(lineCount?: number | null): string {
   return `We've filled all ${lineCount} lines. If you're bringing fewer than ${lineCount} teams, please let us know at your earliest convenience so we can plan the courts.`;
 }
 
-export function opponentHostingEmail(
-  team: string,
+/**
+ * The default hosting note as PLAIN TEXT, ready to drop into an editor.
+ *
+ * Split out from the HTML builder so the captain edits real prose rather than
+ * filling four fields around a fixed skeleton. Match details change enough
+ * week to week — a line defaulted in advance, a court closed, a different
+ * warmup time — that a template with a couple of editable slots was always
+ * going to be wrong at the wrong moment.
+ */
+export function hostingBodyText(
   m: MatchInfo,
   opts: {
-    to: string;
     opposingCaptainName?: string | null;
     clubName: string;
     address?: string | null;
     hostNotes?: string | null;
     lineCount?: number | null;
-    /**
-     * Overrides the generated "we've filled N lines" sentence. Pass '' to drop
-     * it entirely. Needed because the count is often wrong by the time you
-     * send: opponents announce a default days ahead, and a note claiming all
-     * four lines are filled when the other captain has already told you they
-     * are defaulting one reads as if nobody is paying attention.
-     */
     linesNote?: string | null;
     fromName?: string | null;
     fromTitle?: string | null;
   },
   tz?: string,
-  c?: EmailCustom,
-): { to: string; subject: string; html: string } {
+): string {
   const when = formatMatchWhen(m.matchAt, tz);
   const greeting = opts.opposingCaptainName?.trim()
     ? `Hi ${opts.opposingCaptainName.trim().split(/\s+/)[0]},`
     : 'Hi there,';
 
-  // Free-text notes are captain-authored, so newlines become paragraphs and
-  // bullet-ish lines keep their shape rather than collapsing into one block.
-  const notesHtml = (opts.hostNotes || '')
+  const linesText =
+    opts.linesNote !== undefined && opts.linesNote !== null
+      ? opts.linesNote.trim()
+      : defaultLinesNote(opts.lineCount);
+
+  const blocks = [
+    greeting,
+    `Looking forward to hosting your team ${when}.`,
+    [opts.clubName, opts.address].filter(Boolean).join('\n'),
+    (opts.hostNotes || '').trim(),
+    linesText,
+    'Thanks, and see you then!',
+    [opts.fromName, opts.fromTitle].filter(Boolean).join('\n'),
+  ].filter((b) => b && b.trim());
+
+  return blocks.join('\n\n');
+}
+
+/** Turn the captain's plain text into the email body, preserving bullets. */
+function textToHtml(text: string): string {
+  return text
     .split(/\n{2,}/)
     .map((para) => para.trim())
     .filter(Boolean)
@@ -551,61 +568,59 @@ export function opponentHostingEmail(
       return `<p style="font-size:15px;margin:10px 0">${lines.join('<br>')}</p>`;
     })
     .join('');
+}
 
-  const linesText =
-    opts.linesNote !== undefined && opts.linesNote !== null
-      ? opts.linesNote.trim()
-      : defaultLinesNote(opts.lineCount);
-  const lines = linesText
-    ? `<p style="font-size:15px;margin:10px 0">${linesText.replace(/\n/g, '<br>')}</p>`
-    : '';
+export function defaultHostingSubject(
+  team: string,
+  m: MatchInfo,
+  clubName: string,
+  tz?: string,
+): string {
+  return `${formatMatchWhen(m.matchAt, tz)} — ${team} vs ${m.opponent || 'your team'} at ${clubName}`;
+}
 
-  const sig = opts.fromName
-    ? `<p style="font-size:15px;margin:18px 0 0">Thanks, and see you then!<br><br>${opts.fromName}${
-        opts.fromTitle ? `<br><span style="color:#64748b">${opts.fromTitle}</span>` : ''
-      }</p>`
-    : `<p style="font-size:15px;margin:18px 0 0">Thanks, and see you then!</p>`;
-
+/**
+ * The pre-match note to the OPPOSING captain when we're hosting.
+ *
+ * Unlike every other email in this file the recipient is not one of our players
+ * and has no token — she is a captain at another club. There are no Yes/No
+ * buttons, no confirm link and no unsubscribe footer to protect, which is
+ * exactly why the whole body is safe to hand over to the captain to edit. The
+ * only thing this function adds around it is the shell and the CaptainMode
+ * credit.
+ */
+export function opponentHostingEmail(
+  team: string,
+  m: MatchInfo,
+  opts: {
+    to: string;
+    clubName: string;
+    /** The captain's own words. Falls back to hostingBodyText(). */
+    bodyText: string;
+    subject?: string | null;
+  },
+  tz?: string,
+): { to: string; subject: string; html: string } {
   /**
    * The only marketing surface in CaptainMode, and the best one we have.
    *
-   * This email lands in the inbox of a captain at ANOTHER club, someone who is
-   * doing all of this by group text and a spreadsheet, roughly eight times a
-   * season, from a club that is a plausible customer. A quiet one-line credit
-   * converts far better than any ad we could buy, and it earns its place
-   * because the email it sits under is genuinely useful to them.
+   * This lands in the inbox of a captain at ANOTHER club who is doing all of
+   * this by group text, roughly eight times a season, from a club that is a
+   * plausible customer. It leans on the email itself as the proof: it arrived
+   * early, complete and unprompted, which is exactly what she never manages.
    *
-   * The wording leans on the email itself as the proof: it arrived early,
-   * complete, and unprompted, which is exactly what the reader never manages
-   * with a group text. A feature list would be weaker — she does not want
-   * availability tracking, she wants her evenings back.
-   *
-   * Kept to one muted line: the moment it looks like an ad, the email stops
-   * reading as a courtesy from a fellow captain and starts reading as spam,
-   * which costs us the goodwill AND the click.
+   * Deliberately outside the editable body — it is our line, not the captain's,
+   * and one muted line is the most it can be without the email reading as spam
+   * rather than a courtesy from a fellow captain.
    */
   const promo =
     `<a href="${BASE}/captainmode?ref=match" style="color:#64748b;text-decoration:underline">` +
     `Captained with CaptainMode</a> — this email, the lineup, and every reminder, ` +
     `without one group text.`;
 
-  const vars = varsFor(team, opts.opposingCaptainName || 'Captain', m, tz);
-
   return {
     to: opts.to,
-    subject: subjectOf(c, `${when} — ${team} vs ${m.opponent || 'your team'} at ${opts.clubName}`, vars),
-    html: shell(
-      `Looking forward to hosting you`,
-      `<p style="font-size:15px;margin:0 0 10px">${greeting}</p>
-       <p style="font-size:15px;margin:10px 0">Looking forward to hosting your team <strong>${when}</strong>.</p>
-       <p style="font-size:15px;margin:10px 0"><strong>${opts.clubName}</strong>${
-         opts.address ? `<br>${opts.address}` : ''
-       }</p>
-       ${c?.intro ? `<p style="font-size:15px;margin:10px 0">${c.intro}</p>` : ''}
-       ${notesHtml}
-       ${lines}
-       ${sig}`,
-      promo,
-    ),
+    subject: (opts.subject || '').trim() || defaultHostingSubject(team, m, opts.clubName, tz),
+    html: shell('Looking forward to hosting you', textToHtml(opts.bodyText), promo),
   };
 }

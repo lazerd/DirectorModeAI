@@ -36,7 +36,8 @@ type Preview = {
     name: string;
     club_name: string;
     line_count: number;
-    lines_note: string;
+    body: string;
+    subject: string;
   };
 };
 
@@ -60,9 +61,15 @@ export default function HostEmailPanel({
   const [to, setTo] = useState('');
   const [name, setName] = useState('');
   const [notes, setNotes] = useState('');
-  // Editable because the opponent often announces a default before the
-  // match, which makes the generated line-count sentence wrong.
-  const [linesNote, setLinesNote] = useState('');
+  /**
+   * The whole message, editable. Details change week to week — a line
+   * defaulted in advance, a court closed, a different warmup time — so a
+   * template with a few slots was always going to be wrong at the wrong
+   * moment. Pre-filled with a complete, sendable default.
+   */
+  const [subject, setSubject] = useState('');
+  const [emailBody, setEmailBody] = useState('');
+  const [edited, setEdited] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   // Away matches are somebody else's hosting job.
@@ -83,7 +90,8 @@ export default function HostEmailPanel({
       setTo(j.to || '');
       setName(j.defaults?.name || '');
       setNotes(j.defaults?.host_notes || '');
-      setLinesNote(j.defaults?.lines_note ?? '');
+      setSubject(j.defaults?.subject || '');
+      setEmailBody(j.defaults?.body || '');
       setPreview(j);
       setLoaded(true);
     } catch (e: any) {
@@ -100,11 +108,21 @@ export default function HostEmailPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          match_id: matchId, preview: true, to, name, host_notes: notes, lines_note: linesNote,
+          match_id: matchId,
+          preview: true,
+          to,
+          name,
+          host_notes: notes,
+          // Once the captain has touched the body, never regenerate over it.
+          ...(edited ? { body: emailBody, subject } : {}),
         }),
       });
       const j = (await res.json()) as Preview & { error?: string };
       if (!res.ok) throw new Error(j.error || 'Preview failed');
+      if (!edited) {
+        setSubject(j.defaults?.subject || subject);
+        setEmailBody(j.defaults?.body || emailBody);
+      }
       setPreview(j);
     } catch (e: any) {
       toast.error(e?.message || 'Preview failed');
@@ -121,8 +139,14 @@ export default function HostEmailPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          match_id: matchId, preview: false, to, name, host_notes: notes,
-          lines_note: linesNote, save_notes: true,
+          match_id: matchId,
+          preview: false,
+          to,
+          name,
+          host_notes: notes,
+          body: emailBody,
+          subject,
+          save_notes: true,
         }),
       });
       const j = await res.json();
@@ -196,7 +220,7 @@ export default function HostEmailPanel({
 
       <label className="mt-3 block">
         <span className="text-[12.5px] font-medium text-slate-600">
-          Venue notes — saved to the team and reused for every home match
+          Venue notes — saved to the team, and used to build the default message below
         </span>
         <textarea
           value={notes}
@@ -212,20 +236,36 @@ export default function HostEmailPanel({
       </label>
 
       <label className="mt-3 block">
+        <span className="text-[12.5px] font-medium text-slate-600">Subject</span>
+        <input
+          value={subject}
+          onChange={(e) => { setSubject(e.target.value); setEdited(true); }}
+          style={INPUT}
+          className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-[14px] outline-none focus:border-slate-500"
+        />
+      </label>
+
+      <label className="mt-3 block">
         <span className="text-[12.5px] font-medium text-slate-600">
-          Lines note — clear it to leave this out
+          Message — edit anything, this is sent as written
         </span>
         <textarea
-          value={linesNote}
-          onChange={(e) => setLinesNote(e.target.value)}
-          rows={3}
-          placeholder="We've filled all 4 lines…"
+          value={emailBody}
+          onChange={(e) => { setEmailBody(e.target.value); setEdited(true); }}
+          rows={16}
           style={INPUT}
           className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-[14px] leading-relaxed outline-none focus:border-slate-500"
         />
-        <span className="mt-1 block text-[12px] text-slate-500">
-          Pre-filled from your court count. Change it if they&rsquo;ve already told you
-          they&rsquo;re defaulting a line.
+        <span className="mt-1 flex flex-wrap items-center gap-x-3 text-[12px] text-slate-500">
+          <span>Lines starting with &ldquo;-&rdquo; become bullets. Blank lines start a new paragraph.</span>
+          {edited && (
+            <button
+              onClick={() => { setEdited(false); rebuild(); }}
+              className="underline hover:text-slate-800"
+            >
+              reset to the default
+            </button>
+          )}
         </span>
       </label>
 
