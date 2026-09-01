@@ -100,7 +100,7 @@ export const DEFAULT_RECAP: Record<RecapOutcome, RecapTemplate> = {
     subject: '🎾 {team} takes it {score} over {opponent}!',
     body: [
       'What a day, team! 🎉',
-      'Everyone who stepped on court did their part today — the ones who closed it out and the ones who made {opponent} earn every point.',
+      'Some really good tennis out there today, top to bottom of the card.',
       "Full scoreboard below. Enjoy this one, and let's keep it rolling. 💪",
     ].join('\n\n'),
   },
