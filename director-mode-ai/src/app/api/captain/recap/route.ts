@@ -12,59 +12,33 @@
  * a win pulls the win template, a loss the loss one. That is the whole feature
  * — nobody writes a cheerful recap after losing, and nobody should have to pick
  * a tone from a dropdown twenty minutes after a match.
+ *
+ * The match context (scoreboard, season record, next fixture) is assembled by
+ * loadRecapContext, shared with the AI drafting route so what the model writes
+ * about and what the email prints can never disagree.
  */
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { createServiceClient } from '@/lib/supabase/server';
-import {
-  formatMatchWhen,
-  matchRecapEmail,
-  sendAll,
-  type MatchInfo,
-  type RecapCourtRow,
-} from '@/lib/captain/emails';
+import { matchRecapEmail, sendAll } from '@/lib/captain/emails';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
+import {
+  loadRecapContext,
+  recapVars,
+  RECAP_MATCH_COLUMNS,
+  type RecapPlayer,
+} from '@/lib/captain/recapData';
 import {
   DEFAULT_RECAP,
   RECAP_OUTCOMES,
   renderRecap,
-  seasonRecord,
-  tallyCourts,
   templateFor,
   type RecapOutcome,
-  type RecapVars,
-  type TemplateRow,
 } from '@/lib/captain/recap';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
 
 export const dynamic = 'force-dynamic';
-
-type PlayerRow = { id: string; name: string; email: string | null; player_token: string };
-type LineupRow = {
-  court_number: number;
-  court_type: 'singles' | 'doubles';
-  player1_id: string | null;
-  player2_id: string | null;
-};
-type ResultRow = {
-  match_id: string;
-  court_number: number;
-  score: string | null;
-  won: boolean | null;
-  defaulted: boolean | null;
-};
-
-const infoOf = (m: Record<string, unknown>): MatchInfo => ({
-  id: m.id as string,
-  matchAt: m.match_at as string,
-  isHome: m.is_home as boolean,
-  opponent: (m.opponent as string) || null,
-  location: (m.location as string) || null,
-  arrivalNote: (m.arrival_note as string) || null,
-  opposingCaptainName: null,
-  opposingCaptainPhone: null,
-});
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -79,145 +53,42 @@ export async function POST(req: Request) {
   const db = await createServiceClient();
   const { data: matchRow } = await db
     .from('captain_matches')
-    .select('id, team_id, match_at, is_home, opponent, location, arrival_note, status, recap_sent_at')
+    .select(RECAP_MATCH_COLUMNS)
     .eq('id', body.match_id)
     .maybeSingle();
   if (!matchRow) return NextResponse.json({ error: 'Match not found.' }, { status: 404 });
 
-  const ctx = await requireTeam(matchRow.team_id as string);
-  if (isError(ctx)) return ctx.error;
-  const { team, teamId } = ctx;
+  const auth = await requireTeam((matchRow as Record<string, unknown>).team_id as string);
+  if (isError(auth)) return auth.error;
+  const { team, teamId } = auth;
 
-  const [{ data: players }, { data: lineups }, { data: results }, { data: templates }] =
-    await Promise.all([
-      db
-        .from('captain_players')
-        .select('id, name, email, player_token')
-        .eq('team_id', teamId)
-        .eq('active', true)
-        .order('name'),
-      db
-        .from('captain_lineups')
-        .select('court_number, court_type, player1_id, player2_id')
-        .eq('match_id', body.match_id)
-        .order('court_number'),
-      db
-        .from('captain_results')
-        .select('match_id, court_number, score, won, defaulted')
-        .eq('match_id', body.match_id),
-      db
-        .from('captain_recap_templates')
-        .select('outcome, subject, body')
-        .eq('team_id', teamId),
-    ]);
-
-  const roster = ((players as PlayerRow[]) || []).filter((p) => !!p.email);
-  const resultRows = (results as ResultRow[]) || [];
-  if (!resultRows.length) {
+  const ctx = await loadRecapContext(db, matchRow as unknown as Record<string, unknown>, teamId);
+  if (!ctx.hasResults) {
     return NextResponse.json(
       { error: 'Save the court scores first — the recap is built from them.' },
       { status: 400 },
     );
   }
 
-  const nameOf = (id: string | null) =>
-    id ? (((players as PlayerRow[]) || []).find((p) => p.id === id)?.name ?? '—') : '—';
-
-  /**
-   * Courts come from the LINEUP, so the recap names who played. A score row
-   * with no matching court (a line the captain scored before building it)
-   * still shows up rather than vanishing from the scoreboard.
-   */
-  const lineupRows = (lineups as LineupRow[]) || [];
-  const courtNumbers = [
-    ...new Set([...lineupRows.map((l) => l.court_number), ...resultRows.map((r) => r.court_number)]),
-  ].sort((a, b) => a - b);
-
-  const courts: RecapCourtRow[] = courtNumbers.map((n) => {
-    const l = lineupRows.find((x) => x.court_number === n) || null;
-    const res = resultRows.find((x) => x.court_number === n) || null;
-    const ids = l
-      ? ([l.player1_id, l.court_type === 'doubles' ? l.player2_id : null].filter(
-          Boolean,
-        ) as string[])
-      : [];
-    return {
-      courtNumber: n,
-      courtType: (l?.court_type ?? 'doubles') as 'singles' | 'doubles',
-      names: ids.length ? ids.map(nameOf) : ['—'],
-      playerIds: ids,
-      score: res?.score ?? null,
-      won: res?.won ?? null,
-      defaulted: res?.defaulted === true,
-    };
-  });
-
-  const tally = tallyCourts(courts);
-  const outcome: RecapOutcome = tally.outcome;
-
-  // Season record, this match included, counted per match rather than per court.
-  const { data: seasonMatches } = await db
-    .from('captain_matches')
-    .select('id')
-    .eq('team_id', teamId)
-    .eq('status', 'played');
-  const playedIds = [
-    ...new Set([...(((seasonMatches as { id: string }[]) || []).map((m) => m.id)), body.match_id]),
-  ];
-  const { data: seasonResults } = await db
-    .from('captain_results')
-    .select('match_id, won')
-    .in('match_id', playedIds);
-  const record = seasonRecord(
-    playedIds.map((id) => ({
-      matchId: id,
-      courts: (((seasonResults as { match_id: string; won: boolean | null }[]) || []).filter(
-        (r) => r.match_id === id,
-      )),
-    })),
-  );
-
-  // Next fixture, so the recap ends looking forward instead of stopping dead.
-  const { data: nextRow } = await db
-    .from('captain_matches')
-    .select('id, match_at, is_home, opponent, location, arrival_note')
-    .eq('team_id', teamId)
-    .eq('status', 'scheduled')
-    .gt('match_at', matchRow.match_at as string)
-    .order('match_at')
-    .limit(1)
-    .maybeSingle();
-
-  const saved = templateFor(outcome, (templates as TemplateRow[]) || []);
+  const outcome: RecapOutcome = ctx.tally.outcome;
+  const saved = templateFor(outcome, ctx.templates);
   const subjectTpl = body.subject !== undefined ? body.subject : saved.subject;
   const bodyTpl = body.body !== undefined ? body.body : saved.body;
 
-  const m = infoOf(matchRow as Record<string, unknown>);
-  const varsFor = (name: string): RecapVars => ({
-    team: team.name,
-    name,
-    opponent: m.opponent || 'them',
-    when: formatMatchWhen(m.matchAt, CLUB_TZ),
-    home_away: m.isHome ? 'home' : 'away',
-    score: tally.scoreline,
-    result: outcome,
-    record: record.label,
-  });
-
-  const buildFor = (p: PlayerRow) => {
-    const vars = varsFor(p.name);
+  const buildFor = (p: RecapPlayer) => {
+    const vars = recapVars(ctx, team.name, p.name);
     return matchRecapEmail(
       team.name,
-      m,
+      ctx.match,
       { playerId: p.id, name: p.name, email: p.email as string, token: p.player_token },
       {
         subject: renderRecap(subjectTpl, vars),
         bodyText: renderRecap(bodyTpl, vars),
         outcome,
-        scoreline: tally.scoreline,
-        courts,
-        record: record.label,
-        nextMatch: nextRow ? infoOf(nextRow as Record<string, unknown>) : null,
+        scoreline: ctx.tally.scoreline,
+        courts: ctx.courts,
+        record: ctx.record.label,
+        nextMatch: ctx.nextMatch,
       },
       CLUB_TZ,
     );
@@ -229,22 +100,22 @@ export async function POST(req: Request) {
      * row and the personalised greeting are half of what the captain is judging.
      */
     const sample =
-      roster[0] ??
-      ({ id: 'sample', name: 'your player', email: 'sample@example.com', player_token: 'sample' } as PlayerRow);
+      ctx.roster[0] ??
+      ({ id: 'sample', name: 'your player', email: 'sample@example.com', player_token: 'sample' } as RecapPlayer);
     const email = buildFor(sample);
     return NextResponse.json({
       preview: true,
       outcome,
-      scoreline: tally.scoreline,
-      courts_won: tally.won,
-      courts_lost: tally.lost,
-      record: record.label,
+      scoreline: ctx.tally.scoreline,
+      courts_won: ctx.tally.won,
+      courts_lost: ctx.tally.lost,
+      record: ctx.record.label,
       subject: email.subject,
       html: email.html,
-      sample_for: roster.length ? sample.name : null,
-      count: roster.length,
-      recipients: roster.map((p) => ({ name: p.name, email: p.email })),
-      already_sent_at: (matchRow.recap_sent_at as string) ?? null,
+      sample_for: ctx.roster.length ? sample.name : null,
+      count: ctx.roster.length,
+      recipients: ctx.roster.map((p) => ({ name: p.name, email: p.email })),
+      already_sent_at: ((matchRow as Record<string, unknown>).recap_sent_at as string) ?? null,
       template: {
         subject: subjectTpl,
         body: bodyTpl,
@@ -255,7 +126,7 @@ export async function POST(req: Request) {
     });
   }
 
-  if (!roster.length) {
+  if (!ctx.roster.length) {
     return NextResponse.json(
       { error: 'Nobody on the roster has an email address.' },
       { status: 400 },
@@ -268,7 +139,7 @@ export async function POST(req: Request) {
    * captain who clicks twice while nothing visibly happens must not send the
    * team two recaps. Two-minute window, so a deliberate re-send later works.
    */
-  const previousStamp = (matchRow.recap_sent_at as string) ?? null;
+  const previousStamp = ((matchRow as Record<string, unknown>).recap_sent_at as string) ?? null;
   const claimCutoff = new Date(Date.now() - 2 * 60_000).toISOString();
   if (previousStamp && previousStamp > claimCutoff) {
     return NextResponse.json(
@@ -292,7 +163,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const sendResults = await sendAll(team.captain_user_id, roster.map(buildFor));
+    const sendResults = await sendAll(team.captain_user_id, ctx.roster.map(buildFor));
     const sent = sendResults.filter((r) => r.sent).length;
 
     if (body.save_template) {
@@ -314,7 +185,7 @@ export async function POST(req: Request) {
       outcome,
       failed: sendResults.length - sent,
       failedNames: sendResults
-        .map((r, i) => (r.sent ? null : roster[i]?.name))
+        .map((r, i) => (r.sent ? null : ctx.roster[i]?.name))
         .filter(Boolean) as string[],
     });
   } catch (err) {

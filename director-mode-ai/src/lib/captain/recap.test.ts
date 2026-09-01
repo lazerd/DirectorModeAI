@@ -5,6 +5,7 @@ vi.mock('@/lib/email', () => ({ sendBilledEmails: vi.fn() }));
 
 import {
   DEFAULT_RECAP,
+  firstName,
   renderRecap,
   seasonRecord,
   tallyCourts,
@@ -103,6 +104,17 @@ describe('renderRecap', () => {
 
   it('leaves anything else exactly as typed — a stray brace is not a bug', () => {
     expect(renderRecap('Bring {snacks} for {name}', VARS)).toBe('Bring {snacks} for Robyn Rogin');
+  });
+});
+
+describe('firstName', () => {
+  it('greets a player the way a teammate would', () => {
+    expect(firstName('Robyn Rogin')).toBe('Robyn');
+  });
+
+  it('handles a one-word name and stray spacing', () => {
+    expect(firstName('  Nikki  ')).toBe('Nikki');
+    expect(firstName('Brenda  Pech-Bitton')).toBe('Brenda');
   });
 });
 

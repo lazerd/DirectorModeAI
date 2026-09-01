@@ -17,7 +17,7 @@
  */
 
 import { useState } from 'react';
-import { HeartHandshake, Minus, Trophy } from 'lucide-react';
+import { HeartHandshake, Loader2, Minus, Sparkles, Trophy } from 'lucide-react';
 import { DEFAULT_RECAP, RECAP_OUTCOMES, type RecapOutcome } from '@/lib/captain/recap';
 
 const INPUT: React.CSSProperties = { color: '#ffffff', backgroundColor: '#001820' };
@@ -109,6 +109,7 @@ function TemplateCard({
   const [subject, setSubject] = useState(saved.subject);
   const [body, setBody] = useState(saved.body);
   const [busy, setBusy] = useState(false);
+  const [drafting, setDrafting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -138,6 +139,31 @@ function TemplateCard({
     );
   }
 
+  /**
+   * Have Claude write this template. It drafts into the boxes and stops —
+   * saving is still the captain's separate, deliberate click.
+   */
+  async function writeOne() {
+    setDrafting(true);
+    setErr(null);
+    setMsg(null);
+    try {
+      const res = await fetch('/api/captain/recap/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_id: teamId, outcome, current: { subject, body } }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'Could not write a draft.');
+      setSubject(j.subject as string);
+      setBody(j.body as string);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not write a draft.');
+    } finally {
+      setDrafting(false);
+    }
+  }
+
   return (
     <div className="rounded-2xl border border-white/[0.07] bg-[#002838] p-4">
       <div className="flex items-center gap-2">
@@ -148,6 +174,15 @@ function TemplateCard({
         {custom && <span className="text-[11px] text-white/35">· customised</span>}
       </div>
       <div className="mt-0.5 text-xs text-white/40">{meta.blurb}</div>
+
+      <button
+        onClick={writeOne}
+        disabled={drafting}
+        className="mt-3 inline-flex items-center gap-2 rounded-lg border border-[#D3FB52]/40 bg-[#D3FB52]/10 px-3 py-1.5 text-[12.5px] font-semibold text-[#D3FB52] transition hover:bg-[#D3FB52]/20 disabled:opacity-50"
+      >
+        {drafting ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+        {drafting ? 'Writing…' : subject || body ? 'Write me another one' : 'Write one for me'}
+      </button>
 
       <label className="mt-3 block">
         <span className="text-xs text-white/45">Subject</span>
@@ -173,8 +208,8 @@ function TemplateCard({
       </label>
 
       <p className="mt-1.5 text-[11px] leading-relaxed text-white/30">
-        {'{team}'}, {'{name}'}, {'{opponent}'}, {'{score}'}, {'{record}'}, {'{when}'} get filled in
-        per player. Leave both blank for the built-in wording.
+        {'{team}'}, {'{name}'} (their first name), {'{opponent}'}, {'{score}'}, {'{record}'},{' '}
+        {'{when}'} get filled in per player. Leave both blank for the built-in wording.
       </p>
 
       {err && <p className="mt-2 text-xs text-red-300">{err}</p>}

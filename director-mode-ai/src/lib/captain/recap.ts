@@ -50,8 +50,18 @@ export function tallyCourts(courts: RecapCourt[]): {
   };
 }
 
+/**
+ * A recap is chattier than the scheduled emails, so {name} is the reader's
+ * FIRST name — "Rest up, Robyn" is what a captain writes; "Rest up, Robyn
+ * Rogin" is what a mail-merge writes.
+ */
+export function firstName(full: string): string {
+  return full.trim().split(/\s+/)[0] || full.trim();
+}
+
 export type RecapVars = {
   team: string;
+  /** The reader's first name. See firstName(). */
   name: string;
   opponent: string;
   when: string;

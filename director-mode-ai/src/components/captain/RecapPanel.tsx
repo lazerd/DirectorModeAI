@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Loader2, Send, Eye, Check, Trophy, HeartHandshake, Minus } from 'lucide-react';
+import { Loader2, Send, Eye, Check, Trophy, HeartHandshake, Minus, Sparkles } from 'lucide-react';
 
 /**
  * "Email the team the result" — the recap, from the match page.
@@ -74,6 +74,16 @@ export default function RecapPanel({
   const [body, setBody] = useState('');
   const [saveTemplate, setSaveTemplate] = useState(true);
   const [edited, setEdited] = useState(false);
+  /** Optional steer for the writer, e.g. "mention it was Jen's first match". */
+  const [steer, setSteer] = useState('');
+  const [drafting, setDrafting] = useState(false);
+  /**
+   * A drafted message is written around THIS match — it can mention the sweep,
+   * or the court that went to a default. Good words for today, wrong words to
+   * keep for the season, so a draft unticks the save-as-template box and a
+   * captain who wants it kept ticks it back deliberately.
+   */
+  const [aiDrafted, setAiDrafted] = useState(false);
 
   // Nothing to recap until the scores are in the database.
   if (!hasResults) return null;
@@ -106,16 +116,54 @@ export default function RecapPanel({
     }
   };
 
-  const rebuild = async () => {
+  const rebuild = async (override?: { subject: string; body: string }) => {
     setBusy(true);
     setError(null);
     try {
-      const j = (await post({ preview: true, subject, body })) as Preview;
+      const j = (await post({
+        preview: true,
+        subject: override?.subject ?? subject,
+        body: override?.body ?? body,
+      })) as Preview;
       setPreview(j);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Preview failed.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  /**
+   * Have Claude write a different message. It drafts only — the words land in
+   * the editor below and still go through preview → send like anything else.
+   * The current wording is sent along so a second tap gives something new
+   * rather than a paraphrase of what is already on screen.
+   */
+  const writeOne = async () => {
+    setDrafting(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/captain/recap/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          match_id: matchId,
+          instructions: steer.trim() || undefined,
+          current: { subject, body },
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error || 'Could not write a draft.');
+      setSubject(j.subject as string);
+      setBody(j.body as string);
+      setEdited(true);
+      setAiDrafted(true);
+      setSaveTemplate(false);
+      await rebuild({ subject: j.subject as string, body: j.body as string });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not write a draft.');
+    } finally {
+      setDrafting(false);
     }
   };
 
@@ -210,6 +258,35 @@ export default function RecapPanel({
             courts). Goes to all {preview.count} players on the roster with an email address.
           </p>
 
+          {/* Don't like the wording? Have it written for you. Drafts only. */}
+          <div className="mt-4 rounded-xl border border-white/10 bg-[#001820] p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={writeOne}
+                disabled={drafting || busy || sending}
+                className="inline-flex items-center gap-2 rounded-lg border border-[#D3FB52]/40 bg-[#D3FB52]/10 px-3.5 py-2 text-[13px] font-semibold text-[#D3FB52] transition hover:bg-[#D3FB52]/20 disabled:opacity-50"
+              >
+                {drafting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                {drafting ? 'Writing…' : edited ? 'Write me another one' : 'Write me a different one'}
+              </button>
+              <input
+                value={steer}
+                onChange={(e) => setSteer(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !drafting) writeOne();
+                }}
+                placeholder="anything to mention? (optional)"
+                aria-label="What should the message mention?"
+                style={INPUT}
+                className="min-w-[12rem] flex-1 rounded-lg border border-white/10 px-3 py-2 text-sm placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none"
+              />
+            </div>
+            <p className="mt-2 text-[11px] text-white/30">
+              Writes into the boxes below — nothing sends until you press send. It never names
+              players or repeats court scores; the scoreboard right underneath already does.
+            </p>
+          </div>
+
           <label className="mt-4 block">
             <span className="text-xs text-white/45">Subject</span>
             <input
@@ -240,8 +317,8 @@ export default function RecapPanel({
           </label>
 
           <p className="mt-1.5 text-[11px] leading-relaxed text-white/30">
-            {'{team}'}, {'{name}'}, {'{opponent}'}, {'{score}'}, {'{record}'}, {'{when}'},{' '}
-            {'{home_away}'} get filled in per player. Lines starting with &ldquo;-&rdquo; become
+            {'{team}'}, {'{name}'} (their first name), {'{opponent}'}, {'{score}'}, {'{record}'},{' '}
+            {'{when}'}, {'{home_away}'} get filled in per player. Lines starting with &ldquo;-&rdquo; become
             bullets; blank lines start a new paragraph.{' '}
             <button onClick={resetToDefault} className="underline hover:text-white/60">
               reset to the default wording
@@ -250,8 +327,8 @@ export default function RecapPanel({
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
-              onClick={rebuild}
-              disabled={busy || sending}
+              onClick={() => rebuild()}
+              disabled={busy || sending || drafting}
               className="inline-flex items-center gap-2 rounded-lg border border-white/15 px-4 py-2 text-[13.5px] font-medium text-white/80 hover:border-white/30 disabled:opacity-50"
             >
               {busy ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
@@ -274,6 +351,9 @@ export default function RecapPanel({
                   className="accent-[#D3FB52]"
                 />
                 Save this wording as my {tone?.label.toLowerCase()} template
+                {aiDrafted && (
+                  <span className="text-white/30">— written for today, so off by default</span>
+                )}
               </label>
             )}
           </div>
