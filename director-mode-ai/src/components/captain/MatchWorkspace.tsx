@@ -751,6 +751,71 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     }));
   }
 
+  /**
+   * Read the paper scorecard from a photo.
+   *
+   * Fills the fields and stops. Nothing is saved until the captain presses the
+   * save button they already use — this is handwriting photographed on a court,
+   * and these numbers drive play counts, playoff eligibility and partnership
+   * records. Lines the model was unsure about are called out by name so the
+   * captain knows exactly what to double-check rather than re-reading all of it.
+   */
+  const [reading, setReading] = useState(false);
+  const [readNote, setReadNote] = useState<string | null>(null);
+
+  const readScorecard = async (file: File) => {
+    setReading(true);
+    setReadNote(null);
+    try {
+      const data = await new Promise<string>((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onerror = () => reject(new Error('Could not read that file.'));
+        // strip the "data:<type>;base64," prefix the API does not want
+        fr.onload = () => resolve(String(fr.result).split(',')[1] ?? '');
+        fr.readAsDataURL(file);
+      });
+
+      const res = await fetch('/api/captain/read-scorecard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ match_id: matchId, mediaType: file.type, data }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || 'Could not read the scorecard.');
+
+      const rows = (j.courts ?? []) as {
+        court_number: number;
+        score: string | null;
+        won: boolean | null;
+        defaulted: boolean;
+        confidence: 'high' | 'medium' | 'low';
+      }[];
+      if (!rows.length) {
+        setReadNote('Nothing legible on that photo — try a straighter, brighter shot.');
+        return;
+      }
+
+      for (const r of rows) {
+        setScore(r.court_number, { score: r.score ?? '', won: r.won });
+        setDefaulted((d) => ({
+          ...d,
+          [r.court_number]: r.defaulted ? (r.won === false ? 'us' : 'them') : null,
+        }));
+      }
+
+      const shaky = rows.filter((r) => r.confidence !== 'high').map((r) => `court ${r.court_number}`);
+      setReadNote(
+        shaky.length
+          ? `Filled ${rows.length} courts. Check ${shaky.join(', ')} — the writing was hard to read. Nothing is saved yet.`
+          : `Filled ${rows.length} courts. Check them, then save. Nothing is saved yet.`,
+      );
+    } catch (e: any) {
+      setReadNote(e?.message || 'Could not read the scorecard.');
+    } finally {
+      setReading(false);
+    }
+  };
+
   const labelOf = (c: Court) =>
     `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
 
@@ -1570,6 +1635,32 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                 Marking a match played is what counts it toward playoff eligibility and play-time.
                 Win/loss per court also teaches the generator which pairings work.
               </p>
+
+              {/* Photograph the card instead of typing it. Fills the fields for
+                  review; the existing save button is still what commits. */}
+              <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-white/80 transition hover:border-[#D3FB52]/50 hover:text-white">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    className="hidden"
+                    disabled={reading || !!busy}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      e.target.value = '';
+                      if (f) readScorecard(f);
+                    }}
+                  />
+                  {reading ? 'Reading the card…' : 'Photograph the scorecard'}
+                </label>
+                <p className="mt-2 text-xs text-white/40">
+                  Snap the paper card and the scores fill themselves in. Check them before you
+                  save — nothing is recorded until you do.
+                </p>
+                {readNote && (
+                  <p className="mt-2 text-xs text-[#D3FB52]">{readNote}</p>
+                )}
+              </div>
 
               <div className="mt-3 space-y-2">
                 {courts.map((c) => {
