@@ -14,7 +14,7 @@ import { Resend } from 'resend';
 import { CreditLimitError } from '@/lib/billing';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const RESEND_DOMAIN = 'noreply@mail.coachmode.ai'; // verified sending domain
+const RESEND_DOMAIN = 'noreply@mail.clubmode.ai'; // verified sending domain
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export type SendMode = 'preview' | 'test' | 'live';

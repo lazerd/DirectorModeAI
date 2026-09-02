@@ -36,7 +36,7 @@ async function branding(user: SessionUser) {
   const row = (p as { organization_name?: string; full_name?: string; email?: string } | null) || null;
   const clubName = row?.organization_name?.trim() || 'Your Club';
   const senderName = row?.full_name?.trim() || clubName;
-  const replyTo = user.email || row?.email || 'noreply@mail.coachmode.ai';
+  const replyTo = user.email || row?.email || 'noreply@mail.clubmode.ai';
   return { clubName, senderName, replyTo };
 }
 

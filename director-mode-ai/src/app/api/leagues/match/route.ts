@@ -20,7 +20,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { safeResendSend } from '@/lib/emailUnsubscribe';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM = process.env.RESEND_FROM_EMAIL || 'CoachMode Leagues <noreply@mail.coachmode.ai>';
+const FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode Leagues <noreply@mail.clubmode.ai>';
 
 // Resolve a token to { entry, owner } where owner is 'captain' | 'partner'.
 async function resolveToken(token: string) {

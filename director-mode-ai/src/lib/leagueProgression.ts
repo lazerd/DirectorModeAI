@@ -582,7 +582,7 @@ export async function sendMatchReminders(
   const resend = new Resend(process.env.RESEND_API_KEY);
   const FROM =
     process.env.RESEND_FROM_EMAIL ||
-    'CoachMode Leagues <noreply@mail.coachmode.ai>';
+    'ClubMode Leagues <noreply@mail.clubmode.ai>';
 
   const summary: ReminderSummary = {
     leaguesScanned: 0,
@@ -891,7 +891,7 @@ export async function sendRoundMatchEmails(
   const resend = new Resend(process.env.RESEND_API_KEY);
   const FROM =
     process.env.RESEND_FROM_EMAIL ||
-    'CoachMode Leagues <noreply@mail.coachmode.ai>';
+    'ClubMode Leagues <noreply@mail.clubmode.ai>';
 
   const { data: match } = await admin
     .from('league_matches')

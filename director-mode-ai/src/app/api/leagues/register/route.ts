@@ -240,7 +240,7 @@ export async function POST(request: Request) {
 
       try {
         await safeResendSend(resend, {
-          from: process.env.RESEND_FROM_EMAIL || 'CoachMode Leagues <noreply@mail.coachmode.ai>',
+          from: process.env.RESEND_FROM_EMAIL || 'ClubMode Leagues <noreply@mail.clubmode.ai>',
           to: partnerEmail,
           subject: `${captainName} signed you up as their doubles partner — ${leagueName}`,
           html: `

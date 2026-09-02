@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
     const buttonText = isCoachNotification ? 'View Dashboard' : 'Book Another Lesson';
 
     await sendBilledEmail(ownerUserId, {
-      from: 'LessonMode <notifications@coachmode.ai>',
+      from: 'LessonMode <noreply@mail.clubmode.ai>',
       to: recipientEmail,
       subject,
       html: `

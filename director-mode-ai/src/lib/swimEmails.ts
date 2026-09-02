@@ -12,7 +12,7 @@ import { safeResendSend } from './emailUnsubscribe';
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const FROM =
-  process.env.RESEND_FROM_EMAIL || 'CoachMode <noreply@mail.coachmode.ai>';
+  process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
 
 export async function sendSwimFamilyLinkEmail(args: {
   to: string;

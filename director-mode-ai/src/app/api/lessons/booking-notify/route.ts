@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const ownerUserId = await resolveCoachUserId(undefined, coachEmail);
     const coachCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${clientName}`, slotDate, slotTime, location);
     await sendBilledEmail(ownerUserId, {
-      from: 'LessonMode <notifications@coachmode.ai>',
+      from: 'LessonMode <noreply@mail.clubmode.ai>',
       to: coachEmail,
       subject: `New Booking: ${clientName} booked a lesson`,
       html: `
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     if (clientEmail) {
       const clientCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${coachName || 'Coach'}`, slotDate, slotTime, location);
       await sendBilledEmail(ownerUserId, {
-        from: 'LessonMode <notifications@coachmode.ai>',
+        from: 'LessonMode <noreply@mail.clubmode.ai>',
         to: clientEmail,
         subject: `Booking Confirmed: Lesson with ${coachName || 'your coach'}`,
         html: `

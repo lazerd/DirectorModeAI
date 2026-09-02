@@ -13,7 +13,7 @@ import { safeResendSend } from '@/lib/emailUnsubscribe';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 import { APP_URL } from '@/lib/appUrl';
-const FROM = process.env.RESEND_FROM_EMAIL || 'CoachMode <noreply@mail.coachmode.ai>';
+const FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
 const BASE = APP_URL;
 
 // Summer league → Pacific Daylight (-07:00). Daily granularity, so exactness

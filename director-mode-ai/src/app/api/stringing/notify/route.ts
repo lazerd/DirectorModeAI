@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
     const ownerUserId = user?.id || null;
 
     const result = await sendBilledEmail(ownerUserId, {
-      from: 'StringingMode <notifications@coachmode.ai>',
+      from: 'StringingMode <noreply@mail.clubmode.ai>',
       to,
       subject: '🎾 Your Racket is Ready for Pickup!',
       html: `

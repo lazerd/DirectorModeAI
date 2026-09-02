@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
 
       try {
         await sendBilledEmail(event.created_by, {
-          from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
+          from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <noreply@mail.clubmode.ai>',
           to: player.email,
           replyTo: creator?.email,
           subject: `You're invited: ${event.title} - ${sportLabel} ${typeLabel}`,

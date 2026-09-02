@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     `;
 
     await sendBilledEmail(event.created_by, {
-      from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
+      from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <noreply@mail.clubmode.ai>',
       to: creator.email,
       subject: `${statusEmoji} ${playerName} ${statusLabel.toLowerCase()} - ${event.title}`,
       html: emailHtml,
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
 
           if (promotedProfile?.email) {
             await sendBilledEmail(event.created_by, {
-              from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
+              from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <noreply@mail.clubmode.ai>',
               to: promotedProfile.email,
               subject: `🎉 You're in! Spot opened for ${event.title}`,
               html: `

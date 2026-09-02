@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 
     // Send to all clients
     const payloads = clientEmails.map((email: string) => ({
-      from: process.env.RESEND_FROM_EMAIL || 'LessonMode <onboarding@resend.dev>',
+      from: process.env.RESEND_FROM_EMAIL || 'LessonMode <noreply@mail.clubmode.ai>',
       to: email,
       replyTo: coachEmail,
       subject: `🎾 ${coachName || 'Your Coach'} has lesson time available!`,

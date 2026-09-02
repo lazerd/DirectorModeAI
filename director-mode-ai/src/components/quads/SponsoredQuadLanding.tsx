@@ -266,7 +266,7 @@ export default function SponsoredQuadLanding({
             <p className="mt-3 inline-flex items-center gap-2 text-sm sm:text-base font-bold bg-white/20 rounded-full px-4 py-1.5">
               <Clock size={15} />
               {hasWave2 && wave2Label
-                ? `Four matches in one ${durationNoun(playMinutes)} session — ${guaranteedWindow} or ${wave2Label}`
+                ? `Four matches in one ${durationLabel(playMinutes).replace(' block', '')} session — ${guaranteedWindow} or ${wave2Label}`
                 : `Four matches, one ${durationLabel(e.duration_minutes).replace(' block', '')} window — done by ${doneBy}`}
             </p>
           )}

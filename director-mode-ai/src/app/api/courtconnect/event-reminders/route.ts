@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
 
         try {
           await sendBilledEmail(event.created_by, {
-            from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <notifications@coachmode.ai>',
+            from: process.env.RESEND_FROM_EMAIL || 'CourtConnect <noreply@mail.clubmode.ai>',
             to: profile.email,
             subject: `Reminder: ${event.title} is tomorrow!`,
             html: emailHtml,

@@ -30,7 +30,7 @@ const ANCHOR: Record<string, string> = {
 };
 
 export const FLEX_URL = `${APP_URL}/flex`;
-export const FLEX_FROM = 'Sleepy Hollow Swim & Tennis Club <noreply@mail.coachmode.ai>';
+export const FLEX_FROM = 'Sleepy Hollow Swim & Tennis Club <noreply@mail.clubmode.ai>';
 export const FLEX_REPLY_TO = 'darrinjco@gmail.com';
 
 const fmtDate = (iso: string) =>

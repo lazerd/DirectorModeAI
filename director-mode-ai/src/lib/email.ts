@@ -13,7 +13,7 @@ interface EmailPayload {
   replyTo?: string;
 }
 
-const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <onboarding@resend.dev>';
+const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
 
 /**
  * Drop-in send that does TWO things at once:

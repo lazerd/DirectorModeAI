@@ -376,7 +376,7 @@ export async function POST(
     // Fire-and-forget emails (don't block the response)
     const origin = new URL(request.url).origin;
     const publicBracketUrl = `${origin}/leagues/${(league as any).slug}/bracket`;
-    const fromAddress = process.env.RESEND_FROM_EMAIL || 'CoachMode Leagues <noreply@mail.coachmode.ai>';
+    const fromAddress = process.env.RESEND_FROM_EMAIL || 'ClubMode Leagues <noreply@mail.clubmode.ai>';
     if (isTestLeague) {
       // Skip — but still return emailCount=0 so the response shape is stable.
       return NextResponse.json({

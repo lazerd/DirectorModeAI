@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
       const coachUserId = await resolveCoachUserId(undefined, coach?.email);
       try {
         await sendBilledEmail(coachUserId, {
-          from: 'LessonMode <notifications@coachmode.ai>',
+          from: 'LessonMode <noreply@mail.clubmode.ai>',
           to: client.email,
           subject: `Reminder: Lesson with ${coachName} tomorrow`,
           html: `
