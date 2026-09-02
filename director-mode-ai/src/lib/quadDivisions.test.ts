@@ -260,3 +260,54 @@ describe('waitlist -> extra quads', () => {
     expect(playersNeededForNextQuad(5)).toBe(3);
   });
 });
+
+describe('reallocating a dead division (the Dunkin 3-division setup)', () => {
+  const THREE = [
+    { id: '10u', label: '10 & Under', age_max: 10, sort: 0 },
+    { id: '12u', label: '12 & Under', age_max: 12, sort: 1 },
+    { id: '13o', label: '13 & Over', age_min: 13, sort: 2 },
+  ];
+
+  it('closes 13&O on 3 signups and gives its block to a second 10U quad', () => {
+    clock = 0;
+    const plan = planQuadAllocation({
+      divisions: THREE,
+      entries: [...entriesFor('10u', 8), ...entriesFor('12u', 4), ...entriesFor('13o', 3)],
+      totalQuads: 3,
+    });
+    const by = Object.fromEntries(plan.perDivision.map((d) => [d.divisionId, d]));
+    expect(by['13o'].quads).toBe(0);
+    expect(by['13o'].viable).toBe(false);
+    expect(by['13o'].waitlistIds).toHaveLength(3); // nobody charged
+    expect(by['10u'].quads).toBe(2);
+    expect(by['10u'].acceptedIds).toHaveLength(8);
+    expect(by['12u'].quads).toBe(1);
+    // Same three quads, same six courts — nothing new had to be opened.
+    expect(plan.perDivision.reduce((n, d) => n + d.quads, 0)).toBe(3);
+    expect(plan.unusedQuads).toBe(0);
+  });
+
+  it('leaves the block unused when nobody else has four waiting', () => {
+    clock = 0;
+    const plan = planQuadAllocation({
+      divisions: THREE,
+      entries: [...entriesFor('10u', 5), ...entriesFor('12u', 4), ...entriesFor('13o', 3)],
+      totalQuads: 3,
+    });
+    const by = Object.fromEntries(plan.perDivision.map((d) => [d.divisionId, d]));
+    expect(by['10u'].quads).toBe(1); // only 1 waiting, can't field a 2nd
+    expect(by['12u'].quads).toBe(1);
+    expect(by['13o'].quads).toBe(0);
+    expect(plan.unusedQuads).toBe(1);
+  });
+
+  it('never exceeds the quads the director has opened', () => {
+    clock = 0;
+    const plan = planQuadAllocation({
+      divisions: THREE,
+      entries: [...entriesFor('10u', 12), ...entriesFor('12u', 8), ...entriesFor('13o', 8)],
+      totalQuads: 3,
+    });
+    expect(plan.perDivision.reduce((n, d) => n + d.quads, 0)).toBe(3);
+  });
+});
