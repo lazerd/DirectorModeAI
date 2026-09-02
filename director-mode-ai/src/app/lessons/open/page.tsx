@@ -551,7 +551,11 @@ export default function OpenLessonTimePage() {
 
               {data.club.invite_url && (
                 <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[13px] font-semibold text-slate-800">Adding another instructor</p>
+                  <p className="text-[13px] font-semibold text-slate-800">
+                    Adding another instructor —{' '}
+                    <a href="/club/people" className="underline">invite them by email</a>{' '}
+                    and they arrive as a coach, already set up
+                  </p>
                   <ol className="mt-1.5 space-y-1 text-[13px] leading-relaxed text-slate-600">
                     <li>1. They create a free ClubMode account and open the link below to join the club.</li>
                     <li>

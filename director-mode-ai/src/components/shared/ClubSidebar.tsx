@@ -136,6 +136,8 @@ const PUBLIC_PREFIXES = [
   '/book',
   // A client booking an open lesson time is not running the club.
   '/open',
+  // An invitation is read before the person is anything at all.
+  '/invite',
   '/join',
   '/event',
   '/nps',
