@@ -47,6 +47,9 @@ export type QuadEvent = {
   series_slug: string | null;
   divisions: unknown;
   total_quads: number | null;
+  max_total_quads: number | null;
+  wave2_start_time: string | null;
+  wave2_end_time: string | null;
   entry_flow: 'pay_now' | 'request_then_invite';
 };
 

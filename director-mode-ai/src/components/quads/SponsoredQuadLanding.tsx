@@ -15,7 +15,6 @@ import { quadScoringLabel, formatTimeDisplay } from '@/lib/quads';
 import {
   PLAYERS_PER_QUAD,
   computeQuadCapacity,
-  playersNeededForNextQuad,
   type QuadDivision,
 } from '@/lib/quadDivisions';
 import SponsorWordmark from './SponsorWordmark';
@@ -352,10 +351,10 @@ export default function SponsoredQuadLanding({
               {numberWord(divisions.length)} division{divisions.length === 1 ? '' : 's'}
             </h2>
             <p className="text-sm mb-5" style={{ color: 'rgba(0,0,0,0.6)' }}>
-              We open with {numberWord(capacity.openQuads)} group
-              {capacity.openQuads === 1 ? '' : 's'} of four — {capacity.openSpots} spots. First four
-              signups in a division get in; after that you join the waitlist, and{' '}
-              <strong style={{ color: c.ink }}>we add more quads as they fill</strong>.
+              {capacity.openSpots} spots — {numberWord(capacity.openQuads)} group
+              {capacity.openQuads === 1 ? '' : 's'} of four. The first four signups in a division
+              get in; after that you join that division&rsquo;s waitlist, which is{' '}
+              <strong style={{ color: c.ink }}>well worth being on</strong>.
             </p>
 
             <div className="grid sm:grid-cols-3 gap-3">
@@ -398,11 +397,9 @@ export default function SponsoredQuadLanding({
                           : 'First four are in — waitlist is open'
                         : `${d.spotsLeft} spot${d.spotsLeft === 1 ? '' : 's'} left`}
                     </div>
-                    {full && capacity.canGrow && (
+                    {full && (
                       <div className="text-[11px] mt-1 leading-snug" style={{ color: 'rgba(0,0,0,0.6)' }}>
-                        {playersNeededForNextQuad(d.waiting) === 0
-                          ? "Enough waiting for another quad — we're working on it."
-                          : `${playersNeededForNextQuad(d.waiting)} more and we can open another quad.`}
+                        Join the list — you&rsquo;re next in line when a spot opens.
                       </div>
                     )}
                   </div>
@@ -422,15 +419,16 @@ export default function SponsoredQuadLanding({
                   Don&rsquo;t see a spot? Get on the list
                 </div>
                 <p className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.75)' }}>
-                  <strong style={{ color: c.ink }}>A full division is not a no.</strong> Every four
-                  players on the waitlist is another quad we can open, and we will stretch to{' '}
-                  {numberWord(capacity.maxQuads)} group{capacity.maxQuads === 1 ? '' : 's'} of four —{' '}
-                  {capacity.maxSpots} players — if the demand is there.
-                  {hasWave2 && wave2Label && (
-                    <> That&rsquo;s what the second session at {wave2Label} is for.</>
-                  )}{' '}
-                  We can&rsquo;t promise a spot, but we will do our best to fit everyone in, so put
-                  your name down.
+                  <strong style={{ color: c.ink }}>A full division is not a no — the list moves.</strong>{' '}
+                  Everyone accepted gets 24 hours to pay, and any spot that isn&rsquo;t confirmed in
+                  time goes straight to the next player in line. Plans change, and spots come back.
+                </p>
+                <p className="text-xs leading-relaxed mt-2" style={{ color: 'rgba(0,0,0,0.75)' }}>
+                  If a division comes up short of four it won&rsquo;t run, and its court time goes
+                  to a division with players waiting. And if we can free up more court time,
+                  we&rsquo;ll add another group of four
+                  {hasWave2 && wave2Label ? <> in the {wave2Label} session</> : null}. No promises
+                  on that one — but it costs nothing to be on the list, so put your name down.
                 </p>
               </div>
 
@@ -661,8 +659,8 @@ export default function SponsoredQuadLanding({
                   <>
                     {' '}
                     <span style={{ color: c.secondary }} className="font-semibold">
-                      {waitlistCount} already on the waitlist — sign up anyway, every four waiting
-                      is another quad we can open.
+                      {waitlistCount} already on the waitlist — join anyway, unconfirmed spots
+                      get released to whoever is next.
                     </span>
                   </>
                 )}

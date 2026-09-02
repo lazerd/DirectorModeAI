@@ -15,9 +15,11 @@ import {
 import {
   parseDivisions,
   planQuadAllocation,
+  computeQuadCapacity,
   PLAYERS_PER_QUAD,
   formatDeadline,
 } from '@/lib/quadDivisions';
+import { createClient } from '@/lib/supabase/client';
 import type { QuadEvent, QuadEntry } from '../QuadsAdminDashboard';
 
 /** Positions still competing for a spot. */
@@ -36,8 +38,15 @@ export default function QuadsAllocationPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const supabase = createClient();
   const divisions = useMemo(() => parseDivisions(event.divisions), [event.divisions]);
   const totalQuads = event.total_quads ?? divisions.length;
+  const capacity = computeQuadCapacity({
+    totalQuads,
+    maxTotalQuads: event.max_total_quads,
+    numCourts: event.num_courts,
+    hasWave2: !!(event.wave2_start_time && event.wave2_end_time),
+  });
   const feeLabel = `$${((event.entry_fee_cents ?? 0) / 100).toFixed(0)}`;
 
   const entryById = useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
@@ -77,6 +86,35 @@ export default function QuadsAllocationPanel({
       return entry && entry.position === 'requested';
     })
   );
+
+  const waitingTotal = plan.perDivision.reduce((n, d) => n + d.waitlistIds.length, 0);
+
+  const setQuads = async (next: number) => {
+    const clamped = Math.max(1, Math.min(capacity.maxQuads, next));
+    if (clamped === totalQuads) return;
+    if (
+      clamped > totalQuads &&
+      !confirm(
+        `Open a ${clamped}${clamped === 2 ? 'nd' : clamped === 3 ? 'rd' : 'th'} quad?
+
+` +
+          `That's ${clamped * PLAYERS_PER_QUAD} spots and needs two more courts. Make sure the ` +
+          `court time actually exists before you invite anyone into it.`
+      )
+    )
+      return;
+    setBusy('capacity');
+    setError(null);
+    setMessage(null);
+    const { error: err } = await supabase
+      .from('events')
+      .update({ total_quads: clamped })
+      .eq('id', event.id);
+    if (err) setError(err.message);
+    else setMessage(`Now running ${clamped} quad${clamped === 1 ? '' : 's'} — ${clamped * PLAYERS_PER_QUAD} spots.`);
+    await onRefresh();
+    setBusy(null);
+  };
 
   const sendInvites = async (entryIds: string[], label: string) => {
     if (entryIds.length === 0) return;
@@ -168,6 +206,42 @@ export default function QuadsAllocationPanel({
             Send {uninvited.length} payment link{uninvited.length === 1 ? '' : 's'}
           </button>
         )}
+      </div>
+
+      {/* Capacity is a DIRECTOR decision, never automatic — opening a quad
+          means finding two more courts, which the app can't know about. */}
+      <div className="flex items-center justify-between gap-3 flex-wrap bg-gray-50 border border-gray-200 rounded-lg p-3">
+        <div className="text-sm">
+          <span className="font-semibold text-gray-900">
+            {totalQuads} quad{totalQuads === 1 ? '' : 's'} open · {totalQuads * PLAYERS_PER_QUAD}{' '}
+            spots
+          </span>
+          <div className="text-xs text-gray-600 mt-0.5">
+            {waitingTotal > 0
+              ? `${waitingTotal} on the waitlist across all divisions.`
+              : 'Nobody waiting yet.'}
+            {capacity.canGrow
+              ? ` You could go to ${capacity.maxQuads} — needs ${capacity.quadsPerWave * 2} courts per session.`
+              : ' At the ceiling for the courts and sessions on this event.'}
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setQuads(totalQuads - 1)}
+            disabled={busy !== null || totalQuads <= 1}
+            className="px-3 py-2 border border-gray-300 rounded-lg text-sm font-semibold text-gray-700 hover:bg-white disabled:opacity-40"
+          >
+            − Close one
+          </button>
+          <button
+            onClick={() => setQuads(totalQuads + 1)}
+            disabled={busy !== null || !capacity.canGrow}
+            title={capacity.canGrow ? 'Only do this once you have the courts' : 'No room left'}
+            className="px-3 py-2 rounded-lg text-sm font-semibold text-white disabled:opacity-40 bg-gray-800 hover:bg-gray-900"
+          >
+            + Open another quad
+          </button>
+        </div>
       </div>
 
       {message && (
