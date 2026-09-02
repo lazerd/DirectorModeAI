@@ -138,33 +138,18 @@ export default function BookSlotPage() {
     if (!slot || !clientId) return;
     setBooking(true);
 
-    const supabase = createClient();
-    
-    // Check if still available
-    const { data: currentSlot } = await supabase
-      .from('lesson_slots')
-      .select('status')
-      .eq('id', slot.id)
-      .single();
-
-    if (currentSlot?.status !== 'open') {
-      setError('Sorry, this slot was just booked by someone else.');
-      setBooking(false);
-      return;
-    }
-
-    // Book the slot
-    const { error } = await supabase
-      .from('lesson_slots')
-      .update({
-        status: 'booked',
-        booked_by_client_id: clientId,
-        booked_at: new Date().toISOString()
-      })
-      .eq('id', slot.id);
+    // The claim, the coach's approval check and the race are all settled
+    // server-side now — lesson_slots is no longer writable from a browser.
+    const res = await fetch('/api/lessons/book', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ slot_id: slot.id }),
+    });
+    const json = await res.json().catch(() => ({}));
+    const error = res.ok ? null : { message: (json.error as string) || 'Failed to book slot.' };
 
     if (error) {
-      setError('Failed to book slot. Please try again.');
+      setError(error.message || 'Failed to book slot. Please try again.');
     } else {
       trackEvent('feature_use', 'book_lesson', 'lessons');
       setBooked(true);
