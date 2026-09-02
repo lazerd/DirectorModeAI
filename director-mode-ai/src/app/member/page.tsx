@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { pickPrimaryClub } from '@/lib/clubRoles';
 import { TOURNAMENT_FORMATS } from '@/lib/eventCategory';
 import {
   CalendarDays, LayoutGrid, GraduationCap, User, ArrowRight, Trophy, Ticket, MapPin,
@@ -43,12 +44,23 @@ export default async function MemberHome() {
   const { data: owned } = await admin.from('cc_clubs').select('id').eq('owner_id', user.id).limit(1).maybeSingle();
   if (owned) redirect('/');
 
-  const { data: membership } = await admin
+  /**
+   * Deterministic when someone belongs to more than one club: the same person
+   * lands on the same club home every time, rather than whichever row the
+   * database happened to return first.
+   */
+  const { data: memberships } = await admin
     .from('cc_club_members')
-    .select('role, club_id')
-    .eq('user_id', user.id)
-    .limit(1)
-    .maybeSingle();
+    .select('role, club_id, created_at')
+    .eq('user_id', user.id);
+  const primaryClubId = pickPrimaryClub(
+    (memberships as { club_id: string; role: string; created_at: string }[]) || [],
+    null,
+  );
+  const membership =
+    ((memberships as { club_id: string; role: string }[]) || []).find(
+      (m) => m.club_id === primaryClubId,
+    ) || null;
 
   // Not a member of any club — nothing to show them here.
   if (!membership) redirect('/');

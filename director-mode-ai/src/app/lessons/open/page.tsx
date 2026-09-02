@@ -44,11 +44,14 @@ type Settings = {
 };
 
 type Payload = {
+  /** Every club this instructor belongs to — for the switcher when there are several. */
+  my_clubs: { id: string; name: string; role: string; role_label: string }[];
   /** Club members set up as instructors but not yet approved. Owner only. */
   pending_instructors: { user_id: string; name: string; email: string | null; connected: boolean }[];
   settings: Settings;
   setup: { share_with: string | null; event_title: string; allowed_durations: number[] };
   club: {
+    id: string;
     name: string;
     slug: string;
     enabled: boolean;
@@ -460,6 +463,29 @@ export default function OpenLessonTimePage() {
               <p className="text-[14.5px] font-semibold text-slate-800">
                 {data.club.name} — one page for the whole club
               </p>
+
+              {/* Teaching at more than one club: say which one this page is for
+                  rather than silently picking. */}
+              {data.my_clubs?.length > 1 && (
+                <label className="mt-2 block">
+                  <span className="text-[12.5px] text-slate-600">
+                    You&apos;re at {data.my_clubs.length} clubs. This booking page belongs to:
+                  </span>
+                  <select
+                    value={data.club.id || ''}
+                    onChange={(e) => save({ club_id: e.target.value }, 'Moved to that club.')}
+                    disabled={saving}
+                    style={INPUT}
+                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-[14px] outline-none focus:border-slate-500"
+                  >
+                    {data.my_clubs.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.role_label})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <p className="mt-1 text-[14px] leading-relaxed text-slate-600">
                 {data.club.instructors_ready} of {data.club.instructors_total} instructor
                 {data.club.instructors_total === 1 ? '' : 's'} set up. Clients pick a length, then see

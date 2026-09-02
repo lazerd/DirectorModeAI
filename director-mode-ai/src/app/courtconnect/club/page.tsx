@@ -40,6 +40,18 @@ export default function ClubSettingsPage() {
     accept_join_requests: true,
   });
 
+  /**
+   * The club they already belong to, if any.
+   *
+   * This screen creates a NEW club owned by whoever is looking at it. For a
+   * director that is correct. For a coach who was invited to a club and clicked
+   * the wrong thing, it quietly makes them the owner of an empty club — and
+   * because the app then has to pick a club for them, they detach from the one
+   * they actually teach at and vanish off its booking page. Cheap to warn,
+   * expensive to debug.
+   */
+  const [existingMembership, setExistingMembership] = useState<{ name: string; role: string } | null>(null);
+
   useEffect(() => { fetchClub(); }, []);
 
   const fetchClub = async () => {
@@ -52,6 +64,17 @@ export default function ClubSettingsPage() {
       .select('*')
       .eq('owner_id', user.id)
       .maybeSingle();
+
+    if (!club) {
+      const { data: mem } = await supabase
+        .from('cc_club_members')
+        .select('role, cc_clubs(name)')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle();
+      const m = mem as unknown as { role: string; cc_clubs: { name: string } | null } | null;
+      if (m?.cc_clubs?.name) setExistingMembership({ name: m.cc_clubs.name, role: m.role });
+    }
 
     if (club) {
       setClubId(club.id);
@@ -198,6 +221,24 @@ export default function ClubSettingsPage() {
         {clubId ? 'Edit Club Profile' : 'Create Club Profile'}
       </h1>
       <p className="text-white/50 mb-6">Set up your public club page so players can find you.</p>
+
+      {/* You are probably in the wrong place. */}
+      {!clubId && existingMembership && (
+        <div className="card p-4 mb-6 border border-amber-400/30 bg-amber-400/[0.07]">
+          <p className="text-amber-200 font-medium text-sm">
+            You&apos;re already at {existingMembership.name}
+          </p>
+          <p className="text-white/60 text-[13.5px] mt-1 leading-relaxed">
+            This page creates a <strong>separate club</strong> that you would own. If you teach at{' '}
+            {existingMembership.name}, you don&apos;t need one — creating it here would move your
+            lesson booking page off their club page. Head to{' '}
+            <Link href="/lessons/open" className="text-[#D3FB52] underline">
+              Open Lesson Time
+            </Link>{' '}
+            instead, or ask your director.
+          </p>
+        </div>
+      )}
 
       {/* Public URL preview */}
       {form.slug && (

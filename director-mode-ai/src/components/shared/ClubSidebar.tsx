@@ -29,6 +29,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { pickPrimaryClub } from '@/lib/clubRoles';
 import {
   SECTIONS, FOR_PLAYERS, FOR_YOU, ALL_TOOLS_ITEM, activeHref, type NavIcon,
 } from '@/config/nav';
@@ -191,12 +192,16 @@ export default function ClubSidebar() {
         if (!user) return; // guest → full nav (marketing shell)
         const { data: owned } = await supabase.from('cc_clubs').select('id').eq('owner_id', user.id).limit(1).maybeSingle();
         if (owned) return; // director/owner → full nav
-        const { data: mem } = await supabase
+        // Deterministic across pages when someone belongs to more than one club.
+        const { data: mems } = await supabase
           .from('cc_club_members')
-          .select('role, cc_clubs(slug)')
-          .eq('user_id', user.id)
-          .limit(1)
-          .maybeSingle();
+          .select('role, club_id, created_at, cc_clubs(slug)')
+          .eq('user_id', user.id);
+        const primary = pickPrimaryClub(
+          (mems as unknown as { club_id: string; role: string; created_at: string }[]) || [],
+          null,
+        );
+        const mem = ((mems as unknown as any[]) || []).find((m) => m.club_id === primary) || null;
         if (mem && (mem as any).role === 'member') {
           const slug = (mem as any).cc_clubs?.slug as string | undefined;
           setMemberNav([{

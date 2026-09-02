@@ -25,7 +25,7 @@ import {
   type CoachRow,
 } from '@/lib/lessons/openTimes';
 import { APP_URL } from '@/lib/appUrl';
-import { isInstructorRole, ROLE_LABEL } from '@/lib/clubRoles';
+import { isInstructorRole, pickPrimaryClub, ROLE_LABEL } from '@/lib/clubRoles';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +35,25 @@ const COLUMNS =
   'timezone, open_synced_at';
 
 const ALLOWED_DURATIONS = [30, 60, 90];
+
+/**
+ * The club this person works at, decided by one rule everywhere. Staff role
+ * first, then the earliest membership, then a club they own. See
+ * pickPrimaryClub() for why an owned club must not win by default.
+ */
+async function resolveClubFor(
+  db: ReturnType<typeof getSupabaseAdmin>,
+  userId: string,
+): Promise<string | null> {
+  const [{ data: memberships }, { data: owned }] = await Promise.all([
+    db.from('cc_club_members').select('club_id, role, created_at').eq('user_id', userId),
+    db.from('cc_clubs').select('id').eq('owner_id', userId).order('created_at').limit(1).maybeSingle(),
+  ]);
+  return pickPrimaryClub(
+    (memberships as { club_id: string; role: string; created_at: string }[]) || [],
+    (owned?.id as string) || null,
+  );
+}
 
 async function currentCoach() {
   const supabase = await createClient();
@@ -61,20 +80,7 @@ async function currentCoach() {
       .select('full_name')
       .eq('id', user.id)
       .maybeSingle();
-    const { data: owned } = await db
-      .from('cc_clubs')
-      .select('id')
-      .eq('owner_id', user.id)
-      .limit(1)
-      .maybeSingle();
-    const { data: member } = owned
-      ? { data: null }
-      : await db
-          .from('cc_club_members')
-          .select('club_id')
-          .eq('user_id', user.id)
-          .limit(1)
-          .maybeSingle();
+    const clubId = await resolveClubFor(db, user.id);
 
     const inserted = await db
       .from('lesson_coaches')
@@ -82,7 +88,7 @@ async function currentCoach() {
         profile_id: user.id,
         display_name: (profile?.full_name as string) || user.email?.split('@')[0] || 'Instructor',
         email: user.email,
-        club_id: (owned?.id as string) || (member?.club_id as string) || null,
+        club_id: clubId,
       })
       .select(COLUMNS)
       .maybeSingle();
@@ -103,21 +109,7 @@ async function currentCoach() {
   if (!row.email && user.email) patch.email = user.email;
   if (!row.display_name) patch.display_name = user.email?.split('@')[0] || 'Instructor';
   if (!row.club_id) {
-    const { data: owned } = await db
-      .from('cc_clubs')
-      .select('id')
-      .eq('owner_id', user.id)
-      .limit(1)
-      .maybeSingle();
-    const { data: member } = owned
-      ? { data: null }
-      : await db
-          .from('cc_club_members')
-          .select('club_id')
-          .eq('user_id', user.id)
-          .limit(1)
-          .maybeSingle();
-    const clubId = (owned?.id as string) || (member?.club_id as string) || null;
+    const clubId = await resolveClubFor(db, user.id);
     if (clubId) patch.club_id = clubId;
   }
   if (Object.keys(patch).length) {
@@ -285,7 +277,28 @@ export async function GET() {
     }
   }
 
+  /**
+   * A coach can teach at more than one club, but a coach record carries exactly
+   * one club (lesson_coaches.profile_id is UNIQUE). Rather than pretend
+   * otherwise, say which club this page is set up for and let them move it.
+   */
+  const { data: myMemberships } = await db
+    .from('cc_club_members')
+    .select('club_id, role, cc_clubs(name)')
+    .eq('user_id', userId);
+  const myClubs = ((myMemberships as unknown as {
+    club_id: string;
+    role: string;
+    cc_clubs: { name: string } | null;
+  }[]) || []).map((m) => ({
+    id: m.club_id,
+    name: m.cc_clubs?.name || 'Club',
+    role: m.role,
+    role_label: ROLE_LABEL[m.role] || m.role,
+  }));
+
   return NextResponse.json({
+    my_clubs: myClubs,
     pending_instructors: pending,
     settings: {
       slug,
@@ -308,6 +321,7 @@ export async function GET() {
     },
     club: club
       ? {
+          id: club.id,
           name: club.name,
           slug: club.slug,
           enabled: club.open_lessons_enabled,
@@ -339,6 +353,7 @@ export async function PATCH(req: Request) {
   const { coach, db, userId } = ctx;
 
   const body = (await req.json().catch(() => ({}))) as {
+    club_id?: string;
     calendar_kind?: 'google' | 'ics';
     ics_url?: string | null;
     google_calendar_id?: string | null;
@@ -353,6 +368,37 @@ export async function PATCH(req: Request) {
   };
 
   const patch: Record<string, unknown> = {};
+
+  /**
+   * Moving a booking page to a different club. Checked against real membership
+   * — a coach may only attach themselves to a club they actually belong to,
+   * otherwise this would be a way to list yourself at any club in ClubMode.
+   */
+  if (body.club_id !== undefined) {
+    const target = (body.club_id || '').trim();
+    if (target) {
+      const { data: membership } = await db
+        .from('cc_club_members')
+        .select('role')
+        .eq('club_id', target)
+        .eq('user_id', userId)
+        .maybeSingle();
+      const { data: ownedTarget } = await db
+        .from('cc_clubs')
+        .select('id')
+        .eq('id', target)
+        .eq('owner_id', userId)
+        .maybeSingle();
+      if (!membership && !ownedTarget) {
+        return NextResponse.json(
+          { error: "You're not a member of that club." },
+          { status: 403 },
+        );
+      }
+      patch.club_id = target;
+    }
+  }
+
   if (body.calendar_kind !== undefined) {
     patch.calendar_kind = body.calendar_kind === 'ics' ? 'ics' : 'google';
   }
