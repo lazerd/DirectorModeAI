@@ -19,11 +19,11 @@ describe('the canonical product list', () => {
     expect(PRODUCT_COUNT).toBe(PRODUCTS.length);
   });
 
-  it('has 16 products — 15 from the audit, plus Open Lesson Time', () => {
+  it('has 15 products — the number the audit landed on', () => {
     // If this fails because you genuinely added a tool, update the number AND
     // check the hero counter still reads it from PRODUCT_COUNT rather than a
     // literal. If it fails for any other reason, something drifted.
-    expect(PRODUCT_COUNT).toBe(16);
+    expect(PRODUCT_COUNT).toBe(15);
   });
 
   it('counts only entries explicitly flagged as products', () => {

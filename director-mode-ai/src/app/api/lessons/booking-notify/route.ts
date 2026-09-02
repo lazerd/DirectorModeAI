@@ -30,7 +30,7 @@ function formatDateForCalendar(dateStr: string, timeStr: string): { start: strin
 function generateCalendarLinks(title: string, slotDate: string, slotTime: string, location?: string) {
   const { start, end } = formatDateForCalendar(slotDate, slotTime);
   const encodedTitle = encodeURIComponent(title);
-  const details = encodeURIComponent(`Lesson booked via LastMinute Lessons`);
+  const details = encodeURIComponent(`Lesson booked via LessonMode`);
   const loc = encodeURIComponent(location || '');
 
   const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodedTitle}&dates=${start}/${end}&details=${details}&location=${loc}`;
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const ownerUserId = await resolveCoachUserId(undefined, coachEmail);
     const coachCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${clientName}`, slotDate, slotTime, location);
     await sendBilledEmail(ownerUserId, {
-      from: 'LastMinute Lessons <notifications@coachmode.ai>',
+      from: 'LessonMode <notifications@coachmode.ai>',
       to: coachEmail,
       subject: `New Booking: ${clientName} booked a lesson`,
       html: `
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     if (clientEmail) {
       const clientCalendarLinks = generateCalendarLinks(`Tennis Lesson with ${coachName || 'Coach'}`, slotDate, slotTime, location);
       await sendBilledEmail(ownerUserId, {
-        from: 'LastMinute Lessons <notifications@coachmode.ai>',
+        from: 'LessonMode <notifications@coachmode.ai>',
         to: clientEmail,
         subject: `Booking Confirmed: Lesson with ${coachName || 'your coach'}`,
         html: `

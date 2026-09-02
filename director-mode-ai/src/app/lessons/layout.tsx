@@ -33,7 +33,7 @@ export default async function LessonsLayout({
               <Clock size={18} className="text-blue-400" />
             </div>
             <div>
-              <span className="font-display text-lg block leading-tight text-white">LastMinute</span>
+              <span className="font-display text-lg block leading-tight text-white">LessonMode</span>
               <span className="text-xs text-white/40">Lesson Mode</span>
             </div>
           </Link>
@@ -59,17 +59,17 @@ export default async function LessonsLayout({
         {/* Navigation */}
         <nav className="flex-1 p-3">
           <ul className="space-y-1">
-            <NavItem href="/lessons/dashboard" icon={Calendar}>
-              My Calendar
-            </NavItem>
             <NavItem href="/lessons/open" icon={CalendarCheck}>
               Open Lesson Time
+            </NavItem>
+            <NavItem href="/lessons/dashboard" icon={Calendar}>
+              My Calendar
             </NavItem>
             <NavItem href="/lessons/clients" icon={Users}>
               Clients
             </NavItem>
             <NavItem href="/lessons/blast" icon={Mail}>
-              Email Blast
+              Last-minute blast
             </NavItem>
             <NavItem href="/lessons/history" icon={History}>
               History

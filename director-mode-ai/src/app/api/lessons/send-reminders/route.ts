@@ -27,7 +27,7 @@ function formatDateForCalendar(startTime: Date, endTime: Date): { start: string;
 function generateCalendarLinks(title: string, startTime: Date, endTime: Date, location?: string | null) {
   const { start, end } = formatDateForCalendar(startTime, endTime);
   const encodedTitle = encodeURIComponent(title);
-  const details = encodeURIComponent('Lesson reminder from LastMinute Lessons');
+  const details = encodeURIComponent('Lesson reminder from LessonMode');
   const loc = encodeURIComponent(location || '');
 
   const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodedTitle}&dates=${start}/${end}&details=${details}&location=${loc}`;
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
       const coachUserId = await resolveCoachUserId(undefined, coach?.email);
       try {
         await sendBilledEmail(coachUserId, {
-          from: 'LastMinute Lessons <notifications@coachmode.ai>',
+          from: 'LessonMode <notifications@coachmode.ai>',
           to: client.email,
           subject: `Reminder: Lesson with ${coachName} tomorrow`,
           html: `

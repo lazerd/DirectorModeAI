@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
         <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
         
         <p style="color: #94a3b8; font-size: 12px; text-align: center;">
-          Sent via LastMinute Lessons<br/>
+          Sent via LessonMode<br/>
           Reply to this email to contact your coach directly
         </p>
       </div>
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
 
     // Send to all clients
     const payloads = clientEmails.map((email: string) => ({
-      from: process.env.RESEND_FROM_EMAIL || 'LastMinute Lessons <onboarding@resend.dev>',
+      from: process.env.RESEND_FROM_EMAIL || 'LessonMode <onboarding@resend.dev>',
       to: email,
       replyTo: coachEmail,
       subject: `🎾 ${coachName || 'Your Coach'} has lesson time available!`,

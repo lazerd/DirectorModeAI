@@ -19,7 +19,7 @@ export default function LessonsMobileNav({ userName, userInitial }: LessonsMobil
           <div className="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
             <Clock size={16} className="text-blue-400" />
           </div>
-          <span className="font-display text-base text-white">LastMinute</span>
+          <span className="font-display text-base text-white">LessonMode</span>
         </Link>
 
         <button
@@ -48,10 +48,10 @@ export default function LessonsMobileNav({ userName, userInitial }: LessonsMobil
 
             <nav className="p-3">
               <ul className="space-y-1">
-                <MobileNavItem href="/lessons/dashboard" icon={Calendar} onClick={() => setIsOpen(false)}>My Calendar</MobileNavItem>
                 <MobileNavItem href="/lessons/open" icon={CalendarCheck} onClick={() => setIsOpen(false)}>Open Lesson Time</MobileNavItem>
+                <MobileNavItem href="/lessons/dashboard" icon={Calendar} onClick={() => setIsOpen(false)}>My Calendar</MobileNavItem>
                 <MobileNavItem href="/lessons/clients" icon={Users} onClick={() => setIsOpen(false)}>Clients</MobileNavItem>
-                <MobileNavItem href="/lessons/blast" icon={Mail} onClick={() => setIsOpen(false)}>Email Blast</MobileNavItem>
+                <MobileNavItem href="/lessons/blast" icon={Mail} onClick={() => setIsOpen(false)}>Last-minute blast</MobileNavItem>
                 <MobileNavItem href="/lessons/history" icon={History} onClick={() => setIsOpen(false)}>History</MobileNavItem>
                 <MobileNavItem href="/lessons/settings" icon={Settings} onClick={() => setIsOpen(false)}>Settings</MobileNavItem>
               </ul>

@@ -128,7 +128,12 @@ export default function SponsoredQuadLanding({
 
   const facts = [
     { icon: CalendarDays, label: 'Date', value: dateLabel },
-    { icon: Clock, label: 'Time', value: timeLabel, sub: blockNote ?? undefined },
+    {
+      icon: Clock,
+      label: hasWave2 ? 'Sessions' : 'Time',
+      value: hasWave2 && wave1Label && wave2Label ? `${wave1Label}` : timeLabel,
+      sub: hasWave2 && wave2Label ? `or ${wave2Label} — 2 hours either way` : blockNote ?? undefined,
+    },
     { icon: Ticket, label: 'Entry fee', value: feeLabel, sub: 'Everything below included' },
     {
       icon: Users,
@@ -260,8 +265,9 @@ export default function SponsoredQuadLanding({
           {guaranteedWindow && (
             <p className="mt-3 inline-flex items-center gap-2 text-sm sm:text-base font-bold bg-white/20 rounded-full px-4 py-1.5">
               <Clock size={15} />
-              Four matches, one {durationLabel(e.duration_minutes).replace(' block', '')} window —
-              done by {doneBy}
+              {hasWave2 && wave2Label
+                ? `Four matches in one ${durationNoun(playMinutes)} session — ${guaranteedWindow} or ${wave2Label}`
+                : `Four matches, one ${durationLabel(e.duration_minutes).replace(' block', '')} window — done by ${doneBy}`}
             </p>
           )}
           <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm font-semibold">
@@ -382,33 +388,68 @@ export default function SponsoredQuadLanding({
                         </span>
                       ))}
                     </div>
-                    <div className="text-xs mt-2 font-semibold" style={{ color: full ? 'rgba(0,0,0,0.5)' : c.secondary }}>
+                    <div
+                      className="text-xs mt-2 font-semibold"
+                      style={{ color: full ? c.secondary : c.secondary }}
+                    >
                       {full
                         ? d.waiting > 0
-                          ? `Full · ${d.waiting} on the waitlist`
-                          : 'Full'
+                          ? `${d.waiting} on the waitlist`
+                          : 'First four are in — waitlist is open'
                         : `${d.spotsLeft} spot${d.spotsLeft === 1 ? '' : 's'} left`}
                     </div>
+                    {full && capacity.canGrow && (
+                      <div className="text-[11px] mt-1 leading-snug" style={{ color: 'rgba(0,0,0,0.6)' }}>
+                        {playersNeededForNextQuad(d.waiting) === 0
+                          ? "Enough waiting for another quad — we're working on it."
+                          : `${playersNeededForNextQuad(d.waiting)} more and we can open another quad.`}
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
 
-            <div
-              className="mt-5 rounded-2xl p-4 border-2 border-dashed"
-              style={{ borderColor: c.primary }}
-            >
+            <div className="mt-5 grid sm:grid-cols-2 gap-3">
               <div
-                className="text-[10px] uppercase tracking-[0.18em] font-bold mb-1.5"
-                style={{ color: c.secondary }}
+                className="rounded-2xl p-4 border-2"
+                style={{ borderColor: c.primary, backgroundColor: c.cream }}
               >
-                If a division doesn&rsquo;t fill
+                <div
+                  className="text-[10px] uppercase tracking-[0.18em] font-bold mb-1.5"
+                  style={{ color: c.secondary }}
+                >
+                  Don&rsquo;t see a spot? Get on the list
+                </div>
+                <p className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.75)' }}>
+                  <strong style={{ color: c.ink }}>A full division is not a no.</strong> Every four
+                  players on the waitlist is another quad we can open, and we will stretch to{' '}
+                  {numberWord(capacity.maxQuads)} group{capacity.maxQuads === 1 ? '' : 's'} of four —{' '}
+                  {capacity.maxSpots} players — if the demand is there.
+                  {hasWave2 && wave2Label && (
+                    <> That&rsquo;s what the second session at {wave2Label} is for.</>
+                  )}{' '}
+                  We can&rsquo;t promise a spot, but we will do our best to fit everyone in, so put
+                  your name down.
+                </p>
               </div>
-              <p className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.7)' }}>
-                A division needs four players to run. If one comes up short we cancel it and give
-                its court block to a division with players waiting — so eight signups at 10 &amp;
-                Under becomes two 10U quads. Nobody in a cancelled division is charged.
-              </p>
+
+              <div
+                className="rounded-2xl p-4 border-2 border-dashed"
+                style={{ borderColor: c.primary }}
+              >
+                <div
+                  className="text-[10px] uppercase tracking-[0.18em] font-bold mb-1.5"
+                  style={{ color: c.secondary }}
+                >
+                  If a division doesn&rsquo;t fill
+                </div>
+                <p className="text-xs leading-relaxed" style={{ color: 'rgba(0,0,0,0.7)' }}>
+                  A division needs four players to run. If one comes up short we cancel it and give
+                  its court time to a division with players waiting — so eight signups at 10 &amp;
+                  Under becomes two 10U quads. Nobody in a cancelled division is charged.
+                </p>
+              </div>
             </div>
           </section>
         )}
@@ -499,13 +540,30 @@ export default function SponsoredQuadLanding({
               <Clock size={18} className="mt-0.5 flex-shrink-0" style={{ color: c.secondary }} />
               <div>
                 <div className="font-bold text-sm" style={{ color: c.ink }}>
-                  Plan your day around {guaranteedWindow}
+                  {hasWave2 && wave2Label
+                    ? `Two hours on court — ${guaranteedWindow} or ${wave2Label}`
+                    : `Plan your day around ${guaranteedWindow}`}
                 </div>
                 <p className="text-xs mt-1 leading-relaxed" style={{ color: 'rgba(0,0,0,0.65)' }}>
                   Every quad runs at the same time on its own pair of courts, and rounds are on a
                   clock — so all four matches finish inside the window. No waiting around for a
-                  draw to come back to you, and no chance of a 1pm finish. Drop off at{' '}
-                  {formatTimeDisplay(e.start_time)}, pick up at {doneBy}.
+                  draw to come back to you.
+                  {hasWave2 && wave2Label ? (
+                    <>
+                      {' '}
+                      We open with the {guaranteedWindow} session and add the {wave2Label} one if
+                      enough families sign up.{' '}
+                      <strong style={{ color: c.ink }}>
+                        You&rsquo;ll be told which session is yours before you pay
+                      </strong>{' '}
+                      — nobody is asked to hold the whole afternoon.
+                    </>
+                  ) : (
+                    <>
+                      {' '}
+                      Drop off at {formatTimeDisplay(e.start_time)}, pick up at {doneBy}.
+                    </>
+                  )}
                 </p>
               </div>
             </div>
@@ -603,7 +661,8 @@ export default function SponsoredQuadLanding({
                   <>
                     {' '}
                     <span style={{ color: c.secondary }} className="font-semibold">
-                      {waitlistCount} player{waitlistCount === 1 ? '' : 's'} already waitlisted.
+                      {waitlistCount} already on the waitlist — sign up anyway, every four waiting
+                      is another quad we can open.
                     </span>
                   </>
                 )}
@@ -620,7 +679,9 @@ export default function SponsoredQuadLanding({
                     {
                       n: 2,
                       t: 'We confirm the divisions',
-                      b: 'Once registration closes we lock in which quads are running.',
+                      b: hasWave2
+                        ? 'Once registration closes we lock in how many quads run, and which session you’re in.'
+                        : 'Once registration closes we lock in which quads are running.',
                     },
                     {
                       n: 3,

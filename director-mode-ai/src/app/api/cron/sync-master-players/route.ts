@@ -263,7 +263,7 @@ export async function GET(request: NextRequest) {
     })
   );
 
-  // lesson_clients (LastMinuteLesson)
+  // lesson_clients (LessonMode)
   results.lesson_clients = await syncTable(
     'lesson_clients',
     'id, name, email, phone',

@@ -69,7 +69,7 @@ export default function SettingsPage() {
     <div className="p-6 lg:p-8">
       <div className="mb-6">
         <h1 className="font-semibold text-2xl">Settings</h1>
-        <p className="text-gray-500 text-sm">Manage your Last Minute Lesson preferences</p>
+        <p className="text-gray-500 text-sm">Manage your LessonMode preferences</p>
       </div>
 
       <div className="max-w-2xl space-y-6">

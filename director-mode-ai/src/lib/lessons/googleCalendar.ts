@@ -28,11 +28,23 @@ export const OPEN_LESSON_TITLE = 'Open Lesson Time';
 
 type Creds = { client_email: string; private_key: string };
 
+/**
+ * Calendar gets its OWN key when one is configured.
+ *
+ * GOOGLE_SERVICE_ACCOUNT_JSON is the long-standing sheets credential
+ * (topdog-booker@...), and it is load-bearing elsewhere — the JTT availability
+ * form reader depends on that exact account having access to that exact sheet.
+ * Swapping it for a ClubMode-branded account would silently break that, so the
+ * calendar integration reads GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON first and
+ * only falls back to the old one. Moving to a branded account is then just
+ * adding the new variable; nothing else changes and nothing else breaks.
+ */
 function creds(): Creds {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const raw =
+    process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!raw) {
     throw new Error(
-      'Google Calendar is not configured on the server (GOOGLE_SERVICE_ACCOUNT_JSON is missing).',
+      'Google Calendar is not configured on the server (set GOOGLE_CALENDAR_SERVICE_ACCOUNT_JSON).',
     );
   }
   try {
@@ -159,7 +171,28 @@ export async function deleteEvent(calendarId: string, eventId: string): Promise<
 export function calendarErrorMessage(e: unknown, calendarId: string): string {
   const err = e as { code?: number; status?: number; message?: string };
   const code = err?.code ?? err?.status;
+  const msg = err?.message || '';
   const email = serviceAccountEmail();
+
+  /**
+   * The 403 that is NOT about sharing.
+   *
+   * A Google Cloud project has to have the Calendar API switched on before any
+   * key in it can read a calendar, and the failure arrives as a 403 that reads
+   * exactly like a permissions problem. Telling an instructor to re-share a
+   * calendar they already shared, when the real fix is one click in a console
+   * they have never opened, is the worst possible answer — so it gets its own
+   * branch and the real link.
+   */
+  if (/has not been used in project|accessNotConfigured|is disabled/i.test(msg)) {
+    const project = msg.match(/project (\d+)/)?.[1];
+    return (
+      "Google Calendar API is switched off for this app's Google Cloud project — nothing to do with your sharing. " +
+      'Enable it here, give it a minute, then check again: ' +
+      `https://console.cloud.google.com/apis/library/calendar-json.googleapis.com${project ? `?project=${project}` : ''}`
+    );
+  }
+
   if (code === 404) {
     return `Google can't find a calendar called "${calendarId}". Check the address, then share that calendar with ${email ?? 'the booking service account'} and give it "Make changes to events".`;
   }

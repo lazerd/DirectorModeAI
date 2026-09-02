@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const { count: mixerRounds } = await supabase.from('mixer_rounds').select('*', { count: 'exact', head: true });
     const { count: mixerMatches } = await supabase.from('mixer_matches').select('*', { count: 'exact', head: true });
 
-    // LastMinuteLesson
+    // LessonMode
     const { count: lessonCoaches } = await supabase.from('lesson_coaches').select('*', { count: 'exact', head: true });
     const { count: lessonClients } = await supabase.from('lesson_clients').select('*', { count: 'exact', head: true });
     const { count: totalSlots } = await supabase.from('lesson_slots').select('*', { count: 'exact', head: true });
@@ -64,7 +64,7 @@ export async function GET(request: NextRequest) {
         },
       },
       {
-        name: 'LastMinuteLesson',
+        name: 'LessonMode',
         color: '#60a5fa',
         icon: 'GraduationCap',
         userCount: lessonUsers.size,

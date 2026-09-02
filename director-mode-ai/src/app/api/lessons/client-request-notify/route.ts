@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
 
     const ownerUserId = await resolveCoachUserId(undefined, coachEmail);
     await sendBilledEmail(ownerUserId, {
-      from: 'LastMinute Lessons <notifications@coachmode.ai>',
+      from: 'LessonMode <notifications@coachmode.ai>',
       to: coachEmail,
       subject: `New Client Request: ${clientName} wants to book lessons`,
       html: `

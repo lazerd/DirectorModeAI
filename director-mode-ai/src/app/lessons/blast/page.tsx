@@ -74,7 +74,7 @@ export default function BlastPage() {
   return (
     <div className="p-6 lg:p-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div><h1 className="font-semibold text-2xl">Email Blast</h1><p className="text-gray-500 text-sm">Notify clients about open slots</p></div>
+        <div><h1 className="font-semibold text-2xl">Last-minute blast</h1><p className="text-gray-500 text-sm">Push a specific opening to chosen clients. For times anyone at the club can book on their own, use <a href="/lessons/open" className="underline">Open Lesson Time</a>.</p></div>
         <button onClick={() => setShowAddSlot(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700"><Plus size={18} />Add Slot</button>
       </div>
 

@@ -105,10 +105,10 @@ const FEATURES = [
   },
   {
     id: 'lessons',
-    tag: 'LastMinuteLesson',
+    tag: 'LessonMode',
     tagColor: 'bg-blue-400/10 text-blue-400',
-    title: 'Fill open lesson slots instantly',
-    description: 'Coaches post openings, blast clients by email, players book in one tap.',
+    title: 'Your calendars are the booking page',
+    description: 'Instructors block "Open Lesson Time"; anyone at the club books 30, 60 or 90 minutes of it. Cancellations can still be blasted to chosen clients.',
     icon: Clock,
     iconColor: 'text-blue-400',
     iconBg: 'bg-blue-400/10',

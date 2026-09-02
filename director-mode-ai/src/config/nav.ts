@@ -232,22 +232,18 @@ export const SECTIONS: Section[] = [
     matches: ['/run/coaching', '/lessons', '/pathway'],
     tools: [
       {
-        name: 'LastMinuteLesson',
-        href: '/lessons/dashboard',
-        match: '/lessons/dashboard',
-        description: 'Fill open lesson slots — clients, availability blasts and booking history.',
-        pitch: 'Post open lesson slots, notify clients instantly, and let them book in one tap.',
-        icon: Clock,
-        color: '#60a5fa',
-        product: true,
-        tag: 'LESSONS',
-      },
-      {
-        name: 'Open Lesson Time',
+        /**
+         * One product, two ways to fill a court. The open booking page is the
+         * primary one — every instructor's calendar, open to anyone at the
+         * club — and the last-minute blast lives inside it for the times a
+         * coach wants to push at a chosen few. "LastMinuteLesson" was the old
+         * name for the whole product and undersold it.
+         */
+        name: 'LessonMode',
         href: '/lessons/open',
-        match: '/lessons/open',
-        description: 'Your Google Calendar is the booking page — block "Open Lesson Time" and clients book 30, 60 or 90 minutes of it.',
-        pitch: "Every instructor connects their own calendar; clients book the club's open times in one tap, no account.",
+        match: '/lessons',
+        description: 'Instructors block "Open Lesson Time" on their own calendar and clients book 30, 60 or 90 minutes of it — plus last-minute blasts to chosen clients.',
+        pitch: "Your calendars are the booking page. Clients book the club's open times in one tap, no account, and a cancellation can still be blasted to the people most likely to take it.",
         icon: CalendarCheck,
         color: '#34d399',
         product: true,
