@@ -61,6 +61,7 @@ type Payload = {
     my_role_label: string | null;
     can_list: boolean;
     invite_url: string | null;
+    join_code: string | null;
     url: string;
     instructors_ready: number;
     instructors_total: number;
@@ -87,6 +88,7 @@ export default function OpenLessonTimePage() {
   const [pageNote, setPageNote] = useState('');
   const [lead, setLead] = useState('3');
   const [durations, setDurations] = useState<number[]>(LENGTHS);
+  const [joinCode, setJoinCode] = useState('');
 
   const load = useCallback(async () => {
     const res = await fetch('/api/lessons/open/settings', { cache: 'no-store' });
@@ -104,6 +106,7 @@ export default function OpenLessonTimePage() {
     setPageNote(j.settings.open_page_note || '');
     setLead(String(j.settings.booking_lead_hours ?? 3));
     setDurations(j.settings.open_durations || LENGTHS);
+    setJoinCode(j.club?.join_code || '');
     setLoading(false);
   }, []);
 
@@ -558,6 +561,42 @@ export default function OpenLessonTimePage() {
                     <li>3. They open this page and connect their own calendar.</li>
                   </ol>
                   <CopyRow label="Club join link" value={data.club.invite_url} link />
+
+                  {/* Brand the code, within reason. */}
+                  <div className="mt-3">
+                    <p className="text-[12.5px] font-semibold uppercase tracking-wider text-slate-500">
+                      Make the link say your club
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <input
+                        value={joinCode}
+                        onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                        placeholder="SHTENNIS26"
+                        style={INPUT}
+                        className="min-w-[10rem] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-[14px] font-mono outline-none focus:border-slate-500"
+                      />
+                      <button
+                        onClick={() => save({ join_code: joinCode }, 'Join link updated.')}
+                        disabled={saving || !joinCode.trim()}
+                        className="rounded-lg bg-slate-900 px-4 py-2 text-[13.5px] font-semibold text-white disabled:opacity-40"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => save({ join_code: '__random__' }, 'New code generated.')}
+                        disabled={saving}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-[13.5px] font-medium text-slate-700 hover:border-slate-500 disabled:opacity-40"
+                      >
+                        Roll a new one
+                      </button>
+                    </div>
+                    <p className="mt-1.5 text-[12px] leading-relaxed text-slate-500">
+                      This code is a password, not a name: whoever has it can join and see your
+                      roster. It can look like your club, but it can&apos;t just <em>be</em> your club
+                      — add a couple of numbers. Changing it kills the old link immediately, which is
+                      how you cut off a code that got passed around.
+                    </p>
+                  </div>
                 </div>
               )}
               {data.club.is_owner ? (

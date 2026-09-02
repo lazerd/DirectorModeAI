@@ -26,6 +26,7 @@ import {
 } from '@/lib/lessons/openTimes';
 import { APP_URL } from '@/lib/appUrl';
 import { isInstructorRole, pickPrimaryClub, ROLE_LABEL } from '@/lib/clubRoles';
+import { normalizeJoinCode, randomJoinCode, validateJoinCode } from '@/lib/joinCode';
 
 export const dynamic = 'force-dynamic';
 
@@ -333,6 +334,7 @@ export async function GET() {
           // Owners hand this to instructors; it is the club's own code, so it
           // is not shown to anyone else.
           invite_url: isOwner && club.join_code ? `${APP_URL}/join/${club.join_code}` : null,
+          join_code: isOwner ? (club.join_code as string) || null : null,
           url: `${APP_URL}/open/${club.slug}`,
           instructors_ready: ((colleagues as { open_page_enabled: boolean; google_calendar_id: string | null }[]) || [])
             .filter((c) => c.open_page_enabled && c.google_calendar_id).length,
@@ -365,6 +367,8 @@ export async function PATCH(req: Request) {
     timezone?: string;
     club_enabled?: boolean;
     club_note?: string | null;
+    /** A branded join code, or '__random__' to roll a new one. */
+    join_code?: string;
   };
 
   const patch: Record<string, unknown> = {};
@@ -439,6 +443,49 @@ export async function PATCH(req: Request) {
   if (Object.keys(patch).length) {
     const { error } = await db.from('lesson_coaches').update(patch).eq('id', coach.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  /**
+   * Branding the join code. Owner only, and validated: the code is a password
+   * that lets whoever holds it read the club roster, so it may look like the
+   * club without being derivable from its name. See src/lib/joinCode.ts.
+   */
+  if (body.join_code !== undefined && coach.club_id) {
+    const { data: club } = await db
+      .from('cc_clubs')
+      .select('id, name, slug, owner_id')
+      .eq('id', coach.club_id)
+      .maybeSingle();
+    if (!club || club.owner_id !== userId) {
+      return NextResponse.json({ error: 'Only the club owner can change the join code.' }, { status: 403 });
+    }
+
+    const wanted = body.join_code === '__random__' ? randomJoinCode(7) : body.join_code || '';
+    const check = validateJoinCode(wanted, club.name as string, club.slug as string);
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: 400 });
+
+    // Codes are matched case-insensitively at redemption, so uniqueness has to
+    // be checked the same way or two clubs could shadow each other.
+    const { data: clash } = await db
+      .from('cc_clubs')
+      .select('id')
+      .ilike('join_code', check.code)
+      .neq('id', club.id)
+      .maybeSingle();
+    if (clash) {
+      return NextResponse.json(
+        { error: 'Another club is already using that code. Try adding a couple of numbers.' },
+        { status: 409 },
+      );
+    }
+
+    const { error } = await db
+      .from('cc_clubs')
+      .update({ join_code: normalizeJoinCode(check.code) })
+      .eq('id', club.id);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true, join_code: check.code });
   }
 
   /**
