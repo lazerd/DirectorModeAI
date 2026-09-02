@@ -1,13 +1,30 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Trophy, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
-export default function RegisterPage() {
+function RegisterForm() {
   const router = useRouter();
+  /**
+   * Where to land after signing up.
+   *
+   * Exists so a single invite link works for someone with no account yet:
+   * /join/<code> bounces to login, login offers "create account" and passes
+   * this through, and the confirmation email brings them back to the join page
+   * — which attaches them to the club. Without it every new coach and member
+   * signed up, landed on a generic welcome screen, and had to be told to go
+   * click the invite link a second time.
+   *
+   * Relative paths only. An absolute URL here would make the signup flow an
+   * open redirect, which is a phishing gift.
+   */
+  const searchParams = useSearchParams();
+  const rawNext = searchParams.get('next') || '';
+  const next = rawNext.startsWith('/') && !rawNext.startsWith('//') ? rawNext : '/welcome';
   
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -36,7 +53,7 @@ export default function RegisterPage() {
           data: {
             full_name: fullName,
           },
-          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}/welcome` : undefined,
+          emailRedirectTo: typeof window !== 'undefined' ? `${window.location.origin}${next}` : undefined,
         },
       });
 
@@ -48,12 +65,13 @@ export default function RegisterPage() {
       // If Supabase has email confirmation enabled, signUp returns no session.
       // Send the user to a confirmation screen instead of the dashboard.
       if (!data.session) {
-        router.push(`/verify-email?email=${encodeURIComponent(email)}&next=/welcome`);
+        router.push(`/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}`);
         return;
       }
 
-      // New signups land on the first-run onboarding, not the marketing page.
-      router.push('/welcome');
+      // New signups land on the first-run onboarding — or on the invite they
+      // arrived from, which is the whole point of carrying `next`.
+      router.push(next);
       router.refresh();
     } catch {
       setError('An error occurred. Please try again.');
@@ -203,5 +221,18 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * useSearchParams() forces client-side rendering, which Next requires a
+ * Suspense boundary around. Wrapping the form (rather than dropping the
+ * `next` param) keeps invite links working end to end.
+ */
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
   );
 }

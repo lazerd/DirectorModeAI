@@ -116,7 +116,10 @@ function LoginForm() {
 
       <div className="mt-6 text-center text-sm text-gray-500">
         Do not have an account?{' '}
-        <Link href="/register" className="text-blue-600 font-medium hover:underline">
+        <Link
+          href={redirectTo ? `/register?next=${encodeURIComponent(redirectTo)}` : '/register'}
+          className="text-blue-600 font-medium hover:underline"
+        >
           Sign up
         </Link>
       </div>
