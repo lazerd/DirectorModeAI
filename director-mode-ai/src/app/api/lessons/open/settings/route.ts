@@ -238,7 +238,55 @@ export async function GET() {
         10,
     ) / 10;
 
+  /**
+   * Instructors who have done their half and are waiting on the director.
+   *
+   * The staff boundary stays where it is — the join code grants Member and
+   * nothing more, because `coach` is a staff role that opens member data across
+   * the rest of ClubMode. What was wrong was the DIRECTOR's side: a coach set
+   * everything up correctly and then waited for someone to notice. These are
+   * the people at this club who have started setting up a booking page and
+   * cannot appear on it yet, so approving them is one tap from here.
+   */
+  let pending: { user_id: string; name: string; email: string | null; connected: boolean }[] = [];
+  if (isOwner && club) {
+    const { data: coachRows } = await db
+      .from('lesson_coaches')
+      .select('profile_id, display_name, email, calendar_kind, google_calendar_id, ics_url')
+      .eq('club_id', club.id)
+      .neq('profile_id', userId);
+
+    const candidates = (coachRows as {
+      profile_id: string;
+      display_name: string | null;
+      email: string | null;
+      calendar_kind: string | null;
+      google_calendar_id: string | null;
+      ics_url: string | null;
+    }[]) || [];
+
+    if (candidates.length) {
+      const { data: roles } = await db
+        .from('cc_club_members')
+        .select('user_id, role')
+        .eq('club_id', club.id)
+        .in('user_id', candidates.map((c) => c.profile_id));
+      const roleOf = new Map(
+        ((roles as { user_id: string; role: string }[]) || []).map((r) => [r.user_id, r.role]),
+      );
+      pending = candidates
+        .filter((c) => !isInstructorRole(roleOf.get(c.profile_id)))
+        .map((c) => ({
+          user_id: c.profile_id,
+          name: c.display_name || c.email || 'Instructor',
+          email: c.email,
+          connected: c.calendar_kind === 'ics' ? !!c.ics_url : !!c.google_calendar_id,
+        }));
+    }
+  }
+
   return NextResponse.json({
+    pending_instructors: pending,
     settings: {
       slug,
       calendar_kind: coach.calendar_kind || 'google',
@@ -377,7 +425,49 @@ export async function POST(req: Request) {
   if ('error' in ctx) return ctx.error;
   const { coach, db } = ctx;
 
-  const body = (await req.json().catch(() => ({}))) as { action?: string };
+  const body = (await req.json().catch(() => ({}))) as { action?: string; user_id?: string };
+
+  /**
+   * Make someone a coach at this club. Owner-only, and deliberately an explicit
+   * act rather than something a shared link can do: `coach` is a staff role.
+   */
+  if (body.action === 'promote') {
+    if (!body.user_id) return NextResponse.json({ error: 'Missing user.' }, { status: 400 });
+    if (!coach.club_id) return NextResponse.json({ error: 'No club to add them to.' }, { status: 400 });
+
+    const { data: club } = await db
+      .from('cc_clubs')
+      .select('id, owner_id, name')
+      .eq('id', coach.club_id)
+      .maybeSingle();
+    if (!club || club.owner_id !== ctx.userId) {
+      return NextResponse.json(
+        { error: 'Only the club owner can add an instructor.' },
+        { status: 403 },
+      );
+    }
+
+    const { data: existing } = await db
+      .from('cc_club_members')
+      .select('role')
+      .eq('club_id', club.id)
+      .eq('user_id', body.user_id)
+      .maybeSingle();
+
+    const { error } = existing
+      ? await db
+          .from('cc_club_members')
+          .update({ role: 'coach' })
+          .eq('club_id', club.id)
+          .eq('user_id', body.user_id)
+      : await db
+          .from('cc_club_members')
+          .insert({ club_id: club.id, user_id: body.user_id, role: 'coach' });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true, promoted: body.user_id });
+  }
+
   if (body.action !== 'sync') return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
   const isIcs = coach.calendar_kind === 'ics';
   if (isIcs ? !coach.ics_url : !coach.google_calendar_id) {

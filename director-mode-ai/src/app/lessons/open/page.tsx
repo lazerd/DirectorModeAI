@@ -44,6 +44,8 @@ type Settings = {
 };
 
 type Payload = {
+  /** Club members set up as instructors but not yet approved. Owner only. */
+  pending_instructors: { user_id: string; name: string; email: string | null; connected: boolean }[];
   settings: Settings;
   setup: { share_with: string | null; event_title: string; allowed_durations: number[] };
   club: {
@@ -121,6 +123,23 @@ export default function OpenLessonTimePage() {
       return;
     }
     if (note) setMsg(note);
+    await load();
+  };
+
+  const promote = async (userId: string, name: string) => {
+    setSaving(true);
+    setErr(null);
+    const res = await fetch('/api/lessons/open/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'promote', user_id: userId }),
+    });
+    setSaving(false);
+    if (!res.ok) {
+      setErr((await res.json().catch(() => ({}))).error || 'Could not add them.');
+      return;
+    }
+    setMsg(`${name} is now a coach at your club — their open times will show on the club page.`);
     await load();
   };
 
@@ -465,15 +484,50 @@ export default function OpenLessonTimePage() {
                 )}
               </p>
 
+              {/* One tap, from the page the director is already on. */}
+              {data.club.is_owner && data.pending_instructors?.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-[13px] font-semibold text-amber-900">
+                    Waiting for you to add them as a coach
+                  </p>
+                  <p className="mt-0.5 text-[12.5px] text-amber-800">
+                    They&apos;ve joined the club and started setting up. Until you add them, their
+                    times can&apos;t show on the club page.
+                  </p>
+                  <div className="mt-2 space-y-1.5">
+                    {data.pending_instructors.map((p) => (
+                      <div
+                        key={p.user_id}
+                        className="flex flex-wrap items-center gap-2 rounded-lg bg-white px-3 py-2"
+                      >
+                        <span className="text-[14px] font-medium text-slate-900">{p.name}</span>
+                        {p.email && <span className="text-[12.5px] text-slate-500">{p.email}</span>}
+                        <span
+                          className={`text-[12px] ${p.connected ? 'text-emerald-700' : 'text-slate-400'}`}
+                        >
+                          {p.connected ? 'calendar connected' : 'no calendar yet'}
+                        </span>
+                        <button
+                          onClick={() => promote(p.user_id, p.name)}
+                          disabled={saving}
+                          className="ml-auto rounded-lg bg-slate-900 px-3 py-1.5 text-[13px] font-semibold text-white disabled:opacity-40"
+                        >
+                          Make coach
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {data.club.invite_url && (
                 <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <p className="text-[13px] font-semibold text-slate-800">Adding another instructor</p>
                   <ol className="mt-1.5 space-y-1 text-[13px] leading-relaxed text-slate-600">
                     <li>1. They create a free ClubMode account and open the link below to join the club.</li>
                     <li>
-                      2. You set them to <strong>Coach</strong> in{' '}
-                      <a href="/courtconnect/vault" className="underline">PlayerVault</a> — the join link
-                      only grants Member, on purpose.
+                      2. They appear right here for you to <strong>Make coach</strong> in one tap —
+                      the join link only ever grants Member, because coach is a staff role.
                     </li>
                     <li>3. They open this page and connect their own calendar.</li>
                   </ol>
