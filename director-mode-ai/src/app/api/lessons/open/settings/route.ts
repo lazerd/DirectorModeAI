@@ -25,6 +25,7 @@ import {
   type CoachRow,
 } from '@/lib/lessons/openTimes';
 import { APP_URL } from '@/lib/appUrl';
+import { isInstructorRole, ROLE_LABEL } from '@/lib/clubRoles';
 
 export const dynamic = 'force-dynamic';
 
@@ -180,11 +181,30 @@ export async function GET() {
     ? (
         await db
           .from('cc_clubs')
-          .select('id, name, slug, owner_id, open_lessons_enabled, open_lessons_note')
+          .select('id, name, slug, owner_id, join_code, open_lessons_enabled, open_lessons_note')
           .eq('id', coach.club_id)
           .maybeSingle()
       ).data
     : null;
+
+  /**
+   * Attached to a club is not the same as teaching for it. The club page lists
+   * staff only, so this screen has to say plainly which side of that line the
+   * person reading it is on — otherwise they set everything up correctly and
+   * silently never appear.
+   */
+  const myRole = club
+    ? ((
+        await db
+          .from('cc_club_members')
+          .select('role')
+          .eq('club_id', club.id)
+          .eq('user_id', userId)
+          .maybeSingle()
+      ).data?.role as string | undefined)
+    : undefined;
+  const isOwner = !!club && club.owner_id === userId;
+  const canListOnClubPage = isOwner || isInstructorRole(myRole);
 
   const now = new Date().toISOString();
   const [{ data: windows }, { count: bookedCount }, { data: colleagues }] = await Promise.all([
@@ -244,7 +264,13 @@ export async function GET() {
           slug: club.slug,
           enabled: club.open_lessons_enabled,
           note: club.open_lessons_note,
-          is_owner: club.owner_id === userId,
+          is_owner: isOwner,
+          my_role: myRole || null,
+          my_role_label: myRole ? ROLE_LABEL[myRole] || myRole : null,
+          can_list: canListOnClubPage,
+          // Owners hand this to instructors; it is the club's own code, so it
+          // is not shown to anyone else.
+          invite_url: isOwner && club.join_code ? `${APP_URL}/join/${club.join_code}` : null,
           url: `${APP_URL}/open/${club.slug}`,
           instructors_ready: ((colleagues as { open_page_enabled: boolean; google_calendar_id: string | null }[]) || [])
             .filter((c) => c.open_page_enabled && c.google_calendar_id).length,

@@ -17,11 +17,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 // Not exported — Next route files may only export handlers.
 /** Ordered loosest-to-tightest for display. Must match is_club_team(). */
-const CLUB_ROLES = ['owner', 'director', 'coach', 'front_desk', 'member'] as const;
-type ClubRole = (typeof CLUB_ROLES)[number];
-
-/** Roles that count as staff — kept in sync with the SQL helper. */
-const STAFF_ROLES: ClubRole[] = ['owner', 'director', 'coach', 'front_desk'];
+import { CLUB_ROLES, STAFF_ROLES, type ClubRole } from '@/lib/clubRoles';
 
 export async function GET() {
   const userClient = await createClient();

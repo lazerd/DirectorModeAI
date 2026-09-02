@@ -24,6 +24,7 @@ import {
   setEventTimes,
   OPEN_LESSON_TITLE,
 } from '@/lib/lessons/googleCalendar';
+import { isInstructorRole } from '@/lib/clubRoles';
 import {
   bookingFits,
   durationsFor,
@@ -39,13 +40,14 @@ import {
 export const dynamic = 'force-dynamic';
 
 const COACH_COLUMNS =
-  'id, club_id, slug, display_name, email, google_calendar_id, open_keyword, open_page_enabled, ' +
-  'open_page_note, open_rate_note, open_durations, booking_lead_hours, timezone, open_synced_at';
+  'id, profile_id, club_id, slug, display_name, email, calendar_kind, ics_url, google_calendar_id, ' +
+  'open_keyword, open_page_enabled, open_page_note, open_rate_note, open_durations, ' +
+  'booking_lead_hours, timezone, open_synced_at';
 
 /** Long enough that a refresh is cheap, short enough to feel live. */
 const SYNC_STALE_MS = 90_000;
 
-type Coach = CoachRow & { open_synced_at: string | null };
+type Coach = CoachRow & { open_synced_at: string | null; profile_id: string | null };
 
 /**
  * A slug is a club or a single instructor. Clubs first: the club page is the
@@ -61,7 +63,7 @@ async function resolvePage(slug: string): Promise<{
 
   const { data: club } = await db
     .from('cc_clubs')
-    .select('id, name, slug, open_lessons_enabled, open_lessons_note')
+    .select('id, name, slug, owner_id, open_lessons_enabled, open_lessons_note')
     .eq('slug', slug)
     .maybeSingle();
 
@@ -72,10 +74,37 @@ async function resolvePage(slug: string): Promise<{
       .eq('club_id', club.id)
       .eq('open_page_enabled', true)
       .order('display_name');
+
+    /**
+     * Being attached to a club is not the same as teaching for it.
+     *
+     * `/join/<code>` grants the **member** role by design — it is a code clubs
+     * hand out freely. Without this check, any member who signed up, joined and
+     * switched their page on would appear on the club's own booking page as a
+     * bookable instructor. Staff roles only (owner / director / coach), and the
+     * club owner always counts.
+     */
+    const rows = ((coaches as unknown as Coach[]) || []).filter((c) => !!c.google_calendar_id || !!c.ics_url);
+    if (!rows.length) {
+      return { title: club.name as string, note: (club.open_lessons_note as string) || null, coaches: [] };
+    }
+
+    const { data: memberships } = await db
+      .from('cc_club_members')
+      .select('user_id, role')
+      .eq('club_id', club.id)
+      .in('user_id', rows.map((c) => c.profile_id).filter(Boolean) as string[]);
+
+    const roleOf = new Map(
+      ((memberships as { user_id: string; role: string }[]) || []).map((m) => [m.user_id, m.role]),
+    );
+
     return {
       title: club.name as string,
       note: (club.open_lessons_note as string) || null,
-      coaches: ((coaches as unknown as Coach[]) || []).filter((c) => !!c.google_calendar_id),
+      coaches: rows.filter(
+        (c) => club.owner_id === c.profile_id || isInstructorRole(roleOf.get(c.profile_id as string)),
+      ),
     };
   }
 
@@ -89,7 +118,7 @@ async function resolvePage(slug: string): Promise<{
     return {
       title: c.display_name || 'Lessons',
       note: c.open_page_note,
-      coaches: c.google_calendar_id ? [c] : [],
+      coaches: c.google_calendar_id || c.ics_url ? [c] : [],
     };
   }
   return null;

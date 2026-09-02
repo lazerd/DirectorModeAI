@@ -52,6 +52,10 @@ type Payload = {
     enabled: boolean;
     note: string | null;
     is_owner: boolean;
+    my_role: string | null;
+    my_role_label: string | null;
+    can_list: boolean;
+    invite_url: string | null;
     url: string;
     instructors_ready: number;
     instructors_total: number;
@@ -442,6 +446,40 @@ export default function OpenLessonTimePage() {
                 {data.club.instructors_total === 1 ? '' : 's'} set up. Clients pick a length, then see
                 every instructor&apos;s open times together.
               </p>
+
+              {/* Whether THIS person will actually appear there. */}
+              <p
+                className={`mt-2 rounded-lg p-2.5 text-[13.5px] leading-relaxed ${
+                  data.club.can_list ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'
+                }`}
+              >
+                {data.club.can_list ? (
+                  <>You&apos;re listed as an instructor at {data.club.name}, so your open times show on the club page.</>
+                ) : (
+                  <>
+                    You&apos;re at {data.club.name} as a{' '}
+                    <strong>{data.club.my_role_label || 'member'}</strong>, and the club page lists
+                    coaches only. Ask your director to make you a Coach and your times appear there
+                    automatically. Your own booking link below works either way.
+                  </>
+                )}
+              </p>
+
+              {data.club.invite_url && (
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-[13px] font-semibold text-slate-800">Adding another instructor</p>
+                  <ol className="mt-1.5 space-y-1 text-[13px] leading-relaxed text-slate-600">
+                    <li>1. They create a free ClubMode account and open the link below to join the club.</li>
+                    <li>
+                      2. You set them to <strong>Coach</strong> in{' '}
+                      <a href="/courtconnect/vault" className="underline">PlayerVault</a> — the join link
+                      only grants Member, on purpose.
+                    </li>
+                    <li>3. They open this page and connect their own calendar.</li>
+                  </ol>
+                  <CopyRow label="Club join link" value={data.club.invite_url} link />
+                </div>
+              )}
               {data.club.is_owner ? (
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <button
