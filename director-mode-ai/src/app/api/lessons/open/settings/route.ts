@@ -17,6 +17,7 @@ import {
   OPEN_LESSON_TITLE,
   serviceAccountEmail,
 } from '@/lib/lessons/googleCalendar';
+import { looksLikeIcsUrl, normalizeIcsUrl } from '@/lib/lessons/icsCalendar';
 import {
   DEFAULT_DURATIONS,
   durationsFor,
@@ -28,8 +29,9 @@ import { APP_URL } from '@/lib/appUrl';
 export const dynamic = 'force-dynamic';
 
 const COLUMNS =
-  'id, club_id, slug, display_name, email, google_calendar_id, open_keyword, open_page_enabled, ' +
-  'open_page_note, open_rate_note, open_durations, booking_lead_hours, timezone, open_synced_at';
+  'id, club_id, slug, display_name, email, calendar_kind, ics_url, google_calendar_id, open_keyword, ' +
+  'open_page_enabled, open_page_note, open_rate_note, open_durations, booking_lead_hours, ' +
+  'timezone, open_synced_at';
 
 const ALLOWED_DURATIONS = [30, 60, 90];
 
@@ -41,11 +43,88 @@ async function currentCoach() {
   if (!user) return { error: NextResponse.json({ error: 'Not signed in.' }, { status: 401 }) };
 
   const db = getSupabaseAdmin();
-  const { data } = await db.from('lesson_coaches').select(COLUMNS).eq('profile_id', user.id).maybeSingle();
+  let { data } = await db.from('lesson_coaches').select(COLUMNS).eq('profile_id', user.id).maybeSingle();
+
+  /**
+   * Make the instructor a coach record on the spot, attached to their club.
+   *
+   * The older pages created a bare row with nothing but profile_id — no name,
+   * no email, and crucially no club — so a coach who followed the setup would
+   * do everything right and still never appear on their club's booking page.
+   * Whoever is signed in here is an instructor setting up bookings; give them
+   * the row they need, filled in.
+   */
+  if (!data) {
+    const { data: profile } = await db
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .maybeSingle();
+    const { data: owned } = await db
+      .from('cc_clubs')
+      .select('id')
+      .eq('owner_id', user.id)
+      .limit(1)
+      .maybeSingle();
+    const { data: member } = owned
+      ? { data: null }
+      : await db
+          .from('cc_club_members')
+          .select('club_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle();
+
+    const inserted = await db
+      .from('lesson_coaches')
+      .insert({
+        profile_id: user.id,
+        display_name: (profile?.full_name as string) || user.email?.split('@')[0] || 'Instructor',
+        email: user.email,
+        club_id: (owned?.id as string) || (member?.club_id as string) || null,
+      })
+      .select(COLUMNS)
+      .maybeSingle();
+    data = inserted.data;
+  }
+
   if (!data) {
     return { error: NextResponse.json({ error: 'No coach profile yet.' }, { status: 404 }) };
   }
-  return { coach: data as unknown as CoachRow & { open_synced_at: string | null }, db, userId: user.id };
+
+  /**
+   * Backfill a row that an older page created bare. Without an email address
+   * the instructor never hears that someone booked them, which is the single
+   * most important message this product sends.
+   */
+  const row = data as unknown as CoachRow & { open_synced_at: string | null; club_id: string | null };
+  const patch: Record<string, unknown> = {};
+  if (!row.email && user.email) patch.email = user.email;
+  if (!row.display_name) patch.display_name = user.email?.split('@')[0] || 'Instructor';
+  if (!row.club_id) {
+    const { data: owned } = await db
+      .from('cc_clubs')
+      .select('id')
+      .eq('owner_id', user.id)
+      .limit(1)
+      .maybeSingle();
+    const { data: member } = owned
+      ? { data: null }
+      : await db
+          .from('cc_club_members')
+          .select('club_id')
+          .eq('user_id', user.id)
+          .limit(1)
+          .maybeSingle();
+    const clubId = (owned?.id as string) || (member?.club_id as string) || null;
+    if (clubId) patch.club_id = clubId;
+  }
+  if (Object.keys(patch).length) {
+    await db.from('lesson_coaches').update(patch).eq('id', row.id);
+    Object.assign(row, patch);
+  }
+
+  return { coach: row, db, userId: user.id };
 }
 
 function slugify(name: string, fallback: string): string {
@@ -86,11 +165,14 @@ export async function GET() {
    * Google error surfaces.
    */
   let syncError: string | null = null;
-  if (coach.google_calendar_id) {
+  if (coach.calendar_kind === 'ics' ? coach.ics_url : coach.google_calendar_id) {
     try {
       await syncOpenWindows(db, coach);
     } catch (e) {
-      syncError = calendarErrorMessage(e, coach.google_calendar_id);
+      syncError =
+        coach.calendar_kind === 'ics'
+          ? (e as Error)?.message || 'That calendar link could not be read.'
+          : calendarErrorMessage(e, coach.google_calendar_id as string);
     }
   }
 
@@ -139,6 +221,8 @@ export async function GET() {
   return NextResponse.json({
     settings: {
       slug,
+      calendar_kind: coach.calendar_kind || 'google',
+      ics_url: coach.ics_url,
       google_calendar_id: coach.google_calendar_id,
       open_page_enabled: coach.open_page_enabled,
       open_page_note: coach.open_page_note,
@@ -181,6 +265,8 @@ export async function PATCH(req: Request) {
   const { coach, db, userId } = ctx;
 
   const body = (await req.json().catch(() => ({}))) as {
+    calendar_kind?: 'google' | 'ics';
+    ics_url?: string | null;
     google_calendar_id?: string | null;
     open_page_enabled?: boolean;
     open_page_note?: string | null;
@@ -193,6 +279,21 @@ export async function PATCH(req: Request) {
   };
 
   const patch: Record<string, unknown> = {};
+  if (body.calendar_kind !== undefined) {
+    patch.calendar_kind = body.calendar_kind === 'ics' ? 'ics' : 'google';
+  }
+  if (body.ics_url !== undefined) {
+    const raw = (body.ics_url || '').trim();
+    if (raw && !looksLikeIcsUrl(raw)) {
+      return NextResponse.json(
+        { error: 'That does not look like a calendar link. Paste the whole thing — it starts with webcal:// or https://.' },
+        { status: 400 },
+      );
+    }
+    // Stored normalised (webcal:// -> https://) so every reader gets a URL it
+    // can actually fetch, not the scheme Apple hands out.
+    patch.ics_url = raw ? normalizeIcsUrl(raw) : null;
+  }
   if (body.google_calendar_id !== undefined) {
     patch.google_calendar_id = (body.google_calendar_id || '').trim().toLowerCase() || null;
   }
@@ -252,9 +353,14 @@ export async function POST(req: Request) {
 
   const body = (await req.json().catch(() => ({}))) as { action?: string };
   if (body.action !== 'sync') return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
-  if (!coach.google_calendar_id) {
+  const isIcs = coach.calendar_kind === 'ics';
+  if (isIcs ? !coach.ics_url : !coach.google_calendar_id) {
     return NextResponse.json(
-      { error: 'Add your calendar address first — it is usually the email you use for Google Calendar.' },
+      {
+        error: isIcs
+          ? 'Paste your published calendar link first.'
+          : 'Add your calendar address first — it is usually the email you use for Google Calendar.',
+      },
       { status: 400 },
     );
   }
@@ -264,7 +370,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     return NextResponse.json(
-      { error: calendarErrorMessage(e, coach.google_calendar_id) },
+      {
+        error: isIcs
+          ? (e as Error)?.message || 'That calendar link could not be read.'
+          : calendarErrorMessage(e, coach.google_calendar_id as string),
+      },
       { status: 502 },
     );
   }

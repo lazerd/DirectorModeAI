@@ -31,6 +31,8 @@ const LENGTHS = [30, 60, 90];
 
 type Settings = {
   slug: string;
+  calendar_kind: 'google' | 'ics';
+  ics_url: string | null;
   google_calendar_id: string | null;
   open_page_enabled: boolean;
   open_page_note: string | null;
@@ -70,6 +72,8 @@ export default function OpenLessonTimePage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [calendarId, setCalendarId] = useState('');
+  const [icsUrl, setIcsUrl] = useState('');
+  const [kind, setKind] = useState<'google' | 'ics'>('google');
   const [rateNote, setRateNote] = useState('');
   const [pageNote, setPageNote] = useState('');
   const [lead, setLead] = useState('3');
@@ -85,6 +89,8 @@ export default function OpenLessonTimePage() {
     const j = (await res.json()) as Payload;
     setData(j);
     setCalendarId(j.settings.google_calendar_id || '');
+    setIcsUrl(j.settings.ics_url || '');
+    setKind(j.settings.calendar_kind === 'ics' ? 'ics' : 'google');
     setRateNote(j.settings.open_rate_note || '');
     setPageNote(j.settings.open_page_note || '');
     setLead(String(j.settings.booking_lead_hours ?? 3));
@@ -150,7 +156,10 @@ export default function OpenLessonTimePage() {
     return <div className="p-6 text-red-600 lg:p-8">{err}</div>;
   }
 
-  const connected = !!data.settings.google_calendar_id;
+  const connected =
+    data.settings.calendar_kind === 'ics'
+      ? !!data.settings.ics_url
+      : !!data.settings.google_calendar_id;
   const live = connected && data.settings.open_page_enabled && !data.sync_error;
 
   return (
@@ -201,6 +210,101 @@ export default function OpenLessonTimePage() {
           )}
         </div>
 
+        {/* Which calendar are we talking to? Everything in steps 1 and 2 changes
+            with the answer, so it is asked before either of them. */}
+        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+          <h2 className="text-[16px] font-semibold text-slate-900">Which calendar do you use?</h2>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <button
+              onClick={() => { setKind('google'); save({ calendar_kind: 'google' }, 'Set up for Google Calendar.'); }}
+              className={`rounded-xl border p-4 text-left transition-colors ${
+                kind === 'google' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 hover:border-slate-500'
+              }`}
+            >
+              <span className="block text-[15px] font-semibold">Google Calendar</span>
+              <span className={`mt-1 block text-[13px] leading-snug ${kind === 'google' ? 'text-white/70' : 'text-slate-500'}`}>
+                Bookings write themselves onto your calendar, instantly. Recommended.
+              </span>
+            </button>
+            <button
+              onClick={() => { setKind('ics'); save({ calendar_kind: 'ics' }, 'Set up for Apple / iCloud.'); }}
+              className={`rounded-xl border p-4 text-left transition-colors ${
+                kind === 'ics' ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-300 hover:border-slate-500'
+              }`}
+            >
+              <span className="block text-[15px] font-semibold">Apple / iCloud, Outlook, other</span>
+              <span className={`mt-1 block text-[13px] leading-snug ${kind === 'ics' ? 'text-white/70' : 'text-slate-500'}`}>
+                We read your published calendar link. Bookings arrive as a one-tap invite by email.
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {kind === 'ics' ? (
+          <>
+            <Step n={1} title="Publish your calendar and copy the link">
+              <p className="text-[14.5px] leading-relaxed text-slate-600">
+                Apple will not let another app write to iCloud without your Apple ID password, and we
+                are not going to ask you for that. Instead you publish a read-only link.
+              </p>
+              <p className="mt-3 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
+                On a Mac
+              </p>
+              <ol className="mt-1.5 space-y-1.5 text-[14px] leading-relaxed text-slate-600">
+                <li>1. Open the <strong>Calendar</strong> app.</li>
+                <li>2. Right-click the calendar you teach out of in the left column, then <strong>Share Calendar…</strong></li>
+                <li>3. Tick <strong>Public Calendar</strong>.</li>
+                <li>4. Click the <strong>share icon</strong> next to the link, then <strong>Copy Link</strong>.</li>
+              </ol>
+              <p className="mt-3 text-[13px] font-semibold uppercase tracking-wider text-slate-500">
+                On an iPhone
+              </p>
+              <ol className="mt-1.5 space-y-1.5 text-[14px] leading-relaxed text-slate-600">
+                <li>1. Open <strong>Calendar</strong>, then <strong>Calendars</strong> at the bottom.</li>
+                <li>2. Tap the <strong>i</strong> next to your calendar.</li>
+                <li>3. Turn on <strong>Public Calendar</strong>, then <strong>Share Link…</strong> and <strong>Copy</strong>.</li>
+              </ol>
+              <p className="mt-3 rounded-lg bg-amber-50 p-3 text-[13.5px] leading-relaxed text-amber-900">
+                Two honest caveats. A public link shows the titles and times on that calendar to
+                anyone who has it, so publish a calendar you are comfortable sharing — many coaches
+                make a separate &ldquo;Lessons&rdquo; calendar for exactly this. And Apple refreshes a
+                published link on its own schedule, so a block you add can take up to ~15 minutes to
+                show up here. Google&apos;s path is instant and two-way.
+              </p>
+            </Step>
+
+            <Step n={2} title="Paste the link here">
+              <div className="mt-1 flex flex-wrap gap-2">
+                <input
+                  value={icsUrl}
+                  onChange={(e) => setIcsUrl(e.target.value)}
+                  placeholder="webcal://p1-caldav.icloud.com/published/2/…"
+                  style={INPUT}
+                  className="min-w-[16rem] flex-1 rounded-lg border border-slate-300 px-3 py-2.5 text-[15px] outline-none focus:border-slate-500"
+                />
+                <button
+                  onClick={() => save({ ics_url: icsUrl, calendar_kind: 'ics' }, 'Calendar link saved.')}
+                  disabled={saving || !icsUrl.trim()}
+                  className="rounded-lg bg-slate-900 px-5 py-2.5 text-[14.5px] font-semibold text-white disabled:opacity-40"
+                >
+                  Save
+                </button>
+                <button
+                  onClick={sync}
+                  disabled={syncing || !connected}
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-[14.5px] font-medium text-slate-700 hover:border-slate-500 disabled:opacity-40"
+                >
+                  {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                  Check my calendar now
+                </button>
+              </div>
+              <p className="mt-2 text-[13px] text-slate-500">
+                Paste it exactly as copied — a <code>webcal://</code> link is fine, we convert it.
+              </p>
+            </Step>
+          </>
+        ) : (
+          <>
         {/* ---------------------------------------------------------- step 1 */}
         <Step n={1} title="Share your calendar with the booking service">
           <p className="text-[14.5px] leading-relaxed text-slate-600">
@@ -265,6 +369,8 @@ export default function OpenLessonTimePage() {
             </button>
           </div>
         </Step>
+          </>
+        )}
 
         {/* ---------------------------------------------------------- step 3 */}
         <Step n={3} title="Block out time you want to fill">
@@ -287,10 +393,9 @@ export default function OpenLessonTimePage() {
               </li>
             </ul>
             <p className="mt-2.5">
-              Book a 60 out of a 3-hour block and your calendar splits itself: the lesson goes in
-              under the client&apos;s name and the leftover time stays open. Repeat the event weekly
-              and it keeps working. Delete it or rename it and it stops being bookable — that is how
-              you take time back.
+              {kind === 'ics'
+                ? 'Repeat the event weekly and it keeps working. Delete it or rename it and it stops being bookable — that is how you take time back. When someone books, the time comes off your booking page straight away and the lesson arrives by email as a one-tap invite.'
+                : "Book a 60 out of a 3-hour block and your calendar splits itself: the lesson goes in under the client's name and the leftover time stays open. Repeat the event weekly and it keeps working. Delete it or rename it and it stops being bookable — that is how you take time back."}
             </p>
           </div>
         </Step>

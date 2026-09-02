@@ -291,7 +291,16 @@ export async function POST(req: Request) {
    * bookable (an opening booked end to end simply disappears).
    */
   let calendarWritten = false;
-  const calId = window.google_calendar_id || coach.google_calendar_id;
+  /**
+   * Only a Google-connected calendar can be written to. A published feed is
+   * read-only by nature, so for those instructors the lesson travels by email
+   * as a one-tap .ics invite instead — and the window stays as it is, because
+   * the booked slot is subtracted from availability either way.
+   */
+  const calId =
+    coach.calendar_kind === 'ics'
+      ? null
+      : window.google_calendar_id || coach.google_calendar_id;
   if (calId) {
     try {
       const remaining = remainingAfterBooking(
@@ -366,6 +375,10 @@ export async function POST(req: Request) {
     minute: '2-digit',
   })}–${fmt(end, tz, { hour: 'numeric', minute: '2-digit' })}`;
 
+  const addToCalendar = `${APP_URL}/api/lessons/open/ics/${slot.id}`;
+  const calButton = (label: string) =>
+    `<a href="${addToCalendar}" style="display:inline-block;margin:14px 0 0;padding:12px 20px;background:#D3FB52;color:#0f172a;text-decoration:none;border-radius:10px;font-weight:600;font-size:15px">${label}</a>`;
+
   const shell = (title: string, inner: string) =>
     `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:520px;margin:0 auto;padding:24px;color:#0f172a">
        <h1 style="font-size:20px;margin:0 0 14px">${title}</h1>${inner}</div>`;
@@ -382,8 +395,9 @@ export async function POST(req: Request) {
         `<p style="font-size:17px;margin:0 0 8px"><strong>${when}</strong></p>
          <p style="margin:0 0 8px;color:#475569">${duration} minutes with ${coach.display_name || 'your coach'}</p>${where}
          ${coach.open_rate_note ? `<p style="margin:0 0 8px;color:#475569">${coach.open_rate_note}</p>` : ''}
+         ${calButton('📅 Add to my calendar')}
          <p style="font-size:15px;color:#475569;margin:14px 0 0">
-           It's on their calendar already. Need to change it? Just reply to this email.
+           Need to change it? Just reply to this email.
          </p>`,
       ),
     },
@@ -395,11 +409,14 @@ export async function POST(req: Request) {
         `<p style="font-size:17px;margin:0 0 8px"><strong>${when}</strong> · ${duration} min</p>${where}
          <p style="margin:0 0 4px;color:#475569">${email}${body.phone ? ` · ${body.phone}` : ''}</p>
          ${body.note ? `<p style="margin:8px 0 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #D3FB52;border-radius:4px">${body.note}</p>` : ''}
+         ${calendarWritten ? '' : calButton('📅 Add this lesson to my calendar')}
          <p style="font-size:14px;color:#64748b;margin:16px 0 0">
            ${
              calendarWritten
                ? 'Your calendar is updated — the lesson is in under their name and any time left over is still open.'
-               : '⚠️ We could not update your calendar. Check the sharing setup in Lesson Mode → Open Lesson Time.'
+               : coach.calendar_kind === 'ics'
+                 ? 'Your calendar is a published link, which we can only read — tap the button above to add this lesson to it. The time is already off your booking page.'
+                 : '⚠️ We could not update your calendar. Check the setup in LessonMode → Open Lesson Time.'
            }
          </p>
          <p style="font-size:14px;margin:12px 0 0"><a href="${APP_URL}/lessons/dashboard" style="color:#0369a1">Open Lesson Mode</a></p>`,

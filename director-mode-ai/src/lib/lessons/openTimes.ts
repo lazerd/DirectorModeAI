@@ -6,6 +6,7 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { listOpenWindows, OPEN_LESSON_TITLE } from './googleCalendar';
+import { fetchIcsWindows } from './icsCalendar';
 import {
   DEFAULT_DURATIONS,
   OPEN_WINDOW_DAYS,
@@ -21,6 +22,9 @@ const MIN = 60_000;
 export type CoachRow = {
   id: string;
   club_id: string | null;
+  /** 'google' = live two-way. 'ics' = a published feed we can only read. */
+  calendar_kind: 'google' | 'ics' | string;
+  ics_url: string | null;
   slug: string | null;
   display_name: string | null;
   email: string | null;
@@ -45,17 +49,28 @@ export type SyncResult = {
 
 /** Pull one instructor's calendar into lesson_open_windows. */
 export async function syncOpenWindows(db: SupabaseClient, coach: CoachRow): Promise<SyncResult> {
-  if (!coach.google_calendar_id) throw new Error('No Google Calendar connected yet.');
+  const isIcs = coach.calendar_kind === 'ics';
+  if (isIcs ? !coach.ics_url : !coach.google_calendar_id) {
+    throw new Error('No calendar connected yet.');
+  }
 
   const from = new Date();
   const to = new Date(from.getTime() + OPEN_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const title = coach.open_keyword || OPEN_LESSON_TITLE;
 
-  const events = await listOpenWindows(
-    coach.google_calendar_id,
-    coach.open_keyword || OPEN_LESSON_TITLE,
-    from.toISOString(),
-    to.toISOString(),
-  );
+  /**
+   * Two ways in, one shape out. A published feed and a shared Google calendar
+   * produce the same windows, so everything downstream — the slicing, the
+   * booking guard, the club page — is identical for both.
+   */
+  const events = isIcs
+    ? await fetchIcsWindows(coach.ics_url as string, title, from.toISOString(), to.toISOString())
+    : await listOpenWindows(
+        coach.google_calendar_id as string,
+        title,
+        from.toISOString(),
+        to.toISOString(),
+      );
 
   const { data: existingRows } = await db
     .from('lesson_open_windows')
@@ -75,7 +90,9 @@ export async function syncOpenWindows(db: SupabaseClient, coach: CoachRow): Prom
       plan.upserts.map((u) => ({
         coach_id: coach.id,
         club_id: coach.club_id,
-        google_calendar_id: coach.google_calendar_id,
+        // Column predates the ICS path; for a published feed it holds the feed
+        // URL, which is the equivalent "where this window came from".
+        google_calendar_id: coach.google_calendar_id || coach.ics_url,
         synced_at: new Date().toISOString(),
         ...u,
       })),
