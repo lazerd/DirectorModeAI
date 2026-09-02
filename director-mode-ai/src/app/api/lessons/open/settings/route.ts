@@ -75,6 +75,25 @@ export async function GET() {
 
   const slug = await ensureSlug(db, coach);
 
+  /**
+   * Check the calendar every time this page is opened, and KEEP THE ERROR.
+   *
+   * The client-facing booking page swallows calendar failures on purpose — a
+   * booking page that 500s because Google is down helps nobody. But that meant
+   * an instructor who had not finished sharing their calendar got a silent
+   * nothing: settings saved, page live, zero times, no explanation. The person
+   * who can fix it is the one looking at this screen, so this is where the real
+   * Google error surfaces.
+   */
+  let syncError: string | null = null;
+  if (coach.google_calendar_id) {
+    try {
+      await syncOpenWindows(db, coach);
+    } catch (e) {
+      syncError = calendarErrorMessage(e, coach.google_calendar_id);
+    }
+  }
+
   const club = coach.club_id
     ? (
         await db
@@ -149,6 +168,7 @@ export async function GET() {
         }
       : null,
     my_url: `${APP_URL}/open/${slug}`,
+    sync_error: syncError,
     open_windows: rows.length,
     open_hours: openHours,
     booked_count: bookedCount ?? 0,

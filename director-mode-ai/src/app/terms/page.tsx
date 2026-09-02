@@ -41,7 +41,7 @@ export default function TermsPage() {
 
         <p className="mt-6 text-white/65 text-[15px] leading-relaxed">
           These terms cover your use of ClubMode (
-          <span className="text-white/85">club.coachmode.ai</span>), software for running
+          <span className="text-white/85">clubmode.ai</span>), software for running
           racquet-sports clubs, leagues and teams. By using the service you agree to them.
         </p>
 

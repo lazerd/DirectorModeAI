@@ -12,7 +12,12 @@ import {
 } from 'lucide-react';
 import type { Sponsor } from '@/config/sponsors';
 import { quadScoringLabel, formatTimeDisplay } from '@/lib/quads';
-import { PLAYERS_PER_QUAD, type QuadDivision } from '@/lib/quadDivisions';
+import {
+  PLAYERS_PER_QUAD,
+  computeQuadCapacity,
+  playersNeededForNextQuad,
+  type QuadDivision,
+} from '@/lib/quadDivisions';
 import SponsorWordmark from './SponsorWordmark';
 import RegisterForm from '@/app/quads/[slug]/RegisterForm';
 
@@ -84,6 +89,24 @@ export default function SponsoredQuadLanding({
   // not the same as the booking window — a 9am-1pm block can hold more than
   // one wave of quads — so never describe the format using the block length.
   const playMinutes = 4 * (e.round_duration_minutes ?? 30);
+
+  const hasWave2 = !!(e.wave2_start_time && e.wave2_end_time);
+  const capacity = computeQuadCapacity({
+    totalQuads: e.total_quads,
+    maxTotalQuads: e.max_total_quads,
+    numCourts: e.num_courts,
+    hasWave2,
+  });
+  const wave1Label =
+    e.start_time && e.end_time
+      ? `${formatTimeDisplay(e.start_time)} – ${formatTimeDisplay(e.end_time)}`
+      : null;
+  const wave2Label = hasWave2
+    ? `${formatTimeDisplay(e.wave2_start_time)} – ${formatTimeDisplay(e.wave2_end_time)}`
+    : null;
+  const numberWord = (n: number) =>
+    ['zero','one','two','three','four','five','six','seven','eight','nine','ten'][n] ?? String(n);
+  const cap = (w: string) => w.charAt(0).toUpperCase() + w.slice(1);
 
   const dateLabel = e.event_date
     ? format(new Date(e.event_date + 'T00:00:00'), 'EEEE, MMMM d, yyyy')
@@ -319,11 +342,14 @@ export default function SponsoredQuadLanding({
             style={{ backgroundColor: c.surface, boxShadow: '0 1px 3px rgba(0,0,0,0.07)' }}
           >
             <h2 className="text-xl sm:text-2xl font-extrabold mb-1" style={{ color: c.ink }}>
-              Three quads, three divisions
+              {cap(numberWord(capacity.openQuads))} quad{capacity.openQuads === 1 ? '' : 's'},{' '}
+              {numberWord(divisions.length)} division{divisions.length === 1 ? '' : 's'}
             </h2>
             <p className="text-sm mb-5" style={{ color: 'rgba(0,0,0,0.6)' }}>
-              The block fits {e.total_quads ?? divisions.length} groups of four. First four signups
-              in a division get the spots; after that you join that division&rsquo;s waitlist.
+              We open with {numberWord(capacity.openQuads)} group
+              {capacity.openQuads === 1 ? '' : 's'} of four — {capacity.openSpots} spots. First four
+              signups in a division get in; after that you join the waitlist, and{' '}
+              <strong style={{ color: c.ink }}>we add more quads as they fill</strong>.
             </p>
 
             <div className="grid sm:grid-cols-3 gap-3">

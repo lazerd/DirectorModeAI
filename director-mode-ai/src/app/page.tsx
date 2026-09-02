@@ -131,9 +131,13 @@ export default function HomePage() {
               <div className="w-24 h-9 bg-white/10 animate-pulse rounded-lg" />
             ) : user ? (
               <>
-                <Link href="/mixer/home" className="flex items-center gap-2 px-4 py-2.5 bg-[#D3FB52] text-[#002838] rounded-lg font-semibold text-sm hover:bg-[#c5f035] transition-colors">
+                {/* The signed-in CTA is the whole toolset, not one tool. This
+                    slot used to send every director to MixerMode, which is a
+                    strange front door when you came here for CourtSheet, the
+                    payroll export or your leagues. */}
+                <Link href="/tools" className="flex items-center gap-2 px-4 py-2.5 bg-[#D3FB52] text-[#002838] rounded-lg font-semibold text-sm hover:bg-[#c5f035] transition-colors">
                   <LayoutGrid size={16} />
-                  MixerMode
+                  All tools
                 </Link>
                 <Link href="/client/dashboard" className="hidden sm:flex items-center gap-2 px-3 py-2 text-[#D3FB52] hover:bg-white/5 rounded-lg font-medium text-sm transition-colors">
                   <Calendar size={16} />

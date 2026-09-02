@@ -46,7 +46,7 @@ export default function PrivacyPage() {
         <p className="text-white/40 text-sm mt-1">Last updated {UPDATED}</p>
 
         <p className="mt-6 text-white/65 text-[15px] leading-relaxed">
-          ClubMode (<span className="text-white/85">club.coachmode.ai</span>) is software that
+          ClubMode (<span className="text-white/85">clubmode.ai</span>) is software that
           racquet-sports clubs and league captains use to run teams, courts, programs and events.
           This policy covers the information the service holds and what is done with it.
         </p>

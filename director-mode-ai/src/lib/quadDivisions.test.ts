@@ -6,6 +6,10 @@ import {
   eligibleDivisions,
   planQuadAllocation,
   formatDeadline,
+  computeQuadCapacity,
+  waveForQuadIndex,
+  quadsWaitlistCouldFill,
+  playersNeededForNextQuad,
   type QuadDivision,
 } from './quadDivisions';
 
@@ -194,5 +198,65 @@ describe('formatDeadline', () => {
     expect(out).toContain('Oct 3');
     expect(out).toContain('7:30');
     expect(out).toContain('PDT');
+  });
+});
+
+// --- stretch capacity + waves ----------------------------------------------
+
+describe('computeQuadCapacity', () => {
+  it('caps the ceiling at one wave when there is no second wave', () => {
+    const c = computeQuadCapacity({ totalQuads: 3, maxTotalQuads: 6, numCourts: 6, hasWave2: false });
+    expect(c.quadsPerWave).toBe(3);
+    expect(c.maxQuads).toBe(3); // 6 can't fit without a second wave
+    expect(c.canGrow).toBe(false);
+    expect(c.wavesNeeded).toBe(1);
+  });
+
+  it('allows the full ceiling once a second wave exists', () => {
+    const c = computeQuadCapacity({ totalQuads: 3, maxTotalQuads: 6, numCourts: 6, hasWave2: true });
+    expect(c.maxQuads).toBe(6);
+    expect(c.openSpots).toBe(12);
+    expect(c.maxSpots).toBe(24);
+    expect(c.canGrow).toBe(true);
+    expect(c.wavesNeeded).toBe(2);
+  });
+
+  it('derives quads per wave from courts, two per quad', () => {
+    expect(computeQuadCapacity({ totalQuads: 1, numCourts: 4, hasWave2: false }).quadsPerWave).toBe(2);
+    expect(computeQuadCapacity({ totalQuads: 1, numCourts: 10, hasWave2: false }).quadsPerWave).toBe(5);
+  });
+
+  it('never reports a ceiling below what is already open', () => {
+    const c = computeQuadCapacity({ totalQuads: 4, maxTotalQuads: 2, numCourts: 6, hasWave2: true });
+    expect(c.maxQuads).toBe(4);
+    expect(c.canGrow).toBe(false);
+  });
+
+  it('handles a missing ceiling as "no room to grow"', () => {
+    const c = computeQuadCapacity({ totalQuads: 2, maxTotalQuads: null, numCourts: 4, hasWave2: false });
+    expect(c.maxQuads).toBe(2);
+    expect(c.canGrow).toBe(false);
+  });
+});
+
+describe('waveForQuadIndex', () => {
+  it('fills wave 1 before spilling into wave 2', () => {
+    expect([0, 1, 2, 3, 4, 5].map((i) => waveForQuadIndex(i, 3))).toEqual([1, 1, 1, 2, 2, 2]);
+  });
+});
+
+describe('waitlist -> extra quads', () => {
+  it('counts only whole groups of four', () => {
+    expect(quadsWaitlistCouldFill(0)).toBe(0);
+    expect(quadsWaitlistCouldFill(3)).toBe(0);
+    expect(quadsWaitlistCouldFill(4)).toBe(1);
+    expect(quadsWaitlistCouldFill(9)).toBe(2);
+  });
+  it('says how many more players unlock the next quad', () => {
+    expect(playersNeededForNextQuad(0)).toBe(4);
+    expect(playersNeededForNextQuad(1)).toBe(3);
+    expect(playersNeededForNextQuad(3)).toBe(1);
+    expect(playersNeededForNextQuad(4)).toBe(0);
+    expect(playersNeededForNextQuad(5)).toBe(3);
   });
 });

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import {
   ClipboardList, MessageSquareOff, HelpCircle, Zap, Users, Scale,
-  ShieldCheck, CalendarClock, ArrowRight, Trophy, RefreshCw,
+  ShieldCheck, CalendarClock, ArrowRight, Trophy, RefreshCw, Sparkles,
 } from 'lucide-react';
 import { APP_HOST } from '@/lib/appUrl';
 import { CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD } from '@/config/pricing';
@@ -31,6 +31,29 @@ export const metadata: Metadata = {
 export default function CaptainModePage() {
   return (
     <div className="min-h-screen bg-[#001016] text-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      {/*
+        The way back to the rest of ClubMode. This page is a destination in its
+        own right — the foot of every hosting email points a captain at another
+        club straight here — and the director rail deliberately hides on it, so
+        without this bar the only exit was a grey line of footer text 300 lines
+        down. Same shape as the /pricing header.
+      */}
+      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-[#001016]/95 backdrop-blur">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-5 py-3.5 sm:px-8">
+          <Link href="/" className="flex items-center gap-2 text-white/80 transition-colors hover:text-white">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#D3FB52]/15">
+              <Sparkles size={14} className="text-[#D3FB52]" />
+            </span>
+            <span className="font-display text-[15px]">ClubMode</span>
+          </Link>
+          <div className="flex items-center gap-5 text-[13.5px]">
+            <Link href="/tools" className="text-white/50 transition-colors hover:text-white">All tools</Link>
+            <Link href="/pricing" className="text-white/50 transition-colors hover:text-white">Pricing</Link>
+            <Link href="/login" className="text-white/70 transition-colors hover:text-white">Sign in</Link>
+          </div>
+        </div>
+      </header>
+
       {/* ============================= HERO ============================= */}
       <section className="relative overflow-hidden px-5 py-20 sm:px-8 sm:py-28">
         <div

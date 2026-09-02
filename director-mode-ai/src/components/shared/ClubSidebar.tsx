@@ -25,7 +25,7 @@
  * shape itself) so it can be mounted on server-rendered or public pages.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -44,6 +44,12 @@ type Item = {
   matches: string[];
   icon: NavIcon;
   color: string;
+  /**
+   * The tools inside this section. Present on the five "Run the club" sections
+   * and nowhere else — an item with tools gets a hover flyout, which is how you
+   * reach CourtSheet without first landing on /run/courts and clicking again.
+   */
+  tools?: { name: string; href: string; description: string; icon: NavIcon; color: string }[];
 };
 
 type Group = { heading: string | null; items: Item[] };
@@ -59,6 +65,13 @@ const PRIMARY_GROUPS: Group[] = [
         matches: s.matches,
         icon: s.icon,
         color: s.color,
+        tools: s.tools.map((t) => ({
+          name: t.name,
+          href: t.href,
+          description: t.description,
+          icon: t.icon,
+          color: t.color,
+        })),
       })),
       {
         name: ALL_TOOLS_ITEM.label,
@@ -139,16 +152,31 @@ const PUBLIC_PREFIXES = [
 export default function ClubSidebar() {
   const pathname = usePathname() || '/';
   /**
-   * The marketing homepage is matched exactly, not by prefix — '/' as a prefix
-   * would be every page in the app. A visitor arriving from a cold email should
-   * see the landing page, not fifteen director tools they cannot open.
+   * Signed-out on the homepage: no rail. A visitor arriving from a cold email
+   * should see the landing page, not fifteen director tools they cannot open.
+   *
+   * Signed IN on the homepage: the rail, always. Without it a director who
+   * lands on clubmode.ai has no way into their own tools — the homepage is the
+   * one page they reach by typing the domain, and it was the one page that
+   * stranded them. `null` means we have not asked Supabase yet, so the rail
+   * stays hidden for that first beat rather than flashing in for a guest.
    */
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const isPublic =
-    pathname === '/' ||
+    (pathname === '/' && signedIn !== true) ||
     PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hovering, setHovering] = useState(false); // hover-to-peek when collapsed
+  /**
+   * The section whose tools are showing, and where to draw them.
+   *
+   * Positioned from the hovered row's real screen rect and rendered `fixed`, so
+   * the panel is never clipped by the rail's own scroll container and lands in
+   * the right place whether the rail is collapsed, peeking or pinned open.
+   */
+  const [flyout, setFlyout] = useState<{ item: Item; top: number; left: number } | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mounted, setMounted] = useState(false);
   // When the signed-in user is a club MEMBER (not a director/owner), show a
   // member-appropriate nav instead of the full director toolset. null = show all.
@@ -159,6 +187,7 @@ export default function ClubSidebar() {
       try {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
+        setSignedIn(!!user);
         if (!user) return; // guest → full nav (marketing shell)
         const { data: owned } = await supabase.from('cc_clubs').select('id').eq('owner_id', user.id).limit(1).maybeSingle();
         if (owned) return; // director/owner → full nav
@@ -230,6 +259,29 @@ export default function ClubSidebar() {
   const showLabels = !collapsed || mobileOpen || peeking;
   const width = mobileOpen ? EXPANDED : (collapsed && !peeking) ? COLLAPSED : EXPANDED;
 
+  /**
+   * Hovering a section opens its tools; leaving closes them after a beat, so
+   * the diagonal mouse path from the row into the panel doesn't lose it.
+   */
+  const openFlyout = (it: Item, el: HTMLElement) => {
+    if (!it.tools?.length) return;
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    const r = el.getBoundingClientRect();
+    setFlyout({
+      item: it,
+      // Keep the panel on screen when the row sits near the bottom.
+      top: Math.min(r.top - 8, Math.max(8, window.innerHeight - 40 - it.tools.length * 58)),
+      left: r.right + 8,
+    });
+  };
+  const scheduleClose = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setFlyout(null), 140);
+  };
+  const keepOpen = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+  };
+
   const renderItem = (it: Item) => {
     const Icon = it.icon;
     const isActive = it.href === active;
@@ -245,6 +297,10 @@ export default function ClubSidebar() {
         href={it.href}
         className={cls}
         title={collapsed && !mobileOpen && !peeking ? it.name : undefined}
+        onMouseEnter={(e) => openFlyout(it, e.currentTarget)}
+        onMouseLeave={scheduleClose}
+        onFocus={(e) => openFlyout(it, e.currentTarget)}
+        onBlur={scheduleClose}
       >
         {isActive && <span className="absolute left-0 top-1.5 bottom-1.5 w-1 rounded-full bg-[#D3FB52]" />}
         <span
@@ -261,6 +317,9 @@ export default function ClubSidebar() {
           <span className={`truncate text-[14px] font-medium ${isActive ? 'text-white' : 'text-white/70 group-hover:text-white'}`}>
             {it.name}
           </span>
+        )}
+        {showLabels && !!it.tools?.length && (
+          <ChevronRight size={14} className="ml-auto shrink-0 text-white/25 group-hover:text-white/60" />
         )}
       </Link>
     );
@@ -363,6 +422,61 @@ export default function ClubSidebar() {
           </button>
         </div>
       </aside>
+
+      {/*
+        Section flyout — the tools inside Courts / Programs / Members /
+        Coaching / Pro Shop, one hover away.
+
+        Before this the rail could only take you to /run/courts, a landing page
+        whose whole job was to list the same links again: two clicks and a page
+        load to reach CourtSheet. Desktop only — the phone drawer already shows
+        everything, and there is no hover on a touch screen.
+      */}
+      {flyout && !mobileOpen && (
+        <div
+          onMouseEnter={keepOpen}
+          onMouseLeave={scheduleClose}
+          style={{ top: flyout.top, left: flyout.left, fontFamily: "'Inter', system-ui, sans-serif" }}
+          className="hidden md:block fixed z-[80] w-[292px] rounded-2xl border border-white/10 bg-[#001016] p-2 shadow-2xl shadow-black/50"
+        >
+          <p className="px-2.5 pb-1 pt-1.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/30">
+            {flyout.item.name}
+          </p>
+          {flyout.item.tools?.map((t) => {
+            const ToolIcon = t.icon;
+            return (
+              <Link
+                key={t.href}
+                href={t.href}
+                onClick={() => setFlyout(null)}
+                className="group flex items-start gap-2.5 rounded-xl px-2.5 py-2 transition-colors hover:bg-white/[0.06]"
+              >
+                <span
+                  className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                  style={{ background: `${t.color}1f` }}
+                >
+                  <ToolIcon size={16} style={{ color: t.color }} />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[13.5px] font-semibold text-white/85 group-hover:text-white">
+                    {t.name}
+                  </span>
+                  <span className="mt-0.5 block text-[11.5px] leading-snug text-white/40 line-clamp-2">
+                    {t.description}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+          <Link
+            href={flyout.item.href}
+            onClick={() => setFlyout(null)}
+            className="mt-1 block rounded-xl px-2.5 py-2 text-[12.5px] font-medium text-white/45 transition-colors hover:bg-white/[0.06] hover:text-white"
+          >
+            Open {flyout.item.name} →
+          </Link>
+        </div>
+      )}
     </>
   );
 }

@@ -204,3 +204,73 @@ export function formatDeadline(iso: string, timeZone = 'America/Los_Angeles'): s
     timeZoneName: 'short',
   });
 }
+
+// ---------------------------------------------------------------------------
+// Stretch capacity + waves
+// ---------------------------------------------------------------------------
+
+export type QuadCapacity = {
+  /** Quads currently open — what the allocator seats against. */
+  openQuads: number;
+  /** Ceiling we could stretch to if the waitlist justifies it. */
+  maxQuads: number;
+  openSpots: number;
+  maxSpots: number;
+  /** True when more quads could still be opened. */
+  canGrow: boolean;
+  /** Quads that fit in one wave, given the courts available. */
+  quadsPerWave: number;
+  /** How many time waves the ceiling implies (1 or 2). */
+  wavesNeeded: number;
+};
+
+/**
+ * Each quad occupies two courts for its whole block (R1-R3 run two matches at
+ * once), so a wave holds floor(courts / 2) quads. Anything above that has to
+ * spill into a second wave.
+ */
+export function computeQuadCapacity(input: {
+  totalQuads: number | null | undefined;
+  maxTotalQuads?: number | null;
+  numCourts: number | null | undefined;
+  hasWave2: boolean;
+}): QuadCapacity {
+  const courts = Math.max(0, input.numCourts ?? 0);
+  const quadsPerWave = Math.max(1, Math.floor(courts / 2));
+  const openQuads = Math.max(0, input.totalQuads ?? 0);
+  // Without a second wave the ceiling can't exceed what one wave holds.
+  const rawMax = Math.max(openQuads, input.maxTotalQuads ?? openQuads);
+  const maxQuads = input.hasWave2 ? rawMax : Math.min(rawMax, quadsPerWave);
+
+  return {
+    openQuads,
+    maxQuads,
+    openSpots: openQuads * PLAYERS_PER_QUAD,
+    maxSpots: maxQuads * PLAYERS_PER_QUAD,
+    canGrow: maxQuads > openQuads,
+    quadsPerWave,
+    wavesNeeded: maxQuads > quadsPerWave ? 2 : 1,
+  };
+}
+
+/**
+ * Which wave a quad index lands in (0-based index in, 1-based wave out).
+ * Wave 1 fills first; the overflow runs in wave 2.
+ */
+export function waveForQuadIndex(index: number, quadsPerWave: number): 1 | 2 {
+  return index < Math.max(1, quadsPerWave) ? 1 : 2;
+}
+
+/**
+ * How many MORE quads a division's waitlist could fill, in whole groups of
+ * four. Drives the "we'd add another quad if 2 more sign up" nudge.
+ */
+export function quadsWaitlistCouldFill(waitingCount: number): number {
+  return Math.floor(Math.max(0, waitingCount) / PLAYERS_PER_QUAD);
+}
+
+/** Players still needed to unlock one more quad in a division. */
+export function playersNeededForNextQuad(waitingCount: number): number {
+  const remainder = Math.max(0, waitingCount) % PLAYERS_PER_QUAD;
+  return remainder === 0 && waitingCount > 0 ? 0 : PLAYERS_PER_QUAD - remainder;
+}

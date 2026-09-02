@@ -55,6 +55,8 @@ type Payload = {
     instructors_total: number;
   } | null;
   my_url: string;
+  /** The real Google error, when the calendar could not be read. */
+  sync_error: string | null;
   open_windows: number;
   open_hours: number;
   booked_count: number;
@@ -149,7 +151,7 @@ export default function OpenLessonTimePage() {
   }
 
   const connected = !!data.settings.google_calendar_id;
-  const live = connected && data.settings.open_page_enabled;
+  const live = connected && data.settings.open_page_enabled && !data.sync_error;
 
   return (
     <div className="p-5 lg:p-8">
@@ -159,6 +161,17 @@ export default function OpenLessonTimePage() {
           Block out time on your own Google Calendar and clients book it themselves. You never enter
           anything twice: your calendar is the schedule, and a booking writes straight back to it.
         </p>
+
+        {/* The reason it isn't working, in Google's own words, at the top. */}
+        {data.sync_error && (
+          <div className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-[14px] leading-relaxed text-red-900">
+            <AlertTriangle size={17} className="mt-0.5 shrink-0" />
+            <span>
+              <strong className="block">Your calendar can&apos;t be read yet</strong>
+              {data.sync_error}
+            </span>
+          </div>
+        )}
 
         {/* Status strip — is this on or not, in one line. */}
         <div
