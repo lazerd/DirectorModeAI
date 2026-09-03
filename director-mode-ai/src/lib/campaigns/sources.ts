@@ -676,6 +676,32 @@ export async function courtconnectCampaign(eventId: string, user: SessionUser): 
 // ---------------- dispatch ----------------
 // ---------------- Quads: invite past players ----------------
 
+/** "14:00:00" → "2:00 PM" (null when absent/unparseable). */
+function timeOnly(timeStr?: string | null): string | null {
+  if (!timeStr) return null;
+  const [h, m] = String(timeStr).split(':').map((x) => parseInt(x, 10));
+  if (Number.isNaN(h)) return null;
+  return new Date(2000, 0, 1, h, Number.isNaN(m) ? 0 : m).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
+/**
+ * The words every chosen event name has in common, in the first name's order —
+ * "JTT 10U Season-End — Gold" + "JTT 12U Season-End — Compass" → "the JTT
+ * Season-End events". A family that played one of four sibling draws should be
+ * told which series they were part of, not given a count.
+ */
+function sharedNameLabel(names: string[]): string | null {
+  const tokenize = (n: string) => n.split(/\s+/).filter((t) => /[A-Za-z0-9]/.test(t));
+  const [first, ...rest] = names.map(tokenize);
+  if (!first?.length) return null;
+  const others = rest.map((ts) => new Set(ts.map((t) => t.toLowerCase())));
+  const shared = first.filter((t) => others.every((set) => set.has(t.toLowerCase())));
+  // Drop leading/trailing connector-ish leftovers and require something substantive.
+  const clean = shared.filter((t) => !/^(and|the|of|at|&|·|—|-)$/i.test(t));
+  if (!clean.length || clean.join(' ').length < 3) return null;
+  return `the ${clean.join(' ')} events`;
+}
+
 /** Marketing copy for "come play the next one". */
 function promoCopy(title: string, sourceLabel: string, whenText: string | null): CampaignCopy {
   const c = matchCopy('quad');
@@ -710,7 +736,7 @@ export async function quadPromoteCampaign(
   const admin = getSupabaseAdmin();
   const { data: ev } = await admin
     .from('events')
-    .select('id, name, slug, user_id, event_date, start_time, entry_fee_cents, registration_closes_at, divisions')
+    .select('id, name, slug, user_id, event_date, start_time, wave2_start_time, entry_fee_cents, registration_closes_at, divisions')
     .eq('id', eventId)
     .maybeSingle();
   if (!ev) return { ok: false, status: 404, error: 'Event not found' };
@@ -721,6 +747,7 @@ export async function quadPromoteCampaign(
     user_id: string;
     event_date: string | null;
     start_time: string | null;
+    wave2_start_time: string | null;
     entry_fee_cents: number | null;
     registration_closes_at: string | null;
     divisions: Array<{ label?: string }> | null;
@@ -756,11 +783,19 @@ export async function quadPromoteCampaign(
       if (!email) continue;
       const key = email.toLowerCase();
       if (skip.has(key) || seen.has(key)) continue;
-      // Greet the parent by THEIR name when writing to the parent's address —
-      // addressing a parent by their child's first name reads as a mail merge
-      // that went wrong.
-      const name = parentEmail ? r.parent_name || '' : r.player_name || '';
-      seen.set(key, { email, firstName: firstNameOf(name) });
+      // Writing to the parent's address: greet the parent by THEIR name, and
+      // when we don't have it, by the family — "Hi Will's family —". Never the
+      // child's bare first name; a parent addressed as their kid reads as a
+      // mail merge that went wrong. Writing to the player: their first name.
+      const playerFirst = firstNameOf(r.player_name || '');
+      const greeting = parentEmail
+        ? r.parent_name?.trim()
+          ? firstNameOf(r.parent_name)
+          : playerFirst !== 'there'
+            ? `${playerFirst}'s family`
+            : 'there'
+        : playerFirst;
+      seen.set(key, { email, firstName: greeting });
     }
     everyone.push(...seen.values());
   }
@@ -771,18 +806,24 @@ export async function quadPromoteCampaign(
       ? 'one of our events'
       : names.length === 1
         ? names[0]
-        : names.length <= 3
-          ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-          : `${names.length} of our recent events`;
+        : sharedNameLabel(names) ||
+          (names.length <= 3
+            ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+            : `${names.length} of our recent events`);
 
-  const when = whenLabel(e.event_date, e.start_time);
+  // Date only in the subject; a multi-session event can't honestly carry one
+  // start time there. The When line spells out the sessions.
+  const when = whenLabel(e.event_date, null);
+  const t1 = timeOnly(e.start_time);
+  const t2 = timeOnly(e.wave2_start_time);
+  const whenLine = when ? (t1 && t2 ? `${when} — ${t1} or ${t2} session` : t1 ? `${when} at ${t1}` : when) : null;
   const fee = e.entry_fee_cents
     ? `$${(e.entry_fee_cents / 100).toFixed(e.entry_fee_cents % 100 === 0 ? 0 : 2)}`
     : 'Free';
   const divisionLabels = (e.divisions || []).map((d) => d?.label).filter(Boolean) as string[];
 
   const stats: { label: string; value: string }[] = [];
-  if (when) stats.push({ label: 'When', value: when });
+  if (whenLine) stats.push({ label: 'When', value: whenLine });
   if (divisionLabels.length) stats.push({ label: 'Divisions', value: divisionLabels.join(' · ') });
   stats.push({ label: 'Entry', value: fee });
 
