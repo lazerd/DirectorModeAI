@@ -17,6 +17,7 @@ import {
   Mail,
 } from 'lucide-react';
 import NudgePanel from '@/components/campaigns/NudgePanel';
+import InvitePastPlayersPanel from '@/components/campaigns/InvitePastPlayersPanel';
 import { createClient } from '@/lib/supabase/client';
 import QuadsEntriesTab from './quads/QuadsEntriesTab';
 import QuadsFlightsTab from './quads/QuadsFlightsTab';
@@ -336,6 +337,11 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
             <p className="text-sm text-gray-600">Send a status update to everyone, or a personalized nudge to only the players who still have a match ready to play. Preview and test to yourself first.</p>
           </div>
           <NudgePanel surface="quad" targetId={eventId} />
+          <div className="pt-2">
+            <h3 className="font-semibold text-gray-900">Fill this event</h3>
+            <p className="text-sm text-gray-600">Reach the families who played and paid for your past events. Pick which events to pull from, preview it, then send.</p>
+          </div>
+          <InvitePastPlayersPanel eventId={eventId} />
         </div>
       )}
     </div>

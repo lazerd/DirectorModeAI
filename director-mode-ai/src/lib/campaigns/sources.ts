@@ -7,6 +7,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type { CampaignData, CampaignCopy, NudgePerson, Person, Outstanding } from './core';
 import { matchCopy } from './core';
+import { CLUB_TZ } from '@/lib/captain/clubTime';
 
 import { APP_URL } from '@/lib/appUrl';
 export type SessionUser = { id: string; email?: string | null };
@@ -32,11 +33,14 @@ function whenLabel(dateStr?: string | null, timeStr?: string | null): string | n
 
 async function branding(user: SessionUser) {
   const admin = getSupabaseAdmin();
-  const { data: p } = await admin.from('profiles').select('organization_name, full_name, email').eq('id', user.id).maybeSingle();
-  const row = (p as { organization_name?: string; full_name?: string; email?: string } | null) || null;
+  // NOTE: profiles has no `email` column. Selecting one made PostgREST reject
+  // the whole query, so every campaign fell back to "Your Club" branding and a
+  // "— Your Club" sign-off. Reply-to comes from the session user anyway.
+  const { data: p } = await admin.from('profiles').select('organization_name, full_name').eq('id', user.id).maybeSingle();
+  const row = (p as { organization_name?: string; full_name?: string } | null) || null;
   const clubName = row?.organization_name?.trim() || 'Your Club';
   const senderName = row?.full_name?.trim() || clubName;
-  const replyTo = user.email || row?.email || 'noreply@mail.clubmode.ai';
+  const replyTo = user.email || 'noreply@mail.clubmode.ai';
   return { clubName, senderName, replyTo };
 }
 
@@ -670,8 +674,201 @@ export async function courtconnectCampaign(eventId: string, user: SessionUser): 
 }
 
 // ---------------- dispatch ----------------
-export async function resolveCampaign(surface: string, targetId: string, user: SessionUser): Promise<SourceResult> {
+// ---------------- Quads: invite past players ----------------
+
+/** Marketing copy for "come play the next one". */
+function promoCopy(title: string, sourceLabel: string, whenText: string | null): CampaignCopy {
+  const c = matchCopy('quad');
+  c.updateSubject = whenText ? `${title} — ${whenText}` : title;
+  c.updateIntro =
+    `Your player competed in ${sourceLabel} with us, so I wanted you to hear about this one first. ` +
+    `Here are the details:`;
+  return c;
+}
+
+/**
+ * Promotional campaign for an UPCOMING event: reaches the families who already
+ * PAID for one of this director's past events.
+ *
+ * Every other source in this file emails the people already attached to the
+ * target. This one deliberately does the opposite — the recipients come from
+ * OTHER events entirely, because a new tournament is filled from the people
+ * who came last time, not from the handful who have already signed up.
+ *
+ * `sourceEventIds` narrows which past events to pull from (the panel renders
+ * them as checkboxes, so a director can leave out a division that doesn't fit
+ * the new event). Omitted = every past event of theirs with paid entries.
+ * Ownership is re-checked server-side rather than trusted from the client.
+ * Anyone already registered for the target is dropped, so nobody gets pitched
+ * something they are already in.
+ */
+export async function quadPromoteCampaign(
+  eventId: string,
+  user: SessionUser,
+  sourceEventIds?: string[]
+): Promise<SourceResult> {
+  const admin = getSupabaseAdmin();
+  const { data: ev } = await admin
+    .from('events')
+    .select('id, name, slug, user_id, event_date, start_time, entry_fee_cents, registration_closes_at, divisions')
+    .eq('id', eventId)
+    .maybeSingle();
+  if (!ev) return { ok: false, status: 404, error: 'Event not found' };
+  const e = ev as {
+    id: string;
+    name: string;
+    slug: string;
+    user_id: string;
+    event_date: string | null;
+    start_time: string | null;
+    entry_fee_cents: number | null;
+    registration_closes_at: string | null;
+    divisions: Array<{ label?: string }> | null;
+  };
+  if (e.user_id !== user.id) return { ok: false, status: 403, error: 'Not authorized' };
+
+  const sources = await pastPaidEvents(user.id, eventId);
+  const chosen = sourceEventIds?.length ? sources.filter((s) => sourceEventIds.includes(s.id)) : sources;
+
+  const everyone: Person[] = [];
+  if (chosen.length) {
+    const { data: paidRows } = await admin
+      .from('tournament_entries')
+      .select('event_id, player_name, player_email, parent_name, parent_email')
+      .in(
+        'event_id',
+        chosen.map((s) => s.id)
+      )
+      .eq('payment_status', 'paid');
+
+    // Drop anyone already in the target event, and the director themselves.
+    const skip = new Set<string>();
+    const { data: already } = await admin.from('quad_entries').select('player_email, parent_email').eq('event_id', eventId);
+    for (const r of (already as Array<Record<string, string | null>>) || []) {
+      for (const v of [r.player_email, r.parent_email]) if (v) skip.add(v.trim().toLowerCase());
+    }
+    if (user.email) skip.add(user.email.trim().toLowerCase());
+
+    const seen = new Map<string, Person>();
+    for (const r of (paidRows as Array<Record<string, string | null>>) || []) {
+      const parentEmail = (r.parent_email || '').trim();
+      const email = parentEmail || (r.player_email || '').trim();
+      if (!email) continue;
+      const key = email.toLowerCase();
+      if (skip.has(key) || seen.has(key)) continue;
+      // Greet the parent by THEIR name when writing to the parent's address —
+      // addressing a parent by their child's first name reads as a mail merge
+      // that went wrong.
+      const name = parentEmail ? r.parent_name || '' : r.player_name || '';
+      seen.set(key, { email, firstName: firstNameOf(name) });
+    }
+    everyone.push(...seen.values());
+  }
+
+  const names = chosen.map((s) => s.name);
+  const sourceLabel =
+    names.length === 0
+      ? 'one of our events'
+      : names.length === 1
+        ? names[0]
+        : names.length <= 3
+          ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
+          : `${names.length} of our recent events`;
+
+  const when = whenLabel(e.event_date, e.start_time);
+  const fee = e.entry_fee_cents
+    ? `$${(e.entry_fee_cents / 100).toFixed(e.entry_fee_cents % 100 === 0 ? 0 : 2)}`
+    : 'Free';
+  const divisionLabels = (e.divisions || []).map((d) => d?.label).filter(Boolean) as string[];
+
+  const stats: { label: string; value: string }[] = [];
+  if (when) stats.push({ label: 'When', value: when });
+  if (divisionLabels.length) stats.push({ label: 'Divisions', value: divisionLabels.join(' · ') });
+  stats.push({ label: 'Entry', value: fee });
+
+  // registration_closes_at is a real timestamp, so it MUST render in club time —
+  // an 11:59pm PT deadline formatted in UTC advertises the wrong day.
+  let deadlineNote: string | null = null;
+  if (e.registration_closes_at) {
+    const d = new Date(e.registration_closes_at);
+    if (!Number.isNaN(d.getTime())) {
+      deadlineNote = `Registration closes ${d.toLocaleDateString('en-US', {
+        timeZone: CLUB_TZ,
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      })}`;
+    }
+  }
+
+  const b = await branding(user);
+  return {
+    ok: true,
+    data: {
+      ownerId: user.id,
+      ...b,
+      title: e.name,
+      liveUrl: `${APP}/quads/${e.slug}`,
+      liveUrlLabel: '🎾 Sign up',
+      deadlineNote,
+      reminderWhen: null, // promo is a one-shot; the reminder lives on the 'quad' surface
+      stats,
+      everyone,
+      nudge: [],
+      copy: promoCopy(e.name, sourceLabel, when),
+    },
+  };
+}
+
+/**
+ * The director's own past events that have at least one PAID entry — the pool
+ * the promo campaign draws from. Shared with /api/campaigns/past-events so the
+ * checkbox list and the send agree on what "past player" means.
+ */
+export async function pastPaidEvents(
+  userId: string,
+  excludeEventId: string
+): Promise<Array<{ id: string; name: string; eventDate: string | null; paidCount: number }>> {
+  const admin = getSupabaseAdmin();
+  const { data: ownRows } = await admin
+    .from('events')
+    .select('id, name, event_date')
+    .eq('user_id', userId)
+    .neq('id', excludeEventId);
+  const today = new Date().toISOString().slice(0, 10);
+  const own = ((ownRows as Array<{ id: string; name: string; event_date: string | null }>) || []).filter(
+    (r) => !r.event_date || r.event_date.slice(0, 10) <= today
+  );
+  if (!own.length) return [];
+
+  const { data: paidRows } = await admin
+    .from('tournament_entries')
+    .select('event_id')
+    .in(
+      'event_id',
+      own.map((o) => o.id)
+    )
+    .eq('payment_status', 'paid');
+
+  const counts = new Map<string, number>();
+  for (const r of (paidRows as Array<{ event_id: string }>) || []) {
+    counts.set(r.event_id, (counts.get(r.event_id) || 0) + 1);
+  }
+  return own
+    .filter((o) => counts.has(o.id))
+    .map((o) => ({ id: o.id, name: o.name, eventDate: o.event_date, paidCount: counts.get(o.id) || 0 }))
+    .sort((a, b) => (b.eventDate || '').localeCompare(a.eventDate || ''));
+}
+
+export async function resolveCampaign(
+  surface: string,
+  targetId: string,
+  user: SessionUser,
+  opts?: { sourceEventIds?: string[] }
+): Promise<SourceResult> {
   switch (surface) {
+    case 'quad-promote':
+      return quadPromoteCampaign(targetId, user, opts?.sourceEventIds);
     case 'tournament':
       return tournamentCampaign(targetId, user);
     case 'quad':

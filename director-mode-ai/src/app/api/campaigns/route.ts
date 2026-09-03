@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const surface = req.nextUrl.searchParams.get('surface') || '';
   const targetId = req.nextUrl.searchParams.get('targetId') || '';
-  const r = await resolveCampaign(surface, targetId, { id: user.id, email: user.email });
+  const sourceEventIds = req.nextUrl.searchParams.getAll('sourceEventId').filter(Boolean);
+  const r = await resolveCampaign(surface, targetId, { id: user.id, email: user.email }, { sourceEventIds });
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
   const d = r.data;
   return NextResponse.json({
@@ -44,13 +45,15 @@ export async function POST(req: NextRequest) {
     targetId?: string;
     kind?: CampaignKind;
     mode?: SendMode;
+    sourceEventIds?: string[];
   };
   const { surface = '', targetId = '', kind, mode } = body;
+  const sourceEventIds = Array.isArray(body.sourceEventIds) ? body.sourceEventIds.filter((x) => typeof x === 'string') : [];
   if (kind !== 'update' && kind !== 'nudge' && kind !== 'reminder')
     return NextResponse.json({ error: 'bad kind' }, { status: 400 });
   if (mode !== 'preview' && mode !== 'test' && mode !== 'live') return NextResponse.json({ error: 'bad mode' }, { status: 400 });
 
-  const r = await resolveCampaign(surface, targetId, { id: user.id, email: user.email });
+  const r = await resolveCampaign(surface, targetId, { id: user.id, email: user.email }, { sourceEventIds });
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
 
   const result = await runCampaign(r.data, kind, mode);
