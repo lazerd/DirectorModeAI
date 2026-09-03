@@ -95,18 +95,29 @@ export async function GET() {
    * wants to know who is stuck, not just who exists.
    */
   const ids = rows.map((r) => r.user_id);
-  const [{ data: profiles }, { data: coaches }] = ids.length
+  const [{ data: profiles }, { data: coaches }, { data: subs }] = ids.length
     ? await Promise.all([
         db.from('profiles').select('id, full_name').in('id', ids),
         db
           .from('lesson_coaches')
           .select('profile_id, open_page_enabled, google_calendar_id, ics_url, calendar_kind')
           .in('profile_id', ids),
+        // CaptainMode is a per-captain subscription, so a director needs to see
+        // who is paying, who is comped, and who is on neither.
+        db
+          .from('captain_subscriptions')
+          .select('user_id, status, stripe_subscription_id')
+          .in('user_id', ids),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }];
 
   const nameOf = new Map(
     ((profiles as { id: string; full_name: string | null }[]) || []).map((p) => [p.id, p.full_name]),
+  );
+  const subOf = new Map(
+    ((subs as { user_id: string; status: string; stripe_subscription_id: string | null }[]) || []).map(
+      (r) => [r.user_id, r],
+    ),
   );
   const coachOf = new Map(
     ((coaches as {
@@ -138,6 +149,13 @@ export async function GET() {
                 live: !!c.open_page_enabled,
               }
             : null,
+          captainmode: (() => {
+            const sub = subOf.get(r.user_id);
+            if (!sub) return 'none';
+            if (sub.status === 'comped') return 'comped';
+            if (sub.stripe_subscription_id) return 'paying';
+            return ['active', 'trialing', 'past_due'].includes(sub.status) ? 'active' : 'none';
+          })(),
         };
       })
       .sort((a, b) => a.name.localeCompare(b.name)),

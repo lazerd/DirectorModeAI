@@ -21,6 +21,7 @@ type Person = {
   role_label: string;
   joined_at: string;
   booking_page: { connected: boolean; live: boolean } | null;
+  captainmode: 'none' | 'comped' | 'paying' | 'active';
 };
 type Invite = {
   id: string;
@@ -113,6 +114,28 @@ export default function ClubPeoplePage() {
       return;
     }
     setMsg(`${who} is now ${newRole === 'front_desk' ? 'front desk' : newRole}.`);
+    await load();
+  };
+
+  /**
+   * Give a captain the product for nothing. Their own club paying for them is
+   * the normal case at a club that runs its own leagues.
+   */
+  const comp = async (userId: string, on: boolean, who: string) => {
+    setBusy(true);
+    setErr(null);
+    const res = await fetch('/api/captain/comp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, on }),
+    });
+    const j = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (!res.ok) {
+      setErr(j.error || 'Could not change that.');
+      return;
+    }
+    setMsg(on ? `${who} has CaptainMode, on the club.` : `${who}'s comp removed.`);
     await load();
   };
 
@@ -252,6 +275,7 @@ export default function ClubPeoplePage() {
           people={staff}
           roles={data.invitable_roles}
           onRole={setRoleFor}
+          onComp={comp}
           busy={busy}
           emptyNote="Nobody but you yet — invite your pros above."
         />
@@ -261,6 +285,7 @@ export default function ClubPeoplePage() {
           people={members}
           roles={data.invitable_roles}
           onRole={setRoleFor}
+          onComp={comp}
           busy={busy}
           emptyNote="No members yet. Share your club join link and they'll appear here."
         />
@@ -277,6 +302,7 @@ function PeopleList({
   people,
   roles,
   onRole,
+  onComp,
   busy,
   emptyNote,
 }: {
@@ -284,6 +310,7 @@ function PeopleList({
   people: Person[];
   roles: string[];
   onRole: (userId: string, role: string, who: string) => void;
+  onComp: (userId: string, on: boolean, who: string) => void;
   busy: boolean;
   emptyNote: string;
 }) {
@@ -318,6 +345,28 @@ function PeopleList({
                     </option>
                   ))}
                 </select>
+              )}
+
+              {/* CaptainMode is billed per captain, so it is given here. */}
+              {p.captainmode === 'paying' ? (
+                <span className="text-[12.5px] text-white/40">CaptainMode · paying</span>
+              ) : p.captainmode === 'comped' ? (
+                <button
+                  onClick={() => onComp(p.user_id, false, p.name)}
+                  disabled={busy}
+                  className="text-[12.5px] text-[#D3FB52] hover:underline disabled:opacity-50"
+                  title="Remove the comp"
+                >
+                  CaptainMode · comped ✕
+                </button>
+              ) : (
+                <button
+                  onClick={() => onComp(p.user_id, true, p.name)}
+                  disabled={busy}
+                  className="rounded-lg border border-white/15 px-2.5 py-1 text-[12.5px] text-white/50 hover:border-[#D3FB52]/50 hover:text-white disabled:opacity-50"
+                >
+                  Comp CaptainMode
+                </button>
               )}
 
               {/* How far a pro has actually got. */}

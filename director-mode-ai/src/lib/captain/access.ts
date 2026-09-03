@@ -36,7 +36,12 @@ export type CaptainAccess = {
   clubId: string | null;
 };
 
-const ACTIVE_STATUSES = new Set(['active', 'trialing', 'past_due']);
+/**
+ * 'comped' is a club giving one of its own captains the product for nothing —
+ * granted by a director, never written by the billing webhook, and kept
+ * distinct from 'active' so a comp is never mistaken for revenue.
+ */
+const ACTIVE_STATUSES = new Set(['active', 'trialing', 'past_due', 'comped']);
 
 export async function getCaptainAccess(userId: string): Promise<CaptainAccess> {
   const db = adminDb();
