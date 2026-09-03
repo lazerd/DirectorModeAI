@@ -275,8 +275,14 @@ export async function committedCounts(
 
 /**
  * Matches actually played, per player, from saved lineups.
- * Factual reporting only (the eligibility table) — see committedCounts for the
- * number the generator plans against.
+ * Factual reporting only (the eligibility table and the equal-play panel) —
+ * see committedCounts for the number the generator plans against.
+ *
+ * A defaulted court is skipped, exactly as committedCounts skips it: the team
+ * banked a win or a loss but the two players named on it never hit a ball, and
+ * crediting them would tell a captain someone is covered for playoff
+ * eligibility while they are still on zero. The results route has claimed this
+ * was true since defaults were added; it was only true of committedCounts.
  */
 export async function playedCounts(
   db: SupabaseClient,
@@ -290,13 +296,31 @@ export async function playedCounts(
   const ids = ((played as { id: string }[]) || []).map((m) => m.id);
   if (!ids.length) return {};
 
-  const { data: rows } = await db
-    .from('captain_lineups')
-    .select('player1_id, player2_id, match_id')
-    .in('match_id', ids);
+  const [{ data: rows }, { data: defaults }] = await Promise.all([
+    db
+      .from('captain_lineups')
+      .select('player1_id, player2_id, match_id, court_number')
+      .in('match_id', ids),
+    db
+      .from('captain_results')
+      .select('match_id, court_number')
+      .in('match_id', ids)
+      .eq('defaulted', true),
+  ]);
+  const skip = new Set(
+    ((defaults as { match_id: string; court_number: number }[]) || []).map(
+      (d) => `${d.match_id}:${d.court_number}`,
+    ),
+  );
 
   const counts: Record<string, number> = {};
-  for (const r of (rows as { player1_id: string | null; player2_id: string | null }[]) || []) {
+  for (const r of (rows as {
+    player1_id: string | null;
+    player2_id: string | null;
+    match_id: string;
+    court_number: number;
+  }[]) || []) {
+    if (skip.has(`${r.match_id}:${r.court_number}`)) continue;
     for (const id of [r.player1_id, r.player2_id]) {
       if (id) counts[id] = (counts[id] ?? 0) + 1;
     }

@@ -19,6 +19,15 @@ export type MatchPlayer = {
   email: string | null;
   phone: string | null;
   availability: 'yes' | 'no' | 'maybe' | null;
+  /** Matches this player has actually played, defaulted courts excluded. */
+  played: number;
+  /**
+   * Saved lineups naming this player on EVERY OTHER match of the season.
+   * This match is excluded on purpose so the workspace can add whoever is on
+   * screen right now — the count then moves as courts are swapped, which is
+   * the only version of it a captain can plan against.
+   */
+  committedElsewhere: number;
 };
 
 /** The WTN a doubles court should be ordered on: doubles number, else singles. */
@@ -932,6 +941,48 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     return players.filter((p) => p.id === current || !used.has(p.id));
   };
 
+  /* ------------------------------------------------------------ equal play */
+
+  /** Everyone on the sheet as it stands right now, saved or not. */
+  const onSheet = new Set(
+    courts.flatMap((c) => [c.player1Id, c.player2Id]).filter(Boolean) as string[],
+  );
+
+  /**
+   * Lineups this player is in for the season, counting the sheet on screen.
+   *
+   * Live rather than saved: the whole point is to see the fairness cost of a
+   * swap while making it, not after.
+   */
+  const lineupsFor = (p: MatchPlayer) => p.committedElsewhere + (onSheet.has(p.id) ? 1 : 0);
+
+  /** Subs are not on the equal-play clock unless this sheet puts them on it. */
+  const equalPlayRoster = players
+    .filter((p) => !p.isSub || onSheet.has(p.id))
+    .map((p) => ({ ...p, lineups: lineupsFor(p), inThisMatch: onSheet.has(p.id) }))
+    .sort((a, b) => a.lineups - b.lineups || a.played - b.played || a.name.localeCompare(b.name));
+
+  const maxLineups = Math.max(1, ...equalPlayRoster.map((p) => p.lineups));
+  const minLineups = equalPlayRoster.length
+    ? Math.min(...equalPlayRoster.map((p) => p.lineups))
+    : 0;
+  const spread = equalPlayRoster.length ? maxLineups - minLineups : 0;
+
+  /** Who the spread is actually about — a number alone doesn't name anyone. */
+  const trailing = equalPlayRoster.filter((p) => p.lineups === minLineups);
+  const trailingNames =
+    trailing.length > 3
+      ? `${trailing.length} players`
+      : trailing.map((p) => p.name.split(' ')[0]).join(', ');
+
+  /** The short "2 lineups · 1 played" tag, used on options and on each slot. */
+  const loadLabel = (p: MatchPlayer) => {
+    const l = lineupsFor(p);
+    const parts = [`${l} lineup${l === 1 ? '' : 's'}`];
+    if (p.played > 0) parts.push(`${p.played} played`);
+    return parts.join(' · ');
+  };
+
   return (
     <div className="mt-8 space-y-8">
       {/* A text costs money and cannot be unsent, so it gets the same
@@ -1461,6 +1512,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                                 {p.name}
                                 {p.rating != null ? ` (${p.rating})` : ''}
                                 {p.availability === 'yes' ? ' ✓' : p.availability === 'no' ? ' ✗' : ''}
+                                {` — ${loadLabel(p)}`}
                               </option>
                             ))}
                           </select>
@@ -1491,6 +1543,21 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                             “{bailed.note}”
                           </p>
                         )}
+
+                        {/* What this seat costs in fairness, next to the seat.
+                            The closed <select> truncates the option's tag, so
+                            the number has to survive on its own line. */}
+                        {pid && (() => {
+                          const p = players.find((x) => x.id === pid);
+                          return p ? (
+                            <p
+                              className="mt-1 pl-10 text-white/30 text-xs"
+                              title="Lineups counts every saved sheet plus this one; played counts matches that have happened."
+                            >
+                              {loadLabel(p)}
+                            </p>
+                          ) : null;
+                        })()}
 
                         {/* Everything a captain does about THIS person, next to
                             their name. Both send buttons open the same preview
@@ -1589,6 +1656,71 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
             </div>
           ))}
         </div>
+
+        {/* ------------------------------------------------------ equal play */}
+        {equalPlayRoster.length > 0 && (
+          <div className="mt-5 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
+            <div className="flex items-baseline justify-between gap-3 flex-wrap">
+              <h3 className="text-white/70 text-sm font-semibold">Equal play</h3>
+              <span
+                className={`text-xs ${spread <= 1 ? 'text-[#D3FB52]/80' : 'text-amber-300/90'}`}
+              >
+                {spread <= 1
+                  ? `Spread ${spread} — even`
+                  : `Spread ${spread} — ${trailingNames} on ${minLineups}`}
+              </span>
+            </div>
+            <p className="text-white/35 text-xs mt-1">
+              Lineups counts every saved sheet for the season <em>plus the one on screen</em>, so it
+              moves as you swap. Played counts matches that have actually happened — defaulted
+              courts don’t count, nobody played them.
+            </p>
+
+            <div className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-wide text-white/25">
+              <span className="flex-1" />
+              <span className="w-12 text-right">lineups</span>
+              <span className="w-12 text-right">played</span>
+            </div>
+            <div className="mt-1 grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-1.5">
+              {equalPlayRoster.map((p) => (
+                <div key={p.id} className="flex items-center gap-2 text-xs">
+                  <span
+                    aria-hidden
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      p.inThisMatch ? 'bg-[#D3FB52]' : 'bg-white/15'
+                    }`}
+                  />
+                  <span
+                    className={`truncate w-32 shrink-0 ${
+                      p.inThisMatch ? 'text-white' : 'text-white/45'
+                    }`}
+                    title={p.inThisMatch ? `${p.name} — on this sheet` : p.name}
+                  >
+                    {p.name}
+                  </span>
+                  <span className="flex-1 min-w-[2rem] h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                    <span
+                      className={`block h-full rounded-full ${
+                        p.inThisMatch ? 'bg-[#D3FB52]/70' : 'bg-white/25'
+                      }`}
+                      style={{ width: `${(p.lineups / maxLineups) * 100}%` }}
+                    />
+                  </span>
+                  <span
+                    className={`w-12 text-right tabular-nums ${
+                      p.lineups === minLineups && spread > 1
+                        ? 'text-amber-300'
+                        : 'text-white/70'
+                    }`}
+                  >
+                    {p.lineups}
+                  </span>
+                  <span className="w-12 text-right tabular-nums text-white/30">{p.played}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {dirty && courts.length > 0 && (
           <p className="text-amber-300/70 text-xs mt-3">
