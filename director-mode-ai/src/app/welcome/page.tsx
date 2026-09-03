@@ -17,6 +17,12 @@ export default function WelcomePage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { window.location.href = '/login?redirect=/welcome'; return; }
+      /**
+       * If this person is already on a club's PlayerVault, they are already a
+       * member of that club — the app just did not know it yet. Fire and
+       * forget: it is an optimisation of their first minute, not a gate on it.
+       */
+      fetch('/api/me/club-link', { method: 'POST' }).catch(() => {});
       setName((user.user_metadata?.full_name || user.email?.split('@')[0] || '').split(' ')[0]);
       try {
         const res = await fetch('/api/me/onboarding');

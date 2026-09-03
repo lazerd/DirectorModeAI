@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { pickPrimaryClub } from '@/lib/clubRoles';
+import { attachByEmail } from '@/lib/clubAutoJoin';
 import { TOURNAMENT_FORMATS } from '@/lib/eventCategory';
 import {
   CalendarDays, LayoutGrid, GraduationCap, User, ArrowRight, Trophy, Ticket, MapPin,
@@ -49,6 +50,12 @@ export default async function MemberHome() {
    * lands on the same club home every time, rather than whichever row the
    * database happened to return first.
    */
+  /**
+   * A vault player who signs in before anyone links them up would be bounced
+   * home from their own club's page. Attach first, then read.
+   */
+  await attachByEmail(admin, user.id, user.email);
+
   const { data: memberships } = await admin
     .from('cc_club_members')
     .select('role, club_id, created_at')

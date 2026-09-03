@@ -71,7 +71,35 @@ export async function POST(req: Request) {
     .eq('club_id', clubId)
     .eq('user_id', body.user_id)
     .maybeSingle();
-  if (!membership) {
+
+  /**
+   * A captain of one of this club's teams counts too, membership row or not.
+   * CaptainMode has its own person model, and a captain running your club's
+   * team is unambiguously one of your people — refusing to comp her because a
+   * different table has no row for her would be pedantry.
+   */
+  let belongs = !!membership;
+  if (!belongs) {
+    const { data: teams } = await db.from('captain_teams').select('id').eq('club_id', clubId);
+    const teamIds = ((teams as { id: string }[]) || []).map((t) => t.id);
+    const { data: owns } = await db
+      .from('captain_teams')
+      .select('id')
+      .eq('club_id', clubId)
+      .eq('captain_user_id', body.user_id)
+      .maybeSingle();
+    const { data: staffs } = teamIds.length
+      ? await db
+          .from('captain_team_staff')
+          .select('id')
+          .eq('user_id', body.user_id)
+          .in('team_id', teamIds)
+          .maybeSingle()
+      : { data: null };
+    belongs = !!owns || !!staffs;
+  }
+
+  if (!belongs) {
     return NextResponse.json(
       { error: `They need to be at ${clubName} first — invite them, then comp them.` },
       { status: 400 },

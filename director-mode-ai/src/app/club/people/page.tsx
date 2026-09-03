@@ -31,7 +31,16 @@ type Invite = {
   created_at: string;
   expires_at: string;
 };
+type Captain = {
+  user_id: string;
+  name: string;
+  captain_role: string;
+  teams: string[];
+  in_club: boolean;
+  captainmode: 'none' | 'comped' | 'paying' | 'active';
+};
 type Payload = {
+  captains: Captain[];
   club: { id: string; name: string };
   invitable_roles: string[];
   people: Person[];
@@ -136,6 +145,24 @@ export default function ClubPeoplePage() {
       return;
     }
     setMsg(on ? `${who} has CaptainMode, on the club.` : `${who}'s comp removed.`);
+    await load();
+  };
+
+  /** Fold a captain into the club's member list properly. */
+  const addToClub = async (userId: string, who: string) => {
+    setBusy(true);
+    setErr(null);
+    const res = await fetch('/api/clubs/invites', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: userId, role: 'member', add: true }),
+    });
+    setBusy(false);
+    if (!res.ok) {
+      setErr((await res.json().catch(() => ({}))).error || 'Could not add them.');
+      return;
+    }
+    setMsg(`${who} added to the club.`);
     await load();
   };
 
@@ -289,6 +316,63 @@ export default function ClubPeoplePage() {
           busy={busy}
           emptyNote="No members yet. Share your club join link and they'll appear here."
         />
+
+        {/* --------------------------------------------------------- captains */}
+        {data.captains?.length > 0 && (
+          <div className="mt-7">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-white/30">
+              Captains (CaptainMode)
+            </h2>
+            <p className="mt-1 text-[13px] text-white/40">
+              People running your club&apos;s league teams. CaptainMode has its own roster, so they
+              can be here without being in your member list.
+            </p>
+            <div className="mt-2 space-y-2">
+              {data.captains.map((c) => (
+                <div
+                  key={c.user_id}
+                  className="flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.07] bg-[#002838] px-4 py-3"
+                >
+                  <span className="text-[15px] font-medium text-white">{c.name}</span>
+                  <span className="rounded-full border border-white/15 px-2 py-0.5 text-[12px] text-white/60">
+                    {c.captain_role}
+                  </span>
+                  {c.teams.length > 0 && (
+                    <span className="text-[12.5px] text-white/40">{c.teams.join(', ')}</span>
+                  )}
+                  {!c.in_club && (
+                    <button
+                      onClick={() => addToClub(c.user_id, c.name)}
+                      disabled={busy}
+                      className="rounded-lg border border-white/15 px-2.5 py-1 text-[12.5px] text-white/60 hover:border-[#D3FB52]/50 hover:text-white disabled:opacity-50"
+                    >
+                      Add to club
+                    </button>
+                  )}
+                  {c.captainmode === 'paying' ? (
+                    <span className="ml-auto text-[12.5px] text-white/40">CaptainMode · paying</span>
+                  ) : c.captainmode === 'comped' ? (
+                    <button
+                      onClick={() => comp(c.user_id, false, c.name)}
+                      disabled={busy}
+                      className="ml-auto text-[12.5px] text-[#D3FB52] hover:underline disabled:opacity-50"
+                    >
+                      CaptainMode · comped ✕
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => comp(c.user_id, true, c.name)}
+                      disabled={busy}
+                      className="ml-auto rounded-lg border border-white/15 px-2.5 py-1 text-[12.5px] text-white/50 hover:border-[#D3FB52]/50 hover:text-white disabled:opacity-50"
+                    >
+                      Comp CaptainMode
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {msg && <p className="mt-4 rounded-xl bg-[#D3FB52]/10 p-3 text-[14px] text-[#D3FB52]">{msg}</p>}
         {err && <p className="mt-4 rounded-xl bg-red-500/10 p-3 text-[14px] text-red-200">{err}</p>}

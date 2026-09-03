@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { ROLE_LABEL } from '@/lib/clubRoles';
+import { attachByEmail } from '@/lib/clubAutoJoin';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,6 +135,10 @@ export async function POST(req: Request) {
     .from('cc_club_invites')
     .update({ accepted_at: new Date().toISOString(), accepted_by: user.id })
     .eq('id', invite.id);
+
+  // They may also be on another club's roster already; that is not this
+  // invitation's business, but it is theirs.
+  await attachByEmail(db, user.id, user.email);
 
   /**
    * Teaching staff get their coach record made here, attached to this club, so

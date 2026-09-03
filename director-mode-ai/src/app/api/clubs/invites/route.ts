@@ -129,7 +129,88 @@ export async function GET() {
     }[]) || []).map((c) => [c.profile_id, c]),
   );
 
+  /**
+   * Captains are people at this club who may never appear in cc_club_members.
+   *
+   * CaptainMode has its own person model — captain_teams.captain_user_id and
+   * captain_team_staff — and a team carries the club it plays for. So a captain
+   * running her team out of your club can be entirely absent from your people
+   * list, which is how Robyn Rogin was invisible here while actively using the
+   * product. They are listed separately, with a way to fold them into the club
+   * properly.
+   */
+  const { data: teams } = await db
+    .from('captain_teams')
+    .select('id, name, captain_user_id')
+    .eq('club_id', clubId);
+  const teamRows = (teams as { id: string; name: string; captain_user_id: string }[]) || [];
+
+  const { data: teamStaff } = teamRows.length
+    ? await db
+        .from('captain_team_staff')
+        .select('user_id, role, team_id')
+        .in('team_id', teamRows.map((t) => t.id))
+    : { data: [] };
+
+  const captainRoles = new Map<string, { role: string; teams: string[] }>();
+  for (const t of teamRows) {
+    const cur = captainRoles.get(t.captain_user_id) || { role: 'captain', teams: [] };
+    cur.role = 'captain';
+    cur.teams.push(t.name);
+    captainRoles.set(t.captain_user_id, cur);
+  }
+  for (const st of ((teamStaff as { user_id: string; role: string; team_id: string }[]) || [])) {
+    const team = teamRows.find((t) => t.id === st.team_id);
+    const cur = captainRoles.get(st.user_id) || { role: st.role, teams: [] };
+    if (cur.role !== 'captain') cur.role = st.role;
+    if (team && !cur.teams.includes(team.name)) cur.teams.push(team.name);
+    captainRoles.set(st.user_id, cur);
+  }
+
+  const captainIds = [...captainRoles.keys()];
+  const [{ data: capProfiles }, { data: capSubs }] = captainIds.length
+    ? await Promise.all([
+        db.from('profiles').select('id, full_name').in('id', captainIds),
+        db
+          .from('captain_subscriptions')
+          .select('user_id, status, stripe_subscription_id')
+          .in('user_id', captainIds),
+      ])
+    : [{ data: [] }, { data: [] }];
+
+  const capNameOf = new Map(
+    ((capProfiles as { id: string; full_name: string | null }[]) || []).map((p) => [p.id, p.full_name]),
+  );
+  const capSubOf = new Map(
+    ((capSubs as { user_id: string; status: string; stripe_subscription_id: string | null }[]) || []).map(
+      (r) => [r.user_id, r],
+    ),
+  );
+  const memberIds = new Set(rows.map((r) => r.user_id));
+
+  const captains = captainIds.map((id) => {
+    const info = captainRoles.get(id)!;
+    const sub = capSubOf.get(id);
+    return {
+      user_id: id,
+      name: capNameOf.get(id) || 'Captain',
+      captain_role: info.role === 'co_captain' ? 'Co-captain' : 'Captain',
+      teams: info.teams,
+      in_club: memberIds.has(id),
+      captainmode: !sub
+        ? 'none'
+        : sub.status === 'comped'
+          ? 'comped'
+          : sub.stripe_subscription_id
+            ? 'paying'
+            : ['active', 'trialing', 'past_due'].includes(sub.status)
+              ? 'active'
+              : 'none',
+    };
+  });
+
   return NextResponse.json({
+    captains,
     club: { id: clubId, name: clubName },
     roles: CLUB_ROLES.filter((r) => r !== 'owner' || true),
     invitable_roles: INVITABLE,
@@ -254,9 +335,49 @@ export async function PATCH(req: Request) {
   if ('error' in ctx) return ctx.error;
   const { db, clubId, userId } = ctx;
 
-  const body = (await req.json().catch(() => ({}))) as { user_id?: string; role?: ClubRole };
+  const body = (await req.json().catch(() => ({}))) as {
+    user_id?: string;
+    role?: ClubRole;
+    /** Add someone who is at the club through a team but has no membership row. */
+    add?: boolean;
+  };
   if (!body.user_id || !body.role || !CLUB_ROLES.includes(body.role)) {
     return NextResponse.json({ error: 'Pick a person and a role.' }, { status: 400 });
+  }
+
+  if (body.add) {
+    // Only for someone who genuinely belongs here already: a captain of one of
+    // this club's teams. Not a way to add arbitrary user ids to a club.
+    const { data: teams } = await db
+      .from('captain_teams')
+      .select('id')
+      .eq('club_id', clubId);
+    const teamIds = ((teams as { id: string }[]) || []).map((t) => t.id);
+    const { data: isCaptain } = await db
+      .from('captain_teams')
+      .select('id')
+      .eq('club_id', clubId)
+      .eq('captain_user_id', body.user_id)
+      .maybeSingle();
+    const { data: isStaff } = teamIds.length
+      ? await db
+          .from('captain_team_staff')
+          .select('id')
+          .eq('user_id', body.user_id)
+          .in('team_id', teamIds)
+          .maybeSingle()
+      : { data: null };
+    if (!isCaptain && !isStaff) {
+      return NextResponse.json(
+        { error: 'They are not a captain at this club — invite them by email instead.' },
+        { status: 400 },
+      );
+    }
+    const { error } = await db
+      .from('cc_club_members')
+      .upsert({ club_id: clubId, user_id: body.user_id, role: body.role }, { onConflict: 'club_id,user_id' });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, added: true });
   }
   if (body.role === 'owner') {
     return NextResponse.json({ error: 'A club has one owner; that is not changed here.' }, { status: 400 });
