@@ -114,6 +114,7 @@ export type QuadMatch = {
 };
 
 type Tab = 'entries' | 'flights' | 'matches' | 'notify' | 'settings';
+const TABS: Tab[] = ['entries', 'flights', 'matches', 'notify', 'settings'];
 
 export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
   const [event, setEvent] = useState<QuadEvent | null>(null);
@@ -124,6 +125,14 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // ?tab=notify lands straight on a tab, so a link to a specific panel
+  // actually opens it. Applied after mount rather than in the initial
+  // state so server and client render the same first pass.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab') as Tab | null;
+    if (t && TABS.includes(t)) setTab(t);
+  }, []);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
