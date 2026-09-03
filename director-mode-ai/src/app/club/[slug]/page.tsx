@@ -75,17 +75,20 @@ export default function PublicClubPage() {
         .limit(6);
 
       if (eventsData) {
-        const withCounts = await Promise.all(
-          eventsData.map(async (event) => {
-            const { count } = await supabase
-              .from('cc_event_players')
-              .select('*', { count: 'exact', head: true })
-              .eq('event_id', event.id)
-              .eq('status', 'accepted');
-            return { ...event, accepted_count: count || 0 };
-          })
-        );
-        setEvents(withCounts);
+        /**
+         * Counts come from an endpoint, not from reading the roster. That table
+         * holds guest names and emails, so it is no longer readable by a
+         * browser — and a count was all this page ever needed.
+         */
+        const ids = (eventsData as PublicEvent[]).map((e) => e.id);
+        let counts: Record<string, number> = {};
+        try {
+          const res = await fetch(`/api/clubs/event-counts?event_ids=${ids.join(',')}`, {
+            cache: 'no-store',
+          });
+          if (res.ok) counts = ((await res.json()).counts || {}) as Record<string, number>;
+        } catch { /* a missing count is not worth failing the page over */ }
+        setEvents((eventsData as PublicEvent[]).map((e) => ({ ...e, accepted_count: counts[e.id] || 0 })));
       }
     }
 
