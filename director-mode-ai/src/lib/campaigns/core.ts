@@ -57,6 +57,13 @@ export type CampaignData = {
   everyone: Person[]; // broadcast recipients (empty = update disabled)
   nudge: NudgePerson[]; // only people who still owe an action
   copy: CampaignCopy;
+  /**
+   * Optional replacement for the generic update template. A source sets this
+   * when its broadcast is not a status check-in — a promo for an upcoming
+   * event needs its own layout (see quadPromoEmail.ts). Preview / test / live
+   * all flow through it, so the preview shows exactly what will be sent.
+   */
+  renderUpdate?: (d: CampaignData, person: Person) => { subject: string; html: string };
 };
 
 const esc = (s: string) => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -164,7 +171,7 @@ export type CampaignResult =
 export async function runCampaign(d: CampaignData, kind: CampaignKind, mode: SendMode): Promise<CampaignResult> {
   const build = (person: Person | NudgePerson) =>
     kind === 'update'
-      ? updateEmailHtml(d, person)
+      ? (d.renderUpdate ?? updateEmailHtml)(d, person)
       : kind === 'reminder'
         ? reminderEmailHtml(d, person)
         : nudgeEmailHtml(d, person as NudgePerson);

@@ -7,6 +7,9 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type { CampaignData, CampaignCopy, NudgePerson, Person, Outstanding } from './core';
 import { matchCopy } from './core';
+import { quadPromoRenderer } from './quadPromoEmail';
+import { getSponsor } from '@/config/sponsors';
+import { formatTimeDisplay } from '@/lib/quads';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
 
 import { APP_URL } from '@/lib/appUrl';
@@ -736,7 +739,9 @@ export async function quadPromoteCampaign(
   const admin = getSupabaseAdmin();
   const { data: ev } = await admin
     .from('events')
-    .select('id, name, slug, user_id, event_date, start_time, wave2_start_time, entry_fee_cents, registration_closes_at, divisions')
+    .select(
+      'id, name, slug, user_id, event_date, start_time, end_time, wave2_start_time, wave2_end_time, round_duration_minutes, entry_fee_cents, registration_closes_at, divisions, sponsor_id, entry_flow, gender_restriction'
+    )
     .eq('id', eventId)
     .maybeSingle();
   if (!ev) return { ok: false, status: 404, error: 'Event not found' };
@@ -747,10 +752,16 @@ export async function quadPromoteCampaign(
     user_id: string;
     event_date: string | null;
     start_time: string | null;
+    end_time: string | null;
     wave2_start_time: string | null;
+    wave2_end_time: string | null;
+    round_duration_minutes: number | null;
     entry_fee_cents: number | null;
     registration_closes_at: string | null;
     divisions: Array<{ label?: string }> | null;
+    sponsor_id: string | null;
+    entry_flow: string | null;
+    gender_restriction: string | null;
   };
   if (e.user_id !== user.id) return { ok: false, status: 403, error: 'Not authorized' };
 
@@ -809,7 +820,7 @@ export async function quadPromoteCampaign(
         : sharedNameLabel(names) ||
           (names.length <= 3
             ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-            : `${names.length} of our recent events`);
+            : 'our events this year');
 
   // Date only in the subject; a multi-session event can't honestly carry one
   // start time there. The When line spells out the sessions.
@@ -843,13 +854,44 @@ export async function quadPromoteCampaign(
   }
 
   const b = await branding(user);
+  const signupUrl = `${APP}/quads/${e.slug}`;
+
+  // The promo gets its own layout (quadPromoEmail.ts): the generic update
+  // template is a status check-in and reads wrong to a family with no spot
+  // yet. Every fact is resolved here so the template stays pure.
+  const sessions: string[] = [];
+  if (e.start_time && e.end_time) sessions.push(`${formatTimeDisplay(e.start_time)} – ${formatTimeDisplay(e.end_time)}`);
+  if (e.wave2_start_time && e.wave2_end_time)
+    sessions.push(`${formatTimeDisplay(e.wave2_start_time)} – ${formatTimeDisplay(e.wave2_end_time)}`);
+  const whoLine =
+    e.gender_restriction === 'boys' ? 'boys' : e.gender_restriction === 'girls' ? 'girls' : 'boys and girls';
+  const closesLabel = deadlineNote ? deadlineNote.replace(/^Registration closes /, '') : null;
+  const renderUpdate = quadPromoRenderer({
+    title: e.name,
+    clubName: b.clubName,
+    senderName: b.senderName,
+    senderTitle: null,
+    dateLabel: when,
+    sessions,
+    playMinutes: 4 * (e.round_duration_minutes ?? 30),
+    divisions: divisionLabels,
+    whoLine,
+    feeLabel: fee,
+    closesLabel,
+    requestMode: e.entry_flow === 'request_then_invite',
+    payWindowHours: 24,
+    sourceLabel: names.length ? sourceLabel : null,
+    signupUrl,
+    sponsor: getSponsor(e.sponsor_id),
+  });
+
   return {
     ok: true,
     data: {
       ownerId: user.id,
       ...b,
       title: e.name,
-      liveUrl: `${APP}/quads/${e.slug}`,
+      liveUrl: signupUrl,
       liveUrlLabel: '🎾 Sign up',
       deadlineNote,
       reminderWhen: null, // promo is a one-shot; the reminder lives on the 'quad' surface
@@ -857,6 +899,7 @@ export async function quadPromoteCampaign(
       everyone,
       nudge: [],
       copy: promoCopy(e.name, sourceLabel, when),
+      renderUpdate,
     },
   };
 }
