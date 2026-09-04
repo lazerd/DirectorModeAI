@@ -319,3 +319,58 @@ export async function sendQuadCompConfirmedEmail(args: {
     ),
   });
 }
+
+/**
+ * Tell the DIRECTOR somebody just signed up.
+ *
+ * Every other email in this file goes to a parent. Nothing went to the person
+ * running the event, so requests arrived in silence and the only way to know
+ * was to open the Entries tab and count. Darrin, on the day a new family
+ * signed up: "why aren't i getting emails when people register? wouldn't that
+ * make sense to notify me?"
+ *
+ * The useful content is not "someone registered" — it is WHERE EACH DIVISION
+ * NOW STANDS. A quad needs four; the decision this email exists to inform is
+ * whether a division has tipped over that line, or is stalling and should be
+ * folded into one that hasn't.
+ */
+export async function sendQuadDirectorNewRequestEmail(args: {
+  to: string;
+  playerName: string;
+  parentName?: string | null;
+  parentEmail?: string | null;
+  tournamentName: string;
+  divisionLabel: string;
+  /** [label, count] per division, in display order. */
+  divisionCounts: { label: string; count: number; needed: number }[];
+  totalRequests: number;
+  entriesUrl: string;
+}) {
+  const rows = args.divisionCounts
+    .map((d) => {
+      const full = d.count >= d.needed;
+      return `<tr>
+        <td style="padding:6px 12px 6px 0;font-size:15px">${d.label}</td>
+        <td style="padding:6px 0;font-size:15px;font-weight:700;color:${full ? '#15803d' : '#b45309'}">
+          ${d.count} of ${d.needed}${full ? ' ✓' : ''}
+        </td>
+      </tr>`;
+    })
+    .join('');
+
+  const contact = [args.parentName, args.parentEmail].filter(Boolean).join(' · ');
+
+  return safeResendSend(resend, {
+    from: FROM,
+    to: args.to,
+    subject: `New signup: ${args.playerName} (${args.divisionLabel}) — ${args.totalRequests} total`,
+    html: htmlShell(
+      `${args.playerName} just signed up`,
+      `<p><strong>${args.divisionLabel}</strong>${contact ? ` — ${contact}` : ''}</p>
+      <p style="margin-top:18px;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#64748b">Where each division stands</p>
+      <table style="border-collapse:collapse;margin:4px 0 16px">${rows}</table>
+      <p><a href="${args.entriesUrl}" style="color: #ea580c;">Open the Entries tab →</a></p>
+      <p style="font-size:13px;color:#64748b">Nobody has been charged. Requests become entries when you send the payment links.</p>`
+    ),
+  });
+}

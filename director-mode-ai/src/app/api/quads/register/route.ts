@@ -32,6 +32,7 @@ import {
   sendQuadsConfirmEmail,
   sendQuadsWaitlistEmail,
   sendQuadRequestReceivedEmail,
+  sendQuadDirectorNewRequestEmail,
 } from '@/lib/quadEmails';
 import { claimCoupon, releaseCoupon, normalizeCode } from '@/lib/quadCoupons';
 import {
@@ -313,6 +314,53 @@ export async function POST(request: Request) {
         }
       } catch (err) {
         console.error('quad request-received email failed:', err);
+      }
+
+      /*
+       * And tell the director. Separate try/catch on purpose: a failure here
+       * must never break the parent's signup, and it must not be swallowed by
+       * the parent email's catch either — these are two independent sends and
+       * one going missing should not hide the other.
+       */
+      try {
+        const { data: owner } = await admin
+          .from('events')
+          .select('user_id')
+          .eq('id', e.id)
+          .maybeSingle();
+        const ownerId = (owner as { user_id: string } | null)?.user_id;
+        if (ownerId) {
+          const { data: authUser } = await admin.auth.admin.getUserById(ownerId);
+          const directorEmail = authUser?.user?.email;
+          if (directorEmail) {
+            // Counts AFTER this row, so the number in the email is what the
+            // director would see if they opened the tab right now.
+            const { data: allEntries } = await admin
+              .from('quad_entries')
+              .select('division')
+              .eq('event_id', e.id);
+            const rows = (allEntries as { division: string | null }[] | null) ?? [];
+            const divisionCounts = divisions.map((dv) => ({
+              label: divisionLabel(divisions, dv.id),
+              count: rows.filter((r) => r.division === dv.id).length,
+              needed: PLAYERS_PER_QUAD,
+            }));
+
+            await sendQuadDirectorNewRequestEmail({
+              to: directorEmail,
+              playerName: player_name,
+              parentName: parent_name || null,
+              parentEmail: parent_email || null,
+              tournamentName: e.name,
+              divisionLabel: divisionLabel(divisions, division),
+              divisionCounts,
+              totalRequests: rows.length,
+              entriesUrl: `${origin}/mixer/events/${e.id}/console`,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('quad director notification failed:', err);
       }
 
       return NextResponse.json({
