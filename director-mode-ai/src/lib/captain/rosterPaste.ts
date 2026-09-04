@@ -17,6 +17,7 @@
 export type ParsedRosterRow = {
   name: string;
   email: string | null;
+  phone: string | null;
   rating: number | null;
   /** 'ok' → tick by default. 'suspect' → show, but do not tick. */
   confidence: 'ok' | 'suspect';
@@ -74,13 +75,26 @@ const CHROME_WORDS = new Set([
 ]);
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const PHONE_RE = /^\+?[\d][\d\s().-]{6,}$/;
+const PHONE_RE = /^\+?[\d(][\d\s().-]{6,}$/;
 const URL_RE = /^(https?:\/\/|www\.)/i;
 const DATE_RE = /\d{1,4}[/-]\d{1,2}[/-]\d{1,4}/;
 const TIME_RE = /\d{1,2}:\d{2}\s*(am|pm)?/i;
 
 /** A person's name: letters, spaces, and the punctuation real names carry. */
 const NAME_SHAPE_RE = /^[\p{L}][\p{L}\p{M}'’.\- ]*$/u;
+
+/**
+ * Is this field a given name (optionally with a middle initial) rather than an
+ * email, a phone, a rating or a note? Used to spot the "Last, First" shape.
+ */
+function looksLikeGivenName(field: string): boolean {
+  const f = (field || '').trim();
+  if (!f || f.length > 40) return false;
+  if (EMAIL_RE.test(f) || PHONE_RE.test(f) || URL_RE.test(f)) return false;
+  if (/\d/.test(f)) return false;
+  if (f.split(/\s+/).filter(Boolean).length > 2) return false;
+  return NAME_SHAPE_RE.test(f);
+}
 
 function classify(name: string): { confidence: 'ok' | 'suspect'; reason?: string } {
   const lower = name.toLowerCase();
@@ -132,12 +146,22 @@ export function parseRosterPaste(text: string): RosterPasteResult {
 
   const rows: ParsedRosterRow[] = [];
   const seen = new Set<string>();
+  let swapped = 0;
 
   for (const line of lines) {
     // Commas first (the documented format), then tabs (spreadsheet paste).
     const parts = (line.includes(',') ? line.split(',') : line.split('\t')).map((s) => s.trim());
-    const name = (parts[0] || '').replace(/\s{2,}/g, ' ').trim();
+    let name = (parts[0] || '').replace(/\s{2,}/g, ' ').trim();
     if (!name) continue;
+
+    // League sites export "Last, First". The comma there means a swap, not a
+    // field break — taking field one as the name imports the whole team by
+    // surname alone. Only swap when field one is a single word and field two
+    // reads as a given name, so "Megan Sullivan, megan@x.com, 3.5" is untouched.
+    if (parts.length >= 2 && name.split(/\s+/).length === 1 && looksLikeGivenName(parts[1])) {
+      name = `${parts[1]} ${name}`.replace(/\s{2,}/g, ' ').trim();
+      swapped += 1;
+    }
 
     // Any field that reads as an email is the email, wherever it sits.
     const email = parts.slice(1).find((p) => EMAIL_RE.test(p)) ?? null;
@@ -145,6 +169,10 @@ export function parseRosterPaste(text: string): RosterPasteResult {
     // A rating is 1–7 with at most one decimal. Anything else is not a rating.
     const ratingRaw = parts.slice(1).find((p) => /^[1-7](\.\d)?$/.test(p));
     const rating = ratingRaw ? Number(ratingRaw) : null;
+
+    // Phone is optional and can sit in any column. Captains paste it in every
+    // shape there is, so keep whatever they typed and let the app normalise.
+    const phone = parts.slice(1).find((p) => PHONE_RE.test(p)) ?? null;
 
     const key = name.toLowerCase();
     if (seen.has(key)) continue; // the same line twice in one paste
@@ -155,11 +183,19 @@ export function parseRosterPaste(text: string): RosterPasteResult {
       confidence = 'suspect';
       reason = 'appears more than once — probably a label';
     }
-    rows.push({ name, email, rating, confidence, reason, raw: line });
+    rows.push({ name, email, phone, rating, confidence, reason, raw: line });
   }
 
   const warnings: string[] = [];
   const suspects = rows.filter((r) => r.confidence === 'suspect').length;
+
+  if (swapped > 0) {
+    warnings.push(
+      `Your list looked like "Last, First", so ${swapped} name${
+        swapped === 1 ? ' was' : 's were'
+      } flipped to read first name first. Check they look right.`,
+    );
+  }
 
   if (rows.length > PLAUSIBLE_TEAM_SIZE) {
     warnings.push(

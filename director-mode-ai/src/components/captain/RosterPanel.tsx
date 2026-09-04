@@ -99,6 +99,7 @@ export default function RosterPanel({
           players: chosen.map((r) => ({
             name: r.name,
             email: r.email || undefined,
+            phone: r.phone || undefined,
             rating: r.rating,
           })),
         }),
@@ -197,11 +198,13 @@ export default function RosterPanel({
           className="mt-4 rounded-2xl border border-white/[0.08] bg-[#002838] p-5"
         >
           <label htmlFor="bulk" className="block text-sm text-white/60 mb-1">
-            One player per line — <span className="text-white/40">Name, email, rating</span>
+            One player per line —{' '}
+            <span className="text-white/40">Name, email, phone, rating</span>
           </label>
           <p className="text-xs text-white/40 mb-2">
-            Pasting from a league page is fine — you&rsquo;ll get to check the list before anyone is
-            added.
+            Email, phone and rating are all optional, and they can come in any order. Pasting
+            from a league page is fine — you&rsquo;ll get to check the list before anyone is
+            added, and pasting again later fills in anything that was missing.
           </p>
           <textarea
             id="bulk"
@@ -281,6 +284,7 @@ export default function RosterPanel({
                       <span className="text-amber-200/70">{r.reason} · </span>
                     )}
                     {r.email || 'no email'}
+                    {r.phone && ` · ${r.phone}`}
                     {r.rating != null && ` · ${r.rating}`}
                   </p>
                 </div>

@@ -150,3 +150,43 @@ describe('isNotAName (server guard)', () => {
     expect(isNotAName('Lessons')).toBeNull();
   });
 });
+
+describe('shapes captains actually paste', () => {
+  it('flips "Last, First" instead of importing everyone by surname', () => {
+    const { rows, warnings } = parseRosterPaste('Sullivan, Megan\nYoo, Karen\nLe, Vi D');
+    expect(rows.map((r) => r.name)).toEqual(['Megan Sullivan', 'Karen Yoo', 'Vi D Le']);
+    expect(rows.every((r) => r.confidence === 'ok')).toBe(true);
+    expect(warnings.join(' ')).toMatch(/Last, First/);
+  });
+
+  it('leaves "First Last, email, rating" alone', () => {
+    const { rows, warnings } = parseRosterPaste('Megan Sullivan, megan@example.com, 2.5');
+    expect(rows[0]).toMatchObject({
+      name: 'Megan Sullivan',
+      email: 'megan@example.com',
+      rating: 2.5,
+    });
+    expect(warnings.join(' ')).not.toMatch(/Last, First/);
+  });
+
+  it('reads "Last, First" with the rest of the columns still attached', () => {
+    const { rows } = parseRosterPaste('Sullivan, Megan, megan@example.com, 925-788-8058, 2.5');
+    expect(rows[0]).toMatchObject({
+      name: 'Megan Sullivan',
+      email: 'megan@example.com',
+      phone: '925-788-8058',
+      rating: 2.5,
+    });
+  });
+
+  it('picks up a phone in any column and any shape', () => {
+    expect(parseRosterPaste('Karen Yoo, (925) 788-8058').rows[0].phone).toBe('(925) 788-8058');
+    expect(parseRosterPaste('Karen Yoo, 925.788.8058, k@x.com').rows[0].phone).toBe('925.788.8058');
+    expect(parseRosterPaste('Karen Yoo, k@x.com, 3.5').rows[0].phone).toBeNull();
+  });
+
+  it('does not mistake a rating or a name for a phone number', () => {
+    expect(parseRosterPaste('Karen Yoo, 3.5').rows[0].phone).toBeNull();
+    expect(parseRosterPaste('Karen Yoo, 3.5').rows[0].rating).toBe(3.5);
+  });
+});

@@ -63,6 +63,7 @@ export async function POST(req: Request) {
     players?: {
       name?: string;
       email?: string;
+      phone?: string;
       rating?: number | null;
       gender?: 'M' | 'F' | null;
       is_sub?: boolean;
@@ -94,55 +95,87 @@ export async function POST(req: Request) {
     return !reason;
   });
 
-  // Skip anyone already on the roster, the way /api/captain/import does, so a
-  // re-paste or a double-click tops up rather than duplicating the team.
+  // Anyone already on the roster is TOPPED UP rather than skipped. A captain
+  // who pastes name+email first and learns later that phone is wanted should be
+  // able to paste again with the extra column, not edit 19 players by hand.
+  // Only empty fields are filled — a re-paste never overwrites what is there.
   const { data: existing } = await ctx.db
     .from('captain_players')
-    .select('name')
+    .select('id, name, email, phone, rating')
     .eq('team_id', ctx.teamId);
-  const have = new Set(
-    ((existing as { name: string }[]) || []).map((p) => p.name.trim().toLowerCase()),
+  const byName = new Map(
+    ((existing as { id: string; name: string; email: string | null; phone: string | null; rating: number | null }[]) ||
+      []).map((p) => [p.name.trim().toLowerCase(), p]),
   );
 
   const seen = new Set<string>();
-  const rows = kept
-    .filter((p) => {
-      const key = p.name!.trim().toLowerCase();
-      if (have.has(key) || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .map((p) => ({
-      team_id: ctx.teamId,
-      name: p.name!.trim(),
-      email: p.email?.trim() || null,
-      rating: p.rating ?? null,
-      gender: p.gender ?? null,
-      is_sub: !!p.is_sub,
-    }));
+  const fresh: Record<string, unknown>[] = [];
+  const topUps: { id: string; patch: Record<string, unknown> }[] = [];
 
-  const duplicates = kept.length - rows.length;
+  for (const p of kept) {
+    const key = p.name!.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
 
-  if (!rows.length) {
+    const already = byName.get(key);
+    if (!already) {
+      fresh.push({
+        team_id: ctx.teamId,
+        name: p.name!.trim(),
+        email: p.email?.trim() || null,
+        phone: p.phone?.trim() || null,
+        rating: p.rating ?? null,
+        gender: p.gender ?? null,
+        is_sub: !!p.is_sub,
+      });
+      continue;
+    }
+
+    const patch: Record<string, unknown> = {};
+    if (!already.email && p.email?.trim()) patch.email = p.email.trim();
+    if (!already.phone && p.phone?.trim()) patch.phone = p.phone.trim();
+    if (already.rating == null && p.rating != null) patch.rating = p.rating;
+    if (Object.keys(patch).length) topUps.push({ id: already.id, patch });
+  }
+
+  if (!fresh.length && !topUps.length) {
     return NextResponse.json(
       {
         error: rejected.length
           ? "None of those look like player names — check what you pasted."
-          : 'Everyone on that list is already on the roster.',
+          : 'Everyone on that list is already on the roster, with nothing new to add.',
         rejected,
-        duplicates,
       },
       { status: 400 },
     );
   }
 
-  const { data, error } = await ctx.db.from('captain_players').insert(rows).select('id, name');
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  let added: { id: string; name: string }[] = [];
+  if (fresh.length) {
+    const { data, error } = await ctx.db
+      .from('captain_players')
+      .insert(fresh)
+      .select('id, name');
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    added = (data as { id: string; name: string }[]) || [];
+  }
+
+  let updated = 0;
+  for (const t of topUps) {
+    const { error } = await ctx.db
+      .from('captain_players')
+      .update(t.patch)
+      .eq('id', t.id)
+      .eq('team_id', ctx.teamId);
+    if (!error) updated += 1;
+  }
+
   return NextResponse.json({
     ok: true,
-    added: data?.length ?? 0,
-    players: data,
-    skipped: { duplicates, rejected },
+    added: added.length,
+    updated,
+    players: added,
+    skipped: { rejected },
   });
 }
 
