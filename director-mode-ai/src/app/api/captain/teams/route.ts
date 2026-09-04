@@ -88,6 +88,8 @@ export async function POST(req: Request) {
 export async function PATCH(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     team_id?: string;
+    name?: string;
+    level?: string;
     captaining_style?: string;
     poll_lead_days?: number;
     lineup_lead_days?: number;
@@ -104,6 +106,15 @@ export async function PATCH(req: Request) {
   if (isError(ctx)) return ctx.error;
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+
+  if (body.name !== undefined) {
+    const name = body.name.trim();
+    if (!name) return NextResponse.json({ error: 'A team name is required.' }, { status: 400 });
+    patch.name = name;
+  }
+  // Blank is allowed: a captain who typed the division wrong should be able to
+  // clear it, not be stuck with it.
+  if (body.level !== undefined) patch.level = body.level.trim() || null;
 
   if (body.captaining_style !== undefined) {
     if (body.captaining_style !== 'play_to_win' && body.captaining_style !== 'equal_play') {

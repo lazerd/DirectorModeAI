@@ -43,7 +43,9 @@ const MatchZ = z.object({
     .regex(/^\d{2}:\d{2}$/)
     .nullable()
     .optional(),
-  is_home: z.boolean(),
+  // Nullable on purpose: "I could not tell" is a real answer, and forcing it
+  // into a boolean turned every uncertain match into an away match.
+  is_home: z.boolean().nullable(),
   opponent: z.string().max(200).nullable().optional(),
   location: z.string().max(200).nullable().optional(),
 });
@@ -61,8 +63,18 @@ type Parsed = z.infer<typeof ParsedZ>;
  * a tz library. Ask Intl what UTC offset America/Los_Angeles had on that date so
  * matches land at the right local hour on both sides of the DST change.
  */
-function clubTimestamp(date: string, time: string | null | undefined): string {
-  const hhmm = time || '09:30';
+/**
+ * ⚠️ `time` is REQUIRED. There is no default, and there must never be one.
+ *
+ * This used to fall back to '09:30' — the start time of one adult league,
+ * hardcoded into a shared path. When an LLM extraction came back without a
+ * time, every Junior Team Tennis match silently became 9:30am instead of 4:00pm
+ * and the availability email went to parents with the wrong hour on it. A
+ * missing time has to stop the row, not quietly acquire a plausible one:
+ * families set alarms by this.
+ */
+function clubTimestamp(date: string, time: string): string {
+  const hhmm = time;
   const naive = new Date(`${date}T${hhmm}:00Z`);
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/Los_Angeles',
@@ -87,9 +99,13 @@ Rules:
 - Extract only what is actually present. Never invent a player, a date, or an email.
 - "rating" is the NTRP number (e.g. 3.5). Use null if the page does not show one.
 - "time" is 24-hour local time. Use null if the page shows no time.
-- is_home: true when THIS team hosts. On most league sites the home team is listed
-  first, or the site labels it. If you genuinely cannot tell, default to false and
-  add a note saying so.
+- "time": read it off the page. NEVER guess one. If the page shows no start time
+  for a match, return null — a wrong time is far worse than a missing one.
+- is_home: true when THIS team hosts, false when the other team does. Many
+  schedules have explicit "Home Team" and "Visiting Team" columns — use them.
+  Return NULL if you genuinely cannot tell, and add a note. Do not guess, and in
+  particular do not default to false: that silently turns every home match into
+  an away one.
 - Some league sites (notably TopDog flex leagues) publish every match on a
   placeholder SUNDAY that represents the week, not the day of play. If you see a
   schedule where nearly every match falls on a Sunday, still return the dates
@@ -155,11 +171,21 @@ export async function POST(req: Request) {
       }));
 
     const courts = defaultCourts(ctx.team);
+    /*
+     * A match with no start time is NOT imported. There is nothing sensible to
+     * write into match_at, and everything downstream — the availability email,
+     * the calendar invite, the day-before reminder — states that time as fact.
+     */
+    const timeless = parsed.data.matches.filter((m) => !m.time);
+
     const newMatches = parsed.data.matches
+      .filter((m) => !!m.time)
       .map((m) => ({
         team_id: teamId,
-        match_at: clubTimestamp(m.date, m.time),
-        is_home: m.is_home,
+        match_at: clubTimestamp(m.date, m.time as string),
+        // Unknown home/away is recorded as away but SAID OUT LOUD below, so the
+        // captain fixes it rather than discovering it in a parent's reply.
+        is_home: m.is_home ?? false,
         opponent: m.opponent || null,
         location: m.location || null,
         // Was hardcoded 0 singles / 4 doubles — the shape of one East Bay
@@ -179,8 +205,22 @@ export async function POST(req: Request) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    const unsureHome = parsed.data.matches.filter((m) => m.is_home === null && m.time);
+
     return NextResponse.json({
       added: { players: newPlayers.length, matches: newMatches.length },
+      /*
+       * Named, not counted. "2 matches need attention" sends a captain hunting;
+       * the dates tell them exactly which rows to open.
+       */
+      needsAttention: [
+        ...timeless.map(
+          (m) => `${m.date}: no start time on the page — not imported. Add it by hand.`,
+        ),
+        ...unsureHome.map(
+          (m) => `${m.date}: could not tell home from away — set as AWAY, check it.`,
+        ),
+      ],
       skipped: {
         players: parsed.data.players.length - newPlayers.length,
         matches: parsed.data.matches.length - newMatches.length,

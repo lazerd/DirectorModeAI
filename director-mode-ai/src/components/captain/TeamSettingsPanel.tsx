@@ -25,6 +25,10 @@ type Props = {
   courtFormat: number | null;
   /** Only leagues where players share lines need to publish this. */
   showCourtFormat: boolean;
+  teamName: string;
+  level: string | null;
+  levelLabel: string;
+  sourceTeamId: string | null;
 };
 
 const STYLES = [
@@ -57,6 +61,10 @@ export default function TeamSettingsPanel({
   doublesCourts,
   courtFormat,
   showCourtFormat,
+  teamName,
+  level,
+  levelLabel,
+  sourceTeamId,
 }: Props) {
   const router = useRouter();
   const [style, setStyle] = useState(
@@ -67,6 +75,9 @@ export default function TeamSettingsPanel({
   const [singles, setSingles] = useState(String(singlesCourts));
   const [doubles, setDoubles] = useState(String(doublesCourts));
   const [format, setFormat] = useState(courtFormat == null ? '' : String(courtFormat));
+  const [name, setName] = useState(teamName);
+  const [lvl, setLvl] = useState(level ?? '');
+  const [srcId, setSrcId] = useState(sourceTeamId ?? '');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +149,53 @@ export default function TeamSettingsPanel({
           );
         })}
       </div>
+
+      <h3 className="text-white/50 text-sm uppercase tracking-wide mt-8 mb-2">Name &amp; division</h3>
+      <div className="rounded-2xl border border-white/[0.08] bg-[#002838] p-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div>
+          <label htmlFor="team-name-edit" className="block text-xs text-white/50 mb-1">
+            Team name
+          </label>
+          <input
+            id="team-name-edit"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={() => name.trim() && name !== teamName && save({ name })}
+            style={INPUT_COLOR}
+            className={`${field} w-full`}
+          />
+        </div>
+        <div>
+          <label htmlFor="team-level-edit" className="block text-xs text-white/50 mb-1">
+            {levelLabel}
+          </label>
+          <input
+            id="team-level-edit"
+            value={lvl}
+            onChange={(e) => setLvl(e.target.value)}
+            onBlur={() => lvl !== (level ?? '') && save({ level: lvl })}
+            style={INPUT_COLOR}
+            className={`${field} w-full`}
+          />
+        </div>
+        <div>
+          <label htmlFor="team-source-id" className="block text-xs text-white/50 mb-1">
+            League Team ID
+          </label>
+          <input
+            id="team-source-id"
+            value={srcId}
+            onChange={(e) => setSrcId(e.target.value)}
+            onBlur={() => srcId !== (sourceTeamId ?? '') && save({ source_team_id: srcId })}
+            style={INPUT_COLOR}
+            className={`${field} w-full`}
+          />
+        </div>
+      </div>
+      <p className="text-xs text-white/35 mt-2">
+        The Team ID also stops your own club being imported as an opponent from the league contact
+        list.
+      </p>
 
       <h3 className="text-white/50 text-sm uppercase tracking-wide mt-8 mb-2">Lines per match</h3>
       <div className="rounded-2xl border border-white/[0.08] bg-[#002838] p-5 flex flex-wrap gap-6">

@@ -91,6 +91,8 @@ export default function ImportPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  /** Rows the import could not read confidently — named, so they get fixed. */
+  const [attention, setAttention] = useState<string[]>([]);
 
   const [skipPlayers, setSkipPlayers] = useState<Set<number>>(new Set());
   const [skipMatches, setSkipMatches] = useState<Set<number>>(new Set());
@@ -143,6 +145,7 @@ export default function ImportPanel({
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Import failed.');
       const { players, matches } = json.added || {};
+      setAttention((json.needsAttention as string[]) || []);
       const skipped = (json.skipped?.players ?? 0) + (json.skipped?.matches ?? 0);
       setDone(
         `Added ${players} player${players === 1 ? '' : 's'} and ${matches} match${
@@ -197,6 +200,20 @@ export default function ImportPanel({
       </div>
 
       {done && <p className="text-sm text-[#D3FB52] mt-3">{done}</p>}
+      {/* A wrong time or a wrong home/away reaches parents as fact, so this is
+          a block they have to read, not a line under a success message. */}
+      {attention.length > 0 && (
+        <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-4">
+          <p className="text-amber-200 text-sm font-medium">
+            Check these before emailing anyone
+          </p>
+          <ul className="mt-2 space-y-1 text-sm text-amber-100/80">
+            {attention.map((a) => (
+              <li key={a}>{a}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {error && <p className="text-sm text-red-300 mt-3">{error}</p>}
 
       {open && !preview && (

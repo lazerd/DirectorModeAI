@@ -425,6 +425,10 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         doublesCourts={courts.doubles}
         courtFormat={team.court_format}
         showCourtFormat={!!leagueSpec(team.league_type).multiLine}
+        teamName={team.name}
+        level={team.level}
+        levelLabel={leagueSpec(team.league_type).levelLabel}
+        sourceTeamId={team.source_team_id}
       />
 
       <StrengthOrderPanel teamId={team.id} players={roster as never} />
