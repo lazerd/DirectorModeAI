@@ -29,6 +29,7 @@ export async function POST(req: Request) {
     club_id?: string;
     season_start?: string;
     season_end?: string;
+    source_team_id?: string;
     eligibility_enabled?: boolean;
     min_matches_default?: number;
     min_matches_self_rated?: number;
@@ -59,6 +60,7 @@ export async function POST(req: Request) {
       created_by: ctx.userId,
       name: body.name.trim(),
       league_type: body.league_type || 'usta_adult',
+      source_team_id: body.source_team_id?.trim() || null,
       default_singles_courts: spec.singlesCourts,
       default_doubles_courts: spec.doublesCourts,
       level: body.level || null,
@@ -95,6 +97,7 @@ export async function PATCH(req: Request) {
     default_singles_courts?: number;
     default_doubles_courts?: number;
     court_format?: number;
+    source_team_id?: string;
   };
 
   const ctx = await requireTeam(body.team_id || '');
@@ -167,6 +170,10 @@ export async function PATCH(req: Request) {
     if (singles + doubles === 0) {
       return NextResponse.json({ error: 'A match needs at least one line.' }, { status: 400 });
     }
+  }
+
+  if (body.source_team_id !== undefined) {
+    patch.source_team_id = body.source_team_id.trim() || null;
   }
 
   if (body.court_format !== undefined) {

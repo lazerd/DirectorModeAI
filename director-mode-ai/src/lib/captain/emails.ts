@@ -884,3 +884,67 @@ export function seasonWhenText(matchAts: string[], tz: string = CLUB_TZ): string
   if (days.size === 1) return `${[...days][0]}s — start times vary, so check the league schedule`;
   return 'on the dates and times in the league schedule';
 }
+
+/**
+ * The note to the opposing captain when THEY are hosting.
+ *
+ * The hosting note tells them what to expect at our club. Away, the questions
+ * run the other way: we are confirming we'll be there, saying how many lines we
+ * are bringing so they can plan courts, and asking the one thing that is never
+ * on a league site — whether there is anywhere to warm up.
+ *
+ * The panel used to disappear entirely on an away match, so a captain with four
+ * away fixtures had no way to confirm any of them from the app.
+ */
+export function visitingBodyText(
+  m: MatchInfo,
+  opts: {
+    opposingCaptainName?: string | null;
+    /** Our team, as they'd recognise it. */
+    teamName: string;
+    /** Where they play. */
+    venue?: string | null;
+    lineCount?: number | null;
+    singlesCourts?: number | null;
+    doublesCourts?: number | null;
+    /** Anything the captain keeps saying every away match. */
+    notes?: string | null;
+    fromName?: string | null;
+    fromTitle?: string | null;
+    fromPhone?: string | null;
+  },
+  tz?: string,
+): string {
+  const when = formatMatchWhen(m.matchAt, tz);
+  const greeting = opts.opposingCaptainName?.trim()
+    ? `Hi ${opts.opposingCaptainName.trim().split(/\s+/)[0]},`
+    : 'Hi there,';
+
+  const lines =
+    opts.lineCount && opts.lineCount > 0
+      ? `We're fielding all ${opts.lineCount} lines` +
+        (opts.singlesCourts && opts.doublesCourts
+          ? ` (${opts.singlesCourts} singles, ${opts.doublesCourts} doubles).`
+          : '.')
+      : null;
+
+  const blocks = [
+    greeting,
+    `Just confirming ${opts.teamName} for ${when}${opts.venue ? ` at ${opts.venue}` : ''}.`,
+    lines,
+    // The question that is never answered anywhere, and that decides what time
+    // eight people set their alarms for.
+    'Are there warmup courts available beforehand, and what time would you like us there?',
+    (opts.notes || '').trim(),
+    "Let me know if anything changes at your end and I'll do the same.",
+    'Thanks!',
+    [opts.fromName, opts.fromTitle, opts.fromPhone].filter(Boolean).join('\n'),
+  ].filter((b) => b && String(b).trim());
+
+  return blocks.join('\n\n');
+}
+
+/** Subject for the away confirmation. */
+export function defaultVisitingSubject(team: string, m: MatchInfo, tz?: string): string {
+  return `${team} — confirming ${formatMatchWhen(m.matchAt, tz)}`;
+}

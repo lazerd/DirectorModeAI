@@ -5,6 +5,7 @@
  *   `preview:true` returns the exact payload without sending it.
  */
 import { NextResponse } from 'next/server';
+import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { availabilityEmail, nudgeEmail, sendAll, type MatchInfo } from '@/lib/captain/emails';
 import { resolveSettings, type SettingRow } from '@/lib/captain/timeline';
@@ -101,6 +102,13 @@ export async function POST(req: Request) {
   );
 
   // Show, then send — same builder, same data, so the preview is the real thing.
+  // A nudge chases non-responders; copying the coaches on every chase is noise,
+  // so only the full team send carries them.
+  const ccs = body.only_missing
+    ? []
+    : await teamCcRecipients(ctx.db, ctx.teamId, roster.map((p) => p.email as string));
+  const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];
+
   if (body.preview) {
     return NextResponse.json({
       preview: true,
@@ -109,11 +117,12 @@ export async function POST(req: Request) {
       sample_for: roster[0].name,
       count: payloads.length,
       recipients: roster.map((p) => ({ name: p.name, email: p.email })),
+      copied_to: ccs.map((c) => ({ name: c.name, email: c.email })),
     });
   }
 
   try {
-    const results = await sendAll(ctx.userId, payloads);
+    const results = await sendAll(ctx.userId, [...payloads, ...ccMail]);
     await db
       .from('captain_matches')
       .update(

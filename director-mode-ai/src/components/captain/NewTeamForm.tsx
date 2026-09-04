@@ -13,6 +13,7 @@ export default function NewTeamForm() {
   // combined cap in Combo/Mixed, a ball-colour division in Junior Team Tennis.
   const spec = leagueSpec(leagueType);
   const [level, setLevel] = useState('');
+  const [sourceTeamId, setSourceTeamId] = useState('');
   const [eligibilityEnabled, setEligibilityEnabled] = useState(false);
   const [minDefault, setMinDefault] = useState(2);
   const [minSelfRated, setMinSelfRated] = useState(3);
@@ -31,6 +32,7 @@ export default function NewTeamForm() {
           name,
           league_type: leagueType,
           level: level || null,
+          source_team_id: sourceTeamId.trim() || null,
           eligibility_enabled: eligibilityEnabled,
           min_matches_default: minDefault,
           min_matches_self_rated: minSelfRated,
@@ -44,6 +46,7 @@ export default function NewTeamForm() {
       setOpen(false);
       setName('');
       setLevel('');
+      setSourceTeamId('');
       router.refresh();
       if (j.team?.id) router.push(`/captain/${j.team.id}`);
     } catch {
@@ -125,6 +128,27 @@ export default function NewTeamForm() {
             </p>
           )}
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="source-team-id" className="block text-sm text-white/60 mb-1">
+          League Team ID <span className="text-white/30">(optional)</span>
+        </label>
+        <input
+          id="source-team-id"
+          value={sourceTeamId}
+          onChange={(e) => setSourceTeamId(e.target.value)}
+          placeholder={leagueType === 'jtt' ? '5083524580' : ''}
+          className="w-full px-3 py-2.5 rounded-xl bg-[#001820] border border-white/10 text-white placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none"
+        />
+        {/* Not cosmetic: without it the contact-list import cannot tell which
+            row is YOUR team, so your own club lands in the opponent list and
+            the season-opener email goes to you and your co-captains. */}
+        <p className="text-xs text-white/40 mt-1">
+          {leagueType === 'jtt'
+            ? 'The number parents type on TennisLink to register. It also stops your own club being imported as an opponent.'
+            : 'Your team’s id on the league site, if it has one.'}
+        </p>
       </div>
 
       {leagueType === 'jtt' && (

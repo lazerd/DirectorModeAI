@@ -22,6 +22,7 @@ import {
   type RatingType,
 } from '@/lib/captain/lineup';
 import { generateJttLineup } from '@/lib/captain/jttLineup';
+import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
 import { leagueSpec } from '@/lib/captain/leagues';
 import { resolveAvailability } from '@/lib/captain/availability';
 import { answersByPlayer, rowsWithAnswers, answerTally } from '@/lib/captain/lineupSave';
@@ -378,8 +379,17 @@ export async function POST(req: Request) {
         ),
       );
 
+    // The coaching staff gets the lineup too — arguably the email they most
+    // need, since they are the ones running the match.
+    const ccs = await teamCcRecipients(
+      db,
+      ctx.teamId,
+      (players ?? []).filter((p) => !!p.email).map((p) => p.email as string),
+    );
+    const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];
+
     try {
-      const results = await sendAll(ctx.userId, payloads);
+      const results = await sendAll(ctx.userId, [...payloads, ...ccMail]);
       await db
         .from('captain_matches')
         .update({ lineup_email_sent_at: new Date().toISOString() })

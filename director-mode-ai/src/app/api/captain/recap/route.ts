@@ -18,6 +18,7 @@
  * about and what the email prints can never disagree.
  */
 import { NextResponse } from 'next/server';
+import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { matchRecapEmail, sendAll } from '@/lib/captain/emails';
@@ -162,8 +163,17 @@ export async function POST(req: Request) {
     );
   }
 
+  // The result goes to the coaching staff as well — they were there.
+  const payloads = ctx.roster.map(buildFor);
+  const ccs = await teamCcRecipients(
+    db,
+    teamId,
+    ctx.roster.map((p) => (p as { email?: string | null }).email ?? null),
+  );
+  const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];
+
   try {
-    const sendResults = await sendAll(team.captain_user_id, ctx.roster.map(buildFor));
+    const sendResults = await sendAll(team.captain_user_id, [...payloads, ...ccMail]);
     const sent = sendResults.filter((r) => r.sent).length;
 
     if (body.save_template) {

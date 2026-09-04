@@ -19,6 +19,8 @@ import {
   opponentHostingEmail,
   hostingBodyText,
   defaultHostingSubject,
+  visitingBodyText,
+  defaultVisitingSubject,
   type MatchInfo,
 } from '@/lib/captain/emails';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
@@ -170,7 +172,29 @@ export async function POST(req: Request) {
    * change enough week to week that a rigid template is wrong at the worst
    * possible moment.
    */
-  const defaultBody = hostingBodyText(
+  /*
+   * Away, the questions run the other way — we are confirming we'll be there,
+   * saying how many lines we're bringing so they can plan courts, and asking
+   * whether there is anywhere to warm up. The panel used to vanish entirely on
+   * an away match, so four away fixtures meant four unconfirmed matches.
+   */
+  const defaultBody = !m.isHome
+    ? visitingBodyText(
+        m,
+        {
+          opposingCaptainName: name || null,
+          teamName: team.name as string,
+          venue: (matchRow.location as string | null) ?? null,
+          lineCount,
+          singlesCourts: (matchRow.singles_courts as number) || null,
+          doublesCourts: (matchRow.doubles_courts as number) || null,
+          notes: hostNotes || null,
+          fromName,
+          fromTitle,
+        },
+        CLUB_TZ,
+      )
+    : hostingBodyText(
     m,
     {
       opposingCaptainName: name || null,
@@ -194,7 +218,11 @@ export async function POST(req: Request) {
     CLUB_TZ,
   );
   const bodyText = body.body !== undefined ? body.body : defaultBody;
-  const subject = body.subject ?? defaultHostingSubject(team.name as string, m, clubName, CLUB_TZ);
+  const subject =
+    body.subject ??
+    (m.isHome
+      ? defaultHostingSubject(team.name as string, m, clubName, CLUB_TZ)
+      : defaultVisitingSubject(team.name as string, m, CLUB_TZ));
 
   const email = opponentHostingEmail(
     team.name as string,

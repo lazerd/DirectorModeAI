@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server';
 import { requireTeam, isError, type CaptainCtx } from '@/lib/captain/server';
 import { seasonAvailabilityEmail, sendAll, type MatchInfo } from '@/lib/captain/emails';
+import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
 
@@ -161,6 +162,17 @@ export async function POST(req: Request) {
     ),
   );
 
+  /*
+   * Coaches and other team contacts are copied on the whole-team send only —
+   * never on a targeted one. A targeted send exists to chase one player without
+   * bothering anybody else, and copying the coaching staff on it defeats the
+   * entire point.
+   */
+  const ccs = body.player_ids?.length
+    ? []
+    : await teamCcRecipients(ctx.db, ctx.teamId, roster.map((p) => p.email as string));
+  const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];
+
   // Show, then send. The preview is the first real payload — same builder, same
   // data — so what the captain approves is literally what goes out.
   if (body.preview) {
@@ -172,14 +184,16 @@ export async function POST(req: Request) {
       count: payloads.length,
       matches: matches.length,
       recipients: roster.map((p) => ({ name: p.name, email: p.email })),
+      copied_to: ccs.map((c) => ({ name: c.name, email: c.email })),
     });
   }
 
   try {
-    const results = await sendAll(ctx.userId, payloads);
+    const results = await sendAll(ctx.userId, [...payloads, ...ccMail]);
     return NextResponse.json({
       ok: true,
       sent: results.filter((r) => r.sent).length,
+      copied: ccMail.length,
       matches: matches.length,
     });
   } catch (err) {

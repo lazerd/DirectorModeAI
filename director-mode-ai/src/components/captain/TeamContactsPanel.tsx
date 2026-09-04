@@ -121,7 +121,9 @@ export default function TeamContactsPanel({
       </div>
       <p className="text-white/40 text-xs mt-1">
         Anyone who should get the team&rsquo;s emails without being in a lineup — a coach, a
-        co-captain, the parent who does the driving.
+        co-captain, the parent who does the driving. Anyone ticked below is copied on the
+        availability poll, the lineup and the match result, marked as their copy so they know
+        there is nothing for them to answer. They are left off targeted chases to one player.
       </p>
 
       {contacts.length > 0 && (

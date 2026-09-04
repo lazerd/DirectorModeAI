@@ -5,7 +5,12 @@ import { Mail, Loader2, Send, Eye, Check, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 /**
- * "Email the opposing captain" — the hosting note, from the match page.
+ * "Email the opposing captain", from the match page.
+ *
+ * Home, it is the hosting note: what to expect at our club. Away, it confirms
+ * we'll be there, says how many lines we're bringing so they can plan courts,
+ * and asks whether there are warmup courts — the one thing never published
+ * anywhere. Both are fully editable before anything sends.
  *
  * ALWAYS PREVIEWS FIRST. This email leaves the building: it goes to a captain
  * at another club, so there is no undo and no graceful correction. The button
@@ -72,8 +77,6 @@ export default function HostEmailPanel({
   const [edited, setEdited] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
-  // Away matches are somebody else's hosting job.
-  if (!isHome) return null;
 
   const load = async () => {
     setOpen(true);
@@ -179,7 +182,8 @@ export default function HostEmailPanel({
       <div className="flex items-center gap-2">
         <Mail size={17} className="text-slate-500" />
         <h3 className="text-[15px] font-semibold text-slate-900">
-          Hosting note{opponent ? ` — ${opponent}` : ''}
+          {isHome ? 'Hosting note' : 'Confirming with them'}
+          {opponent ? ` — ${opponent}` : ''}
         </h3>
         <button
           onClick={() => setOpen(false)}
@@ -220,7 +224,9 @@ export default function HostEmailPanel({
 
       <label className="mt-3 block">
         <span className="text-[12.5px] font-medium text-slate-600">
-          Venue notes — saved to the team, and used to build the default message below
+          {isHome
+            ? 'Venue notes — saved to the team, and used to build the default message below'
+            : 'Anything you say every away match — saved to the team, and used below'}
         </span>
         <textarea
           value={notes}
