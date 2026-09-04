@@ -129,6 +129,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       club_phone: string | null;
     }[]) || []
   ).map((o) => ({
+    id: o.id,
     opponent: o.opponent,
     division: o.division,
     court_format: o.court_format,

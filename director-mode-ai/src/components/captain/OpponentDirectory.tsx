@@ -1,4 +1,5 @@
 import { Phone, Mail, Building2, Users, ShieldCheck } from 'lucide-react';
+import RemoveOpponentButton from './RemoveOpponentButton';
 import OpponentImportPanel from './OpponentImportPanel';
 import SeasonOpenerPanel from './SeasonOpenerPanel';
 
@@ -24,6 +25,7 @@ export type OpponentPerson = {
 };
 
 export type OpponentContact = {
+  id: string;
   opponent: string;
   division: string | null;
   court_format: number | null;
@@ -107,7 +109,10 @@ export default function OpponentDirectory({
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {contacts.map((c) => (
           <div key={c.opponent} className="rounded-2xl border border-white/[0.08] bg-[#002838] p-5">
-            <h3 className="text-[15px] font-semibold text-white">{c.opponent}</h3>
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="text-[15px] font-semibold text-white">{c.opponent}</h3>
+              <RemoveOpponentButton teamId={teamId} id={c.id} name={c.opponent} />
+            </div>
             {(c.division || c.court_format) && (
               <p className="text-[12px] text-white/35">
                 {c.division}
