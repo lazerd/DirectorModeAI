@@ -167,8 +167,8 @@ export default async function MatchPage({
             player2ConfirmedSource: (l.player2_confirmed_source as string) ?? null,
           })) as never
         }
-        singlesCourts={(match.singles_courts as number) ?? 2}
-        doublesCourts={(match.doubles_courts as number) ?? 3}
+        singlesCourts={match.singles_courts as number}
+        doublesCourts={match.doubles_courts as number}
         lineupSent={!!match.lineup_email_sent_at}
         matchAt={match.match_at as string}
         status={match.status as string}

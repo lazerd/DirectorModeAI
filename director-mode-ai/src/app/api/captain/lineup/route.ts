@@ -130,8 +130,15 @@ export async function POST(req: Request) {
       db.from('captain_never_pair').select('player_a_id, player_b_id').eq('team_id', teamId),
     ]);
 
-    const singlesCourts = (match.singles_courts as number) ?? 2;
-    const doublesCourts = (match.doubles_courts as number) ?? 3;
+    /*
+     * Read straight off the match. No `?? 2 / ?? 3` fallback: those columns are
+     * NOT NULL, so the fallback was unreachable — but it is the same shape as
+     * the `time || '09:30'` default that put 9:30am into three teams' worth of
+     * parent emails, and a harmless-looking default is exactly how that one sat
+     * unnoticed. If these ever read null, that is a bug to see, not to paper over.
+     */
+    const singlesCourts = match.singles_courts as number;
+    const doublesCourts = match.doubles_courts as number;
     const partnerPrefs = ((prefs as Record<string, unknown>[]) || []).map((r) => ({
       playerId: r.player_id as string,
       preferredPlayerId: r.preferred_player_id as string,
