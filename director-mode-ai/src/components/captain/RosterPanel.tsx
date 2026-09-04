@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { parseRosterPaste, type ParsedRosterRow } from '@/lib/captain/rosterPaste';
 import { useRouter } from 'next/navigation';
 
 type Player = {
@@ -54,47 +55,62 @@ export default function RosterPanel({
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [bulk, setBulk] = useState('');
+  // Paste -> preview -> confirm. Nothing reaches the roster until the captain
+  // has seen the parsed rows and ticked them.
+  const [preview, setPreview] = useState<ParsedRosterRow[] | null>(null);
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const needsGender = leagueType === 'usta_mixed';
 
-  async function addBulk(e: React.FormEvent) {
+  /** Step 1 — parse the paste and show what we found. Writes nothing. */
+  function reviewBulk(e: React.FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
-    // One player per line: "Name, email, rating"
-    const rows = bulk
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((line) => {
-        const [name, email, rating] = line.split(',').map((s) => s?.trim());
-        return {
-          name,
-          email: email || undefined,
-          rating: rating ? Number(rating) : null,
-        };
-      })
-      .filter((p) => p.name);
-
+    const { rows, warnings: w } = parseRosterPaste(bulk);
     if (!rows.length) {
       setError('Add at least one name.');
-      setBusy(false);
       return;
     }
+    setPreview(rows);
+    setWarnings(w);
+    // Only confident rows start ticked; anything doubtful is opt-in.
+    setPicked(new Set(rows.map((r, i) => (r.confidence === 'ok' ? i : -1)).filter((i) => i >= 0)));
+  }
+
+  /** Step 2 — add the ticked rows. */
+  async function confirmBulk() {
+    const chosen = (preview || []).filter((_, i) => picked.has(i));
+    if (!chosen.length) {
+      setError('Tick at least one player.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
     try {
       const res = await fetch('/api/captain/players', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ team_id: teamId, players: rows }),
+        body: JSON.stringify({
+          team_id: teamId,
+          players: chosen.map((r) => ({
+            name: r.name,
+            email: r.email || undefined,
+            rating: r.rating,
+          })),
+        }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) setError(j.error || 'Could not add players.');
       else {
         setBulk('');
         setAdding(false);
+        setPreview(null);
+        setPicked(new Set());
+        setWarnings([]);
         router.refresh();
       }
     } catch {
@@ -102,6 +118,12 @@ export default function RosterPanel({
     } finally {
       setBusy(false);
     }
+  }
+
+  function cancelPreview() {
+    setPreview(null);
+    setPicked(new Set());
+    setWarnings([]);
   }
 
   async function patch(playerId: string, body: Record<string, unknown>, prefs?: Pref[]) {
@@ -156,7 +178,11 @@ export default function RosterPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-display text-white">Roster</h2>
         <button
-          onClick={() => setAdding((v) => !v)}
+          onClick={() => {
+            setAdding((v) => !v);
+            cancelPreview();
+            setError(null);
+          }}
           className="text-sm px-4 py-2 rounded-xl border border-white/10 text-white/70 hover:text-white hover:border-white/25"
         >
           {adding ? 'Cancel' : '+ Add players'}
@@ -165,14 +191,18 @@ export default function RosterPanel({
 
       {error && <p className="text-sm text-red-300 mt-3">{error}</p>}
 
-      {adding && (
+      {adding && !preview && (
         <form
-          onSubmit={addBulk}
+          onSubmit={reviewBulk}
           className="mt-4 rounded-2xl border border-white/[0.08] bg-[#002838] p-5"
         >
           <label htmlFor="bulk" className="block text-sm text-white/60 mb-1">
             One player per line — <span className="text-white/40">Name, email, rating</span>
           </label>
+          <p className="text-xs text-white/40 mb-2">
+            Pasting from a league page is fine — you&rsquo;ll get to check the list before anyone is
+            added.
+          </p>
           <textarea
             id="bulk"
             rows={5}
@@ -183,12 +213,89 @@ export default function RosterPanel({
           />
           <button
             type="submit"
-            disabled={busy}
-            className="mt-3 px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold disabled:opacity-50"
+            className="mt-3 px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold"
           >
-            {busy ? 'Adding…' : 'Add to roster'}
+            Review the list
           </button>
         </form>
+      )}
+
+      {adding && preview && (
+        <div className="mt-4 rounded-2xl border border-white/[0.08] bg-[#002838] p-5">
+          <div className="flex items-baseline justify-between gap-4">
+            <h3 className="text-white font-medium">
+              Adding {picked.size} of {preview.length}
+            </h3>
+            <button
+              onClick={cancelPreview}
+              className="text-sm text-white/50 hover:text-white underline"
+            >
+              start over
+            </button>
+          </div>
+
+          {warnings.map((w) => (
+            <p
+              key={w}
+              className="mt-3 text-sm text-amber-200/90 bg-amber-400/10 border border-amber-300/20 rounded-xl px-3 py-2"
+            >
+              {w}
+            </p>
+          ))}
+
+          <div className="mt-3 flex gap-3 text-xs">
+            <button
+              onClick={() => setPicked(new Set(preview.map((_, i) => i)))}
+              className="text-white/50 hover:text-white underline"
+            >
+              select all
+            </button>
+            <button
+              onClick={() => setPicked(new Set())}
+              className="text-white/50 hover:text-white underline"
+            >
+              select none
+            </button>
+          </div>
+
+          <ul className="mt-3 max-h-80 overflow-y-auto divide-y divide-white/[0.06] rounded-xl border border-white/[0.06]">
+            {preview.map((r, i) => (
+              <li key={`${r.name}-${i}`} className="flex items-start gap-3 px-3 py-2">
+                <input
+                  type="checkbox"
+                  checked={picked.has(i)}
+                  onChange={(e) => {
+                    const next = new Set(picked);
+                    if (e.target.checked) next.add(i);
+                    else next.delete(i);
+                    setPicked(next);
+                  }}
+                  className="mt-1 h-4 w-4 shrink-0 accent-[#D3FB52]"
+                />
+                <div className="min-w-0">
+                  <p className={`truncate ${r.confidence === 'ok' ? 'text-white' : 'text-white/45'}`}>
+                    {r.name}
+                  </p>
+                  <p className="text-xs text-white/40 truncate">
+                    {r.confidence === 'suspect' && (
+                      <span className="text-amber-200/70">{r.reason} · </span>
+                    )}
+                    {r.email || 'no email'}
+                    {r.rating != null && ` · ${r.rating}`}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+
+          <button
+            onClick={confirmBulk}
+            disabled={busy || picked.size === 0}
+            className="mt-4 px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold disabled:opacity-50"
+          >
+            {busy ? 'Adding…' : `Add ${picked.size} to roster`}
+          </button>
+        </div>
       )}
 
       {[

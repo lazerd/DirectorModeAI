@@ -7,6 +7,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireTeam, isError, playedCounts, rulesFor } from '@/lib/captain/server';
+import { isNotAName, MAX_ROSTER_ROWS } from '@/lib/captain/rosterPaste';
 import { eligibilityReport, type RatingType } from '@/lib/captain/lineup';
 
 export async function GET(req: Request) {
@@ -70,8 +71,47 @@ export async function POST(req: Request) {
   const ctx = await requireTeam(body.team_id || '');
   if (isError(ctx)) return ctx.error;
 
-  const rows = (body.players || [])
-    .filter((p) => p.name?.trim())
+  const supplied = (body.players || []).filter((p) => p.name?.trim());
+
+  // A captain pasting a whole league page is the documented import gesture, so
+  // this endpoint has to survive it. On 2026-09-03 one paste put 240 nav labels
+  // on a team that has 29 players. The UI previews and unticks; these three
+  // guards mean a stale client or a direct POST cannot do it either.
+  if (supplied.length > MAX_ROSTER_ROWS) {
+    return NextResponse.json(
+      {
+        error: `That's ${supplied.length} players in one go — the limit is ${MAX_ROSTER_ROWS}. ` +
+          `If you pasted a whole page, paste just the roster.`,
+      },
+      { status: 400 },
+    );
+  }
+
+  const rejected: { name: string; reason: string }[] = [];
+  const kept = supplied.filter((p) => {
+    const reason = isNotAName(p.name!);
+    if (reason) rejected.push({ name: p.name!.trim().slice(0, 60), reason });
+    return !reason;
+  });
+
+  // Skip anyone already on the roster, the way /api/captain/import does, so a
+  // re-paste or a double-click tops up rather than duplicating the team.
+  const { data: existing } = await ctx.db
+    .from('captain_players')
+    .select('name')
+    .eq('team_id', ctx.teamId);
+  const have = new Set(
+    ((existing as { name: string }[]) || []).map((p) => p.name.trim().toLowerCase()),
+  );
+
+  const seen = new Set<string>();
+  const rows = kept
+    .filter((p) => {
+      const key = p.name!.trim().toLowerCase();
+      if (have.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .map((p) => ({
       team_id: ctx.teamId,
       name: p.name!.trim(),
@@ -80,11 +120,30 @@ export async function POST(req: Request) {
       gender: p.gender ?? null,
       is_sub: !!p.is_sub,
     }));
-  if (!rows.length) return NextResponse.json({ error: 'No players supplied.' }, { status: 400 });
+
+  const duplicates = kept.length - rows.length;
+
+  if (!rows.length) {
+    return NextResponse.json(
+      {
+        error: rejected.length
+          ? "None of those look like player names — check what you pasted."
+          : 'Everyone on that list is already on the roster.',
+        rejected,
+        duplicates,
+      },
+      { status: 400 },
+    );
+  }
 
   const { data, error } = await ctx.db.from('captain_players').insert(rows).select('id, name');
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, added: data?.length ?? 0, players: data });
+  return NextResponse.json({
+    ok: true,
+    added: data?.length ?? 0,
+    players: data,
+    skipped: { duplicates, rejected },
+  });
 }
 
 export async function PATCH(req: Request) {
