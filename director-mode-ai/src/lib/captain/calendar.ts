@@ -115,13 +115,9 @@ function fold(line: string): string {
   return out.join('\r\n');
 }
 
-export function buildIcs(e: CalendarEvent, now: Date = new Date()): string {
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//ClubMode//CaptainMode//EN',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
+/** One VEVENT, with the two alarms every match event carries. */
+function vevent(e: CalendarEvent, now: Date): string[] {
+  return [
     'BEGIN:VEVENT',
     `UID:${e.uid}`,
     `DTSTAMP:${stamp(now)}`,
@@ -144,6 +140,30 @@ export function buildIcs(e: CalendarEvent, now: Date = new Date()): string {
     `DESCRIPTION:${icsEscape(e.title)}`,
     'END:VALARM',
     'END:VEVENT',
+  ];
+}
+
+/**
+ * A calendar file holding one match, or a whole season.
+ *
+ * Takes an array because the season availability email lists every date at
+ * once, and a parent reading it wants all of them in the phone in one tap —
+ * seven separate "add to calendar" links is a chore nobody finishes. One file
+ * with N VEVENTs is what Apple Calendar, Google Calendar and Outlook all
+ * import, so a single button covers every ecosystem the reader might be in.
+ */
+export function buildIcs(
+  events: CalendarEvent | CalendarEvent[],
+  now: Date = new Date(),
+): string {
+  const list = Array.isArray(events) ? events : [events];
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//ClubMode//CaptainMode//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    ...list.flatMap((e) => vevent(e, now)),
     'END:VCALENDAR',
   ];
   return lines.map(fold).join('\r\n') + '\r\n';

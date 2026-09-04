@@ -107,8 +107,18 @@ async function build(teamId: string) {
     }
   }
 
-  // Club name + address, so the captain isn't retyping their own venue.
-  let clubName = 'our club';
+  /*
+   * Club name + address, so the captain isn't retyping their own venue.
+   *
+   * ⚠️ NO PLACEHOLDER. This used to default to the literal string "our club",
+   * which would have gone to twenty captains at rival clubs as the name of the
+   * venue. An unknown venue is left out of the email entirely — a missing line
+   * reads as brevity, a placeholder reads as a mailmerge nobody proofread.
+   *
+   * Falls back to the venue named on a home fixture before giving up, because
+   * a team can be perfectly well set up without a ClubMode club record.
+   */
+  let clubName: string | null = null;
   let address: string | null = null;
   if (team.club_id) {
     const { data: club } = await db
@@ -117,12 +127,17 @@ async function build(teamId: string) {
       .eq('id', team.club_id as string)
       .maybeSingle();
     if (club) {
-      clubName = (club.name as string) || clubName;
+      clubName = (club.name as string) || null;
       const parts = [club.address, [club.city, club.state].filter(Boolean).join(', '), club.zip]
         .filter(Boolean)
         .join(', ');
       address = parts || null;
     }
+  }
+
+  if (!clubName) {
+    const home = fixtures.find((m) => m.is_home && m.location);
+    clubName = (home?.location as string | undefined) ?? null;
   }
 
   const spec = leagueSpec(team.league_type as string);

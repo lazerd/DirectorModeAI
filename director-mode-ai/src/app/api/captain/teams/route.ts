@@ -53,6 +53,27 @@ export async function POST(req: Request) {
   // so changing a league default later can't silently reshape an old team.
   const spec = leagueSpec(body.league_type);
 
+  /*
+   * Attach the team to the captain's club unless they said otherwise.
+   *
+   * The club is where the venue name and address come from. Three JTT teams
+   * were created unlinked, so the season-opener email to twenty rival captains
+   * would have named the venue "our club" — the club_id was never asked for
+   * anywhere, and a captain has no way to know it is missing until they read
+   * their own email. A captain who genuinely runs a team outside any club can
+   * still pass club_id explicitly.
+   */
+  let clubId = body.club_id || null;
+  if (!clubId) {
+    const { data: membership } = await ctx.db
+      .from('cc_club_members')
+      .select('club_id')
+      .eq('user_id', ctx.userId)
+      .limit(1)
+      .maybeSingle();
+    clubId = (membership as { club_id: string } | null)?.club_id ?? null;
+  }
+
   const { data, error } = await ctx.db
     .from('captain_teams')
     .insert({
@@ -64,7 +85,7 @@ export async function POST(req: Request) {
       default_singles_courts: spec.singlesCourts,
       default_doubles_courts: spec.doublesCourts,
       level: body.level || null,
-      club_id: body.club_id || null,
+      club_id: clubId,
       season_start: body.season_start || null,
       season_end: body.season_end || null,
       eligibility_enabled: !!body.eligibility_enabled,

@@ -470,6 +470,17 @@ export function seasonAvailabilityEmail(
          </tr>
          ${rows}
        </table>
+       <div style="margin:20px 0 0">
+         ${button(
+           `${BASE}/api/captain/calendar/${r.token}`,
+           `📅 Add all ${matches.length} to my calendar`,
+           '#e2e8f0',
+         )}
+       </div>
+       <p style="font-size:13px;color:#64748b;margin:8px 0 0">
+         Works on iPhone, Google Calendar and Outlook. Every match comes with a reminder the night
+         before and an hour ahead.
+       </p>
        <p style="font-size:14px;color:#475569;margin:18px 0 0">
          No login, no app — the link above is yours for the whole season. Bookmark it.
        </p>`,
@@ -780,7 +791,12 @@ export function seasonOpenerBodyText(opts: {
   /** Our team, as the league lists it. */
   teamName: string;
   division?: string | null;
-  clubName: string;
+  /**
+   * Null when we don't know it — the venue line is DROPPED rather than guessed.
+   * This used to default to the literal string "our club", which would have
+   * gone out to twenty captains at rival clubs as the name of the venue.
+   */
+  clubName?: string | null;
   address?: string | null;
   /** e.g. "Sundays at 4:00pm". */
   whenText: string;
