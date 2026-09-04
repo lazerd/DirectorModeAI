@@ -762,3 +762,125 @@ export type RecapCourtRow = {
   won: boolean | null;
   defaulted: boolean;
 };
+
+/**
+ * The season opener — one note to every opposing captain in the division.
+ *
+ * Sent once, before a ball is hit, and it answers the three things a junior
+ * captain otherwise spends the season chasing by text: when we play, how many
+ * courts we host on, and who to ring. Nothing in it is a surprise on the day.
+ *
+ * The reader is a captain at a rival club who has never heard of ClubMode, so
+ * the footer is ONE line and it is honest about what it links to. An email that
+ * opens as a courtesy and closes as an advert is worse than no email — these
+ * are the same people we stand next to on a Sunday.
+ */
+export function seasonOpenerBodyText(opts: {
+  opposingCaptainName?: string | null;
+  /** Our team, as the league lists it. */
+  teamName: string;
+  division?: string | null;
+  clubName: string;
+  address?: string | null;
+  /** e.g. "Sundays at 4:00pm". */
+  whenText: string;
+  /** Courts we host on. */
+  courtFormat?: number | null;
+  singlesCourts?: number | null;
+  doublesCourts?: number | null;
+  minPlayers?: number | null;
+  /** Their next fixture against us, already formatted. Omitted when unknown. */
+  nextMeeting?: string | null;
+  hostNotes?: string | null;
+  fromName?: string | null;
+  fromTitle?: string | null;
+  fromPhone?: string | null;
+}): string {
+  const greeting = opts.opposingCaptainName?.trim()
+    ? `Hi ${opts.opposingCaptainName.trim().split(/\s+/)[0]},`
+    : 'Hi there,';
+
+  const lines = (opts.singlesCourts ?? 0) + (opts.doublesCourts ?? 0);
+
+  const format = [
+    opts.courtFormat ? `We host on a ${opts.courtFormat}-court format` : null,
+    lines
+      ? `${opts.singlesCourts} singles and ${opts.doublesCourts} doubles, ${lines} lines in all`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' — ');
+
+  const blocks = [
+    greeting,
+    `I'm captaining ${opts.teamName}${opts.division ? ` in ${opts.division}` : ''} this season, and wanted to introduce myself before we play.`,
+    `Matches are ${opts.whenText}.`,
+    format ? `${format}.` : null,
+    opts.nextMeeting ? `We're down to play you ${opts.nextMeeting}.` : null,
+    [opts.clubName, opts.address].filter(Boolean).join('\n'),
+    (opts.hostNotes || '').trim(),
+    opts.minPlayers
+      ? `If you're ever short, let me know as early as you can and we'll sort it out — a team needs ${opts.minPlayers} to take the court, and any line neither of us can cover just gets defaulted.`
+      : null,
+    'Looking forward to the season.',
+    [opts.fromName, opts.fromTitle, opts.fromPhone].filter(Boolean).join('\n'),
+  ].filter((b) => b && String(b).trim());
+
+  return blocks.join('\n\n');
+}
+
+export function seasonOpenerEmail(
+  opts: {
+    to: string;
+    subject: string;
+    bodyText: string;
+    /** Tag on the trial link, so a signup can be traced back to this send. */
+    ref?: string;
+  },
+): { to: string; subject: string; html: string } {
+  /*
+   * The referral line.
+   *
+   * It links to /captain/start, which grants a real 14-day trial with no card —
+   * NOT to a pricing page. A captain who clicks "free trial" and lands on a
+   * checkout form is the kind of small betrayal that costs a professional
+   * relationship, and these recipients are colleagues before they are leads.
+   */
+  const promo =
+    `Every part of this — the schedule, the lineups, the reminders — was handled by ` +
+    `<a href="${BASE}/captain/start?ref=${encodeURIComponent(opts.ref || 'season-opener')}" ` +
+    `style="color:#64748b;text-decoration:underline">CaptainMode</a>. ` +
+    `Free for 14 days, no card.`;
+
+  return {
+    to: opts.to,
+    subject: opts.subject,
+    html: shell('', textToHtml(opts.bodyText), promo),
+  };
+}
+
+/**
+ * "Sundays at 4:00pm" — but only when that is true of every fixture.
+ *
+ * A season opener that states one day and time is far more useful than one that
+ * says "see the schedule", so it is worth computing. It is also the single
+ * easiest way to discredit the whole email: the East Bay junior schedule mostly
+ * runs Sundays at 4:00pm and then quietly puts a handful of matches at 2:00pm.
+ * A rival captain who spots that stops trusting the court format, the minimum
+ * numbers and everything else in the note.
+ *
+ * So the claim is only made when the fixtures unanimously support it.
+ */
+export function seasonWhenText(matchAts: string[], tz: string = CLUB_TZ): string {
+  const valid = (matchAts || []).filter((d) => d && !Number.isNaN(new Date(d).getTime()));
+  if (!valid.length) return 'on the dates in the league schedule';
+
+  const fmt = (d: string, o: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat('en-US', { ...o, timeZone: tz }).format(new Date(d));
+  const days = new Set(valid.map((d) => fmt(d, { weekday: 'long' })));
+  const times = new Set(valid.map((d) => fmt(d, { hour: 'numeric', minute: '2-digit' })));
+
+  if (days.size === 1 && times.size === 1) return `${[...days][0]}s at ${[...times][0]}`;
+  if (days.size === 1) return `${[...days][0]}s — start times vary, so check the league schedule`;
+  return 'on the dates and times in the league schedule';
+}

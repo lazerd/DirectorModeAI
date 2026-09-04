@@ -95,3 +95,8 @@ CREATE POLICY captain_opponent_captains_rw ON captain_opponent_captains
          AND public.captain_can_access_team(o.team_id)
     )
   );
+
+-- The season opener goes out ONCE per opposing club. Stamped so a second click,
+-- or a second captain on the same team, cannot mail the same people twice.
+ALTER TABLE captain_opponents
+  ADD COLUMN IF NOT EXISTS season_opener_sent_at TIMESTAMPTZ;

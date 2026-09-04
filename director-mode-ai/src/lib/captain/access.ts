@@ -40,6 +40,14 @@ export type CaptainAccess = {
   status: string | null;
   currentPeriodEnd: string | null;
   clubId: string | null;
+  /** Set while a trial is running or has just lapsed. */
+  trialEndsAt: string | null;
+  /** Whole days left on the trial; 0 once it has run out. */
+  trialDaysLeft: number;
+  /** True when the ONLY reason this captain has access is an unexpired trial. */
+  onTrial: boolean;
+  /** True when a trial was started and has since run out. */
+  trialExpired: boolean;
 };
 
 /**
@@ -49,29 +57,61 @@ export type CaptainAccess = {
  */
 const ACTIVE_STATUSES = new Set(['active', 'trialing', 'past_due', 'comped']);
 
+/** How long a self-serve trial runs. Advertised in the season-opener email. */
+export const TRIAL_DAYS = 14;
+
 export async function getCaptainAccess(userId: string): Promise<CaptainAccess> {
   const db = adminDb();
   const { data } = await db
     .from('captain_subscriptions')
-    .select('status, rate_type, current_period_end, club_id')
+    .select('status, rate_type, current_period_end, club_id, trial_ends_at')
     .eq('user_id', userId)
     .maybeSingle();
 
   if (!data) {
-    return { active: false, rateType: null, status: null, currentPeriodEnd: null, clubId: null };
+    return {
+      active: false,
+      rateType: null,
+      status: null,
+      currentPeriodEnd: null,
+      clubId: null,
+      trialEndsAt: null,
+      trialDaysLeft: 0,
+      onTrial: false,
+      trialExpired: false,
+    };
   }
   const row = data as {
     status: string;
     rate_type: CaptainRate;
     current_period_end: string | null;
     club_id: string | null;
+    trial_ends_at: string | null;
   };
+
+  /*
+   * A trial has to actually end.
+   *
+   * 'trialing' was in ACTIVE_STATUSES from the beginning and nothing ever
+   * checked a date, so the first signup button would have handed out
+   * CaptainMode free forever. Expiry is enforced here, at the one place every
+   * gate reads, rather than in a nightly job that can silently stop running.
+   */
+  const trialEndsAt = row.trial_ends_at;
+  const msLeft = trialEndsAt ? new Date(trialEndsAt).getTime() - Date.now() : 0;
+  const trialLive = row.status === 'trialing' && !!trialEndsAt && msLeft > 0;
+  const trialExpired = row.status === 'trialing' && (!trialEndsAt || msLeft <= 0);
+
   return {
-    active: ACTIVE_STATUSES.has(row.status),
+    active: row.status === 'trialing' ? trialLive : ACTIVE_STATUSES.has(row.status),
     rateType: row.rate_type,
     status: row.status,
     currentPeriodEnd: row.current_period_end,
     clubId: row.club_id,
+    trialEndsAt,
+    trialDaysLeft: trialLive ? Math.max(0, Math.ceil(msLeft / 86_400_000)) : 0,
+    onTrial: trialLive,
+    trialExpired,
   };
 }
 

@@ -141,6 +141,10 @@ const PUBLIC_PREFIXES = [
   '/join',
   '/event',
   '/nps',
+  // Where the season-opener email lands. The reader is a captain at ANOTHER
+  // club who has never seen ClubMode; the director rail over the top of it is
+  // the worst possible first impression.
+  '/captain/start',
   '/captain/availability',
   '/captain/intake',
   '/captain/claim',

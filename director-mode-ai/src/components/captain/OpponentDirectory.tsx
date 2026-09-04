@@ -1,5 +1,6 @@
 import { Phone, Mail, Building2, Users, ShieldCheck } from 'lucide-react';
 import OpponentImportPanel from './OpponentImportPanel';
+import SeasonOpenerPanel from './SeasonOpenerPanel';
 
 /**
  * League contacts — every opposing captain for the season, in one place.
@@ -90,6 +91,11 @@ export default function OpponentDirectory({
       </p>
 
       <OpponentImportPanel teamId={teamId} division={division} />
+
+      {/* Only once there is somebody to write to. */}
+      {contacts.some((c) => c.captains.some((p) => p.email)) && (
+        <SeasonOpenerPanel teamId={teamId} />
+      )}
 
       {contacts.length === 0 && (
         <p className="mt-3 text-[13px] text-white/30">
