@@ -18,6 +18,7 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { requireTeam, isError } from '@/lib/captain/server';
+import { defaultCourts } from '@/lib/captain/leagues';
 import { recordAiUsage } from '@/lib/billing';
 
 export const dynamic = 'force-dynamic';
@@ -153,6 +154,7 @@ export async function POST(req: Request) {
         is_sub: p.is_sub ?? false,
       }));
 
+    const courts = defaultCourts(ctx.team);
     const newMatches = parsed.data.matches
       .map((m) => ({
         team_id: teamId,
@@ -160,8 +162,11 @@ export async function POST(req: Request) {
         is_home: m.is_home,
         opponent: m.opponent || null,
         location: m.location || null,
-        singles_courts: 0,
-        doubles_courts: 4,
+        // Was hardcoded 0 singles / 4 doubles — the shape of one East Bay
+        // women's league. An imported JTT schedule needs 2 + 2, so the team's
+        // own league decides, and any match can still be edited after.
+        singles_courts: courts.singles,
+        doubles_courts: courts.doubles,
       }))
       .filter((m) => !haveWhen.has(new Date(m.match_at).toISOString()));
 

@@ -9,6 +9,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
+import { defaultCourts } from '@/lib/captain/leagues';
 
 export async function GET(req: Request) {
   const teamId = new URL(req.url).searchParams.get('team_id') || '';
@@ -52,6 +53,8 @@ export async function POST(req: Request) {
   const ctx = await requireTeam(body.team_id || '');
   if (isError(ctx)) return ctx.error;
 
+  const courts = defaultCourts(ctx.team);
+
   const rows = (body.matches || [])
     .filter((m) => m.match_at)
     .map((m) => ({
@@ -60,8 +63,10 @@ export async function POST(req: Request) {
       is_home: m.is_home ?? true,
       opponent: m.opponent?.trim() || null,
       location: m.location?.trim() || null,
-      singles_courts: m.singles_courts ?? 2,
-      doubles_courts: m.doubles_courts ?? 3,
+      // A JTT match is 2 singles + 2 doubles, an adult match 2 + 3 — the
+      // default follows the team's league instead of being hardcoded here.
+      singles_courts: m.singles_courts ?? courts.singles,
+      doubles_courts: m.doubles_courts ?? courts.doubles,
     }));
   if (!rows.length) return NextResponse.json({ error: 'No matches supplied.' }, { status: 400 });
 

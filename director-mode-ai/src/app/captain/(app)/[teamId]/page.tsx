@@ -17,6 +17,7 @@ import StrengthOrderPanel from '@/components/captain/StrengthOrderPanel';
 import NeverPairPanel from '@/components/captain/NeverPairPanel';
 import SeasonAvailabilityPanel from '@/components/captain/SeasonAvailabilityPanel';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { defaultCourts } from '@/lib/captain/leagues';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +50,15 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
     captaining_style: string | null;
     poll_lead_days: number | null;
     lineup_lead_days: number | null;
+    default_singles_courts: number | null;
+    default_doubles_courts: number | null;
+    source_site: string | null;
+    source_team_id: string | null;
   };
+
+  // What a new match starts with. The team's own numbers if it has them,
+  // otherwise the shape of its league.
+  const courts = defaultCourts(team);
 
   const [{ data: players }, { data: matches }, { data: prefs }, { data: never }] =
     await Promise.all([
@@ -153,6 +162,28 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         {roster.filter((p) => !p.is_sub).length} on roster ·{' '}
         {roster.filter((p) => p.is_sub).length} subs
       </p>
+
+      {/* A JTT captain is asked for this number all season — a parent registers
+          on TennisLink with the Team ID, their USTA number and the fee. */}
+      {team.source_team_id && (
+        <p className="text-white/40 text-sm mt-1">
+          {team.source_site === 'tennislink' ? 'TennisLink Team ID' : 'Team ID'}{' '}
+          <span className="text-white/70 font-mono">{team.source_team_id}</span>
+          {team.source_site === 'tennislink' && (
+            <>
+              {' · '}
+              <a
+                href="https://tennislink.usta.com/TeamTennis/Main/RegisterPlayers.aspx"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#D3FB52]/80 hover:text-[#D3FB52] underline"
+              >
+                player registration
+              </a>
+            </>
+          )}
+        </p>
+      )}
 
       <Link
         href={`/captain/${team.id}/timeline`}
@@ -265,7 +296,11 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
             </div>
           </div>
         )}
-        <AddMatchForm teamId={team.id} />
+        <AddMatchForm
+          teamId={team.id}
+          singlesCourts={courts.singles}
+          doublesCourts={courts.doubles}
+        />
       </section>
 
       <SeasonAvailabilityPanel
@@ -298,6 +333,8 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         captainingStyle={team.captaining_style ?? null}
         pollLeadDays={team.poll_lead_days ?? null}
         lineupLeadDays={team.lineup_lead_days ?? null}
+        singlesCourts={courts.singles}
+        doublesCourts={courts.doubles}
       />
 
       <StrengthOrderPanel teamId={team.id} players={roster as never} />

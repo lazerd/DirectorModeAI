@@ -7,6 +7,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireCaptain, requireTeam, isError } from '@/lib/captain/server';
 import { listCaptainTeams, ownedTeamCount, MAX_TEAMS_PER_CAPTAIN } from '@/lib/captain/access';
+import { leagueSpec } from '@/lib/captain/leagues';
 
 export async function GET() {
   const supabase = await createClient();
@@ -46,6 +47,11 @@ export async function POST(req: Request) {
     );
   }
 
+  // Seed the line counts from the league the captain picked — JTT plays 2 + 2,
+  // USTA Adult 2 + 3 — and write them down rather than leaving them implicit,
+  // so changing a league default later can't silently reshape an old team.
+  const spec = leagueSpec(body.league_type);
+
   const { data, error } = await ctx.db
     .from('captain_teams')
     .insert({
@@ -53,6 +59,8 @@ export async function POST(req: Request) {
       created_by: ctx.userId,
       name: body.name.trim(),
       league_type: body.league_type || 'usta_adult',
+      default_singles_courts: spec.singlesCourts,
+      default_doubles_courts: spec.doublesCourts,
       level: body.level || null,
       club_id: body.club_id || null,
       season_start: body.season_start || null,
@@ -84,6 +92,8 @@ export async function PATCH(req: Request) {
     eligibility_enabled?: boolean;
     min_matches_default?: number;
     min_matches_self_rated?: number;
+    default_singles_courts?: number;
+    default_doubles_courts?: number;
   };
 
   const ctx = await requireTeam(body.team_id || '');
@@ -126,6 +136,36 @@ export async function PATCH(req: Request) {
       { error: `The lineup can't go out (${lineup}d) before you've asked who's available (${poll}d).` },
       { status: 400 },
     );
+  }
+
+  // Lines per match. 0 is legitimate on either side (a doubles-only league has
+  // no singles), so these are range-checked rather than truthiness-checked.
+  for (const key of ['default_singles_courts', 'default_doubles_courts'] as const) {
+    const v = body[key];
+    if (v === undefined) continue;
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < 0 || n > 8) {
+      return NextResponse.json(
+        { error: 'Lines per match must be a whole number between 0 and 8.' },
+        { status: 400 },
+      );
+    }
+    patch[key] = n;
+  }
+  // Only when the captain is actually touching the lines. A team that has
+  // never set them reads null/null, and treating that as "zero lines" would
+  // reject every unrelated save on the same endpoint.
+  if (patch.default_singles_courts !== undefined || patch.default_doubles_courts !== undefined) {
+    const spec = leagueSpec(ctx.team.league_type);
+    const singles = (patch.default_singles_courts ??
+      ctx.team.default_singles_courts ??
+      spec.singlesCourts) as number;
+    const doubles = (patch.default_doubles_courts ??
+      ctx.team.default_doubles_courts ??
+      spec.doublesCourts) as number;
+    if (singles + doubles === 0) {
+      return NextResponse.json({ error: 'A match needs at least one line.' }, { status: 400 });
+    }
   }
 
   if (body.eligibility_enabled !== undefined) patch.eligibility_enabled = !!body.eligibility_enabled;

@@ -3,15 +3,24 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-export default function AddMatchForm({ teamId }: { teamId: string }) {
+export default function AddMatchForm({
+  teamId,
+  singlesCourts,
+  doublesCourts,
+}: {
+  teamId: string;
+  /** The team's default lines, so the form opens on the right shape. */
+  singlesCourts: number;
+  doublesCourts: number;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [when, setWhen] = useState('');
   const [opponent, setOpponent] = useState('');
   const [isHome, setIsHome] = useState(true);
   const [location, setLocation] = useState('');
-  const [singles, setSingles] = useState(2);
-  const [doubles, setDoubles] = useState(3);
+  const [singles, setSingles] = useState(singlesCourts);
+  const [doubles, setDoubles] = useState(doublesCourts);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

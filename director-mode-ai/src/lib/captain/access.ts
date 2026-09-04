@@ -24,7 +24,13 @@ import { getPlanContext } from '@/lib/billing';
  */
 const adminDb = () => getSupabaseAdmin();
 
-export const MAX_TEAMS_PER_CAPTAIN = 3;
+/**
+ * Owned teams per subscription. Raised from 3 to 6 on 2026-09-04: a junior
+ * coach commonly captains one team per age division (10U / 12U / 14U) on top
+ * of an adult team, which is four before anyone has done anything unusual.
+ * Co-captained teams do not count — only teams this user owns.
+ */
+export const MAX_TEAMS_PER_CAPTAIN = 6;
 
 export type CaptainRate = 'club_linked' | 'standalone';
 

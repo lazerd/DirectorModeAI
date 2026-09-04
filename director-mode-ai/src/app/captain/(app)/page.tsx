@@ -4,6 +4,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getCaptainAccess, listCaptainTeams, MAX_TEAMS_PER_CAPTAIN } from '@/lib/captain/access';
 import NewTeamForm from '@/components/captain/NewTeamForm';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { leagueLabel } from '@/lib/captain/leagues';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,13 +16,6 @@ type Team = {
   captain_user_id: string;
 };
 
-const LEAGUE_LABEL: Record<string, string> = {
-  usta_adult: 'USTA Adult',
-  usta_combo: 'USTA Combo',
-  usta_mixed: 'USTA Mixed',
-  usta_trilevel: 'Tri-Level',
-  flex: 'Flex / local',
-};
 
 export default async function CaptainHome() {
   const supabase = await createClient();
@@ -92,7 +86,7 @@ export default async function CaptainHome() {
                 <div>
                   <div className="text-white font-semibold text-lg">{t.name}</div>
                   <div className="text-white/40 text-sm mt-0.5">
-                    {LEAGUE_LABEL[t.league_type] || t.league_type}
+                    {leagueLabel(t.league_type)}
                     {t.level ? ` · ${t.level}` : ''}
                     {t.captain_user_id !== user.id ? ' · co-captain' : ''}
                   </div>

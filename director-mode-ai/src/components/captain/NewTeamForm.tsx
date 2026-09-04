@@ -2,20 +2,16 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-const LEAGUES = [
-  { value: 'usta_adult', label: 'USTA Adult (18+ / 40+ / 55+)' },
-  { value: 'usta_combo', label: 'USTA Combo' },
-  { value: 'usta_mixed', label: 'USTA Mixed' },
-  { value: 'usta_trilevel', label: 'Tri-Level' },
-  { value: 'flex', label: 'Flex / local league' },
-];
+import { LEAGUES, leagueSpec } from '@/lib/captain/leagues';
 
 export default function NewTeamForm() {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [leagueType, setLeagueType] = useState('usta_adult');
+  // Level means different things per league: an NTRP number in USTA Adult, a
+  // combined cap in Combo/Mixed, a ball-colour division in Junior Team Tennis.
+  const spec = leagueSpec(leagueType);
   const [level, setLevel] = useState('');
   const [eligibilityEnabled, setEligibilityEnabled] = useState(false);
   const [minDefault, setMinDefault] = useState(2);
@@ -109,13 +105,13 @@ export default function NewTeamForm() {
         </div>
         <div>
           <label htmlFor="level" className="block text-sm text-white/60 mb-1">
-            Level
+            {spec.levelLabel}
           </label>
           <input
             id="level"
             value={level}
             onChange={(e) => setLevel(e.target.value)}
-            placeholder={leagueType === 'usta_combo' ? '7.5' : '3.5'}
+            placeholder={spec.levelPlaceholder}
             className="w-full px-3 py-2.5 rounded-xl bg-[#001820] border border-white/10 text-white placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none"
           />
           {(leagueType === 'usta_combo' || leagueType === 'usta_mixed') && (
@@ -123,8 +119,21 @@ export default function NewTeamForm() {
               Combined rating cap per court — used to reject illegal pairings.
             </p>
           )}
+          {leagueType === 'jtt' && (
+            <p className="text-xs text-white/40 mt-1">
+              Age group and ball colour, e.g. 10U Green Ball.
+            </p>
+          )}
         </div>
       </div>
+
+      {leagueType === 'jtt' && (
+        <p className="text-xs text-white/45 -mt-1">
+          Matches start at {spec.singlesCourts} singles and {spec.doublesCourts} doubles lines, and
+          juniors are ordered by WTN and your own strength order rather than NTRP. Both are
+          editable once the team exists.
+        </p>
+      )}
 
       <div className="rounded-xl border border-white/10 p-4">
         <label className="flex items-start gap-3 cursor-pointer">

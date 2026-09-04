@@ -17,12 +17,13 @@
  *   7. day/time preference   — soft tiebreaker (caller-supplied nudge)
  */
 
-export type LeagueType =
-  | 'usta_adult'
-  | 'usta_combo'
-  | 'usta_mixed'
-  | 'usta_trilevel'
-  | 'flex';
+/**
+ * The league list lives in ./leagues.ts, which the new-team form and the match
+ * defaults also read. Re-exported here so every existing `import { LeagueType }
+ * from './lineup'` keeps working against the one definition.
+ */
+export type { LeagueType } from './leagues';
+import type { LeagueType } from './leagues';
 
 export type CourtLimit = 'singles_only' | 'doubles_only' | 'no_court_1';
 

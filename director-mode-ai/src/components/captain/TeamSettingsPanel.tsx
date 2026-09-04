@@ -18,6 +18,9 @@ type Props = {
   captainingStyle: string | null;
   pollLeadDays: number | null;
   lineupLeadDays: number | null;
+  /** Lines a match is played over — 2 + 2 in JTT, 0 + 4 in a doubles league. */
+  singlesCourts: number;
+  doublesCourts: number;
 };
 
 const STYLES = [
@@ -46,6 +49,8 @@ export default function TeamSettingsPanel({
   captainingStyle,
   pollLeadDays,
   lineupLeadDays,
+  singlesCourts,
+  doublesCourts,
 }: Props) {
   const router = useRouter();
   const [style, setStyle] = useState(
@@ -53,6 +58,8 @@ export default function TeamSettingsPanel({
   );
   const [poll, setPoll] = useState(String(pollLeadDays ?? 21));
   const [lineup, setLineup] = useState(String(lineupLeadDays ?? 7));
+  const [singles, setSingles] = useState(String(singlesCourts));
+  const [doubles, setDoubles] = useState(String(doublesCourts));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +131,42 @@ export default function TeamSettingsPanel({
           );
         })}
       </div>
+
+      <h3 className="text-white/50 text-sm uppercase tracking-wide mt-8 mb-2">Lines per match</h3>
+      <div className="rounded-2xl border border-white/[0.08] bg-[#002838] p-5 flex flex-wrap gap-6">
+        <div>
+          <label htmlFor="lines-singles" className="block text-xs text-white/50 mb-1">
+            Singles courts
+          </label>
+          <input
+            id="lines-singles"
+            inputMode="numeric"
+            value={singles}
+            onChange={(e) => setSingles(e.target.value)}
+            onBlur={() => save({ default_singles_courts: Number(singles) })}
+            style={INPUT_COLOR}
+            className={field}
+          />
+        </div>
+        <div>
+          <label htmlFor="lines-doubles" className="block text-xs text-white/50 mb-1">
+            Doubles courts
+          </label>
+          <input
+            id="lines-doubles"
+            inputMode="numeric"
+            value={doubles}
+            onChange={(e) => setDoubles(e.target.value)}
+            onBlur={() => save({ default_doubles_courts: Number(doubles) })}
+            style={INPUT_COLOR}
+            className={field}
+          />
+        </div>
+      </div>
+      <p className="text-xs text-white/35 mt-2">
+        What a new match starts with — every match can still be changed on its own. Matches already
+        on the schedule keep the lines they were created with.
+      </p>
 
       <h3 className="text-white/50 text-sm uppercase tracking-wide mt-8 mb-2">Automatic emails</h3>
       <div className="rounded-2xl border border-white/[0.08] bg-[#002838] p-5 flex flex-wrap gap-6">

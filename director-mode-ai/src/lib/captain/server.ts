@@ -36,6 +36,9 @@ export type TeamRow = {
   captaining_style: string | null;
   poll_lead_days: number | null;
   lineup_lead_days: number | null;
+  /** Lines a match is played over. Null falls back to the league default. */
+  default_singles_courts: number | null;
+  default_doubles_courts: number | null;
 };
 
 export type RouteError = { error: NextResponse };
