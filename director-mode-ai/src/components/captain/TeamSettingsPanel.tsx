@@ -21,6 +21,10 @@ type Props = {
   /** Lines a match is played over — 2 + 2 in JTT, 0 + 4 in a doubles league. */
   singlesCourts: number;
   doublesCourts: number;
+  /** Courts we host on. Null until the captain says. */
+  courtFormat: number | null;
+  /** Only leagues where players share lines need to publish this. */
+  showCourtFormat: boolean;
 };
 
 const STYLES = [
@@ -51,6 +55,8 @@ export default function TeamSettingsPanel({
   lineupLeadDays,
   singlesCourts,
   doublesCourts,
+  courtFormat,
+  showCourtFormat,
 }: Props) {
   const router = useRouter();
   const [style, setStyle] = useState(
@@ -60,6 +66,7 @@ export default function TeamSettingsPanel({
   const [lineup, setLineup] = useState(String(lineupLeadDays ?? 7));
   const [singles, setSingles] = useState(String(singlesCourts));
   const [doubles, setDoubles] = useState(String(doublesCourts));
+  const [format, setFormat] = useState(courtFormat == null ? '' : String(courtFormat));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -167,6 +174,36 @@ export default function TeamSettingsPanel({
         What a new match starts with — every match can still be changed on its own. Matches already
         on the schedule keep the lines they were created with.
       </p>
+
+      {showCourtFormat && (
+        <>
+          <h3 className="text-white/50 text-sm uppercase tracking-wide mt-8 mb-2">
+            Courts you host on
+          </h3>
+          <div className="rounded-2xl border border-white/[0.08] bg-[#002838] p-5 flex flex-wrap gap-6 items-end">
+            <div>
+              <label htmlFor="court-format" className="block text-xs text-white/50 mb-1">
+                Court format
+              </label>
+              <input
+                id="court-format"
+                inputMode="numeric"
+                placeholder="3"
+                value={format}
+                onChange={(e) => setFormat(e.target.value)}
+                onBlur={() => format.trim() && save({ court_format: Number(format) })}
+                style={INPUT_COLOR}
+                className={field}
+              />
+            </div>
+            <p className="text-xs text-white/40 max-w-sm">
+              How many courts you put the match on at home. It goes in the note to the opposing
+              captain, because it decides how long the afternoon runs — and it is the first thing
+              they write back to ask when the email doesn&rsquo;t say.
+            </p>
+          </div>
+        </>
+      )}
 
       <h3 className="text-white/50 text-sm uppercase tracking-wide mt-8 mb-2">Automatic emails</h3>
       <div className="rounded-2xl border border-white/[0.08] bg-[#002838] p-5 flex flex-wrap gap-6">

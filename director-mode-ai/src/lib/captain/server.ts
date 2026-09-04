@@ -39,6 +39,10 @@ export type TeamRow = {
   /** Lines a match is played over. Null falls back to the league default. */
   default_singles_courts: number | null;
   default_doubles_courts: number | null;
+  /** The league site's own id for this team. */
+  source_team_id: string | null;
+  /** Courts we host on — decides how the lines are scheduled. */
+  court_format: number | null;
 };
 
 export type RouteError = { error: NextResponse };
@@ -205,6 +209,43 @@ export async function pairRecords(
   );
 }
 
+type LineupRow = {
+  player1_id: string | null;
+  player2_id: string | null;
+  match_id: string;
+  court_number: number;
+};
+
+/**
+ * Matches per player — counted once per MATCH, not once per row.
+ *
+ * For every adult league these are the same number, because a player takes one
+ * court in a team match and there is exactly one row naming them. Junior Team
+ * Tennis breaks that: a JTT sheet legitimately names the same child on a
+ * singles line and two doubles lines, so row-counting credited her with three
+ * matches for one Sunday. That is not a display quirk — it feeds the
+ * equal-play tier gate and the playoff-eligibility table, so a child who had
+ * played once would read as ahead of the field and get benched for it.
+ *
+ * A defaulted court is skipped either way: the team banks the point, but the
+ * players named on it never hit a ball.
+ */
+function countDistinctMatches(rows: LineupRow[], skip: Set<string>): Record<string, number> {
+  const seen = new Set<string>();
+  const counts: Record<string, number> = {};
+  for (const r of rows || []) {
+    if (skip.has(`${r.match_id}:${r.court_number}`)) continue;
+    for (const id of [r.player1_id, r.player2_id]) {
+      if (!id) continue;
+      const once = `${r.match_id}:${id}`;
+      if (seen.has(once)) continue;
+      seen.add(once);
+      counts[id] = (counts[id] ?? 0) + 1;
+    }
+  }
+  return counts;
+}
+
 /**
  * Matches each player is already COMMITTED to, per player.
  *
@@ -261,19 +302,7 @@ export async function committedCounts(
     ),
   );
 
-  const counts: Record<string, number> = {};
-  for (const r of (rows as {
-    player1_id: string | null;
-    player2_id: string | null;
-    match_id: string;
-    court_number: number;
-  }[]) || []) {
-    if (skip.has(`${r.match_id}:${r.court_number}`)) continue;
-    for (const id of [r.player1_id, r.player2_id]) {
-      if (id) counts[id] = (counts[id] ?? 0) + 1;
-    }
-  }
-  return counts;
+  return countDistinctMatches(rows as LineupRow[], skip);
 }
 
 /**
@@ -316,17 +345,5 @@ export async function playedCounts(
     ),
   );
 
-  const counts: Record<string, number> = {};
-  for (const r of (rows as {
-    player1_id: string | null;
-    player2_id: string | null;
-    match_id: string;
-    court_number: number;
-  }[]) || []) {
-    if (skip.has(`${r.match_id}:${r.court_number}`)) continue;
-    for (const id of [r.player1_id, r.player2_id]) {
-      if (id) counts[id] = (counts[id] ?? 0) + 1;
-    }
-  }
-  return counts;
+  return countDistinctMatches(rows as LineupRow[], skip);
 }

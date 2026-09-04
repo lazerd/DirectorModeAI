@@ -22,6 +22,7 @@ import {
   type MatchInfo,
 } from '@/lib/captain/emails';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { leagueSpec } from '@/lib/captain/leagues';
 import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
 
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
   const admin = getSupabaseAdmin();
   const { data: team } = await admin
     .from('captain_teams')
-    .select('id, name, club_id, host_notes')
+    .select('id, name, club_id, host_notes, league_type, court_format')
     .eq('id', matchRow.team_id)
     .maybeSingle();
   if (!team) return NextResponse.json({ error: 'Team not found.' }, { status: 404 });
@@ -158,6 +159,8 @@ export async function POST(req: Request) {
     opposingCaptainPhone: matchRow.opposing_captain_phone as string | null,
   };
 
+  const multiLine = leagueSpec(team.league_type as string).multiLine;
+
   const lineCount =
     ((matchRow.doubles_courts as number) || 0) + ((matchRow.singles_courts as number) || 0);
 
@@ -176,6 +179,15 @@ export async function POST(req: Request) {
       hostNotes,
       lineCount,
       linesNote: body.lines_note,
+      /*
+       * Only leagues where players share the lines get the format sentence.
+       * For an adult team match "how many are you bringing" is not a question —
+       * eight named people turn up for eight lines.
+       */
+      courtFormat: (team.court_format as number | null) ?? null,
+      singlesCourts: multiLine ? (matchRow.singles_courts as number) : null,
+      doublesCourts: multiLine ? (matchRow.doubles_courts as number) : null,
+      minPlayers: multiLine?.minToPlay ?? null,
       fromName,
       fromTitle,
     },

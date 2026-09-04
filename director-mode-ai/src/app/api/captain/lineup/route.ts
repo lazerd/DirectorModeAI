@@ -21,6 +21,8 @@ import {
   type LeagueType,
   type RatingType,
 } from '@/lib/captain/lineup';
+import { generateJttLineup } from '@/lib/captain/jttLineup';
+import { leagueSpec } from '@/lib/captain/leagues';
 import { resolveAvailability } from '@/lib/captain/availability';
 import { answersByPlayer, rowsWithAnswers, answerTally } from '@/lib/captain/lineupSave';
 import { lineupEmail, sendAll, type LineupRow, type MatchInfo } from '@/lib/captain/emails';
@@ -127,26 +129,50 @@ export async function POST(req: Request) {
       db.from('captain_never_pair').select('player_a_id, player_b_id').eq('team_id', teamId),
     ]);
 
-    const result = generateLineup({
+    const singlesCourts = (match.singles_courts as number) ?? 2;
+    const doublesCourts = (match.doubles_courts as number) ?? 3;
+    const partnerPrefs = ((prefs as Record<string, unknown>[]) || []).map((r) => ({
+      playerId: r.player_id as string,
+      preferredPlayerId: r.preferred_player_id as string,
+      rank: r.rank as number,
+    }));
+    const neverPairs = ((never as Record<string, unknown>[]) || []).map((r) => ({
+      playerAId: r.player_a_id as string,
+      playerBId: r.player_b_id as string,
+    }));
+
+    /*
+     * Junior Team Tennis is a different problem, not a variant of this one: the
+     * children share eight lines between them, so the same name appears on the
+     * sheet up to three times and the adult generator — which seats each player
+     * once — would report a six-child team as six players short of twelve.
+     */
+    const multiLine = leagueSpec(team.league_type as string).multiLine;
+
+    const result = multiLine
+      ? generateJttLineup({
+          available,
+          singlesCourts,
+          doublesCourts,
+          rules: multiLine,
+          partnerPrefs,
+          neverPairs,
+          pairHistory: history,
+          captainingStyle: styleFor(team),
+        })
+      : generateLineup({
       available,
       pairHistory: history,
-      partnerPrefs: ((prefs as Record<string, unknown>[]) || []).map((r) => ({
-        playerId: r.player_id as string,
-        preferredPlayerId: r.preferred_player_id as string,
-        rank: r.rank as number,
-      })),
-      neverPairs: ((never as Record<string, unknown>[]) || []).map((r) => ({
-        playerAId: r.player_a_id as string,
-        playerBId: r.player_b_id as string,
-      })),
-      singlesCourts: (match.singles_courts as number) ?? 2,
-      doublesCourts: (match.doubles_courts as number) ?? 3,
+      partnerPrefs,
+      neverPairs,
+      singlesCourts,
+      doublesCourts,
       leagueType: (team.league_type as LeagueType) || 'usta_adult',
       combinedRatingCap: capForTeam(team),
       // equal_play is a hard tier gate on matches played, so this is the switch
       // that decides whether a stronger player gets benched for fairness.
       captainingStyle: styleFor(team),
-    });
+        });
 
     const nameOf = (id: string | null) =>
       id ? ((players as { id: string; name: string }[]) || []).find((p) => p.id === id)?.name ?? null : null;
@@ -155,8 +181,8 @@ export async function POST(req: Request) {
     // The generator already knows its own reasoning; this says it out loud. A
     // captain who cannot see why Sally is on court 3 will not trust the lineup
     // enough to send it, and will rebuild it by hand instead.
-    const singles = (match.singles_courts as number) ?? 2;
-    const doubles = (match.doubles_courts as number) ?? 3;
+    const singles = singlesCourts;
+    const doubles = doublesCourts;
     const spots = singles + doubles * 2;
     const answered = (avail as { player_id: string; status: string }[]) || [];
     const saidNo = answered.filter((a) => a.status === 'no').length;

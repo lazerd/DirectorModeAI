@@ -149,12 +149,12 @@ const CHEMISTRY_CONFIDENCE_AT = 4;
 
 const key = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 
-function ratingOf(p: Player): number {
+export function ratingOf(p: Player): number {
   return typeof p.rating === 'number' && !Number.isNaN(p.rating) ? p.rating : 0;
 }
 
 /** The WTN a doubles court should be ordered on: doubles number, else singles. */
-function wtnOf(p: Player): number | null {
+export function wtnOf(p: Player): number | null {
   const d = p.wtnDoubles;
   if (typeof d === 'number' && !Number.isNaN(d)) return d;
   const s = p.wtn;
@@ -167,7 +167,7 @@ function wtnOf(p: Player): number | null {
  * always sorts above an unranked one — a captain who bothered to order the
  * roster meant it.
  */
-function byStrength(a: Player, b: Player): number {
+export function byStrength(a: Player, b: Player): number {
   const ra = typeof a.sortOrder === 'number' ? a.sortOrder : null;
   const rb = typeof b.sortOrder === 'number' ? b.sortOrder : null;
   if (ra !== null || rb !== null) {
@@ -191,7 +191,7 @@ function byNeed(a: Player, b: Player): number {
   return d !== 0 ? d : a.name.localeCompare(b.name);
 }
 
-function prefScore(prefs: PartnerPref[], a: string, b: string): number {
+export function prefScore(prefs: PartnerPref[], a: string, b: string): number {
   const ab = prefs.find((p) => p.playerId === a && p.preferredPlayerId === b);
   const ba = prefs.find((p) => p.playerId === b && p.preferredPlayerId === a);
   if (!ab && !ba) return 0;
@@ -266,7 +266,7 @@ export function pairIsLegal(
   return { ok: true };
 }
 
-function pairScore(
+export function pairScore(
   a: Player,
   b: Player,
   prefs: PartnerPref[],

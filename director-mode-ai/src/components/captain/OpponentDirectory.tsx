@@ -1,4 +1,5 @@
-import { Phone, Mail, Building2, Users } from 'lucide-react';
+import { Phone, Mail, Building2, Users, ShieldCheck } from 'lucide-react';
+import OpponentImportPanel from './OpponentImportPanel';
 
 /**
  * League contacts — every opposing captain for the season, in one place.
@@ -12,48 +13,72 @@ import { Phone, Mail, Building2, Users } from 'lucide-react';
  * or three times and it is the same person every time.
  */
 
+/** One person on the league's contact sheet. */
+export type OpponentPerson = {
+  name: string;
+  usta_number: string | null;
+  safe_play_expires: string | null;
+  email: string | null;
+  phone: string | null;
+};
+
 export type OpponentContact = {
   opponent: string;
-  captain_name: string | null;
-  captain_email: string | null;
-  captain_phone: string | null;
-  cocaptain_name: string | null;
-  cocaptain_email: string | null;
-  cocaptain_phone: string | null;
+  division: string | null;
+  court_format: number | null;
+  /** Every captain the league lists, not just the first two. */
+  captains: OpponentPerson[];
   home_club: string | null;
   club_phone: string | null;
 };
 
-function Person({
-  role, name, email, phone,
-}: {
-  role: string; name: string | null; email: string | null; phone: string | null;
-}) {
-  if (!name && !email && !phone) return null;
+function Person({ p, first }: { p: OpponentPerson; first: boolean }) {
   return (
     <div className="mt-2.5">
-      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">{role}</p>
-      {name && <p className="text-[14px] text-white/85">{name}</p>}
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">
+        {first ? 'Captain' : 'Also listed'}
+      </p>
+      <p className="text-[14px] text-white/85">{p.name}</p>
       <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
         {/* tel: and mailto: because this gets used one-handed, outdoors. */}
-        {phone && (
-          <a href={`tel:${phone.replace(/[^0-9+]/g, '')}`} className="inline-flex items-center gap-1.5 text-[13px] text-[#D3FB52] hover:underline">
-            <Phone size={12} /> {phone}
+        {p.phone && (
+          <a
+            href={`tel:${p.phone.replace(/[^0-9+]/g, '')}`}
+            className="inline-flex items-center gap-1.5 text-[13px] text-[#D3FB52] hover:underline"
+          >
+            <Phone size={12} /> {p.phone}
           </a>
         )}
-        {email && (
-          <a href={`mailto:${email}`} className="inline-flex items-center gap-1.5 text-[13px] text-[#D3FB52] hover:underline">
-            <Mail size={12} /> {email}
+        {p.email && (
+          <a
+            href={`mailto:${p.email}`}
+            className="inline-flex items-center gap-1.5 text-[13px] text-[#D3FB52] hover:underline"
+          >
+            <Mail size={12} /> {p.email}
           </a>
+        )}
+        {/* Safe Play is the clearance to be on court with children. Shown
+            because it expires, and an expired one is the opposing club's
+            problem to fix before the match, not a surprise on the day. */}
+        {p.safe_play_expires && (
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-white/30">
+            <ShieldCheck size={12} /> Safe Play {p.safe_play_expires}
+          </span>
         )}
       </div>
     </div>
   );
 }
 
-export default function OpponentDirectory({ contacts }: { contacts: OpponentContact[] }) {
-  if (!contacts.length) return null;
-
+export default function OpponentDirectory({
+  contacts,
+  teamId,
+  division,
+}: {
+  contacts: OpponentContact[];
+  teamId: string;
+  division: string | null;
+}) {
   return (
     <section className="mt-8">
       <div className="flex items-center gap-2">
@@ -64,10 +89,26 @@ export default function OpponentDirectory({ contacts }: { contacts: OpponentCont
         Opposing captains for the season. Tap to call or email.
       </p>
 
+      <OpponentImportPanel teamId={teamId} division={division} />
+
+      {contacts.length === 0 && (
+        <p className="mt-3 text-[13px] text-white/30">
+          Nothing here yet — paste the league&rsquo;s contact list and every opposing captain lands
+          in one place.
+        </p>
+      )}
+
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {contacts.map((c) => (
           <div key={c.opponent} className="rounded-2xl border border-white/[0.08] bg-[#002838] p-5">
             <h3 className="text-[15px] font-semibold text-white">{c.opponent}</h3>
+            {(c.division || c.court_format) && (
+              <p className="text-[12px] text-white/35">
+                {c.division}
+                {c.division && c.court_format ? ' · ' : ''}
+                {c.court_format ? `hosts on ${c.court_format} courts` : ''}
+              </p>
+            )}
             {c.home_club && (
               <p className="mt-1 inline-flex items-center gap-1.5 text-[12.5px] text-white/40">
                 <Building2 size={12} /> {c.home_club}
@@ -81,8 +122,9 @@ export default function OpponentDirectory({ contacts }: { contacts: OpponentCont
                 )}
               </p>
             )}
-            <Person role="Captain" name={c.captain_name} email={c.captain_email} phone={c.captain_phone} />
-            <Person role="Co-captain" name={c.cocaptain_name} email={c.cocaptain_email} phone={c.cocaptain_phone} />
+            {c.captains.map((p, i) => (
+              <Person key={p.name} p={p} first={i === 0} />
+            ))}
           </div>
         ))}
       </div>

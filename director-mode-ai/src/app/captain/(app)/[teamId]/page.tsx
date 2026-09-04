@@ -2,7 +2,10 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { CalendarClock } from 'lucide-react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import OpponentDirectory, { type OpponentContact } from '@/components/captain/OpponentDirectory';
+import OpponentDirectory, {
+  type OpponentContact,
+  type OpponentPerson,
+} from '@/components/captain/OpponentDirectory';
 import { gateTeam } from '@/lib/captain/access';
 import { playedCounts, pairRecords, rulesFor } from '@/lib/captain/server';
 import { eligibilityReport, type RatingType } from '@/lib/captain/lineup';
@@ -17,7 +20,7 @@ import StrengthOrderPanel from '@/components/captain/StrengthOrderPanel';
 import NeverPairPanel from '@/components/captain/NeverPairPanel';
 import SeasonAvailabilityPanel from '@/components/captain/SeasonAvailabilityPanel';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
-import { defaultCourts } from '@/lib/captain/leagues';
+import { defaultCourts, leagueSpec } from '@/lib/captain/leagues';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +57,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
     default_doubles_courts: number | null;
     source_site: string | null;
     source_team_id: string | null;
+    court_format: number | null;
   };
 
   // What a new match starts with. The team's own numbers if it has them,
@@ -79,14 +83,50 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       db.from('captain_never_pair').select('id, player_a_id, player_b_id').eq('team_id', team.id),
     ]);
 
-  // League contacts are pulled off the league site once a season and kept
-  // here so match morning doesn't mean three logins on a phone.
+  /*
+   * League contacts. Pasted in once a season from the section's captain
+   * contact sheet, so match morning isn't three logins deep on a phone.
+   *
+   * The people live on captain_opponent_captains — the junior sections list up
+   * to five captains per team, which the old captain_/cocaptain_ pair could not
+   * hold.
+   */
   const { data: opponentRows } = await db
     .from('captain_opponents')
-    .select('opponent, captain_name, captain_email, captain_phone, cocaptain_name, cocaptain_email, cocaptain_phone, home_club, club_phone')
+    .select('id, opponent, division, court_format, home_club, club_phone')
     .eq('team_id', team.id)
     .order('opponent');
-  const opponentContacts = (opponentRows as OpponentContact[] | null) ?? [];
+  const opponentIds = ((opponentRows as { id: string }[]) || []).map((o) => o.id);
+  const { data: contactRows } = opponentIds.length
+    ? await db
+        .from('captain_opponent_captains')
+        .select('opponent_id, name, usta_number, safe_play_expires, email, phone, sort_order')
+        .in('opponent_id', opponentIds)
+        .order('sort_order')
+    : { data: [] };
+  const peopleByOpponent = new Map<string, OpponentPerson[]>();
+  for (const row of (contactRows as (OpponentPerson & { opponent_id: string })[]) || []) {
+    const list = peopleByOpponent.get(row.opponent_id) ?? [];
+    list.push(row);
+    peopleByOpponent.set(row.opponent_id, list);
+  }
+  const opponentContacts: OpponentContact[] = (
+    (opponentRows as {
+      id: string;
+      opponent: string;
+      division: string | null;
+      court_format: number | null;
+      home_club: string | null;
+      club_phone: string | null;
+    }[]) || []
+  ).map((o) => ({
+    opponent: o.opponent,
+    division: o.division,
+    court_format: o.court_format,
+    home_club: o.home_club,
+    club_phone: o.club_phone,
+    captains: peopleByOpponent.get(o.id) ?? [],
+  }));
 
   const roster = (players as Record<string, unknown>[]) || [];
   const allMatches = (matches as Record<string, unknown>[]) || [];
@@ -193,7 +233,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         Season email timeline
       </Link>
 
-      <OpponentDirectory contacts={opponentContacts} />
+      <OpponentDirectory contacts={opponentContacts} teamId={team.id} division={team.level} />
 
       {atRisk.length > 0 && (
         <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4">
@@ -335,6 +375,8 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         lineupLeadDays={team.lineup_lead_days ?? null}
         singlesCourts={courts.singles}
         doublesCourts={courts.doubles}
+        courtFormat={team.court_format}
+        showCourtFormat={!!leagueSpec(team.league_type).multiLine}
       />
 
       <StrengthOrderPanel teamId={team.id} players={roster as never} />

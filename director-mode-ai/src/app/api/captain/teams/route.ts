@@ -94,6 +94,7 @@ export async function PATCH(req: Request) {
     min_matches_self_rated?: number;
     default_singles_courts?: number;
     default_doubles_courts?: number;
+    court_format?: number;
   };
 
   const ctx = await requireTeam(body.team_id || '');
@@ -166,6 +167,17 @@ export async function PATCH(req: Request) {
     if (singles + doubles === 0) {
       return NextResponse.json({ error: 'A match needs at least one line.' }, { status: 400 });
     }
+  }
+
+  if (body.court_format !== undefined) {
+    const n = Number(body.court_format);
+    if (!Number.isInteger(n) || n < 1 || n > 8) {
+      return NextResponse.json(
+        { error: 'Court format must be a whole number of courts between 1 and 8.' },
+        { status: 400 },
+      );
+    }
+    patch.court_format = n;
   }
 
   if (body.eligibility_enabled !== undefined) patch.eligibility_enabled = !!body.eligibility_enabled;

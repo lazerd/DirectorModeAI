@@ -500,7 +500,37 @@ export async function sendAll(
  * should retype it eight times a season.
  */
 /** The sentence the hosting email uses when the captain hasn't written their own. */
-export function defaultLinesNote(lineCount?: number | null): string {
+export function defaultLinesNote(
+  lineCount?: number | null,
+  opts?: {
+    /** Courts the host is running the match on. */
+    courtFormat?: number | null;
+    /** Junior Team Tennis: lines are shared, so the ask is different. */
+    singlesCourts?: number | null;
+    doublesCourts?: number | null;
+    minPlayers?: number | null;
+  },
+): string {
+  /*
+   * Junior Team Tennis gets its own sentence because the question between two
+   * JTT captains is not "have you filled your lines" — the children share the
+   * eight lines between them — it is HOW MANY ARE COMING and HOW MANY COURTS
+   * the host has. Those two numbers decide whether the afternoon is three
+   * rounds or five, and they are what the visiting captain writes back to ask
+   * when the email doesn't say.
+   */
+  const singles = opts?.singlesCourts ?? 0;
+  const doubles = opts?.doublesCourts ?? 0;
+  const min = opts?.minPlayers ?? 0;
+  if (min > 0 && singles + doubles > 0) {
+    const courts = opts?.courtFormat
+      ? `We'll be running a ${opts.courtFormat}-court format.`
+      : null;
+    const lines = `The scorecard is ${singles} singles and ${doubles} doubles — ${singles + doubles} lines, played in rounds.`;
+    const numbers = `Could you let me know roughly how many players you're bringing? A team needs at least ${min} to take the court, and any line neither side can cover gets defaulted.`;
+    return [courts, lines, numbers].filter(Boolean).join(' ');
+  }
+
   if (!lineCount || lineCount <= 0) return '';
   return `We've filled all ${lineCount} lines. If you're bringing fewer than ${lineCount} teams, please let us know at your earliest convenience so we can plan the courts.`;
 }
@@ -523,6 +553,11 @@ export function hostingBodyText(
     hostNotes?: string | null;
     lineCount?: number | null;
     linesNote?: string | null;
+    /** Passed straight to defaultLinesNote — see the JTT branch there. */
+    courtFormat?: number | null;
+    singlesCourts?: number | null;
+    doublesCourts?: number | null;
+    minPlayers?: number | null;
     fromName?: string | null;
     fromTitle?: string | null;
   },
@@ -536,7 +571,12 @@ export function hostingBodyText(
   const linesText =
     opts.linesNote !== undefined && opts.linesNote !== null
       ? opts.linesNote.trim()
-      : defaultLinesNote(opts.lineCount);
+      : defaultLinesNote(opts.lineCount, {
+          courtFormat: opts.courtFormat,
+          singlesCourts: opts.singlesCourts,
+          doublesCourts: opts.doublesCourts,
+          minPlayers: opts.minPlayers,
+        });
 
   const blocks = [
     greeting,
