@@ -10,7 +10,8 @@ import { gateTeam } from '@/lib/captain/access';
 import { playedCounts, pairRecords, rulesFor } from '@/lib/captain/server';
 import { eligibilityReport, type RatingType } from '@/lib/captain/lineup';
 import RosterPanel from '@/components/captain/RosterPanel';
-import MissingContactsPanel from '@/components/captain/MissingContactsPanel';
+import RosterContactsPanel from '@/components/captain/RosterContactsPanel';
+import TeamContactsPanel, { type TeamContact } from '@/components/captain/TeamContactsPanel';
 import AddMatchForm from '@/components/captain/AddMatchForm';
 import PartnershipsPanel from '@/components/captain/PartnershipsPanel';
 import ImportPanel from '@/components/captain/ImportPanel';
@@ -96,6 +97,14 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
     .select('id, opponent, division, court_format, home_club, club_phone')
     .eq('team_id', team.id)
     .order('opponent');
+  const { data: teamContactRows } = await db
+    .from('captain_team_contacts')
+    .select('id, name, role, email, phone, on_emails')
+    .eq('team_id', team.id)
+    .order('sort_order')
+    .order('name');
+  const teamContacts = (teamContactRows as TeamContact[] | null) ?? [];
+
   const opponentIds = ((opponentRows as { id: string }[]) || []).map((o) => o.id);
   const { data: contactRows } = opponentIds.length
     ? await db
@@ -233,6 +242,34 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         Season email timeline
       </Link>
 
+      {/*
+        The roster leads the page.
+        It used to be last, under eight other panels, with the email and mobile
+        gaps in two further places — so the first thing a captain must do was the
+        hardest thing to find. Everything about who is on the team, and how to
+        reach them, is now one section at the top.
+      */}
+      <section className="mt-8">
+        <h2 className="text-xl font-display text-white">Your team</h2>
+      <RosterPanel
+        teamId={team.id}
+        players={roster as never}
+        partnerPrefs={(prefs as never) || []}
+        neverPairs={(never as never) || []}
+        eligibility={eligibility}
+        leagueType={team.league_type}
+        eligibilityEnabled={team.eligibility_enabled}
+      />
+
+        <RosterContactsPanel
+          teamId={team.id}
+          players={roster as never}
+          juniors={!!leagueSpec(team.league_type).multiLine}
+        />
+
+        <TeamContactsPanel teamId={team.id} contacts={teamContacts} />
+      </section>
+
       <OpponentDirectory contacts={opponentContacts} teamId={team.id} division={team.level} />
 
       {atRisk.length > 0 && (
@@ -366,7 +403,17 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
 
       <ImportPanel teamId={team.id} teamIsEmpty={roster.length === 0} />
 
-      <PreseasonPanel teamId={team.id} players={roster as never} />
+      {/*
+        No pre-season questionnaire for juniors.
+        It asks for ranked partner preferences and a preferred return side —
+        questions you cannot put to an eight-year-old by email, and that mean
+        little in a format where one child can play three doubles lines with
+        three different partners in the same afternoon. The lineup for a junior
+        team is the coach's call, off the strength order.
+      */}
+      {!leagueSpec(team.league_type).multiLine && (
+        <PreseasonPanel teamId={team.id} players={roster as never} />
+      )}
 
       <TeamSettingsPanel
         teamId={team.id}
@@ -387,20 +434,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         neverPairs={(never as never) || []}
       />
 
-      {/* Above the roster on purpose: a missing mobile is the thing that makes
-          every texting feature silently do nothing, and it is invisible when it
-          is buried one Edit panel deep per player. */}
-      <MissingContactsPanel teamId={team.id} players={roster as never} />
 
-      <RosterPanel
-        teamId={team.id}
-        players={roster as never}
-        partnerPrefs={(prefs as never) || []}
-        neverPairs={(never as never) || []}
-        eligibility={eligibility}
-        leagueType={team.league_type}
-        eligibilityEnabled={team.eligibility_enabled}
-      />
     </div>
   );
 }

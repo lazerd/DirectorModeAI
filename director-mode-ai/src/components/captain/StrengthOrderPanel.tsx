@@ -240,6 +240,14 @@ export default function StrengthOrderPanel({
     }
   }
 
+  /** Back to the saved order, for a drag the captain didn't mean. */
+  function reset() {
+    setOrder(initialOrder(roster));
+    setDirty(false);
+    setMsg(null);
+    setError(null);
+  }
+
   if (!roster.length) return null;
 
   return (
@@ -300,9 +308,6 @@ export default function StrengthOrderPanel({
 
       {msg && <p className="text-sm text-[#D3FB52] mt-3">{msg}</p>}
       {error && <p className="text-sm text-red-300 mt-3">{error}</p>}
-      {dirty && !error && (
-        <p className="text-sm text-amber-300/90 mt-3">Unsaved order — hit Save order.</p>
-      )}
 
       <div className="mt-4">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -327,6 +332,34 @@ export default function StrengthOrderPanel({
           </SortableContext>
         </DndContext>
       </div>
+
+      {/*
+        The save button also lives here, under the list.
+        It was only in the header, which is above the whole roster — so a captain
+        who scrolled down to drag people saw "Unsaved order — hit Save order" and
+        no button anywhere near it. On a phone the header was several screens up.
+        The warning and the button that answers it now sit together, at the end
+        of the thing you were just doing.
+      */}
+      {dirty && (
+        <div className="mt-3 flex items-center gap-3 flex-wrap rounded-xl border border-amber-300/25 bg-amber-300/[0.06] px-4 py-3">
+          <span className="text-sm text-amber-200/90">Unsaved order.</span>
+          <button
+            onClick={save}
+            disabled={busy}
+            className="px-4 py-2 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold text-sm disabled:opacity-50"
+          >
+            {busy ? 'Saving…' : 'Save order'}
+          </button>
+          <button
+            onClick={reset}
+            disabled={busy}
+            className="text-sm text-white/50 hover:text-white disabled:opacity-50"
+          >
+            Undo changes
+          </button>
+        </div>
+      )}
     </section>
   );
 }

@@ -95,7 +95,9 @@ export default function RatingsPastePanel({ teamId }: { teamId: string }) {
               setText(e.target.value);
               setPreview(null);
             }}
-            placeholder={'Paula Garcia\t3.42\t8-4\nMoore, Shannon\t3.61\t7-5'}
+            // Invented names on purpose: these placeholders were real players
+            // from a live roster, shown to every captain who opens the app.
+            placeholder={'Jordan Avery\t3.42\t8-4\nEllis, Robin\t3.61\t7-5'}
             style={{ color: '#ffffff' }}
             className="w-full px-3 py-2 rounded-lg bg-[#001820] border border-white/10 placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none text-sm font-mono"
           />

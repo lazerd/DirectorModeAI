@@ -131,7 +131,9 @@ export default function WtnPastePanel({
               setText(e.target.value);
               setPreview(null);
             }}
-            placeholder={'Leena Elias\t18.4\t17.9\nMoore, Shannon\t16.2\nPaula Garcia  19.7  19.1'}
+            // Invented names, as in the ratings panel — a placeholder is not
+            // the place for people who actually play on somebody's team.
+            placeholder={'Sam Rivera\t18.4\t17.9\nEllis, Robin\t16.2\nJordan Avery  19.7  19.1'}
             style={{ color: '#ffffff' }}
             className="w-full px-3 py-2 rounded-lg bg-[#001820] border border-white/10 placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none text-sm font-mono"
           />
