@@ -289,7 +289,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         }))}
       />
 
-      <ImportPanel teamId={team.id} />
+      <ImportPanel teamId={team.id} teamIsEmpty={roster.length === 0} />
 
       <PreseasonPanel teamId={team.id} players={roster as never} />
 

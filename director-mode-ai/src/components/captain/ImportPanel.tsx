@@ -26,9 +26,18 @@ type Preview = { players: PPlayer[]; matches: PMatch[]; notes?: string[] };
 const field =
   'w-full px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-white placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none text-sm';
 
-export default function ImportPanel({ teamId }: { teamId: string }) {
+export default function ImportPanel({
+  teamId,
+  teamIsEmpty = false,
+}: {
+  teamId: string;
+  teamIsEmpty?: boolean;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  // A brand-new team opens straight into the paste box. The captain arriving
+  // here has nothing to do BUT import, so making them find a button first is
+  // the step that sent one captain to the wrong box entirely.
+  const [open, setOpen] = useState(teamIsEmpty);
   const [text, setText] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
@@ -102,11 +111,29 @@ export default function ImportPanel({ teamId }: { teamId: string }) {
     }
   }
 
+  /**
+   * Ctrl+V anywhere on this panel imports, without hunting for the textarea.
+   * The captain has just copied a whole page; the next thing they do is paste,
+   * and it should land somewhere no matter where the cursor is.
+   */
+  function handlePaste(e: React.ClipboardEvent) {
+    if (preview) return;
+    const pasted = e.clipboardData?.getData('text') ?? '';
+    if (!pasted.trim()) return;
+    // Let the textarea handle its own paste normally.
+    if ((e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
+    e.preventDefault();
+    setText(pasted);
+    setOpen(true);
+    setError(null);
+    setDone(null);
+  }
+
   const keptPlayers = preview ? preview.players.length - skipPlayers.size : 0;
   const keptMatches = preview ? preview.matches.length - skipMatches.size : 0;
 
   return (
-    <section className="mt-10">
+    <section className="mt-10" onPaste={handlePaste}>
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-display text-white">Import from your league site</h2>
         <button
@@ -126,12 +153,33 @@ export default function ImportPanel({ teamId }: { teamId: string }) {
 
       {open && !preview && (
         <form onSubmit={parse} className="mt-4 rounded-2xl border border-white/[0.08] bg-[#002838] p-5">
-          <label htmlFor="paste" className="block text-sm text-white/60 mb-1">
-            Open your team page on TopDog, TennisLink, tenniscores or a spreadsheet — select all,
-            copy, and paste it here.
-          </label>
+          <ol className="text-sm text-white/70 mb-3 space-y-1.5">
+            <li>
+              <span className="text-white/40 mr-2">1.</span>Open your team page on TopDog,
+              TennisLink, tenniscores — or a spreadsheet.
+            </li>
+            <li>
+              <span className="text-white/40 mr-2">2.</span>Select the whole page and copy it —{' '}
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/80 text-xs">Ctrl</kbd>
+              <span className="text-white/30 mx-0.5">+</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/80 text-xs">A</kbd>
+              <span className="text-white/30 mx-1.5">then</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/80 text-xs">Ctrl</kbd>
+              <span className="text-white/30 mx-0.5">+</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/80 text-xs">C</kbd>
+              <span className="text-white/30 ml-2">(⌘ on a Mac)</span>
+            </li>
+            <li>
+              <span className="text-white/40 mr-2">3.</span>Come back here and paste —{' '}
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/80 text-xs">Ctrl</kbd>
+              <span className="text-white/30 mx-0.5">+</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-white/80 text-xs">V</kbd>
+              <span className="text-white/30 ml-2">anywhere on this panel.</span>
+            </li>
+          </ol>
           <p className="text-xs text-white/35 mb-2">
-            Roster, schedule, or both. Nothing is saved until you review it on the next screen.
+            Roster, schedule, or both. Menus, footers and adverts are fine — they get ignored.
+            Nothing is saved until you review it on the next screen.
           </p>
           <textarea
             id="paste"
