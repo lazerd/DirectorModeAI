@@ -120,3 +120,37 @@ describe('sameDivision', () => {
     expect(sameDivision('10U Orange Ball', '10U Green Ball')).toBe(false);
   });
 });
+
+describe('duplicate captains on one row', () => {
+  /**
+   * Verbatim from the real list: Life Long Tennis names Samuel Kidane in two of
+   * its five captain columns. Left as two entries, the import died with
+   * "ON CONFLICT DO UPDATE command cannot affect row a second time" and the
+   * whole 46-team paste wrote nothing.
+   */
+  const LIFELONG =
+    '5083524590\tLife Long Tennis\t10U Green Ball\tSamuel Kidane\t2010624965\t1/27/2027\tlifelongtennis@gmail.com\t980-239-9587\tSamuel Kidane\t2010624965\t1/27/2027\tlifelongtennis@gmail.com\t980-239-9587';
+
+  it('lists the person once', () => {
+    const r = parseOpponentPaste(LIFELONG);
+    expect(r.rows[0].captains).toHaveLength(1);
+    expect(r.rows[0].captains[0].name).toBe('Samuel Kidane');
+  });
+
+  it('merges details rather than keeping only the first copy', () => {
+    // One club lists someone with an email in one column and a phone in
+    // another; first-wins would drop whichever came second.
+    const split =
+      '5083524591\tSplit Contact Club\t10U Green Ball\tJamie Lee\t2010624966\t1/27/2027\tjamie@example.com\t\tJamie Lee\t\t\t\t925-555-0148';
+    const c = parseOpponentPaste(split).rows[0].captains;
+    expect(c).toHaveLength(1);
+    expect(c[0].email).toBe('jamie@example.com');
+    expect(c[0].phone).toBe('925-555-0148');
+  });
+
+  it('keeps two genuinely different people apart', () => {
+    const two =
+      '5083525258\tMoraga\t10U Green Ball\tThomas McGee\t11697534\t12/12/26\tthomas@moragacc.com\t925-631-1909\tRonan Reberac\t2019429655\t1/29/27\tronan@moragacc.com\t510-499-5732';
+    expect(parseOpponentPaste(two).rows[0].captains).toHaveLength(2);
+  });
+});

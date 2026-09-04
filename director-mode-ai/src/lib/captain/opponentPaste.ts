@@ -136,7 +136,34 @@ function readCaptains(cells: string[]): OpponentCaptain[] {
     }
   }
   flush();
-  return out;
+
+  /*
+   * One person, one entry.
+   *
+   * Life Long Tennis lists Samuel Kidane in two of its five captain columns.
+   * Left as two entries that is two rows with the same (opponent_id, name) in
+   * one statement, and Postgres fails the whole import with "ON CONFLICT DO
+   * UPDATE command cannot affect row a second time" — one duplicated name
+   * killing a 46-team paste.
+   *
+   * Merged rather than first-wins: a club often lists someone once with an
+   * email and again with a phone, and keeping either copy alone loses the
+   * other. Deduped here, in the parser, so the preview shows exactly what will
+   * be written.
+   */
+  const byName = new Map<string, OpponentCaptain>();
+  for (const c of out) {
+    const seen = byName.get(c.name.toLowerCase());
+    if (!seen) {
+      byName.set(c.name.toLowerCase(), c);
+      continue;
+    }
+    seen.ustaNumber ??= c.ustaNumber;
+    seen.safePlayExpires ??= c.safePlayExpires;
+    seen.email ??= c.email;
+    seen.phone ??= c.phone;
+  }
+  return [...byName.values()];
 }
 
 /** Loose division match: "14U Yellow Intermediate" vs "14U - Yellow Intermediate". */

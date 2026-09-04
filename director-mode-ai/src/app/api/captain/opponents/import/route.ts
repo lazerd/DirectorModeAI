@@ -89,7 +89,12 @@ export async function POST(req: Request) {
         .insert(fields)
         .select('id')
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) {
+        return NextResponse.json(
+          { error: `${row.teamName}: ${error.message}`, added, updated },
+          { status: 500 },
+        );
+      }
       opponentId = (ins as { id: string }).id;
       added += 1;
     }
@@ -102,23 +107,64 @@ export async function POST(req: Request) {
      */
     await ctx.db.from('captain_opponent_captains').delete().eq('opponent_id', opponentId);
 
-    const people = (row.captains || [])
-      .filter((c) => c?.name?.trim())
-      .map((c, i) => ({
+    /*
+     * One person, one row — even when the sheet lists them twice.
+     *
+     * Life Long Tennis has Samuel Kidane in two of the five captain columns on
+     * its own row. Sent as-is that is two rows with the same
+     * (opponent_id, name), and Postgres rejects the whole statement with
+     * "ON CONFLICT DO UPDATE command cannot affect row a second time" — so ONE
+     * duplicated name in a 46-team paste failed the entire import, and the
+     * captain saw a database error instead of a roster.
+     *
+     * Deduped on the lowercased name, merging the details rather than keeping
+     * only the first: a club often lists someone once with an email and again
+     * with a phone, and taking either copy alone would drop the other number.
+     */
+    const byName = new Map<string, {
+      opponent_id: string;
+      name: string;
+      usta_number: string | null;
+      safe_play_expires: string | null;
+      email: string | null;
+      phone: string | null;
+      sort_order: number;
+    }>();
+
+    for (const c of row.captains || []) {
+      const name = c?.name?.trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      const seen = byName.get(key);
+      if (seen) {
+        seen.usta_number ??= c.ustaNumber || null;
+        seen.safe_play_expires ??= c.safePlayExpires || null;
+        seen.email ??= c.email || null;
+        seen.phone ??= c.phone || null;
+        continue;
+      }
+      byName.set(key, {
         opponent_id: opponentId,
-        name: c.name.trim(),
+        name,
         usta_number: c.ustaNumber || null,
         safe_play_expires: c.safePlayExpires || null,
         email: c.email || null,
         phone: c.phone || null,
-        sort_order: i,
-      }));
+        sort_order: byName.size,
+      });
+    }
+    const people = [...byName.values()];
 
     if (people.length) {
       const { error } = await ctx.db
         .from('captain_opponent_captains')
         .upsert(people, { onConflict: 'opponent_id,name', ignoreDuplicates: false });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) {
+        return NextResponse.json(
+          { error: `${row.teamName}: ${error.message}`, added, updated },
+          { status: 500 },
+        );
+      }
     }
 
     /*
