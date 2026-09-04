@@ -44,7 +44,14 @@ export default function InvitePastPlayersPanel({ eventId }: { eventId: string })
       if (!r.ok) return setErr(d.error || 'Could not load past events');
       const list: PastEvent[] = d.events || [];
       setPastEvents(list);
-      setSelected(new Set(list.map((e) => e.id))); // default: everyone who's ever paid
+      /*
+       * Past paid events start ticked; league rosters do NOT.
+       * A roster is a far wider audience than "families who have paid you
+       * before" — it is every child who played the club's league, most of whom
+       * have never entered one of these events. Opting them in has to be a
+       * deliberate click, not a default somebody misses.
+       */
+      setSelected(new Set(list.filter((e) => !e.id.startsWith('league:')).map((e) => e.id)));
     })();
     return () => {
       alive = false;
@@ -118,7 +125,8 @@ export default function InvitePastPlayersPanel({ eventId }: { eventId: string })
   if (!pastEvents.length)
     return (
       <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
-        No past events with paid entries yet — once you&rsquo;ve run a paid event, those families show up here to invite.
+        No past events or league rosters yet — once you&rsquo;ve run a paid event or a club league, those
+        families show up here to invite.
       </div>
     );
 

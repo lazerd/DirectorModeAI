@@ -765,19 +765,38 @@ export async function quadPromoteCampaign(
   };
   if (e.user_id !== user.id) return { ok: false, status: 403, error: 'Not authorized' };
 
-  const sources = await pastPaidEvents(user.id, eventId);
+  /*
+   * Two kinds of audience: people who PAID for a past event, and the children
+   * on the club's own junior league rosters. The second is the obvious one for
+   * a junior event and was missing entirely — a league entry is not a
+   * tournament_entries row, so last summer's JTT players were invisible here.
+   */
+  const sources = [...(await pastPaidEvents(user.id, eventId)), ...(await juniorLeagueSources(user.id))];
   const chosen = sourceEventIds?.length ? sources.filter((s) => sourceEventIds.includes(s.id)) : sources;
+
+  const chosenEventIds = chosen.filter((s) => !s.id.startsWith(LEAGUE_SOURCE_PREFIX)).map((s) => s.id);
+  const chosenDivisionIds = chosen
+    .filter((s) => s.id.startsWith(LEAGUE_SOURCE_PREFIX))
+    .map((s) => s.id.slice(LEAGUE_SOURCE_PREFIX.length));
 
   const everyone: Person[] = [];
   if (chosen.length) {
-    const { data: paidRows } = await admin
-      .from('tournament_entries')
-      .select('event_id, player_name, player_email, parent_name, parent_email')
-      .in(
-        'event_id',
-        chosen.map((s) => s.id)
-      )
-      .eq('payment_status', 'paid');
+    const { data: paidRows } = chosenEventIds.length
+      ? await admin
+          .from('tournament_entries')
+          .select('event_id, player_name, player_email, parent_name, parent_email')
+          .in('event_id', chosenEventIds)
+          .eq('payment_status', 'paid')
+      : { data: [] };
+
+    // League rosters, normalised into the same shape as a paid entry so the
+    // dedupe and greeting logic below is identical for both.
+    const { data: leagueRows } = chosenDivisionIds.length
+      ? await admin
+          .from('league_team_rosters')
+          .select('player_name, player_email, parent_name, parent_email, division_id, club_id')
+          .in('division_id', chosenDivisionIds)
+      : { data: [] };
 
     // Drop anyone already in the target event, and the director themselves.
     const skip = new Set<string>();
@@ -788,7 +807,11 @@ export async function quadPromoteCampaign(
     if (user.email) skip.add(user.email.trim().toLowerCase());
 
     const seen = new Map<string, Person>();
-    for (const r of (paidRows as Array<Record<string, string | null>>) || []) {
+    const allRows = [
+      ...((paidRows as Array<Record<string, string | null>>) || []),
+      ...((leagueRows as Array<Record<string, string | null>>) || []),
+    ];
+    for (const r of allRows) {
       const parentEmail = (r.parent_email || '').trim();
       const email = parentEmail || (r.player_email || '').trim();
       if (!email) continue;
@@ -970,4 +993,87 @@ export async function resolveCampaign(
     default:
       return { ok: false, status: 400, error: `Unknown surface: ${surface}` };
   }
+}
+
+/**
+ * Prefix marking a source as a junior LEAGUE roster rather than a past event.
+ *
+ * The promo audience could only ever be "people who paid for one of your past
+ * events". That misses the most obvious junior audience a club has: the
+ * children who played its own league last season. They never paid the club
+ * directly — a league entry is not a tournament_entries row — so they were
+ * invisible to a panel that only knew how to read paid entries.
+ */
+export const LEAGUE_SOURCE_PREFIX = 'league:';
+
+/**
+ * The director's own club rosters from junior leagues, as selectable sources.
+ *
+ * Grouped per league + division, because a director picking an audience thinks
+ * "the 10U kids from summer", not "roster rows 1-9".
+ */
+export async function juniorLeagueSources(
+  userId: string
+): Promise<Array<{ id: string; name: string; eventDate: string | null; paidCount: number }>> {
+  const admin = getSupabaseAdmin();
+
+  // Which club(s) does this director run? The roster's club_id is the LEAGUE's
+  // own club row, not cc_clubs, so it is matched by name.
+  const { data: clubRows } = await admin.from('cc_clubs').select('id, name').eq('owner_id', userId);
+  const clubNames = ((clubRows as Array<{ name: string }>) || []).map((c) =>
+    c.name.toLowerCase(),
+  );
+  if (!clubNames.length) return [];
+
+  const { data: leagueClubs } = await admin.from('league_clubs').select('id, name');
+  const mine = ((leagueClubs as Array<{ id: string; name: string }>) || []).filter((lc) =>
+    clubNames.some(
+      (cn) => cn.includes(lc.name.toLowerCase()) || lc.name.toLowerCase().includes(cn),
+    ),
+  );
+  if (!mine.length) return [];
+
+  const { data: rows } = await admin
+    .from('league_team_rosters')
+    .select('division_id, parent_email, player_email, club_id')
+    .in(
+      'club_id',
+      mine.map((m) => m.id),
+    );
+  const roster = (rows as Array<Record<string, string | null>>) || [];
+  if (!roster.length) return [];
+
+  const { data: divs } = await admin
+    .from('league_divisions')
+    .select('id, short_code, league_id')
+    .in('id', [...new Set(roster.map((r) => r.division_id as string))]);
+  const divRows = (divs as Array<{ id: string; short_code: string; league_id: string }>) || [];
+
+  const { data: leagues } = await admin
+    .from('leagues')
+    .select('id, name, start_date')
+    .in('id', [...new Set(divRows.map((d) => d.league_id))]);
+  const leagueById = new Map(
+    ((leagues as Array<{ id: string; name: string; start_date: string | null }>) || []).map((l) => [
+      l.id,
+      l,
+    ]),
+  );
+
+  const out: Array<{ id: string; name: string; eventDate: string | null; paidCount: number }> = [];
+  for (const d of divRows) {
+    // Only rows we could actually write to.
+    const reachable = roster.filter(
+      (r) => r.division_id === d.id && ((r.parent_email || '').trim() || (r.player_email || '').trim()),
+    );
+    if (!reachable.length) continue;
+    const league = leagueById.get(d.league_id);
+    out.push({
+      id: `${LEAGUE_SOURCE_PREFIX}${d.id}`,
+      name: `${league?.name ?? 'League'} — ${d.short_code}`,
+      eventDate: league?.start_date ?? null,
+      paidCount: reachable.length,
+    });
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name));
 }

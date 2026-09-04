@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { pastPaidEvents } from '@/lib/campaigns/sources';
+import { pastPaidEvents, juniorLeagueSources } from '@/lib/campaigns/sources';
 
 // GET /api/campaigns/past-events?eventId=<id>
 //
@@ -26,6 +26,15 @@ export async function GET(req: NextRequest) {
   if (!ev) return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   if ((ev as { user_id: string }).user_id !== user.id) return NextResponse.json({ error: 'Not authorized' }, { status: 403 });
 
-  const events = await pastPaidEvents(user.id, eventId);
+  /*
+   * Past paid events AND the club's own junior league rosters. The second is
+   * the obvious audience for a junior event and was missing: last summer's JTT
+   * players never paid the club through an event, so nothing here could see
+   * them.
+   */
+  const events = [
+    ...(await pastPaidEvents(user.id, eventId)),
+    ...(await juniorLeagueSources(user.id)),
+  ];
   return NextResponse.json({ events });
 }
