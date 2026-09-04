@@ -163,6 +163,40 @@ export default function AvailabilityList({
           )}
         </header>
 
+        {/*
+          The whole season, in the parent's phone, from the page they were told
+          to bookmark.
+          The calendar button shipped after the availability emails had already
+          gone out, and a third email in one afternoon to say "here is a button"
+          is worse than the missing button. Putting it here means everyone who
+          opens their link gets it — which is everyone who still has a date to
+          answer — with nothing else sent.
+        */}
+        {matches.length > 0 && (
+          <a
+            href={`/api/captain/calendar/${token}`}
+            style={{
+              display: 'inline-block',
+              marginTop: 16,
+              padding: '12px 18px',
+              borderRadius: 12,
+              background: '#e2e8f0',
+              color: '#0f172a',
+              textDecoration: 'none',
+              fontWeight: 600,
+              fontSize: 15,
+            }}
+          >
+            📅 Add all {matches.length} to my calendar
+          </a>
+        )}
+        {matches.length > 0 && (
+          <p style={{ fontSize: 13, color: '#64748b', margin: '8px 0 0' }}>
+            Works on iPhone, Google Calendar and Outlook. Every match comes with a reminder the
+            night before and an hour ahead.
+          </p>
+        )}
+
         {error && (
           <p
             role="alert"
