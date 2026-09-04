@@ -10,7 +10,7 @@
  * so re-pasting the same page is harmless.
  */
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type PPlayer = { name: string; email?: string | null; rating?: number | null; is_sub?: boolean };
@@ -39,6 +39,54 @@ export default function ImportPanel({
   // the step that sent one captain to the wrong box entirely.
   const [open, setOpen] = useState(teamIsEmpty);
   const [text, setText] = useState('');
+
+  /*
+   * The paste survives a remount.
+   *
+   * Darrin hit "it keeps deleting what I paste into the box" — the text landed
+   * and then vanished. Nothing in this component clears `text` except a
+   * successful commit, which means the component was being remounted and
+   * useState('') was running again. Rather than hunt every possible cause of a
+   * remount (a router.refresh from a sibling panel, a re-render that changes
+   * this subtree's identity, a background token refresh), the paste is simply
+   * made durable: it is the single most expensive thing on this screen to
+   * reproduce, because re-creating it means going back to the league site and
+   * selecting the whole page again.
+   *
+   * sessionStorage, not localStorage: this is a scratch buffer for one sitting,
+   * not something to greet the captain with next month. Scoped per team so two
+   * teams open in two tabs don't overwrite each other. Every access is wrapped —
+   * Safari in private mode throws on the getter itself.
+   */
+  const storageKey = `captain:import:${teamId}`;
+  const restored = useRef(false);
+
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    try {
+      const saved = sessionStorage.getItem(storageKey);
+      if (saved) {
+        setText(saved);
+        setOpen(true);
+      }
+    } catch {
+      // No session storage (private mode, storage disabled). Nothing to restore.
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    // Only after the restore pass, or the first render would blank the saved
+    // copy with the empty initial state.
+    if (!restored.current) return;
+    try {
+      if (text) sessionStorage.setItem(storageKey, text);
+      else sessionStorage.removeItem(storageKey);
+    } catch {
+      // Storage full or unavailable — the paste still works, it just won't
+      // survive a reload. Never worth breaking the import over.
+    }
+  }, [text, storageKey]);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

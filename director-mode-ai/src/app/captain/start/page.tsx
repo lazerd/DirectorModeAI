@@ -1,5 +1,4 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getCaptainAccess, TRIAL_DAYS } from '@/lib/captain/access';
 import StartTrialButton from '@/components/captain/StartTrialButton';
@@ -30,13 +29,18 @@ export default async function StartTrial({
 
   const source = (searchParams.ref || searchParams.from || '').slice(0, 120);
 
-  // Not signed in: send them to sign up, and come straight back here.
-  if (!user) {
-    const back = `/captain/start${source ? `?ref=${encodeURIComponent(source)}` : ''}`;
-    redirect(`/login?redirect=${encodeURIComponent(back)}`);
-  }
-
-  const access = await getCaptainAccess(user.id);
+  /*
+   * A signed-out visitor sees the page, NOT the login form.
+   *
+   * This link is clicked from a cold email by a captain at another club who has
+   * never heard of ClubMode. Bouncing them to /login before they have read a
+   * word asks them to create an account for something they cannot yet see —
+   * which is where almost all of them would stop. They sign in when they press
+   * the button, and land back here.
+   */
+  const access = user
+    ? await getCaptainAccess(user.id)
+    : { active: false, onTrial: false, trialExpired: false, trialDaysLeft: 0 };
 
   return (
     <div className="min-h-screen bg-[#001820] px-6 py-14">
@@ -94,7 +98,7 @@ export default async function StartTrial({
             </ul>
 
             <div className="mt-8 rounded-2xl border border-white/[0.08] bg-[#002838] p-6">
-              <StartTrialButton source={source} />
+              <StartTrialButton source={source} signedIn={!!user} />
               {/* Said before the click, not after. A captain who finds out the
                   price on the far side of a signup does not come back. */}
               <p className="text-white/45 text-[13px] mt-3">

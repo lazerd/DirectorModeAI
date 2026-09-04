@@ -4,12 +4,26 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 /** One button, one job: start the trial and go straight to the team list. */
-export default function StartTrialButton({ source }: { source: string }) {
+export default function StartTrialButton({
+  source,
+  signedIn,
+}: {
+  source: string;
+  /** A visitor from a cold email has no account yet. */
+  signedIn: boolean;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function start() {
+    // Sign-in happens at the moment of intent, not before the pitch, and comes
+    // straight back here with the referral tag intact.
+    if (!signedIn) {
+      const back = `/captain/start${source ? `?ref=${encodeURIComponent(source)}` : ''}`;
+      router.push(`/login?redirect=${encodeURIComponent(back)}`);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
