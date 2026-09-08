@@ -671,8 +671,19 @@ export function opponentHostingEmail(
 
   return {
     to: opts.to,
-    subject: (opts.subject || '').trim() || defaultHostingSubject(team, m, opts.clubName, tz),
-    html: shell('Looking forward to hosting you', textToHtml(opts.bodyText), promo),
+    subject:
+      (opts.subject || '').trim() ||
+      (m.isHome
+        ? defaultHostingSubject(team, m, opts.clubName, tz)
+        : defaultVisitingSubject(team, m, tz)),
+    // The same builder sends both directions. Away, the body already reads as
+    // a visiting captain ("what time would you like us there?"), so a header
+    // saying we are hosting contradicts the sentence underneath it.
+    html: shell(
+      m.isHome ? 'Looking forward to hosting you' : 'Confirming our match',
+      textToHtml(opts.bodyText),
+      promo,
+    ),
   };
 }
 
