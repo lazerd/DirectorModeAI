@@ -85,7 +85,22 @@ function clubTimestamp(date: string, time: string): string {
   return `${date}T${hhmm}:00${offset}`;
 }
 
-const SYSTEM = `You extract tennis league team data from a page a captain pasted in.
+function systemPrompt(): string {
+  // League sites very often print "Fri, Sep 11" with no year — EBWT's master
+  // schedule does exactly that. Without today's date the model has nothing to
+  // anchor on and guesses; one captain's whole season came back dated 2020-2021
+  // and every match rendered as already played. Give it the date explicitly.
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Los_Angeles',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(new Date());
+  return SYSTEM_TEMPLATE.replace('{{TODAY}}', today);
+}
+
+const SYSTEM_TEMPLATE = `You extract tennis league team data from a page a captain pasted in.
+
+TODAY IS {{TODAY}}. Every schedule you are given is for a season being played
+now or about to be played.
 
 Return ONLY JSON matching this shape:
 {
@@ -99,6 +114,13 @@ Rules:
 - Extract only what is actually present. Never invent a player, a date, or an email.
 - "rating" is the NTRP number (e.g. 3.5). Use null if the page does not show one.
 - "time" is 24-hour local time. Use null if the page shows no time.
+- YEARS ARE USUALLY MISSING. Most league sites print "Fri, Sep 11" or "Oct 2"
+  with no year at all. When the year is absent, work it out from TODAY: pick the
+  year that places the match in the season now being played or the one about to
+  start. A season that runs Sep to Apr spans two calendar years — the Sep-Dec
+  dates take this year, the Jan-Apr dates take next year. NEVER return a date in
+  the past because a year was missing. If you genuinely cannot tell, use the
+  current year and say so in "notes".
 - "time": read it off the page. NEVER guess one. If the page shows no start time
   for a match, return null — a wrong time is far worse than a missing one.
 - is_home: true when THIS team hosts, false when the other team does. Many
@@ -113,6 +135,44 @@ Rules:
   - confirm the real weekday before relying on them."
 - Put anything ambiguous or dropped into "notes" so the captain can see it.
 - If the paste has no roster, return an empty players array. Same for matches.`;
+
+
+/**
+ * Belt and braces on the missing-year problem. If a paste comes back with the
+ * WHOLE schedule in the past, the year was almost certainly invented rather
+ * than read — no captain imports a season that already finished. Shift the set
+ * forward by whole years (which preserves every weekday, since the source only
+ * ever printed a weekday and a date) until the first match is roughly current,
+ * and say plainly in the notes that we did it.
+ *
+ * Only fires when EVERY match is in the past. A schedule mid-season legitimately
+ * has some played fixtures in it, and those must be left exactly as pasted.
+ */
+function correctPastSeason(preview: Parsed): void {
+  if (!preview.matches.length) return;
+  const dates = preview.matches.map((m) => m.date).sort();
+  const last = new Date(dates[dates.length - 1] + 'T12:00:00Z').getTime();
+  const now = Date.now();
+  if (last >= now - 7 * 24 * 3600 * 1000) return; // something is still ahead: leave it alone
+
+  const first = new Date(dates[0] + 'T12:00:00Z');
+  let shift = 0;
+  // Whole years only, so Friday stays Friday.
+  while (first.getTime() + shift * 365.2425 * 24 * 3600 * 1000 < now - 30 * 24 * 3600 * 1000) {
+    shift += 1;
+    if (shift > 25) return; // pathological — don't guess
+  }
+  if (shift === 0) return;
+
+  for (const m of preview.matches) {
+    const [y, mo, d] = m.date.split('-').map(Number);
+    m.date = `${y + shift}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  preview.notes = [
+    `The schedule had no year on it, so the dates came back as ${dates[0].slice(0, 4)} — a season that has already finished. I moved them forward ${shift} year${shift === 1 ? '' : 's'} to the current season. Check the first date looks right before you confirm.`,
+    ...(preview.notes || []),
+  ].slice(0, 10);
+}
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -247,7 +307,7 @@ export async function POST(req: Request) {
     msg = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 4000,
-      system: SYSTEM,
+      system: systemPrompt(),
       messages: [{ role: 'user', content: text }],
     });
     raw = msg.content.map((c) => (c.type === 'text' ? c.text : '')).join('');
@@ -281,6 +341,7 @@ export async function POST(req: Request) {
   }
 
   const preview: Parsed = parsed.data;
+  correctPastSeason(preview);
   if (!preview.players.length && !preview.matches.length) {
     return NextResponse.json(
       { error: 'No players or matches found in that paste.' },
