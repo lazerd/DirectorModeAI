@@ -356,22 +356,42 @@ export default function MatchWorkspace({
     );
 
   /** Record a yes (or a no) the captain collected by text, or in person. */
-  const recordAnswer = (playerId: string, state: 'in' | 'out' | 'clear', note?: string) =>
+  const recordAnswer = (
+    playerId: string,
+    state: 'in' | 'maybe' | 'out' | 'clear',
+    note?: string,
+  ) =>
     call(
       `confirm-${playerId}`,
       '/api/captain/confirm-for',
       { team_id: teamId, match_id: matchId, player_id: playerId, state, note },
       (j) => {
+        const who = j.name as string;
+        const court = j.court as string | null;
         setNote(
           state === 'clear'
-            ? `Cleared ${j.name as string}'s answer — back to no answer yet.`
-            : state === 'in'
-              ? `Marked ${j.name as string} confirmed. Recorded as your answer for her, not a tap of her own.`
-              : `Marked ${j.name as string} out.`,
+            ? `Cleared ${who}'s answer — back to no answer yet.`
+            : state === 'out'
+              ? `Marked ${who} out.`
+              : state === 'maybe'
+                ? `Marked ${who} a maybe.`
+                : court
+                  ? `Marked ${who} available and confirmed on ${court}. Recorded as your answer for her, not a tap of her own.`
+                  : `Marked ${who} available. Recorded as your answer for her, not a tap of her own.`,
         );
         router.refresh();
       },
     );
+
+  /** The off-app answer being recorded right now: who, and any qualifier. */
+  const [tellWho, setTellWho] = useState('');
+  const [tellNote, setTellNote] = useState('');
+
+  const tell = async (state: 'in' | 'maybe' | 'out' | 'clear') => {
+    if (!tellWho) return;
+    await recordAnswer(tellWho, state, tellNote.trim() || undefined);
+    setTellNote('');
+  };
 
   const openText = (ids: string[], body: string) => {
     setPendingIds(ids);
@@ -1329,6 +1349,93 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
               </div>
             </div>
           ))}
+        </div>
+
+        {/*
+          Half a team never taps the button. They text, or say it at pickup, or
+          shout it across the courts — and until that lands here the four
+          columns above are a picture of who checks email, not of who can play.
+          This records it in one line, and counts exactly the same afterwards.
+        */}
+        <div className="mt-3 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
+          <div className="text-white/70 text-sm font-semibold">
+            Somebody told you instead of tapping?
+          </div>
+          <p className="text-white/40 text-xs mt-0.5">
+            Record it for them. It counts the same as the button in the email — no lineup needed
+            yet, and you can change it later.
+          </p>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <label className="flex flex-col gap-1">
+              <span className="sr-only">Player</span>
+              <select
+                value={tellWho}
+                onChange={(e) => setTellWho(e.target.value)}
+                aria-label="Player who told you"
+                style={INPUT_COLOR}
+                className="px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-sm focus:border-[#D3FB52]/50 focus:outline-none min-w-[13rem]"
+              >
+                <option value="">Choose a player…</option>
+                {[...players]
+                  .sort((a, b) => a.name.localeCompare(b.name))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                      {p.isSub ? ' (sub)' : ''} —{' '}
+                      {p.availability === 'yes'
+                        ? 'available'
+                        : p.availability === 'no'
+                          ? 'out'
+                          : p.availability === 'maybe'
+                            ? 'maybe'
+                            : 'no answer yet'}
+                    </option>
+                  ))}
+              </select>
+            </label>
+
+            <input
+              value={tellNote}
+              onChange={(e) => setTellNote(e.target.value)}
+              placeholder="note — doubles only, arriving late…"
+              aria-label="Note on their answer"
+              style={INPUT_COLOR}
+              className="px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-sm focus:border-[#D3FB52]/50 focus:outline-none flex-1 min-w-[12rem]"
+            />
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => tell('in')}
+                disabled={!tellWho || !!busy}
+                className="px-3 py-2 rounded-lg text-sm font-semibold bg-[#D3FB52] text-[#001820] hover:brightness-95 disabled:opacity-30 transition"
+              >
+                Available
+              </button>
+              <button
+                onClick={() => tell('maybe')}
+                disabled={!tellWho || !!busy}
+                className="px-3 py-2 rounded-lg text-sm font-semibold border border-amber-400/40 text-amber-300 hover:border-amber-400/70 disabled:opacity-30 transition"
+              >
+                Maybe
+              </button>
+              <button
+                onClick={() => tell('out')}
+                disabled={!tellWho || !!busy}
+                className="px-3 py-2 rounded-lg text-sm font-semibold border border-red-400/40 text-red-300 hover:border-red-400/70 disabled:opacity-30 transition"
+              >
+                Out
+              </button>
+              {tellWho && players.find((p) => p.id === tellWho)?.availability != null && (
+                <button
+                  onClick={() => tell('clear')}
+                  disabled={!!busy}
+                  className="px-3 py-2 rounded-lg text-sm border border-white/10 text-white/50 hover:text-white hover:border-white/25 disabled:opacity-30 transition"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         <p className="text-white/40 text-sm mt-3">
