@@ -98,6 +98,8 @@ const fmtWhen = (iso: string) =>
 const btn = 'px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50 transition';
 const primary = `${btn} bg-[#D3FB52] text-[#001820] hover:brightness-95`;
 const ghost = `${btn} border border-white/10 text-white/70 hover:text-white hover:border-white/25`;
+/** globals.css beats Tailwind on bare form elements — same fix as NeverPairPanel. */
+const INPUT_COLOR = { color: '#ffffff' } as const;
 
 export default function MatchWorkspace({
   teamId,
@@ -190,6 +192,19 @@ export default function MatchWorkspace({
    * optional.
    */
   const [rowMenu, setRowMenu] = useState<string | null>(null);
+
+  /**
+   * The manual sub picker.
+   *
+   * Eight seats and eleven yeses means three people are already willing and
+   * already known — there is nothing to go and ask. "Find a sub" mails every
+   * eligible player and waits for a race; this is the quiet other half of it,
+   * for when the captain knows exactly who is stepping in.
+   */
+  const [subFor, setSubFor] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
+  /** Subbing someone out normally means they genuinely cannot play — say why. */
+  const [subMarkOut, setSubMarkOut] = useState(true);
+  const [subNote, setSubNote] = useState('injured');
 
   /**
    * Only one lime button on the page at a time.
@@ -341,11 +356,11 @@ export default function MatchWorkspace({
     );
 
   /** Record a yes (or a no) the captain collected by text, or in person. */
-  const recordAnswer = (playerId: string, state: 'in' | 'out' | 'clear') =>
+  const recordAnswer = (playerId: string, state: 'in' | 'out' | 'clear', note?: string) =>
     call(
       `confirm-${playerId}`,
       '/api/captain/confirm-for',
-      { team_id: teamId, match_id: matchId, player_id: playerId, state },
+      { team_id: teamId, match_id: matchId, player_id: playerId, state, note },
       (j) => {
         setNote(
           state === 'clear'
@@ -671,7 +686,14 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       },
     );
 
-  const save = () =>
+  /**
+   * Saves the sheet it is handed, not the one in state.
+   *
+   * setCourts is async, so a caller that changes a seat and saves in the same
+   * breath would post the pre-change sheet. Taking the array as an argument
+   * makes that impossible.
+   */
+  const saveCourts = (next: Court[], savedNote?: string) =>
     call(
       'save',
       '/api/captain/lineup',
@@ -679,7 +701,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         action: 'save',
         team_id: teamId,
         match_id: matchId,
-        courts: courts.map((c) => ({
+        courts: next.map((c) => ({
           courtNumber: c.courtNumber,
           courtType: c.courtType,
           player1Id: c.player1Id,
@@ -689,11 +711,13 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       async () => {
         setDirty(false);
         setHandEdited(false);
-        setNote('Saved as a draft. Players still have not seen it.');
+        setNote(savedNote ?? 'Saved as a draft. Players still have not seen it.');
         await refreshAutoSend();
         router.refresh();
       },
     );
+
+  const save = () => saveCourts(courts);
 
   // Show the real email first. The button never puts mail in flight.
   const previewLineup = () =>
@@ -989,8 +1013,164 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     return parts.join(' · ');
   };
 
+  /* --------------------------------------------- subbing in from the bench */
+
+  /**
+   * The strength that matters for the seat being filled: a doubles court ranks
+   * on the doubles WTN where the player has one, a singles court on the singles
+   * number. Lower WTN is stronger — NTRP runs the other way, so it only breaks
+   * ties, and an unrated player sorts last rather than first.
+   */
+  const strengthFor = (p: MatchPlayer, courtType: 'singles' | 'doubles') =>
+    courtType === 'doubles'
+      ? wtnOf(p)
+      : typeof p.wtn === 'number' && !Number.isNaN(p.wtn)
+        ? p.wtn
+        : null;
+
+  const byStrength =
+    (courtType: 'singles' | 'doubles') => (a: MatchPlayer, b: MatchPlayer) => {
+      const wa = strengthFor(a, courtType);
+      const wb = strengthFor(b, courtType);
+      if (wa != null && wb != null && wa !== wb) return wa - wb;
+      if (wa != null && wb == null) return -1;
+      if (wa == null && wb != null) return 1;
+      const ra = a.rating ?? -Infinity;
+      const rb = b.rating ?? -Infinity;
+      if (ra !== rb) return rb - ra;
+      return a.name.localeCompare(b.name);
+    };
+
+  /**
+   * Said yes, not on the sheet — the players who can step straight in without
+   * anyone being asked anything. Strongest first, for the seat in question.
+   */
+  const spareFor = (courtType: 'singles' | 'doubles', excludeId: string | null) =>
+    players
+      .filter((p) => p.availability === 'yes' && !onSheet.has(p.id) && p.id !== excludeId)
+      .sort(byStrength(courtType));
+
+  /**
+   * Swap a named player out and a willing one in, in one move: record why the
+   * first is out, put the replacement on the court, save the sheet, then show
+   * the one email that needs to go — to the player coming in. Nothing is sent
+   * until that preview is confirmed.
+   */
+  async function subIn(court: Court, slot: 1 | 2, inId: string) {
+    const outId = slot === 1 ? court.player1Id : court.player2Id;
+    setSubFor(null);
+    if (outId && subMarkOut) await recordAnswer(outId, 'out', subNote.trim() || undefined);
+
+    const next = courts.map((c) => {
+      if (c.courtNumber !== court.courtNumber) return c;
+      // The seat's confirmation belonged to whoever just left it.
+      return slot === 1
+        ? { ...c, player1Id: inId, player1ConfirmedAt: null }
+        : { ...c, player2Id: inId, player2ConfirmedAt: null };
+    });
+    setCourts(next);
+    setSwapPick(null);
+    setDirty(false);
+    setHandEdited(false);
+    await saveCourts(
+      next,
+      `${nameOf(inId)} is on ${labelOf(court)}${outId ? `, in for ${nameOf(outId)}` : ''}.`,
+    );
+    await previewLineupFor([inId]);
+  }
+
   return (
     <div className="mt-8 space-y-8">
+      {/* The bench, at the moment it is needed: who said yes, who is free, and
+          who is closest in strength to the seat being filled. */}
+      {subFor &&
+        (() => {
+          const court = courts.find((c) => c.courtNumber === subFor.courtNumber);
+          if (!court) return null;
+          const outId = subFor.slot === 1 ? court.player1Id : court.player2Id;
+          const spares = spareFor(court.courtType, outId);
+          return (
+            <div
+              className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-6"
+              onClick={() => setSubFor(null)}
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-[#002838] border border-white/10 p-5 max-h-[85vh] overflow-y-auto"
+              >
+                <h3 className="text-white font-display text-lg">
+                  {outId ? `Sub in for ${nameOf(outId)}` : `Fill ${labelOf(court)}`}
+                </h3>
+                <p className="text-white/50 text-sm mt-1">
+                  {labelOf(court)} · {spares.length}{' '}
+                  {spares.length === 1 ? 'player said yes and is' : 'players said yes and are'} not
+                  on the sheet. Strongest first.
+                </p>
+
+                {outId && (
+                  <label className="flex items-start gap-2.5 mt-4 text-sm text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={subMarkOut}
+                      onChange={(e) => setSubMarkOut(e.target.checked)}
+                      className="mt-1 shrink-0"
+                    />
+                    <span className="flex-1">
+                      Mark {nameOf(outId)} unavailable for this match
+                      {subMarkOut && (
+                        <input
+                          value={subNote}
+                          onChange={(e) => setSubNote(e.target.value)}
+                          placeholder="reason — injured, away…"
+                          style={INPUT_COLOR}
+                          className="mt-2 w-full px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-sm focus:border-[#D3FB52]/50 focus:outline-none"
+                        />
+                      )}
+                    </span>
+                  </label>
+                )}
+
+                <div className="mt-4 space-y-2">
+                  {spares.map((p) => {
+                    const w = strengthFor(p, court.courtType);
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => subIn(court, subFor.slot, p.id)}
+                        disabled={!!busy}
+                        className="w-full text-left px-3 py-2.5 rounded-xl bg-[#001820] border border-white/10 hover:border-[#D3FB52]/50 disabled:opacity-40 transition"
+                      >
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="text-white font-semibold text-sm">{p.name}</span>
+                          <span className="text-[#D3FB52] text-xs tabular-nums shrink-0">
+                            {w != null ? `WTN ${w}` : p.rating != null ? `${p.rating}` : 'unrated'}
+                          </span>
+                        </div>
+                        <div className="text-white/40 text-xs mt-0.5">{loadLabel(p)}</div>
+                        {p.availabilityNote && (
+                          <div className="text-amber-300/80 text-xs mt-0.5 italic">
+                            &ldquo;{p.availabilityNote}&rdquo;
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <p className="text-white/35 text-xs mt-4">
+                  Saves the sheet, then shows you the email to the player coming in. Nothing is sent
+                  until you confirm it.
+                </p>
+                <div className="mt-4 flex justify-end">
+                  <button onClick={() => setSubFor(null)} className={ghost}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
       {/* A text costs money and cannot be unsent, so it gets the same
           see-it-first treatment as every email in CaptainMode. */}
       {smsPreview && (
@@ -1582,6 +1762,8 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                         {pid && (() => {
                           const rowKey = `${c.courtNumber}-${slot}`;
                           const rowOpen = !!bailed || rowMenu === rowKey;
+                          // Already said yes, already free — no email needed to find them.
+                          const spares = spareFor(c.courtType, pid);
                           return (
                           <div className="mt-1.5 pl-10">
                             {!bailed && (
@@ -1643,20 +1825,46 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                                 </button>
                               ))}
 
+                            {/* Somebody who has already said yes can just be put
+                                on the court. This asks nobody and races nobody,
+                                so it comes before the mail-everyone button. */}
+                            <button
+                              onClick={() => {
+                                setSubFor({ courtNumber: c.courtNumber, slot });
+                                setSubMarkOut(true);
+                                setSubNote(bailed?.note ?? 'injured');
+                              }}
+                              disabled={!!busy || spares.length === 0}
+                              title={
+                                spares.length === 0
+                                  ? 'Nobody who said yes is free — use “find a sub” to ask the rest of the roster.'
+                                  : `Put one of the ${spares.length} who said yes on ${labelOf(c)}`
+                              }
+                              className={
+                                bailed
+                                  ? 'text-[#D3FB52] hover:brightness-110 font-semibold underline disabled:opacity-30 disabled:no-underline'
+                                  : 'text-white/40 hover:text-white underline disabled:opacity-25 disabled:no-underline'
+                              }
+                            >
+                              {bailed
+                                ? `sub in for ${nameOf(pid)} (${spares.length} said yes) →`
+                                : `sub in someone who said yes (${spares.length})`}
+                            </button>
+
                             {c.id && (
                               <button
                                 onClick={() => findSub(c, slot)}
                                 disabled={!!busy}
                                 className={
                                   bailed
-                                    ? 'text-red-300 hover:text-red-200 font-semibold underline'
+                                    ? 'text-red-300 hover:text-red-200 underline'
                                     : 'text-white/30 hover:text-white underline disabled:opacity-30'
                                 }
                               >
                                 {busy === `sub-${c.courtNumber}-${slot}`
                                   ? 'asking subs…'
                                   : bailed
-                                    ? `find a sub for ${nameOf(pid)} →`
+                                    ? `or ask the whole roster for ${nameOf(pid)}`
                                     : 'find a sub'}
                               </button>
                             )}
