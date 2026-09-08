@@ -49,7 +49,10 @@ export default async function MatchPage({
       .order('name'),
     db
       .from('captain_availability')
-      .select('player_id, status')
+      // `note` is the player's own qualifier — "doubles only", "call last".
+      // Stored beside the status precisely so the captain sees it while
+      // building the lineup, which means it has to travel this far.
+      .select('player_id, status, note')
       .eq('match_id', params.matchId),
     db
       .from('captain_lineups')
@@ -83,9 +86,9 @@ export default async function MatchPage({
     committedCounts(db, params.teamId, params.matchId),
   ]);
 
-  const statusOf = (id: string) =>
-    ((avail as { player_id: string; status: string }[]) || []).find((a) => a.player_id === id)
-      ?.status ?? null;
+  const answers = (avail as { player_id: string; status: string; note: string | null }[]) || [];
+  const statusOf = (id: string) => answers.find((a) => a.player_id === id)?.status ?? null;
+  const noteOf = (id: string) => answers.find((a) => a.player_id === id)?.note ?? null;
 
   const roster: MatchPlayer[] = ((players as Record<string, unknown>[]) || []).map((p) => ({
     id: p.id as string,
@@ -101,6 +104,7 @@ export default async function MatchPage({
     email: (p.email as string) || null,
     phone: (p.phone as string) || null,
     availability: statusOf(p.id as string) as MatchPlayer['availability'],
+    availabilityNote: noteOf(p.id as string),
     played: played[p.id as string] ?? 0,
     committedElsewhere: committed[p.id as string] ?? 0,
   }));

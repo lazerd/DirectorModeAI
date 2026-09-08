@@ -19,6 +19,12 @@ export type MatchPlayer = {
   email: string | null;
   phone: string | null;
   availability: 'yes' | 'no' | 'maybe' | null;
+  /**
+   * The player's own qualifier on that answer — "doubles only", "first shift
+   * only", "call last". A yes with a condition attached; shown wherever the
+   * captain is choosing who plays, because that is the moment it matters.
+   */
+  availabilityNote?: string | null;
   /** Matches this player has actually played, defaulted courts excluded. */
   played: number;
   /**
@@ -1128,6 +1134,15 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                     <p key={p.id} className="text-[13px] leading-snug text-white/75">
                       {p.name}
                       {p.isSub ? <span className="text-white/35"> (sub)</span> : ''}
+                      {/* The condition the player attached to their answer.
+                          A "yes — doubles only" that reads as a plain yes is
+                          how somebody ends up on a singles court they told
+                          you they couldn't play. */}
+                      {p.availabilityNote ? (
+                        <span className="block text-[11px] text-amber-300/80">
+                          {p.availabilityNote}
+                        </span>
+                      ) : null}
                     </p>
                   ))
                 )}
@@ -1512,6 +1527,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                                 {p.name}
                                 {p.rating != null ? ` (${p.rating})` : ''}
                                 {p.availability === 'yes' ? ' ✓' : p.availability === 'no' ? ' ✗' : ''}
+                                {p.availabilityNote ? ` (${p.availabilityNote})` : ''}
                                 {` — ${loadLabel(p)}`}
                               </option>
                             ))}
