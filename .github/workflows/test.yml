@@ -1,0 +1,51 @@
+# Run the test suite on every push and pull request.
+#
+# There was no CI before this, which is how eleven failing tests sat unnoticed
+# on main: seven were a real timezone bug in CourtSheet, and four only passed
+# on a laptop set to Pacific. Both classes are exactly what a green checkmark
+# on a pull request is for.
+#
+# Tests only — no build step. Vercel already builds every push and reports it
+# back to the PR, so building here would duplicate that and slow the signal.
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A new push supersedes the run in flight for the same branch.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    # The Next app is a subdirectory, not the repo root.
+    defaults:
+      run:
+        working-directory: director-mode-ai
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: director-mode-ai/package-lock.json
+
+      # `npm ci` over `npm install`: it installs exactly the lockfile and fails
+      # if package.json and the lock have drifted, which is a thing CI should
+      # catch rather than paper over.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # The suite pins TZ itself in vitest.config.ts — the runner's clock is
+      # UTC and several fixtures are written in Pacific wall-clock time.
+      - name: Unit tests
+        run: npm test
