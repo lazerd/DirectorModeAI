@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { leagueSpec, defaultCourts, rosterWindow, linesPerPlayer } from './leagues';
+import {
+  leagueSpec,
+  defaultCourts,
+  rosterWindow,
+  linesPerPlayer,
+  isValidCourtCount,
+} from './leagues';
 
 const JTT = leagueSpec('jtt');
 const jttCourts = { singles: JTT.singlesCourts, doubles: JTT.doublesCourts };
@@ -103,5 +109,23 @@ describe('defaultCourts', () => {
 
   it('treats an unknown league as flex rather than throwing', () => {
     expect(defaultCourts({ league_type: 'pickleball?' })).toEqual({ singles: 2, doubles: 3 });
+  });
+});
+
+describe('isValidCourtCount', () => {
+  it('accepts zero, because a doubles-only team plays no singles', () => {
+    expect(isValidCourtCount(0)).toBe(true);
+  });
+
+  it('accepts the ordinary counts', () => {
+    for (const n of [1, 2, 3, 4, 8]) expect(isValidCourtCount(n)).toBe(true);
+  });
+
+  it('rejects negatives, fractions and absurd counts', () => {
+    for (const n of [-1, 1.5, 9, 100]) expect(isValidCourtCount(n)).toBe(false);
+  });
+
+  it('rejects values that are not numbers at all', () => {
+    for (const v of ['x', null, undefined, {}, NaN]) expect(isValidCourtCount(v)).toBe(false);
   });
 });
