@@ -6,6 +6,7 @@ import { Save, ExternalLink, Copy, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
 import { APP_HOST, APP_URL } from '@/lib/appUrl';
+import { newClubRow, uniqueJoinCode } from '@/lib/clubs/newClub';
 const SPORTS_OPTIONS = [
   { value: 'tennis', label: 'Tennis' },
   { value: 'pickleball', label: 'Pickleball' },
@@ -187,7 +188,25 @@ export default function ClubSettingsPage() {
     } else {
       const { data, error: insertErr } = await supabase
         .from('cc_clubs')
-        .insert(clubData)
+        // The form owns the profile fields; newClubRow supplies the ones no
+        // form asks about — the join code and the club's timezone — so a club
+        // created here is not a second-class one.
+        .insert({
+          ...newClubRow({
+            ownerId: user.id,
+            name: clubData.name,
+            slug: clubData.slug,
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            joinCode: await uniqueJoinCode(async (code) => {
+              const { data } = await supabase.from('cc_clubs').select('id').ilike('join_code', code).limit(1).maybeSingle();
+              return !!data;
+            }),
+            isPublic: form.is_public,
+            acceptJoinRequests: form.accept_join_requests,
+            sports: form.sports,
+          }),
+          ...clubData,
+        })
         .select()
         .single();
       if (insertErr || !data) {

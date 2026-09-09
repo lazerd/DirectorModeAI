@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -31,6 +31,21 @@ const INPUT: React.CSSProperties = {
   caretColor: '#D3FB52',
 };
 
+/**
+ * The zones nearly every club is in, plus whatever the browser reported —
+ * that one is prepended as its own option, so a club in Europe or Hawaii is
+ * never forced into the wrong answer by a short list.
+ */
+const TIMEZONES = [
+  { value: 'America/New_York', label: 'Eastern — New York' },
+  { value: 'America/Chicago', label: 'Central — Chicago' },
+  { value: 'America/Denver', label: 'Mountain — Denver' },
+  { value: 'America/Phoenix', label: 'Mountain, no DST — Phoenix' },
+  { value: 'America/Los_Angeles', label: 'Pacific — Los Angeles' },
+  { value: 'America/Anchorage', label: 'Alaska — Anchorage' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii — Honolulu' },
+];
+
 type Step = 0 | 1 | 2 | 3 | 4;
 
 export default function StartPage() {
@@ -40,6 +55,27 @@ export default function StartPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [clubName, setClubName] = useState('');
+  /*
+   * The club's timezone.
+   *
+   * Every time the club ever shows — court bookings, match times, reminder
+   * emails — is rendered in this. It used to be asked for nowhere at all, so
+   * every club took the column default of Pacific and a club in Boston ran
+   * three hours out with no way to say otherwise.
+   *
+   * Detected in an effect rather than in the initial state because this
+   * component server-renders first, where Intl reports the SERVER's zone (UTC
+   * on Vercel) — using it as the initial value would hydrate a mismatch and
+   * show the wrong answer for a frame.
+   */
+  const [timezone, setTimezone] = useState('');
+  useEffect(() => {
+    try {
+      setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || '');
+    } catch {
+      /* Ancient browser: leave it blank and let them pick. */
+    }
+  }, []);
   const [courtCount, setCourtCount] = useState(6);
   const [leagueName, setLeagueName] = useState('');
   const [leagueStart, setLeagueStart] = useState(() => new Date().toISOString().slice(0, 10));
@@ -66,6 +102,7 @@ export default function StartPage() {
           courtCount,
           leagueName: leagueName.trim() || undefined,
           leagueStart,
+          timezone: timezone || undefined,
           players: players.filter((p) => p.trim()),
         }),
       });
@@ -127,6 +164,31 @@ export default function StartPage() {
                 style={INPUT}
                 className="mt-4 w-full rounded-xl border border-white/10 px-4 py-3 text-[15px] outline-none placeholder:text-white/25 focus:border-[#D3FB52]/50"
               />
+
+              {/* Asked here rather than on its own screen: it is pre-filled
+                  from the browser, so for almost everyone it is a glance and a
+                  Continue, not a decision. */}
+              <label htmlFor="club-tz" className="mt-5 block text-[12.5px] text-white/40">
+                Time zone
+              </label>
+              <select
+                id="club-tz"
+                value={timezone}
+                onChange={(e) => setTimezone(e.target.value)}
+                style={INPUT}
+                className="mt-1 w-full rounded-xl border border-white/10 px-4 py-3 text-[15px] outline-none focus:border-[#D3FB52]/50"
+              >
+                {timezone && !TIMEZONES.some((t) => t.value === timezone) && (
+                  <option value={timezone}>{timezone.replace(/_/g, ' ')}</option>
+                )}
+                {TIMEZONES.map((t) => (
+                  <option key={t.value} value={t.value}>{t.label}</option>
+                ))}
+              </select>
+              <p className="mt-1.5 text-[12.5px] text-white/35">
+                Court times, match times and reminder emails all use this.
+              </p>
+
               <Nav
                 onNext={() => setStep(1)}
                 nextDisabled={!clubName.trim()}

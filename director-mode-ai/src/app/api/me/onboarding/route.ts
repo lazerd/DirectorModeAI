@@ -15,7 +15,14 @@ export async function GET() {
   const admin = getSupabaseAdmin();
   const [{ count: events }, { data: club }, { count: vault }] = await Promise.all([
     admin.from('events').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
-    admin.from('cc_clubs').select('id, name').eq('owner_id', user.id).maybeSingle(),
+    // limit(1) so a second club is picked between rather than thrown on.
+    admin
+      .from('cc_clubs')
+      .select('id, name')
+      .eq('owner_id', user.id)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle(),
     admin.from('cc_vault_players').select('*', { count: 'exact', head: true }).eq('director_id', user.id),
   ]);
 

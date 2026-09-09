@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import StaffSheetClient from './StaffSheetClient';
+import { newClubRow, uniqueJoinCode } from '@/lib/clubs/newClub';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,14 +42,21 @@ export default async function CourtSheetStaffPage() {
     }
     const { data: created } = await db
       .from('cc_clubs')
-      .insert({
-        owner_id: user.id,
-        name: `${(user.email ?? 'My').split('@')[0]}'s Club`,
-        slug,
-        sports: ['tennis'],
-        is_public: false,
-        timezone: 'America/Los_Angeles',
-      })
+      .insert(
+        // Shared defaults so a club bootstrapped here is the same shape as one
+        // created by /start — a join code above all, which this path used to
+        // omit, leaving the director unable to invite anyone.
+        newClubRow({
+          ownerId: user.id,
+          name: `${(user.email ?? 'My').split('@')[0]}'s Club`,
+          slug,
+          isPublic: false,
+          joinCode: await uniqueJoinCode(async (code) => {
+            const { data } = await db.from('cc_clubs').select('id').ilike('join_code', code).limit(1).maybeSingle();
+            return !!data;
+          }),
+        }),
+      )
       .select('id, slug, name, timezone, operating_hours, is_public, owner_id')
       .single();
     club = created;
