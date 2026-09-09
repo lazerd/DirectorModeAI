@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { slugify } from '@/lib/leagueUtils';
+import { newClubRow, uniqueJoinCode, isValidTimezone } from '@/lib/clubs/newClub';
 
 /**
  * POST /api/onboarding/first-run
@@ -24,18 +25,24 @@ export const dynamic = 'force-dynamic';
 
 type Body = {
   clubName?: string;
+  /** The club's wall-clock timezone, as the browser guessed and the director confirmed. */
+  timezone?: string;
   courtCount?: number;
   leagueName?: string;
   leagueStart?: string;
   players?: string[];
 };
 
-/** Short, human-readable, unambiguous (no O/0/I/1) club join code. */
-function makeJoinCode(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let out = '';
-  for (let i = 0; i < 6; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return out;
+/** True when some club already holds this join code. */
+async function joinCodeTaken(code: string): Promise<boolean> {
+  const admin = getSupabaseAdmin();
+  const { data } = await admin
+    .from('cc_clubs')
+    .select('id')
+    .ilike('join_code', code)
+    .limit(1)
+    .maybeSingle();
+  return !!data;
 }
 
 /** Append -2, -3, ... until the slug is free in `table`. */
@@ -64,6 +71,12 @@ export async function POST(req: Request) {
   // Clamp rather than reject: a typo in the court box shouldn't fail the whole
   // setup and make someone start over.
   const courtCount = Math.max(0, Math.min(30, Math.floor(Number(body.courtCount ?? 0)) || 0));
+  // Reject rather than silently fall back: the director was shown a timezone
+  // and confirmed it, so a value we cannot honour is a bug worth surfacing,
+  // not something to quietly replace with Pacific.
+  if (body.timezone !== undefined && !isValidTimezone(body.timezone)) {
+    return NextResponse.json({ error: 'Unknown timezone.' }, { status: 400 });
+  }
   const leagueName = (body.leagueName || '').trim();
   const playerNames = (body.players || [])
     .map((p) => (p || '').trim())
@@ -86,23 +99,34 @@ export async function POST(req: Request) {
       const slug = await uniqueSlug('cc_clubs', slugify(clubName));
       const { data: inserted, error } = await admin
         .from('cc_clubs')
-        .insert({
-          owner_id: user.id,
-          name: clubName,
-          slug,
-          join_code: makeJoinCode(),
-          sports: ['tennis'],
-          is_public: true,
-          accept_join_requests: true,
-        })
+        .insert(
+          newClubRow({
+            ownerId: user.id,
+            name: clubName,
+            slug,
+            timezone: body.timezone,
+            joinCode: await uniqueJoinCode(joinCodeTaken),
+          }),
+        )
         .select('id, name, slug, join_code')
         .single();
       if (error || !inserted) throw new Error(`club: ${error?.message || 'insert failed'}`);
       club = inserted;
       created.club = true;
-    } else if (club.name !== clubName) {
-      await admin.from('cc_clubs').update({ name: clubName }).eq('id', club.id);
-      club.name = clubName;
+    } else {
+      // Re-running setup on a club that already exists: carry across what the
+      // director just told us. Without this, a second pass through /start
+      // could never correct a club created by one of the staff-tool bootstraps.
+      const patch: Record<string, unknown> = {};
+      if (club.name !== clubName) patch.name = clubName;
+      if (body.timezone) patch.timezone = body.timezone;
+      // A club bootstrapped by a staff tool before this shipped has no code.
+      if (!club.join_code) patch.join_code = await uniqueJoinCode(joinCodeTaken);
+      if (Object.keys(patch).length) {
+        await admin.from('cc_clubs').update(patch).eq('id', club.id);
+        if (patch.name) club.name = clubName;
+        if (patch.join_code) club.join_code = patch.join_code as string;
+      }
     }
 
     // Owner membership — harmless if it already exists.

@@ -11,6 +11,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { hasFeature } from '@/lib/billing';
 import type { Club } from './types';
+import { newClubRow, uniqueJoinCode } from '@/lib/clubs/newClub';
 
 export type StaffRole = 'owner' | 'director' | 'coach' | 'front_desk';
 
@@ -108,15 +109,20 @@ export async function requireStaffForClub(
     const display = (user.email ?? 'My Club').split('@')[0];
     const { data: created, error: createErr } = await db
       .from('cc_clubs')
-      .insert({
-        owner_id: user.id,
-        name: `${display}'s Club`,
-        slug,
-        sports: ['tennis'],
-        is_public: false,
-        timezone: 'America/Los_Angeles',
-        operating_hours: {},
-      })
+      .insert(
+        // Same shared defaults as every other creation path — notably a join
+        // code, which this bootstrap used to skip.
+        newClubRow({
+          ownerId: user.id,
+          name: `${display}'s Club`,
+          slug,
+          isPublic: false,
+          joinCode: await uniqueJoinCode(async (code) => {
+            const { data } = await db.from('cc_clubs').select('id').ilike('join_code', code).limit(1).maybeSingle();
+            return !!data;
+          }),
+        }),
+      )
       .select(CLUB_COLS)
       .single();
     if (createErr || !created) {

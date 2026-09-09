@@ -15,7 +15,16 @@ const BASE = APP_URL;
 
 async function ownerClub(userId: string) {
   const admin = getSupabaseAdmin();
-  const { data: club } = await admin.from('cc_clubs').select('id, name, join_code').eq('owner_id', userId).maybeSingle();
+  // limit(1) before maybeSingle: without it this THROWS the moment a user owns
+  // two clubs, rather than picking one. Every other club lookup already does
+  // this; this one and /api/me/onboarding were the two that did not.
+  const { data: club } = await admin
+    .from('cc_clubs')
+    .select('id, name, join_code')
+    .eq('owner_id', userId)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
   return club;
 }
 
