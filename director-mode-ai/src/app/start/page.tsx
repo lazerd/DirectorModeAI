@@ -46,6 +46,20 @@ const TIMEZONES = [
   { value: 'Pacific/Honolulu', label: 'Hawaii — Honolulu' },
 ];
 
+/**
+ * The categories a league can be entered under.
+ *
+ * Setup used to seed 'men_doubles' silently for every club that named a
+ * league, which is wrong roughly half the time and invisible until somebody
+ * tries to register.
+ */
+const CATEGORIES = [
+  { value: 'women_doubles', label: "Women's doubles" },
+  { value: 'men_doubles', label: "Men's doubles" },
+  { value: 'women_singles', label: "Women's singles" },
+  { value: 'men_singles', label: "Men's singles" },
+];
+
 type Step = 0 | 1 | 2 | 3 | 4;
 
 export default function StartPage() {
@@ -53,6 +67,23 @@ export default function StartPage() {
   const [step, setStep] = useState<Step>(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /*
+   * Who is signing up.
+   *
+   * Everything below this asks about courts and leagues, which is a director's
+   * world. A captain has neither — they run one team in someone else's league —
+   * and used to be walked through club setup anyway before finding CaptainMode
+   * on their own, if they ever did.
+   *
+   * Coaches are deliberately NOT a choice here: a coach's record is created
+   * when they accept a club invite, so they never arrive through this page.
+   *
+   * Only 'director' is ever stored — picking captain navigates away to the
+   * CaptainMode trial rather than continuing here, so there is no captain
+   * state for this page to be in.
+   */
+  const [role, setRole] = useState<'director' | null>(null);
 
   const [clubName, setClubName] = useState('');
   /*
@@ -78,6 +109,7 @@ export default function StartPage() {
   }, []);
   const [courtCount, setCourtCount] = useState(6);
   const [leagueName, setLeagueName] = useState('');
+  const [categoryKey, setCategoryKey] = useState('');
   const [leagueStart, setLeagueStart] = useState(() => new Date().toISOString().slice(0, 10));
   const [players, setPlayers] = useState(['', '', '']);
 
@@ -101,6 +133,7 @@ export default function StartPage() {
           clubName,
           courtCount,
           leagueName: leagueName.trim() || undefined,
+          categoryKey: categoryKey || undefined,
           leagueStart,
           timezone: timezone || undefined,
           players: players.filter((p) => p.trim()),
@@ -118,6 +151,69 @@ export default function StartPage() {
   };
 
   const STEPS = ['Your club', 'Courts', 'A league', 'Players'];
+
+  // Ask who they are before asking anything that assumes an answer.
+  if (role === null) {
+    return (
+      <div className="min-h-screen bg-[#001820] text-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+        <div className="mx-auto max-w-xl px-5 py-12 sm:py-16">
+          <div className="inline-flex items-center gap-2 rounded-full border border-[#D3FB52]/20 bg-[#D3FB52]/10 px-3 py-1 text-xs font-medium text-[#D3FB52]">
+            <Sparkles size={13} /> Setting up
+          </div>
+          <h1 className="mt-5 text-3xl font-bold tracking-tight sm:text-4xl">
+            What brings you to ClubMode?
+          </h1>
+          <p className="mt-2 text-[15px] text-white/50">
+            So we set up the right thing. You can use both later.
+          </p>
+
+          <div className="mt-8 space-y-3">
+            <button
+              onClick={() => setRole('director')}
+              className="group flex w-full items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 text-left transition-colors hover:border-[#D3FB52]/40 hover:bg-white/[0.05]"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#D3FB52]/12 text-[#D3FB52]">
+                <Building2 size={20} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold">I run a club or program</span>
+                <span className="block text-[13px] text-white/45">
+                  Courts, leagues, events and members. Takes about a minute to set up.
+                </span>
+              </span>
+              <ArrowRight size={16} className="ml-auto shrink-0 text-white/25 transition-colors group-hover:text-[#D3FB52]" />
+            </button>
+
+            {/* Straight out to the trial page: CaptainMode is priced separately
+                and that page states the cost before asking for anything. */}
+            <button
+              // No setRole here on purpose: this leaves the page entirely, and
+              // setting it would render a frame of the director wizard first.
+              onClick={() => router.push('/captain/start?from=onboarding')}
+              className="group flex w-full items-center gap-4 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 text-left transition-colors hover:border-[#D3FB52]/40 hover:bg-white/[0.05]"
+            >
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#D3FB52]/12 text-[#D3FB52]">
+                <Users size={20} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold">I captain a team</span>
+                <span className="block text-[13px] text-white/45">
+                  Lineups, availability and match emails for one team — that&apos;s CaptainMode.
+                </span>
+              </span>
+              <ArrowRight size={16} className="ml-auto shrink-0 text-white/25 transition-colors group-hover:text-[#D3FB52]" />
+            </button>
+          </div>
+
+          <p className="mt-10 text-center text-[13px] text-white/25">
+            <Link href="/run/courts" className="underline hover:text-white/50">
+              Skip setup and explore on my own
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#001820] text-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
@@ -255,9 +351,36 @@ export default function StartPage() {
                 style={INPUT}
                 className="mt-1 rounded-xl border border-white/10 px-4 py-2.5 text-[15px] outline-none focus:border-[#D3FB52]/50"
               />
+
+              {/* Only once they have named a league — asked rather than assumed,
+                  because this used to be seeded as men's doubles for everyone. */}
+              {leagueName.trim() && (
+                <>
+                  <label htmlFor="league-cat" className="mt-3 block text-[12.5px] text-white/40">
+                    Who plays in it
+                  </label>
+                  <select
+                    id="league-cat"
+                    value={categoryKey}
+                    onChange={(e) => setCategoryKey(e.target.value)}
+                    style={INPUT}
+                    className="mt-1 w-full rounded-xl border border-white/10 px-4 py-2.5 text-[15px] outline-none focus:border-[#D3FB52]/50"
+                  >
+                    <option value="">Choose one…</option>
+                    {CATEGORIES.map((c) => (
+                      <option key={c.value} value={c.value}>{c.label}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1.5 text-[12.5px] text-white/35">
+                    You can add more divisions to this league later.
+                  </p>
+                </>
+              )}
+
               <Nav
                 onBack={() => setStep(1)}
                 onNext={() => setStep(3)}
+                nextDisabled={!!leagueName.trim() && !categoryKey}
                 nextLabel={leagueName.trim() ? 'Continue' : 'Skip for now'}
               />
             </Card>
