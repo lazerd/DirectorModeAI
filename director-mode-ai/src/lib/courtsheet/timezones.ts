@@ -11,7 +11,7 @@
  * UTC per-instance — never the other way around.
  */
 
-import { fromZonedTime, toZonedTime, format as formatTz } from 'date-fns-tz';
+import { fromZonedTime, toZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { addDays, getDay, parseISO } from 'date-fns';
 import type { DayOfWeek } from './types';
 
@@ -24,16 +24,28 @@ export function localToUtc(dateISO: string, timeHHMM: string, timezone: string):
   return fromZonedTime(localISO, timezone);
 }
 
+/*
+ * Both of these must use formatInTimeZone, NOT date-fns-tz's `format` with a
+ * `timeZone` option. They are not two spellings of the same thing: `format`
+ * renders the instant as-is and uses `timeZone` only for the zone-NAME tokens
+ * (z, zzz), so it returns UTC digits. formatInTimeZone shifts the instant into
+ * the zone first, which is what "club-local" means here.
+ *
+ * Getting this wrong printed every CourtSheet time at the UTC offset — a 9 AM
+ * clinic read 16:00 — and rolled any evening booking onto the next day, since
+ * 7 PM Pacific is already tomorrow in UTC.
+ */
+
 /** UTC Date → club-local YYYY-MM-DD. */
 export function utcToLocalDate(utc: Date | string, timezone: string): string {
   const d = typeof utc === 'string' ? parseISO(utc) : utc;
-  return formatTz(d, 'yyyy-MM-dd', { timeZone: timezone });
+  return formatInTimeZone(d, timezone, 'yyyy-MM-dd');
 }
 
 /** UTC Date → club-local HH:MM. */
 export function utcToLocalTime(utc: Date | string, timezone: string): string {
   const d = typeof utc === 'string' ? parseISO(utc) : utc;
-  return formatTz(d, 'HH:mm', { timeZone: timezone });
+  return formatInTimeZone(d, timezone, 'HH:mm');
 }
 
 /** DOW (0=Sun..6=Sat) of a club-local YYYY-MM-DD. */
