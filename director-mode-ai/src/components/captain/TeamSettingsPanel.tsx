@@ -45,6 +45,15 @@ const STYLES = [
   },
 ] as const;
 
+/** What PATCH /api/captain/teams hands back beyond plain success. */
+type SaveResult = {
+  ok?: boolean;
+  /** Upcoming matches whose line counts still differ from the new default. */
+  courts_stale?: number;
+  courts_applied?: number;
+  warning?: string;
+};
+
 // globals.css styles bare `input` outside Tailwind's layers and wins the
 // cascade, so a class-only colour renders white text on a white field. The
 // inline colour is deliberate — see the note in the roster panel.
@@ -81,8 +90,12 @@ export default function TeamSettingsPanel({
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** Upcoming matches still on the old line counts, and the save that found them. */
+  const [stale, setStale] = useState(0);
+  const [pending, setPending] = useState<Record<string, unknown> | null>(null);
 
-  async function save(patch: Record<string, unknown>) {
+  /** The response body on success, null on failure — callers read the extras. */
+  async function save(patch: Record<string, unknown>): Promise<SaveResult | null> {
     setBusy(true);
     setMsg(null);
     setError(null);
@@ -92,17 +105,17 @@ export default function TeamSettingsPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ team_id: teamId, ...patch }),
       });
-      const j = await res.json().catch(() => ({}));
+      const j = (await res.json().catch(() => ({}))) as SaveResult & { error?: string };
       if (!res.ok) {
         setError(j.error || 'Could not save.');
-        return false;
+        return null;
       }
-      setMsg('Saved.');
+      setMsg(j.warning || 'Saved.');
       router.refresh();
-      return true;
+      return j;
     } catch {
       setError('Network problem — try again.');
-      return false;
+      return null;
     } finally {
       setBusy(false);
     }
@@ -112,6 +125,36 @@ export default function TeamSettingsPanel({
     const previous = style;
     setStyle(v); // optimistic: the cards should respond to the click at once
     if (!(await save({ captaining_style: v }))) setStyle(previous);
+  }
+
+  /*
+   * Saving the lines only changes what NEW matches start with. Matches already
+   * on the schedule keep the counts they were created with, and the lineup
+   * generator reads those — which is how a 4-doubles team kept getting 3
+   * doubles and 2 singles. The API reports how many still disagree; offer to
+   * restamp them rather than leaving the captain to find out from a lineup.
+   */
+  async function saveCourts(patch: Record<string, unknown>) {
+    setStale(0);
+    const j = await save(patch);
+    if (j?.courts_stale) {
+      setStale(j.courts_stale);
+      setPending(patch);
+    }
+  }
+
+  async function applyToUpcoming() {
+    if (!pending) return;
+    const j = await save({ ...pending, apply_courts_to_upcoming: true });
+    if (j) {
+      setStale(0);
+      setPending(null);
+      if (j.courts_applied) {
+        setMsg(
+          `Updated ${j.courts_applied} scheduled ${j.courts_applied === 1 ? 'match' : 'matches'}.`,
+        );
+      }
+    }
   }
 
   return (
@@ -208,7 +251,7 @@ export default function TeamSettingsPanel({
             inputMode="numeric"
             value={singles}
             onChange={(e) => setSingles(e.target.value)}
-            onBlur={() => save({ default_singles_courts: Number(singles) })}
+            onBlur={() => saveCourts({ default_singles_courts: Number(singles) })}
             style={INPUT_COLOR}
             className={field}
           />
@@ -222,16 +265,48 @@ export default function TeamSettingsPanel({
             inputMode="numeric"
             value={doubles}
             onChange={(e) => setDoubles(e.target.value)}
-            onBlur={() => save({ default_doubles_courts: Number(doubles) })}
+            onBlur={() => saveCourts({ default_doubles_courts: Number(doubles) })}
             style={INPUT_COLOR}
             className={field}
           />
         </div>
       </div>
-      <p className="text-xs text-white/35 mt-2">
-        What a new match starts with — every match can still be changed on its own. Matches already
-        on the schedule keep the lines they were created with.
-      </p>
+      {stale > 0 ? (
+        <div className="mt-2 rounded-xl border border-[#D3FB52]/30 bg-[#D3FB52]/[0.07] p-4">
+          <p className="text-sm text-white">
+            {stale} upcoming {stale === 1 ? 'match is' : 'matches are'} still set to their old
+            lines, and lineups for {stale === 1 ? 'it' : 'them'} will come out in the old shape.
+          </p>
+          <p className="text-xs text-white/50 mt-1">
+            Matches you have already saved a lineup for are left alone — change those on the match
+            itself.
+          </p>
+          <div className="flex gap-3 mt-3">
+            <button
+              type="button"
+              onClick={applyToUpcoming}
+              disabled={busy}
+              className="px-4 py-2 rounded-lg bg-[#D3FB52] text-[#001820] text-sm font-semibold disabled:opacity-50"
+            >
+              {busy ? 'Updating…' : `Apply to ${stale === 1 ? 'it' : 'all ' + stale}`}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStale(0);
+                setPending(null);
+              }}
+              className="px-4 py-2 rounded-lg text-white/60 hover:text-white text-sm"
+            >
+              Leave them
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs text-white/35 mt-2">
+          What a new match starts with — every match can still be changed on its own.
+        </p>
+      )}
 
       {showCourtFormat && (
         <>

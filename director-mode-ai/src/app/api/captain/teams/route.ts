@@ -7,7 +7,13 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { requireCaptain, requireTeam, isError } from '@/lib/captain/server';
 import { listCaptainTeams, ownedTeamCount, MAX_TEAMS_PER_CAPTAIN } from '@/lib/captain/access';
-import { leagueSpec } from '@/lib/captain/leagues';
+import {
+  leagueSpec,
+  defaultCourts,
+  isValidCourtCount,
+  COURT_COUNT_ERROR,
+} from '@/lib/captain/leagues';
+import { matchesNeedingCourtUpdate, type MatchCourts } from '@/lib/captain/courtBackfill';
 
 export async function GET() {
   const supabase = await createClient();
@@ -33,6 +39,8 @@ export async function POST(req: Request) {
     eligibility_enabled?: boolean;
     min_matches_default?: number;
     min_matches_self_rated?: number;
+    default_singles_courts?: number;
+    default_doubles_courts?: number;
   };
   if (!body.name?.trim()) {
     return NextResponse.json({ error: 'Team name is required.' }, { status: 400 });
@@ -48,10 +56,28 @@ export async function POST(req: Request) {
     );
   }
 
-  // Seed the line counts from the league the captain picked — JTT plays 2 + 2,
-  // USTA Adult 2 + 3 — and write them down rather than leaving them implicit,
-  // so changing a league default later can't silently reshape an old team.
+  /*
+   * Lines per match.
+   *
+   * The league the captain picked seeds these — JTT plays 4 + 4, USTA Adult
+   * 2 + 3 — but the captain's own numbers win, because plenty of teams do not
+   * play their league's standard sheet. This used to ignore the form entirely
+   * and write the spec every time, so a 4-doubles team was created as 2
+   * singles + 3 doubles and generated lineups in that shape until somebody
+   * noticed. They are written down either way rather than left implicit, so
+   * changing a league default later can't silently reshape an old team.
+   */
   const spec = leagueSpec(body.league_type);
+  for (const key of ['default_singles_courts', 'default_doubles_courts'] as const) {
+    if (body[key] !== undefined && !isValidCourtCount(body[key])) {
+      return NextResponse.json({ error: COURT_COUNT_ERROR }, { status: 400 });
+    }
+  }
+  const singlesCourts = body.default_singles_courts ?? spec.singlesCourts;
+  const doublesCourts = body.default_doubles_courts ?? spec.doublesCourts;
+  if (singlesCourts + doublesCourts === 0) {
+    return NextResponse.json({ error: 'A match needs at least one line.' }, { status: 400 });
+  }
 
   /*
    * Attach the team to the captain's club unless they said otherwise.
@@ -82,8 +108,8 @@ export async function POST(req: Request) {
       name: body.name.trim(),
       league_type: body.league_type || 'usta_adult',
       source_team_id: body.source_team_id?.trim() || null,
-      default_singles_courts: spec.singlesCourts,
-      default_doubles_courts: spec.doublesCourts,
+      default_singles_courts: singlesCourts,
+      default_doubles_courts: doublesCourts,
       level: body.level || null,
       club_id: clubId,
       season_start: body.season_start || null,
@@ -119,6 +145,12 @@ export async function PATCH(req: Request) {
     min_matches_self_rated?: number;
     default_singles_courts?: number;
     default_doubles_courts?: number;
+    /**
+     * Also restamp upcoming matches with the new line counts. Opt-in: the
+     * captain is shown how many would change and asks for it, because a match
+     * already on the schedule is one people may have been emailed about.
+     */
+    apply_courts_to_upcoming?: boolean;
     court_format?: number;
     source_team_id?: string;
   };
@@ -179,27 +211,24 @@ export async function PATCH(req: Request) {
   for (const key of ['default_singles_courts', 'default_doubles_courts'] as const) {
     const v = body[key];
     if (v === undefined) continue;
-    const n = Number(v);
-    if (!Number.isInteger(n) || n < 0 || n > 8) {
-      return NextResponse.json(
-        { error: 'Lines per match must be a whole number between 0 and 8.' },
-        { status: 400 },
-      );
+    if (!isValidCourtCount(v)) {
+      return NextResponse.json({ error: COURT_COUNT_ERROR }, { status: 400 });
     }
-    patch[key] = n;
+    patch[key] = Number(v);
   }
   // Only when the captain is actually touching the lines. A team that has
   // never set them reads null/null, and treating that as "zero lines" would
   // reject every unrelated save on the same endpoint.
+  let newCourts: { singles: number; doubles: number } | null = null;
   if (patch.default_singles_courts !== undefined || patch.default_doubles_courts !== undefined) {
-    const spec = leagueSpec(ctx.team.league_type);
-    const singles = (patch.default_singles_courts ??
-      ctx.team.default_singles_courts ??
-      spec.singlesCourts) as number;
-    const doubles = (patch.default_doubles_courts ??
-      ctx.team.default_doubles_courts ??
-      spec.doublesCourts) as number;
-    if (singles + doubles === 0) {
+    newCourts = defaultCourts({
+      league_type: ctx.team.league_type,
+      default_singles_courts: (patch.default_singles_courts ??
+        ctx.team.default_singles_courts) as number | null,
+      default_doubles_courts: (patch.default_doubles_courts ??
+        ctx.team.default_doubles_courts) as number | null,
+    });
+    if (newCourts.singles + newCourts.doubles === 0) {
       return NextResponse.json({ error: 'A match needs at least one line.' }, { status: 400 });
     }
   }
@@ -242,6 +271,62 @@ export async function PATCH(req: Request) {
       );
     }
     return NextResponse.json({ error: upErr.message }, { status: 500 });
+  }
+
+  /*
+   * The new default only ever applied to matches created after it, because a
+   * match keeps its own copy of the counts and the lineup generator reads that
+   * copy. Setting the lines after importing the schedule — the usual order —
+   * therefore changed nothing a captain could see, and lineups kept coming out
+   * in the league's default shape.
+   *
+   * So: say how many upcoming matches still disagree, and restamp them when
+   * the captain asks. Matches in the past are history and are never touched;
+   * matches with a saved lineup are left for the captain to change one at a
+   * time, since their courts may already have gone out to the players.
+   */
+  if (newCourts) {
+    const courts = newCourts;
+    const { data: upcoming } = await ctx.db
+      .from('captain_matches')
+      .select('id, singles_courts, doubles_courts')
+      .eq('team_id', ctx.teamId)
+      .gte('match_at', new Date().toISOString());
+
+    const rows = (upcoming || []) as MatchCourts[];
+    const withLineups = rows.length
+      ? await ctx.db
+          .from('captain_lineups')
+          .select('match_id')
+          .in(
+            'match_id',
+            rows.map((m) => m.id),
+          )
+      : { data: [] };
+    const locked = ((withLineups.data || []) as { match_id: string }[]).map((r) => r.match_id);
+    const stale = matchesNeedingCourtUpdate(rows, locked, courts);
+
+    if (stale.length && body.apply_courts_to_upcoming) {
+      const { error: bfErr } = await ctx.db
+        .from('captain_matches')
+        .update({ singles_courts: courts.singles, doubles_courts: courts.doubles })
+        .in('id', stale);
+      // The team default did save. Report the backfill failure without
+      // pretending the whole call failed and inviting a pointless retry.
+      if (bfErr) {
+        return NextResponse.json({
+          ok: true,
+          courts_applied: 0,
+          courts_stale: stale.length,
+          warning: `Saved, but the ${stale.length} scheduled ${
+            stale.length === 1 ? 'match' : 'matches'
+          } could not be updated: ${bfErr.message}`,
+        });
+      }
+      return NextResponse.json({ ok: true, courts_applied: stale.length, courts_stale: 0 });
+    }
+
+    return NextResponse.json({ ok: true, courts_applied: 0, courts_stale: stale.length });
   }
 
   return NextResponse.json({ ok: true });

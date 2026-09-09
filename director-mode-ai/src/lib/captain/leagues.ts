@@ -174,6 +174,29 @@ export function defaultCourts(team: {
   };
 }
 
+/** Most lines of one type a match can be played over. */
+export const MAX_COURTS_PER_TYPE = 8;
+
+export const COURT_COUNT_ERROR = `Lines per match must be a whole number between 0 and ${MAX_COURTS_PER_TYPE}.`;
+
+/**
+ * Is this a line count the DB will accept?
+ *
+ * 0 is legitimate on either side — a combo or mixed team plays no singles at
+ * all — so this is a range check, never a truthiness check. Shared by the
+ * create and the settings routes so the team-creation form cannot write a
+ * number the settings page would refuse.
+ */
+export function isValidCourtCount(v: unknown): boolean {
+  // Number(null) and Number('') are both 0, so a bare Number() check would
+  // wave a missing value through as "no lines of this type" — the one wrong
+  // answer that looks exactly like the right one here.
+  if (typeof v !== 'number' && typeof v !== 'string') return false;
+  if (typeof v === 'string' && v.trim() === '') return false;
+  const n = Number(v);
+  return Number.isInteger(n) && n >= 0 && n <= MAX_COURTS_PER_TYPE;
+}
+
 /** Juniors are not NTRP-rated; combo/mixed caps are meaningless for them. */
 export function usesNtrp(leagueType: string | null | undefined): boolean {
   return leagueSpec(leagueType).usesNtrp;

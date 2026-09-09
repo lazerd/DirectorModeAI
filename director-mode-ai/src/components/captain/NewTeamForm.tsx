@@ -13,6 +13,18 @@ export default function NewTeamForm() {
   // combined cap in Combo/Mixed, a ball-colour division in Junior Team Tennis.
   const spec = leagueSpec(leagueType);
   const [level, setLevel] = useState('');
+  /*
+   * Lines per match, as the captain confirms them at setup.
+   *
+   * Null means "whatever the league plays", so switching league re-seeds the
+   * fields. The moment the captain edits either one both become explicit and
+   * stop following the picker — otherwise correcting the league afterwards
+   * would silently throw away the numbers they just typed.
+   */
+  const [courts, setCourts] = useState<{ singles: string; doubles: string } | null>(null);
+  const singles = courts?.singles ?? String(spec.singlesCourts);
+  const doubles = courts?.doubles ?? String(spec.doublesCourts);
+  const noLines = Number(singles) + Number(doubles) === 0;
   const [sourceTeamId, setSourceTeamId] = useState('');
   const [eligibilityEnabled, setEligibilityEnabled] = useState(false);
   const [minDefault, setMinDefault] = useState(2);
@@ -36,6 +48,8 @@ export default function NewTeamForm() {
           eligibility_enabled: eligibilityEnabled,
           min_matches_default: minDefault,
           min_matches_self_rated: minSelfRated,
+          default_singles_courts: Number(singles),
+          default_doubles_courts: Number(doubles),
         }),
       });
       const j = await res.json().catch(() => ({}));
@@ -47,6 +61,7 @@ export default function NewTeamForm() {
       setName('');
       setLevel('');
       setSourceTeamId('');
+      setCourts(null);
       router.refresh();
       if (j.team?.id) router.push(`/captain/${j.team.id}`);
     } catch {
@@ -151,11 +166,48 @@ export default function NewTeamForm() {
         </p>
       </div>
 
+      {/* Lines per match, confirmed here rather than assumed.
+          The league seeds these, but the team's own numbers are what get
+          written — a doubles-only team that never sees this field ends up
+          generating singles lines it does not play. */}
+      <div>
+        <span className="block text-sm text-white/60 mb-1">Lines per match</span>
+        <div className="flex flex-wrap gap-4">
+          <div>
+            <label htmlFor="new-team-singles" className="block text-xs text-white/45 mb-1">
+              Singles courts
+            </label>
+            <input
+              id="new-team-singles"
+              inputMode="numeric"
+              value={singles}
+              onChange={(e) => setCourts({ singles: e.target.value, doubles })}
+              className="w-24 px-3 py-2.5 rounded-xl bg-[#001820] border border-white/10 text-white focus:border-[#D3FB52]/50 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label htmlFor="new-team-doubles" className="block text-xs text-white/45 mb-1">
+              Doubles courts
+            </label>
+            <input
+              id="new-team-doubles"
+              inputMode="numeric"
+              value={doubles}
+              onChange={(e) => setCourts({ singles, doubles: e.target.value })}
+              className="w-24 px-3 py-2.5 rounded-xl bg-[#001820] border border-white/10 text-white focus:border-[#D3FB52]/50 focus:outline-none"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-white/40 mt-1">
+          {noLines
+            ? 'A match needs at least one line.'
+            : `What every match on this team starts with — ${singles} singles and ${doubles} doubles. Change it here if your league plays a different sheet.`}
+        </p>
+      </div>
+
       {leagueType === 'jtt' && (
         <p className="text-xs text-white/45 -mt-1">
-          Matches start at {spec.singlesCourts} singles and {spec.doublesCourts} doubles lines, and
-          juniors are ordered by WTN and your own strength order rather than NTRP. Both are
-          editable once the team exists.
+          Juniors are ordered by WTN and your own strength order rather than NTRP.
         </p>
       )}
 
@@ -221,7 +273,7 @@ export default function NewTeamForm() {
       <div className="flex gap-3">
         <button
           type="submit"
-          disabled={busy}
+          disabled={busy || noLines}
           className="px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold disabled:opacity-50"
         >
           {busy ? 'Creating…' : 'Create team'}
