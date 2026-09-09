@@ -30,6 +30,8 @@ type Body = {
   courtCount?: number;
   leagueName?: string;
   leagueStart?: string;
+  /** Which division the first league opens with. Asked, never assumed. */
+  categoryKey?: string;
   players?: string[];
 };
 
@@ -78,6 +80,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Unknown timezone.' }, { status: 400 });
   }
   const leagueName = (body.leagueName || '').trim();
+  // Setup used to seed men's doubles for every club that named a league —
+  // wrong about half the time, and invisible until somebody tried to register.
+  const CATEGORY_KEYS = ['men_singles', 'men_doubles', 'women_singles', 'women_doubles'];
+  if (body.categoryKey !== undefined && !CATEGORY_KEYS.includes(body.categoryKey)) {
+    return NextResponse.json({ error: 'Unknown league category.' }, { status: 400 });
+  }
+  if (leagueName && !body.categoryKey) {
+    return NextResponse.json({ error: 'Pick who plays in the league.' }, { status: 400 });
+  }
   const playerNames = (body.players || [])
     .map((p) => (p || '').trim())
     .filter(Boolean)
@@ -207,10 +218,10 @@ export async function POST(req: Request) {
         created.league = true;
 
         // An individual-format league with no category has nowhere to put an
-        // entry, so seed the one most clubs start with.
+        // entry, so one is required — the director picked it during setup.
         const { error: catErr } = await admin.from('league_categories').insert({
           league_id: leagueId,
-          category_key: 'men_doubles',
+          category_key: body.categoryKey,
           entry_fee_cents: 0,
           is_enabled: true,
         });

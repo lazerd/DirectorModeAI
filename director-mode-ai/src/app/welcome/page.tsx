@@ -59,9 +59,11 @@ export default function WelcomePage() {
           {allDone ? "You're all set up — your club is ready to run." : "Let's get your club running. Knock these out whenever you're ready."}
         </p>
 
-        {/* A checklist of links still leaves every tool empty. When nothing has
-            been set up yet, lead with the flow that actually creates data. */}
-        {!allDone && doneCount <= 1 && (
+        {/* A checklist of links still leaves every tool empty, so lead with the
+            flow that actually creates data. This used to be hidden once a
+            single item was done, which retired the guided setup permanently
+            after one click and left exactly the checklist it exists to fix. */}
+        {!allDone && (
           <Link
             href="/start"
             className="mb-8 flex items-center gap-4 rounded-2xl border border-[#D3FB52]/30 bg-[#D3FB52]/[0.07] p-5 transition-colors hover:bg-[#D3FB52]/[0.12]"
@@ -70,7 +72,9 @@ export default function WelcomePage() {
               <Sparkles size={20} className="text-[#D3FB52]" />
             </span>
             <div className="min-w-0">
-              <p className="font-medium">Let&apos;s set up your first league</p>
+              <p className="font-medium">
+                {doneCount <= 1 ? "Let's set up your first league" : 'Set up another league'}
+              </p>
               <p className="text-sm text-white/50">
                 Four questions, about a minute — your club, courts, a league and a few players, all at once.
               </p>
