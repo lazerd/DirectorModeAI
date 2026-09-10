@@ -16,7 +16,7 @@ type Status = {
   reminderCount: number;
 };
 
-export type CampaignSurface = 'tournament' | 'quad' | 'league' | 'jtt' | 'swim' | 'stringing' | 'courtconnect';
+export type CampaignSurface = 'tournament' | 'quad' | 'league' | 'jtt' | 'swim' | 'stringing' | 'stringing-restring' | 'courtconnect';
 
 type Kind = 'update' | 'nudge' | 'reminder';
 

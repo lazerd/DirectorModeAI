@@ -39,6 +39,7 @@ export default function StringingJobsPage() {
   const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'done' | 'completed' | 'customers'>('all');
   const [customers, setCustomers] = useState<{ id: string; full_name: string }[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
+  const [restringDays, setRestringDays] = useState(90);
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -278,6 +279,8 @@ export default function StringingJobsPage() {
             lastJob={lastJobByCustomer}
             search={customerSearch}
             onSearch={setCustomerSearch}
+            restringDays={restringDays}
+            onRestringDays={setRestringDays}
           />
         ) : loading ? (
           <div className="flex items-center justify-center py-12">
@@ -322,13 +325,45 @@ function CustomersView({
   lastJob,
   search,
   onSearch,
+  restringDays,
+  onRestringDays,
 }: {
   customers: { id: string; full_name: string }[];
   lastJob: Map<string, Job>;
   search: string;
   onSearch: (v: string) => void;
+  restringDays: number;
+  onRestringDays: (d: number) => void;
 }) {
+  const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
   return (
+    <div className="space-y-4">
+    {/* Re-string reminder */}
+    <div>
+      <div className="flex flex-wrap items-center gap-2 mb-2 text-sm text-gray-400">
+        <span>Remind customers whose last string job was</span>
+        <select
+          value={restringDays}
+          onChange={(e) => onRestringDays(Number(e.target.value))}
+          className="input w-auto py-1"
+        >
+          {[30, 60, 90, 120, 180, 365].map((d) => (
+            <option key={d} value={d}>{d}</option>
+          ))}
+        </select>
+        <span>or more days ago</span>
+      </div>
+      <NudgePanel
+        surface="stringing-restring"
+        targetId={String(restringDays)}
+        only={['nudge']}
+        nudgeCopy={{
+          title: '🔁 Time for a re-string?',
+          desc: `Emails each customer how many days it's been, with their last string and tension, and suggests bringing the racket back in. Skips anyone whose racket is in the shop right now.`,
+          empty: `Nobody is past ${restringDays} days right now.`,
+        }}
+      />
+    </div>
     <div className="card p-4">
       <div className="relative mb-4 max-w-sm">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -376,7 +411,14 @@ function CustomersView({
                       )}
                     </td>
                     <td className="py-2.5 whitespace-nowrap text-gray-500">
-                      {last ? format(new Date(last.created_at), 'MMM d, yyyy') : ''}
+                      {last && (
+                        <>
+                          {format(new Date(last.created_at), 'MMM d, yyyy')}
+                          <span className={daysSince(last.created_at) >= restringDays ? 'text-amber-400' : ''}>
+                            {' '}· {daysSince(last.created_at)} days ago
+                          </span>
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
@@ -385,6 +427,7 @@ function CustomersView({
           </table>
         </div>
       )}
+    </div>
     </div>
   );
 }

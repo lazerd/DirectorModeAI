@@ -483,6 +483,83 @@ export async function stringingCampaign(user: SessionUser): Promise<SourceResult
   };
 }
 
+// ---------------- Stringing re-string reminder (last job ≥ N days ago) ----------------
+// targetId = the day threshold. Skips customers who have never strung here and
+// anyone whose racket is in the shop right now (pending / in progress).
+export async function stringingRestringCampaign(daysArg: string, user: SessionUser): Promise<SourceResult> {
+  const days = Math.max(7, Math.min(730, parseInt(daysArg, 10) || 90));
+  const admin = getSupabaseAdmin();
+  const { data: custRows } = await admin
+    .from('stringing_customers')
+    .select('id, full_name, email')
+    .eq('user_id', user.id);
+  const customers = ((custRows as Array<Record<string, unknown>>) || []).filter((c) => c.email);
+  const custIds = customers.map((c) => c.id as string);
+
+  const nudge: NudgePerson[] = [];
+  if (custIds.length) {
+    const { data: jobRows } = await admin
+      .from('stringing_jobs')
+      .select('customer_id, status, created_at, main_tension_lbs, cross_tension_lbs, custom_string_name, string:stringing_catalog(brand, name)')
+      .in('customer_id', custIds)
+      .neq('status', 'cancelled')
+      .order('created_at', { ascending: false });
+    const latest = new Map<string, Record<string, unknown>>();
+    for (const j of (jobRows as Array<Record<string, unknown>>) || []) {
+      if (!latest.has(j.customer_id as string)) latest.set(j.customer_id as string, j);
+    }
+    const now = Date.now();
+    for (const c of customers) {
+      const j = latest.get(c.id as string);
+      if (!j) continue;
+      if (j.status === 'pending' || j.status === 'in_progress') continue;
+      const since = Math.floor((now - new Date(j.created_at as string).getTime()) / 86_400_000);
+      if (since < days) continue;
+      const cat = j.string as { brand: string; name: string } | null;
+      const stringName = cat ? `${cat.brand} ${cat.name}` : (j.custom_string_name as string) || '';
+      const tension = j.cross_tension_lbs ? `${j.main_tension_lbs}/${j.cross_tension_lbs} lbs` : `${j.main_tension_lbs} lbs`;
+      nudge.push({
+        email: c.email as string,
+        firstName: firstNameOf((c.full_name as string) || 'there'),
+        played: null,
+        target: null,
+        outstanding: [
+          {
+            label: `It's been ${since} days since your last string job`,
+            sub: stringName ? `Last time: ${stringName} at ${tension}` : `Last time: ${tension}`,
+            contact: '',
+          },
+        ],
+      });
+    }
+  }
+
+  const b = await branding(user);
+  const copy: CampaignCopy = {
+    updateSubject: '',
+    updateIntro: '',
+    nudgeSubject: 'Time for a re-string? 🎾',
+    nudgeLead: () =>
+      `Strings lose tension and feel over time, even when they don't break. It's been a while since we strung your racket, so consider bringing it back in for a fresh re-string.`,
+    nudgeTip: () => `Just drop it off and say "same as last time". We have your string and tension on file.`,
+  };
+  return {
+    ok: true,
+    data: {
+      ownerId: user.id,
+      ...b,
+      title: 'Stringing',
+      liveUrl: '',
+      liveUrlLabel: '',
+      deadlineNote: null,
+      stats: [{ label: `Due for a re-string (${days}+ days)`, value: `${nudge.length}` }],
+      everyone: [],
+      nudge,
+      copy,
+    },
+  };
+}
+
 // ---------------- JTT team league ----------------
 export async function jttCampaign(leagueId: string, user: SessionUser): Promise<SourceResult> {
   const admin = getSupabaseAdmin();
@@ -988,6 +1065,8 @@ export async function resolveCampaign(
       return swimCampaign(targetId, user);
     case 'stringing':
       return stringingCampaign(user);
+    case 'stringing-restring':
+      return stringingRestringCampaign(targetId, user);
     case 'courtconnect':
       return courtconnectCampaign(targetId, user);
     default:

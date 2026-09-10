@@ -74,6 +74,14 @@ export default function NewStringingJobPage() {
   const [customStringName, setCustomStringName] = useState('');
   const [mainTension, setMainTension] = useState(52);
   const [crossTension, setCrossTension] = useState<number | null>(null);
+  // Customer's most recent job — prefills string + tension ("same as last time").
+  const [lastJob, setLastJob] = useState<{
+    created_at: string;
+    racket_id: string | null;
+    string_id: string | null;
+    label: string;
+    tension: string;
+  } | null>(null);
   
   // AI state
   const [showAI, setShowAI] = useState(false);
@@ -101,12 +109,65 @@ export default function NewStringingJobPage() {
     }
   }, [customerSearch]);
 
-  // Load rackets when customer selected
+  // Arriving from a customer's page (?customer=ID): skip straight to the racket step.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('customer');
+    if (!id) return;
+    (async () => {
+      const supabase = createClient();
+      const { data } = await supabase.from('stringing_customers').select('*').eq('id', id).single();
+      if (data) {
+        setSelectedCustomer(data);
+        setStep('racket');
+      }
+    })();
+  }, []);
+
+  // Load rackets + last job when customer selected
   useEffect(() => {
     if (selectedCustomer) {
       fetchRackets();
+      prefillFromLastJob();
     }
   }, [selectedCustomer]);
+
+  // Catalog may load after the last job — select the catalog string once it's there.
+  useEffect(() => {
+    if (!lastJob?.string_id || selectedString) return;
+    const s = strings.find((str) => str.id === lastJob.string_id);
+    if (s) {
+      setSelectedString(s);
+      setCustomStringName('');
+    }
+  }, [strings, lastJob]);
+
+  const prefillFromLastJob = async () => {
+    if (!selectedCustomer) return;
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('stringing_jobs')
+      .select('created_at, racket_id, string_id, custom_string_name, main_tension_lbs, cross_tension_lbs, string:stringing_catalog(brand, name)')
+      .eq('customer_id', selectedCustomer.id)
+      .neq('status', 'cancelled')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!data) {
+      setLastJob(null);
+      return;
+    }
+    const cat = data.string as unknown as { brand: string; name: string } | null;
+    const label = cat ? `${cat.brand} ${cat.name}` : data.custom_string_name || 'Custom string';
+    const tension = data.cross_tension_lbs
+      ? `${data.main_tension_lbs}/${data.cross_tension_lbs} lbs`
+      : `${data.main_tension_lbs} lbs`;
+    // Typed-in name now; the effect above swaps in the catalog entry if it's in stock.
+    setSelectedString(null);
+    setCustomStringName(label);
+    setMainTension(data.main_tension_lbs);
+    setCrossTension(data.cross_tension_lbs ?? null);
+    setLastJob({ created_at: data.created_at, racket_id: data.racket_id, string_id: data.string_id, label, tension });
+  };
 
   // Load strings catalog
   useEffect(() => {
@@ -433,7 +494,12 @@ export default function NewStringingJobPage() {
                         }}
                         className="w-full p-3 rounded-xl border border-gray-200 hover:border-stringing hover:bg-stringing/10 text-left transition-colors"
                       >
-                        <div className="font-medium">{r.brand} {r.model}</div>
+                        <div className="font-medium">
+                          {r.brand} {r.model}
+                          {r.id === lastJob?.racket_id && (
+                            <span className="ml-2 text-xs font-normal text-stringing">Last time</span>
+                          )}
+                        </div>
                         {r.string_pattern && (
                           <div className="text-sm text-gray-500">{r.string_pattern}</div>
                         )}
@@ -506,6 +572,14 @@ export default function NewStringingJobPage() {
         {step === 'string' && (
           <div className="card p-6">
             <h2 className="font-display text-lg mb-4">Choose String & Tension</h2>
+
+            {lastJob && (
+              <div className="mb-4 p-3 rounded-xl bg-stringing/10 border border-stringing/20 text-sm">
+                Prefilled from last time (
+                {new Date(lastJob.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                ): <strong>{lastJob.label}</strong> at <strong>{lastJob.tension}</strong>. Change anything below if they want something different.
+              </div>
+            )}
             
             {/* AI Recommendation Button */}
             {!showAI && (
