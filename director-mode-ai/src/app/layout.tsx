@@ -14,9 +14,18 @@ export const metadata: Metadata = {
   // a *.vercel.app origin and canonicals drift with whatever host served the page.
   // Sourced from APP_URL so the domain lives in exactly one place.
   metadataBase: new URL(APP_URL),
-  alternates: { canonical: '/' },
+  // No `alternates.canonical` here. Metadata cascades, so a root canonical of
+  // '/' made every page on the site declare the homepage as its canonical.
+  // Public routes set their own in a route layout (see /pricing, /login, …).
   title: "ClubMode AI — Run Your Entire Racquet Sports Club",
   description: "One platform to run your club: live court sheets, team leagues & junior team tennis, mixers & tournaments, lessons, stringing, player matching, roster CRM, and AI coaching.",
+  applicationName: "ClubMode AI",
+  // Deliberately no title/description/images: Next fills og:title and
+  // og:description from each page's own, and the image comes from
+  // app/opengraph-image.tsx. Child segments should not declare `openGraph`
+  // unless they also want to replace the share card.
+  openGraph: { type: "website", siteName: "ClubMode AI", locale: "en_US" },
+  twitter: { card: "summary_large_image" },
 };
 
 export default function RootLayout({
