@@ -239,7 +239,7 @@ export default function CustomerDetailPage() {
             <h2 className="font-display text-lg mb-4">Rackets on File</h2>
             <div className="space-y-2">
               {rackets.map((racket) => (
-                <div key={racket.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                <div key={racket.id} className="flex items-center gap-3 p-3 bg-white/5 border border-white/10 rounded-lg">
                   <Package size={18} className="text-gray-400" />
                   <div>
                     <div className="font-medium">{racket.brand} {racket.model}</div>

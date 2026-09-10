@@ -339,7 +339,7 @@ export default function NewStringingJobPage() {
                           setSelectedCustomer(c);
                           setStep('racket');
                         }}
-                        className="w-full p-3 rounded-xl border border-gray-200 hover:border-stringing hover:bg-stringing-light text-left transition-colors"
+                        className="w-full p-3 rounded-xl border border-gray-200 hover:border-stringing hover:bg-stringing/10 text-left transition-colors"
                       >
                         <div className="font-medium">{c.full_name}</div>
                         <div className="text-sm text-gray-500">{c.email || c.phone || 'No contact info'}</div>
@@ -419,7 +419,7 @@ export default function NewStringingJobPage() {
                           setSelectedRacket(r);
                           setStep('string');
                         }}
-                        className="w-full p-3 rounded-xl border border-gray-200 hover:border-stringing hover:bg-stringing-light text-left transition-colors"
+                        className="w-full p-3 rounded-xl border border-gray-200 hover:border-stringing hover:bg-stringing/10 text-left transition-colors"
                       >
                         <div className="font-medium">{r.brand} {r.model}</div>
                         {r.string_pattern && (
@@ -499,7 +499,7 @@ export default function NewStringingJobPage() {
             {!showAI && (
               <button
                 onClick={() => setShowAI(true)}
-                className="w-full p-4 rounded-xl border-2 border-dashed border-stringing/30 hover:border-stringing hover:bg-stringing-light text-center mb-6 transition-colors"
+                className="w-full p-4 rounded-xl border-2 border-dashed border-stringing/30 hover:border-stringing hover:bg-stringing/10 text-center mb-6 transition-colors"
               >
                 <Sparkles size={24} className="mx-auto text-stringing mb-2" />
                 <div className="font-medium text-stringing">Get AI Recommendation</div>
@@ -509,7 +509,7 @@ export default function NewStringingJobPage() {
 
             {/* AI Form */}
             {showAI && (
-              <div className="mb-6 p-4 bg-stringing-light rounded-xl">
+              <div className="mb-6 p-4 bg-stringing/10 border border-stringing/20 rounded-xl">
                 <h3 className="font-display mb-4 flex items-center gap-2">
                   <Sparkles size={18} className="text-stringing" />
                   AI String Advisor
@@ -613,7 +613,7 @@ export default function NewStringingJobPage() {
                       <button
                         key={i}
                         onClick={() => selectRecommendation(rec)}
-                        className="w-full p-4 bg-white rounded-xl border border-gray-200 hover:border-stringing text-left transition-colors"
+                        className="w-full p-4 bg-white/5 rounded-xl border border-white/10 hover:border-stringing text-left transition-colors"
                       >
                         <div className="flex items-start justify-between mb-2">
                           <div className="font-medium">{rec.label}</div>
@@ -714,26 +714,26 @@ export default function NewStringingJobPage() {
             <h2 className="font-display text-lg mb-4">Confirm Job Details</h2>
             
             <div className="space-y-4 mb-6">
-              <div className="p-4 bg-gray-50 rounded-xl">
+              <div className="p-4 bg-white/5 border border-white/10 rounded-xl">
                 <div className="text-sm text-gray-500 mb-1">Customer</div>
                 <div className="font-medium">{selectedCustomer?.full_name}</div>
               </div>
 
               {selectedRacket && (
-                <div className="p-4 bg-gray-50 rounded-xl">
+                <div className="p-4 bg-white/5 border border-white/10 rounded-xl">
                   <div className="text-sm text-gray-500 mb-1">Racket</div>
                   <div className="font-medium">{selectedRacket.brand} {selectedRacket.model}</div>
                 </div>
               )}
 
-              <div className="p-4 bg-gray-50 rounded-xl">
+              <div className="p-4 bg-white/5 border border-white/10 rounded-xl">
                 <div className="text-sm text-gray-500 mb-1">String</div>
                 <div className="font-medium">
                   {selectedString ? `${selectedString.brand} ${selectedString.name}` : customStringName}
                 </div>
               </div>
 
-              <div className="p-4 bg-gray-50 rounded-xl">
+              <div className="p-4 bg-white/5 border border-white/10 rounded-xl">
                 <div className="text-sm text-gray-500 mb-1">Tension</div>
                 <div className="font-medium">
                   {crossTension ? `${mainTension}/${crossTension} lbs` : `${mainTension} lbs`}
