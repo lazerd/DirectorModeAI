@@ -6,6 +6,7 @@ import { committedCounts, playedCounts } from '@/lib/captain/server';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
 import HostEmailPanel from '@/components/captain/HostEmailPanel';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { DEFAULT_JTT_COURT_FORMAT, leagueSpec } from '@/lib/captain/leagues';
 
 export const dynamic = 'force-dynamic';
 
@@ -121,6 +122,15 @@ export default async function MatchPage({
       })),
   );
 
+  // JTT only: how many courts this match is played on at once — the match's own
+  // setting (the host decides), else the team's. Null for adult leagues.
+  const teamRec = teamRow as Record<string, unknown>;
+  const jttCourtFormat = leagueSpec(teamRec.league_type as string).multiLine
+    ? ((match.court_format as number | null) ??
+      (teamRec.court_format as number | null) ??
+      DEFAULT_JTT_COURT_FORMAT)
+    : null;
+
   return (
     <div className="p-6 md:p-10 max-w-5xl">
       <Link href={`/captain/${team.id}`} className="text-white/40 text-sm hover:text-white">
@@ -190,6 +200,7 @@ export default async function MatchPage({
         isHome={!!match.is_home}
         location={(match.location as string) || null}
         arrivalNote={(match.arrival_note as string) || null}
+        jttCourtFormat={jttCourtFormat}
       />
     </div>
   );

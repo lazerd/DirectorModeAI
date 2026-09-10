@@ -7,15 +7,15 @@
  *
  * A JTT team match is 4 singles and 4 doubles, each a short set to 4 games,
  * decided on total games won. That is 8 lines and TWELVE player slots, played
- * as three rounds:
+ * in rounds whose shape depends on how many courts the host has:
  *
- *     round 1  singles 1-4        all four at once
- *     round 2  doubles 1-2
- *     round 3  doubles 3-4
+ *     2 courts   S1+D1 | S2+D2 | S3+D3 | S4+D4
+ *     3 courts   S1+S2+D1 | S3+S4+D2 | D3+D4
  *
- * A child may take one singles and two doubles, so a name legitimately appears
- * on the sheet three times — and with four children present it MUST, because
- * four is exactly enough to cover twelve slots at three each.
+ * (see jttRoundPlan in leagues.ts). A child may take one singles and two
+ * doubles, so a name legitimately appears on the sheet three times — and with
+ * four children present it MUST, because four is exactly enough to cover
+ * twelve slots at three each.
  *
  * The roster window that falls out of the arithmetic:
  *   3   the fewest who may take the court (a league rule, not arithmetic); the
@@ -24,9 +24,10 @@
  *   6   the most that still gives everybody two lines
  *   7+  somebody drives to the match to play one short set
  *
- * The round structure is a hard constraint, not a preference: two lines in the
- * same round are played at the same time on adjacent courts, so a child cannot
- * be on both. A sheet that ignores it is unplayable, which is worse than none.
+ * The round structure is a hard constraint, not a preference: lines in the
+ * same round are played at the same time, so a child cannot be on two of them.
+ * A kid on Singles 1 in a 2-court match cannot also be on the doubles line
+ * beside it. A sheet that ignores that is unplayable, which is worse than none.
  */
 
 import {
@@ -43,13 +44,20 @@ import {
   type PartnerPref,
   type Player,
 } from './lineup';
-import { linesPerPlayer, type MultiLineRules } from './leagues';
+import {
+  DEFAULT_JTT_COURT_FORMAT,
+  jttRoundPlan,
+  linesPerPlayer,
+  type MultiLineRules,
+} from './leagues';
 
 export type JttLineupInput = {
   available: Player[];
   singlesCourts: number;
   doublesCourts: number;
   rules: MultiLineRules;
+  /** Courts played at once — 2 or 3. Decides which lines share a round. */
+  courtFormat?: number | null;
   partnerPrefs?: PartnerPref[];
   neverPairs?: NeverPair[];
   pairHistory?: PairRecord[];
@@ -63,6 +71,16 @@ export type JttLineupInput = {
 };
 
 const key = (a: string, b: string) => (a < b ? a + '|' + b : b + '|' + a);
+
+/** A repeated doubles partnership: heavily penalised, not banned — beats conceding a line. */
+const REPEAT_PENALTY = 5_000;
+
+/**
+ * Upper bound on doubles arrangements tried. A real sheet is 4 doubles lines
+ * and a handful of children, so the search finishes in a few thousand steps;
+ * the cap only guards against a pathological roster ever hanging a request.
+ */
+const SEARCH_LIMIT = 250_000;
 
 /**
  * How many lines each child gets, decided before anybody is seated.
@@ -120,16 +138,20 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
     };
   }
 
-  if (shape.defaulted > 0) {
-    warnings.push(
-      `${available.length} available: ${shape.defaulted} of the ${shape.lines} lines can't be covered and will be defaulted. ${shape.fillsSheet} players covers the whole sheet.`,
-    );
-  }
-  if (available.length > shape.idealMax) {
-    warnings.push(
-      `${available.length} available for ${shape.slots} slots — past ${shape.idealMax}, some players only get one line.`,
-    );
-  }
+  const plan = jttRoundPlan(
+    input.courtFormat ?? DEFAULT_JTT_COURT_FORMAT,
+    input.singlesCourts,
+    input.doublesCourts,
+  );
+  const singlesRound = new Map<number, number>();
+  const doublesRound = new Map<number, number>();
+  plan.forEach((r, i) => {
+    r.singles.forEach((n) => singlesRound.set(n, i + 1));
+    r.doubles.forEach((n) => doublesRound.set(n, i + 1));
+  });
+
+  /** Children already on a line in each round. */
+  const busy = new Map<number, Set<string>>(plan.map((_, i) => [i + 1, new Set<string>()]));
 
   const quota = quotas(available, shape.slots, rules, style);
   /** Lines still owed to each child. */
@@ -138,13 +160,13 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
 
   const courts: CourtAssignment[] = [];
 
-  // ---------------------------------------------------------------- round 1
-  // Singles. Strongest first, because that is how a JTT coach orders a sheet,
-  // and one each: all the singles are played at the same time.
+  // --------------------------------------------------------------- singles
+  // Strongest first, because that is how a JTT coach orders a sheet, and one
+  // each — no child plays two singles.
   const singlesPool = available
     .filter((p) => p.courtLimit !== 'doubles_only' && (left.get(p.id) ?? 0) > 0)
     .sort((a, b) => {
-      // A child owed more lines than the doubles rounds can absorb MUST take a
+      // A child owed more lines than the doubles can absorb MUST take a
       // singles line, or the quota promised to them is undeliverable.
       const forced = (p: Player) => ((left.get(p.id) ?? 0) > rules.maxDoubles ? 0 : 1);
       return forced(a) - forced(b) || byStrength(a, b) || a.name.localeCompare(b.name);
@@ -161,36 +183,42 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
     ? [...singlesPool].sort((a, b) => wtnOf(a)! - wtnOf(b)! || a.name.localeCompare(b.name))
     : [...singlesPool].sort(byStrength);
 
-  singlesSorted.forEach((p, i) => {
+  for (let line = 1; line <= input.singlesCourts; line++) {
+    const round = singlesRound.get(line) ?? 1;
+    const p = singlesSorted[line - 1];
+    if (!p) {
+      courts.push({
+        courtNumber: line,
+        courtType: 'singles',
+        player1Id: null,
+        player2Id: null,
+        notes: [`round ${round}`, 'nobody left to cover this line, default'],
+      });
+      continue;
+    }
     left.set(p.id, (left.get(p.id) ?? 1) - 1);
+    busy.get(round)!.add(p.id);
     courts.push({
-      courtNumber: i + 1,
+      courtNumber: line,
       courtType: 'singles',
       player1Id: p.id,
       player2Id: null,
-      notes: wtnComplete ? ['round 1', `WTN ${wtnOf(p)!.toFixed(1)}`] : ['round 1'],
-    });
-  });
-
-  for (let i = singlesSorted.length; i < input.singlesCourts; i++) {
-    courts.push({
-      courtNumber: i + 1,
-      courtType: 'singles',
-      player1Id: null,
-      player2Id: null,
-      notes: ['round 1 — nobody left to cover this line, default'],
+      notes: wtnComplete ? [`round ${round}`, `WTN ${wtnOf(p)!.toFixed(1)}`] : [`round ${round}`],
     });
   }
 
-  // --------------------------------------------------------- rounds 2 and 3
-  // The doubles, one round at a time. Within a round a child plays once; across
-  // rounds they may play twice, but never with the same partner — two short
-  // sets alongside the same teammate wastes half the doubles a child gets.
-  const rounds = Math.max(1, rules.maxDoubles);
-  const perRound = Math.ceil(input.doublesCourts / rounds);
-  const pairedBefore = new Set<string>();
-  let courtNumber = input.singlesCourts;
-
+  // --------------------------------------------------------------- doubles
+  /*
+   * An exhaustive search, not a greedy pass. Round structure makes greedy
+   * unreliable: in a 2-court match each doubles line sits beside a singles
+   * line, so the pair picked for Doubles 1 decides who is left to cover
+   * Doubles 4 — and four children only fill the sheet in a few specific
+   * arrangements. The sheet is tiny (≤ 4 doubles lines, quotas cap who can
+   * go where), so trying them all is cheap and never loses a coverable line.
+   *
+   * Best = most lines covered, then highest pair score (partner preference,
+   * complementary sides, past results), with repeated partnerships penalised.
+   */
   const legalityInput = {
     available,
     singlesCourts: input.singlesCourts,
@@ -198,126 +226,143 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
     leagueType: 'jtt',
   } as LineupInput;
 
-  for (let round = 0; round < rounds; round++) {
-    const linesThisRound = Math.min(perRound, input.doublesCourts - round * perRound);
-    if (linesThisRound <= 0) break;
-    const roundsLeft = rounds - round;
-
-    /** Doubles lines this child still has coming. */
-    const needOf = (p: Player) =>
-      Math.min(left.get(p.id) ?? 0, rules.maxDoubles - (doublesTaken.get(p.id) ?? 0));
-
-    const pool = available.filter(
-      (p) => p.courtLimit !== 'singles_only' && needOf(p) > 0,
-    );
-
-    /**
-     * A child owed as many doubles as there are rounds remaining has to be in
-     * THIS one — there is nowhere else left to put them. Everyone else is
-     * filler, taken by need and then by strength.
-     */
-    const isForced = (p: Player) => needOf(p) >= roundsLeft;
-    const roundPlayers = [...pool]
-      .sort(
-        (a, b) =>
-          Number(isForced(b)) - Number(isForced(a)) ||
-          needOf(b) - needOf(a) ||
-          byStrength(a, b) ||
-          a.name.localeCompare(b.name),
-      )
-      .slice(0, linesThisRound * 2);
-
-    const candidates: { a: Player; b: Player; score: number }[] = [];
-    for (let i = 0; i < roundPlayers.length; i++) {
-      for (let j = i + 1; j < roundPlayers.length; j++) {
-        const a = roundPlayers[i];
-        const b = roundPlayers[j];
-        if (!pairIsLegal(a, b, legalityInput, neverSet).ok) continue;
-        let score = pairScore(a, b, prefs, history);
-        /*
-         * Two short sets alongside the same teammate wastes half the doubles a
-         * child gets, so a repeat is heavily penalised — but NOT banned. When
-         * the only alternative is conceding a line, playing it with a repeated
-         * partnership is plainly the better sheet.
-         */
-        if (pairedBefore.has(key(a.id, b.id))) score -= 5_000;
-        /*
-         * Pairing two children who BOTH have to appear in every remaining round
-         * spends the one partner each of them had available. With six players
-         * that is exactly how the last round ends up with two kids who may not
-         * play together and a line nobody can fill — the sweet-spot turnout
-         * silently losing a line. Penalised harder than a repeat, because it
-         * causes one.
-         */
-        if (roundsLeft > 1 && isForced(a) && isForced(b)) score -= 20_000;
-        candidates.push({ a, b, score });
-      }
+  const doublesPool = available.filter(
+    (p) => p.courtLimit !== 'singles_only' && (left.get(p.id) ?? 0) > 0,
+  );
+  const pairs: { a: Player; b: Player; k: string; score: number }[] = [];
+  for (let i = 0; i < doublesPool.length; i++) {
+    for (let j = i + 1; j < doublesPool.length; j++) {
+      const a = doublesPool[i];
+      const b = doublesPool[j];
+      if (!pairIsLegal(a, b, legalityInput, neverSet).ok) continue;
+      pairs.push({ a, b, k: key(a.id, b.id), score: pairScore(a, b, prefs, history) });
     }
-    candidates.sort(
-      (x, y) =>
-        y.score - x.score ||
-        needOf(y.a) + needOf(y.b) - (needOf(x.a) + needOf(x.b)) ||
-        key(x.a.id, x.b.id).localeCompare(key(y.a.id, y.b.id)),
-    );
+  }
+  // Best pairs first, so the first complete sheet found is already a good one
+  // and the bound prunes hard. Ties on key keep the output deterministic.
+  pairs.sort((x, y) => y.score - x.score || x.k.localeCompare(y.k));
 
-    const usedThisRound = new Set<string>();
-    const picked: [Player, Player][] = [];
-    for (const c of candidates) {
-      if (picked.length >= linesThisRound) break;
-      if (usedThisRound.has(c.a.id) || usedThisRound.has(c.b.id)) continue;
-      usedThisRound.add(c.a.id);
-      usedThisRound.add(c.b.id);
-      picked.push([c.a, c.b]);
+  const D = input.doublesCourts;
+  const assign: ({ a: Player; b: Player; k: string } | null)[] = new Array(D).fill(null);
+  const pairedCount = new Map<string, number>();
+  let best: { filled: number; score: number; assign: typeof assign } = {
+    filled: -1,
+    score: -Infinity,
+    assign: [],
+  };
+  let nodes = 0;
+
+  const dfs = (idx: number, filled: number, score: number) => {
+    if (++nodes > SEARCH_LIMIT) return;
+    if (idx === D) {
+      if (filled > best.filled || (filled === best.filled && score > best.score)) {
+        best = { filled, score, assign: [...assign] };
+      }
+      return;
     }
+    // Even filling every remaining line can't catch the best — stop.
+    if (filled + (D - idx) < best.filled) return;
 
-    // Stronger pair on the lower court, same all-or-nothing WTN rule.
-    const pairWtnComplete =
-      picked.length > 0 && picked.every((pr) => pr.every((p) => wtnOf(p) !== null));
-    const sorted = pairWtnComplete
-      ? [...picked].sort(
-          (x, y) =>
-            (wtnOf(x[0])! + wtnOf(x[1])!) / 2 - (wtnOf(y[0])! + wtnOf(y[1])!) / 2 ||
-            x[0].name.localeCompare(y[0].name),
-        )
-      : [...picked].sort(
-          (x, y) =>
-            ratingOf(y[0]) + ratingOf(y[1]) - (ratingOf(x[0]) + ratingOf(x[1])) ||
-            x[0].name.localeCompare(y[0].name),
-        );
+    const inRound = busy.get(doublesRound.get(idx + 1) ?? 1)!;
+    for (const pr of pairs) {
+      const { a, b } = pr;
+      if (inRound.has(a.id) || inRound.has(b.id)) continue;
+      if ((left.get(a.id) ?? 0) <= 0 || (left.get(b.id) ?? 0) <= 0) continue;
+      if ((doublesTaken.get(a.id) ?? 0) >= rules.maxDoubles) continue;
+      if ((doublesTaken.get(b.id) ?? 0) >= rules.maxDoubles) continue;
 
-    for (let i = 0; i < linesThisRound; i++) {
-      courtNumber += 1;
-      const pr = sorted[i];
-      if (!pr) {
-        courts.push({
-          courtNumber,
-          courtType: 'doubles',
-          player1Id: null,
-          player2Id: null,
-          notes: [`round ${round + 2} — nobody left to cover this line, default`],
-        });
-        continue;
+      const repeat = (pairedCount.get(pr.k) ?? 0) > 0;
+      inRound.add(a.id);
+      inRound.add(b.id);
+      for (const p of [a, b]) {
+        left.set(p.id, (left.get(p.id) ?? 0) - 1);
+        doublesTaken.set(p.id, (doublesTaken.get(p.id) ?? 0) + 1);
       }
-      const [a, b] = pr;
-      left.set(a.id, (left.get(a.id) ?? 1) - 1);
-      left.set(b.id, (left.get(b.id) ?? 1) - 1);
-      doublesTaken.set(a.id, (doublesTaken.get(a.id) ?? 0) + 1);
-      doublesTaken.set(b.id, (doublesTaken.get(b.id) ?? 0) + 1);
+      pairedCount.set(pr.k, (pairedCount.get(pr.k) ?? 0) + 1);
+      assign[idx] = pr;
 
-      const notes = [`round ${round + 2}`];
-      if (pairedBefore.has(key(a.id, b.id))) {
-        notes.push('same partners again — too few players to avoid it');
+      dfs(idx + 1, filled + 1, score + pr.score - (repeat ? REPEAT_PENALTY : 0));
+
+      assign[idx] = null;
+      pairedCount.set(pr.k, (pairedCount.get(pr.k) ?? 1) - 1);
+      for (const p of [a, b]) {
+        left.set(p.id, (left.get(p.id) ?? 0) + 1);
+        doublesTaken.set(p.id, (doublesTaken.get(p.id) ?? 1) - 1);
       }
-      pairedBefore.add(key(a.id, b.id));
-      if (pairWtnComplete) notes.push(`avg WTN ${((wtnOf(a)! + wtnOf(b)!) / 2).toFixed(1)}`);
+      inRound.delete(a.id);
+      inRound.delete(b.id);
+    }
+    // …or concede this line and see whether the rest does better without it.
+    dfs(idx + 1, filled, score);
+  };
+  dfs(0, 0, 0);
+
+  /*
+   * Stronger pair on the lower court — but only among lines of the SAME round.
+   * Moving a pair to a line in another round would put it beside a singles
+   * line one of them may be playing. Same all-or-nothing WTN rule as singles.
+   */
+  const chosen = best.assign.length ? best.assign : assign;
+  const picked = chosen.filter(Boolean) as { a: Player; b: Player; k: string }[];
+  const pairWtnComplete =
+    picked.length > 0 && picked.every((pr) => wtnOf(pr.a) !== null && wtnOf(pr.b) !== null);
+  const strength = (pr: { a: Player; b: Player }) =>
+    pairWtnComplete
+      ? (wtnOf(pr.a)! + wtnOf(pr.b)!) / 2
+      : -(ratingOf(pr.a) + ratingOf(pr.b));
+
+  const ordered = [...chosen];
+  for (const r of plan) {
+    const idxs = r.doubles.map((n) => n - 1);
+    const filledHere = idxs
+      .map((i) => ordered[i])
+      .filter(Boolean) as { a: Player; b: Player; k: string }[];
+    filledHere.sort((x, y) => strength(x) - strength(y) || x.a.name.localeCompare(y.a.name));
+    idxs.forEach((i, j) => (ordered[i] = filledHere[j] ?? null));
+  }
+
+  const seenPair = new Set<string>();
+  for (let line = 1; line <= D; line++) {
+    const round = doublesRound.get(line) ?? 1;
+    const courtNumber = input.singlesCourts + line;
+    const pr = ordered[line - 1];
+    if (!pr) {
       courts.push({
         courtNumber,
         courtType: 'doubles',
-        player1Id: a.id,
-        player2Id: b.id,
-        notes,
+        player1Id: null,
+        player2Id: null,
+        notes: [`round ${round}`, 'nobody left to cover this line, default'],
       });
+      continue;
     }
+    const notes = [`round ${round}`];
+    if (seenPair.has(pr.k)) notes.push('same partners again — too few players to avoid it');
+    seenPair.add(pr.k);
+    if (pairWtnComplete) notes.push(`avg WTN ${((wtnOf(pr.a)! + wtnOf(pr.b)!) / 2).toFixed(1)}`);
+    courts.push({
+      courtNumber,
+      courtType: 'doubles',
+      player1Id: pr.a.id,
+      player2Id: pr.b.id,
+      notes,
+    });
+  }
+
+  // ------------------------------------------------------------- warnings
+  // Counted off the finished sheet, not predicted: which lines can be covered
+  // depends on the round structure, and the 2-court format covers more with
+  // three children than the 3-court one does.
+  const empty = courts.filter((c) => !c.player1Id).length;
+  if (empty > 0) {
+    warnings.push(
+      `${available.length} available: ${empty} of the ${shape.lines} lines can't be covered and will be defaulted. ${shape.fillsSheet} players covers the whole sheet.`,
+    );
+  }
+  if (available.length > shape.idealMax) {
+    warnings.push(
+      `${available.length} available for ${shape.slots} slots — past ${shape.idealMax}, some players only get one line.`,
+    );
   }
 
   // Anyone who came and never got on. Named, because a number does not.

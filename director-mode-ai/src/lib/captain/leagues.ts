@@ -174,6 +174,113 @@ export function defaultCourts(team: {
   };
 }
 
+/**
+ * How many courts a JTT match is played on at once — and so how its lines fall
+ * into rounds. The HOST decides (it is how many courts they have), so it is set
+ * per match and seeded from the team.
+ */
+export const JTT_COURT_FORMATS = [2, 3] as const;
+export const DEFAULT_JTT_COURT_FORMAT = 3;
+
+/** One round: the lines played at the same time, numbered within their type (1-based). */
+export type JttRound = { singles: number[]; doubles: number[] };
+
+/**
+ * Which lines are played at the same time.
+ *
+ * Each round fills the courts with one doubles line and singles on the rest,
+ * while singles remain; the leftover doubles then go out a court-load at a time:
+ *
+ *   2 courts   S1+D1 | S2+D2 | S3+D3 | S4+D4
+ *   3 courts   S1+S2+D1 | S3+S4+D2 | D3+D4
+ *
+ * A child can never be on two lines of the same round — they are on court at
+ * the same moment. That is a hard constraint, not a preference.
+ */
+export function jttRoundPlan(
+  courtFormat: number | null | undefined,
+  singles: number,
+  doubles: number,
+): JttRound[] {
+  // One court cannot hold a singles AND a doubles at once; two is the floor.
+  const courts = Math.max(2, Math.floor(Number(courtFormat)) || DEFAULT_JTT_COURT_FORMAT);
+  const plan: JttRound[] = [];
+  let s = 1;
+  let d = 1;
+  while (s <= singles || d <= doubles) {
+    const round: JttRound = { singles: [], doubles: [] };
+    if (s <= singles) {
+      const takeD = d <= doubles ? 1 : 0;
+      const takeS = Math.min(courts - takeD, singles - s + 1);
+      for (let i = 0; i < takeS; i++) round.singles.push(s++);
+      if (takeD) round.doubles.push(d++);
+    } else {
+      const takeD = Math.min(courts, doubles - d + 1);
+      for (let i = 0; i < takeD; i++) round.doubles.push(d++);
+    }
+    plan.push(round);
+  }
+  return plan;
+}
+
+type SheetLine = { courtNumber: number; courtType: 'singles' | 'doubles' };
+
+/**
+ * The round (1-based) of every line on a sheet, keyed by court number.
+ *
+ * Lines are ranked within their type by court number, so the ↑↓ flips on the
+ * match page — which move people, never court numbers — can't change a line's
+ * round, and a saved sheet reads back with the same rounds it was built with.
+ */
+export function roundsByCourt(
+  courts: SheetLine[],
+  courtFormat: number | null | undefined,
+): Map<number, number> {
+  const byNum = (a: SheetLine, b: SheetLine) => a.courtNumber - b.courtNumber;
+  const s = courts.filter((c) => c.courtType === 'singles').sort(byNum);
+  const d = courts.filter((c) => c.courtType === 'doubles').sort(byNum);
+  const out = new Map<number, number>();
+  jttRoundPlan(courtFormat, s.length, d.length).forEach((r, i) => {
+    for (const n of r.singles) if (s[n - 1]) out.set(s[n - 1].courtNumber, i + 1);
+    for (const n of r.doubles) if (d[n - 1]) out.set(d[n - 1].courtNumber, i + 1);
+  });
+  return out;
+}
+
+/** Everyone booked onto two lines that are played at the same time. */
+export function roundClashes(
+  courts: (SheetLine & { player1Id: string | null; player2Id: string | null })[],
+  courtFormat: number | null | undefined,
+): { round: number; playerId: string; courtNumbers: number[] }[] {
+  const rounds = roundsByCourt(courts, courtFormat);
+  const seen = new Map<string, { round: number; playerId: string; courtNumbers: number[] }>();
+  for (const c of courts) {
+    const round = rounds.get(c.courtNumber);
+    if (!round) continue;
+    for (const pid of [c.player1Id, c.player2Id]) {
+      if (!pid) continue;
+      const k = `${round}|${pid}`;
+      const hit = seen.get(k) ?? { round, playerId: pid, courtNumbers: [] };
+      hit.courtNumbers.push(c.courtNumber);
+      seen.set(k, hit);
+    }
+  }
+  return [...seen.values()].filter((h) => h.courtNumbers.length > 1);
+}
+
+/** "Round 1: Singles 1, Singles 2, Doubles 5 · Round 2: …" — numbered the way the sheet shows them. */
+export function roundPlanText(plan: JttRound[], singlesCount: number): string {
+  return plan
+    .map(
+      (r, i) =>
+        `Round ${i + 1}: ${[
+          ...r.singles.map((n) => `Singles ${n}`),
+          ...r.doubles.map((n) => `Doubles ${singlesCount + n}`),
+        ].join(', ')}`,
+    )
+    .join(' · ');
+}
+
 /** Most lines of one type a match can be played over. */
 export const MAX_COURTS_PER_TYPE = 8;
 

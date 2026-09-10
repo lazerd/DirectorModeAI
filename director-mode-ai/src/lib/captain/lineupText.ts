@@ -17,6 +17,8 @@ export type TextLineupCourt = {
   courtNumber: number;
   courtType: 'singles' | 'doubles';
   names: string[];
+  /** JTT: which round the line is played in. Groups the post by round when set. */
+  round?: number | null;
 };
 
 export type TextLineupInput = {
@@ -76,8 +78,16 @@ export function lineupAsText(input: TextLineupInput): string {
   if (played.length) {
     lines.push('');
     lines.push('LINEUP');
-    for (const c of played) {
-      lines.push(`${courtLabel(c)}: ${c.names.filter(Boolean).join(' / ')}`);
+    const line = (c: TextLineupCourt) => `${courtLabel(c)}: ${c.names.filter(Boolean).join(' / ')}`;
+    if (played.some((c) => c.round)) {
+      // JTT: parents want to know WHEN their kid is on, not just which line.
+      const rounds = [...new Set(played.map((c) => c.round ?? 0))].sort((a, b) => a - b);
+      for (const r of rounds) {
+        lines.push(r ? `Round ${r}` : 'Other');
+        for (const c of played.filter((x) => (x.round ?? 0) === r)) lines.push(`  ${line(c)}`);
+      }
+    } else {
+      for (const c of played) lines.push(line(c));
     }
   }
 

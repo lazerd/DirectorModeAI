@@ -6,6 +6,7 @@ import RecapPanel from '@/components/captain/RecapPanel';
 import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 import { lineupAsText } from '@/lib/captain/lineupText';
+import { JTT_COURT_FORMATS, leagueSpec, roundClashes, roundsByCourt } from '@/lib/captain/leagues';
 
 export type MatchPlayer = {
   id: string;
@@ -119,6 +120,7 @@ export default function MatchWorkspace({
   isHome,
   location,
   arrivalNote,
+  jttCourtFormat,
 }: {
   teamId: string;
   matchId: string;
@@ -150,6 +152,11 @@ export default function MatchWorkspace({
   isHome: boolean;
   location: string | null;
   arrivalNote: string | null;
+  /**
+   * JTT only: courts played at once (2 or 3), which decides which lines share a
+   * round. Null for every other league — they have no rounds.
+   */
+  jttCourtFormat: number | null;
 }) {
   const router = useRouter();
   const withdrawn = new Map(withdrawals.map((w) => [w.playerId, w]));
@@ -243,7 +250,17 @@ export default function MatchWorkspace({
   const no = players.filter((p) => p.availability === 'no');
   const maybe = players.filter((p) => p.availability === 'maybe');
   const silent = players.filter((p) => !p.isSub && p.availability === null);
-  const needed = singlesCourts + doublesCourts * 2;
+  /** JTT: courts at once for THIS match. Null = not a JTT team, so no rounds. */
+  const [format, setFormat] = useState<number | null>(jttCourtFormat);
+  const jttRules = format != null ? leagueSpec('jtt').multiLine : null;
+  // JTT kids share the 12 slots, up to 3 lines each — 4 of them fill the sheet.
+  const needed = jttRules
+    ? Math.ceil((singlesCourts + doublesCourts * 2) / jttRules.maxTotal)
+    : singlesCourts + doublesCourts * 2;
+
+  /** Which round each line is played in, and anyone booked on two lines at once. */
+  const roundOf = format != null ? roundsByCourt(courts, format) : null;
+  const clashes = format != null ? roundClashes(courts, format) : [];
 
   const nameOf = (id: string | null) => (id ? players.find((p) => p.id === id)?.name ?? '—' : '—');
 
@@ -447,6 +464,7 @@ export default function MatchWorkspace({
       courts: courts.map((c) => ({
         courtNumber: c.courtNumber,
         courtType: c.courtType,
+        round: roundOf?.get(c.courtNumber) ?? null,
         names: ([c.player1Id] as (string | null)[])
           .concat(c.courtType === 'doubles' ? [c.player2Id] : [])
           .map((id) => nameOf(id)),
@@ -647,6 +665,37 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       },
     );
   };
+
+  /**
+   * 2 or 3 courts at once. Saved on the match — the host decides, and it can
+   * differ week to week — then the sheet is rebuilt for the new rounds, because
+   * a lineup laid out for 3 courts double-books kids on 2.
+   */
+  async function changeFormat(n: number) {
+    if (n === format) return;
+    setBusy('format');
+    setError(null);
+    try {
+      const res = await fetch('/api/captain/matches', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ team_id: teamId, match_id: matchId, patch: { court_format: n } }),
+      });
+      const j = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(j.error || 'Could not change the format.');
+        return;
+      }
+      setFormat(n);
+    } catch {
+      setError('Network problem — try again.');
+      return;
+    } finally {
+      setBusy(null);
+    }
+    if (courts.length) await generate();
+    else setNote(`${n}-court format saved. Generate the lineup when you're ready.`);
+  }
 
   /** Where this match sits on the season timeline, so the page can say whether the automation will mail it. */
   async function refreshAutoSend() {
@@ -977,18 +1026,39 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     setHandEdited(true);
   }
 
-  /** Players not already placed elsewhere in the lineup. */
+  /**
+   * Who can go in this slot.
+   *
+   * Adult leagues: anyone not already on the sheet. JTT is different — a child
+   * plays up to three lines, so hiding everyone already placed made it
+   * impossible to put a singles player on a doubles court by hand. There, only
+   * these are out: someone on another line of the SAME round (they would be on
+   * two courts at once), a second singles, or a fourth line.
+   */
   const optionsFor = (court: Court, slot: 1 | 2) => {
     const current = slot === 1 ? court.player1Id : court.player2Id;
-    const used = new Set(
-      courts
-        .flatMap((c) => [
-          c.courtNumber === court.courtNumber && slot === 1 ? null : c.player1Id,
-          c.courtNumber === court.courtNumber && slot === 2 ? null : c.player2Id,
-        ])
-        .filter(Boolean) as string[],
+    const others = courts.flatMap((c) =>
+      [
+        { c, id: c.courtNumber === court.courtNumber && slot === 1 ? null : c.player1Id },
+        { c, id: c.courtNumber === court.courtNumber && slot === 2 ? null : c.player2Id },
+      ].filter((x): x is { c: Court; id: string } => !!x.id),
     );
-    return players.filter((p) => p.id === current || !used.has(p.id));
+
+    if (!roundOf || !jttRules) {
+      const used = new Set(others.map((x) => x.id));
+      return players.filter((p) => p.id === current || !used.has(p.id));
+    }
+
+    const round = roundOf.get(court.courtNumber);
+    const out = new Set<string>();
+    const lines = new Map<string, number>();
+    for (const { c, id } of others) {
+      lines.set(id, (lines.get(id) ?? 0) + 1);
+      if (roundOf.get(c.courtNumber) === round) out.add(id);
+      if (court.courtType === 'singles' && c.courtType === 'singles') out.add(id);
+    }
+    for (const [id, n] of lines) if (n >= jttRules.maxTotal) out.add(id);
+    return players.filter((p) => p.id === current || !out.has(p.id));
   };
 
   /* ------------------------------------------------------------ equal play */
@@ -1439,9 +1509,13 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         </div>
 
         <p className="text-white/40 text-sm mt-3">
-          {yes.length >= needed
-            ? `Enough to field a lineup (${needed} spots).`
-            : `Need ${needed - yes.length} more for a full lineup of ${needed}.`}
+          {jttRules
+            ? yes.length >= needed
+              ? `Enough to cover every line — ${needed} players fill the sheet.`
+              : `Need ${needed - yes.length} more to cover every line — ${needed} players fill the sheet.`
+            : yes.length >= needed
+              ? `Enough to field a lineup (${needed} spots).`
+              : `Need ${needed - yes.length} more for a full lineup of ${needed}.`}
         </p>
 
         {players.some((p) => !p.hasEmail) && (
@@ -1457,6 +1531,34 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-display text-white">Lineup</h2>
           <div className="flex gap-2 flex-wrap">
+            {/* JTT: how many courts the host is playing on at once. It decides
+                which lines share a round, so switching rebuilds the sheet. */}
+            {format != null && (
+              <div
+                role="group"
+                aria-label="Courts played at once"
+                className="inline-flex rounded-xl border border-white/10 overflow-hidden"
+              >
+                {JTT_COURT_FORMATS.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => void changeFormat(n)}
+                    disabled={!!busy}
+                    aria-pressed={format === n}
+                    title={
+                      n === 2
+                        ? '2 courts: each round is 1 singles + 1 doubles — 4 rounds'
+                        : '3 courts: 2 singles + 1 doubles, twice, then 2 doubles — 3 rounds'
+                    }
+                    className={`px-3 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
+                      format === n ? 'bg-[#D3FB52] text-[#001820]' : 'text-white/60 hover:text-white'
+                    }`}
+                  >
+                    {busy === 'format' && format !== n ? '…' : `${n} courts`}
+                  </button>
+                ))}
+              </div>
+            )}
             <button onClick={generate} disabled={!!busy} className={courts.length ? ghost : primary}>
               {busy === 'generate' ? 'Building…' : courts.length ? 'Regenerate' : 'Generate lineup'}
             </button>
@@ -1492,7 +1594,8 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                 </button>
                 <button
                   onClick={previewLineup}
-                  disabled={!!busy || dirty}
+                  // A kid on two courts at once is an unplayable sheet — never send one.
+                  disabled={!!busy || dirty || clashes.length > 0}
                   className={emphasise('send', 'build')}
                 >
                   {busy === 'send'
@@ -1686,6 +1789,36 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           </div>
         )}
 
+        {/* JTT: lines in the same round are played at the same time. Loud,
+            because a swap or a line flip can create this silently. */}
+        {clashes.length > 0 && (
+          <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/[0.09] p-4 text-sm text-red-100">
+            <strong>
+              {clashes.length === 1
+                ? 'A player is on two courts at once.'
+                : `${clashes.length} players are on two courts at once.`}
+            </strong>
+            <ul className="mt-1.5 space-y-1 text-red-100/80">
+              {clashes.map((x) => (
+                <li key={`${x.round}-${x.playerId}`}>
+                  {nameOf(x.playerId)} —{' '}
+                  {x.courtNumbers
+                    .map((n) => {
+                      const c = courts.find((y) => y.courtNumber === n);
+                      return c ? labelOf(c) : `Court ${n}`;
+                    })
+                    .join(' and ')}
+                  , both in round {x.round}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-red-100/60">
+              Lines in the same round are played at the same time. Swap one of them or hit
+              Regenerate — sending is blocked until it&rsquo;s fixed.
+            </p>
+          </div>
+        )}
+
         {warnings.length > 0 && (
           <ul className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.07] p-4 space-y-1 text-sm text-amber-100/85">
             {warnings.map((w, i) => (
@@ -1721,6 +1854,13 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                   <div className="text-white/50 text-xs uppercase tracking-wide">
                     {labelOf(c)}
                   </div>
+                  {/* Worked out from the format, not the generator's notes, so a
+                      saved sheet still shows its rounds after a reload. */}
+                  {roundOf?.get(c.courtNumber) != null && (
+                    <span className="text-[#D3FB52]/70 text-[11px] uppercase tracking-wide">
+                      round {roundOf.get(c.courtNumber)}
+                    </span>
+                  )}
                   {/* One click moves this whole pair a line up or down. */}
                   <div className="flex items-center gap-1">
                     {([-1, 1] as const).map((dir) => {
@@ -1750,8 +1890,11 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                       avg WTN {avgWtn(c)!.toFixed(1)}
                     </span>
                   )}
-                  {c.notes && c.notes.length > 0 && (
-                    <span className="text-white/35 text-xs">{c.notes.join(' · ')}</span>
+                  {/* "round N" already shows as the badge by the label. */}
+                  {(c.notes ?? []).filter((n) => !/^round \d+$/.test(n)).length > 0 && (
+                    <span className="text-white/35 text-xs">
+                      {(c.notes ?? []).filter((n) => !/^round \d+$/.test(n)).join(' · ')}
+                    </span>
                   )}
                 </div>
               </div>

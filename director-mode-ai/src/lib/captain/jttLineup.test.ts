@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { generateJttLineup, linesByPlayer } from './jttLineup';
-import { leagueSpec } from './leagues';
-import type { Player } from './lineup';
+import { jttRoundPlan, leagueSpec, roundClashes, roundsByCourt } from './leagues';
+import type { CourtAssignment, Player } from './lineup';
 
 const RULES = leagueSpec('jtt').multiLine!;
 const SHEET = { singlesCourts: 4, doublesCourts: 4 };
+const FORMATS = [2, 3] as const;
 
 /** Kids, strongest first, with a WTN so court order is deterministic. */
 function kids(n: number): Player[] {
@@ -24,194 +25,272 @@ const run = (available: Player[], extra: Partial<Parameters<typeof generateJttLi
 /** Which round each court belongs to, read off the generated notes. */
 const roundOf = (notes: string[]) => Number(notes.join(' ').match(/round (\d)/)?.[1] ?? 0);
 
-describe('the shape of the sheet', () => {
-  it('always lays out 8 lines: 4 singles then 4 doubles', () => {
-    const r = run(kids(6));
-    expect(r.courts).toHaveLength(8);
-    expect(r.courts.filter((c) => c.courtType === 'singles')).toHaveLength(4);
-    expect(r.courts.filter((c) => c.courtType === 'doubles')).toHaveLength(4);
-    expect(r.courts.map((c) => c.courtNumber)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+/** Every child at most once per round — the rule the whole format hangs on. */
+function expectNoDoubleBooking(courts: CourtAssignment[]) {
+  const rounds = new Set(courts.map((c) => roundOf(c.notes)));
+  for (const round of rounds) {
+    const inRound = courts
+      .filter((c) => roundOf(c.notes) === round)
+      .flatMap((c) => [c.player1Id, c.player2Id])
+      .filter(Boolean);
+    expect(new Set(inRound).size).toBe(inRound.length);
+  }
+}
+
+describe('the round plan', () => {
+  it('2 courts: one singles and one doubles per round, four rounds', () => {
+    expect(jttRoundPlan(2, 4, 4)).toEqual([
+      { singles: [1], doubles: [1] },
+      { singles: [2], doubles: [2] },
+      { singles: [3], doubles: [3] },
+      { singles: [4], doubles: [4] },
+    ]);
   });
 
-  it('puts the doubles into two rounds of two', () => {
+  it('3 courts: two singles + a doubles, twice, then the last two doubles', () => {
+    expect(jttRoundPlan(3, 4, 4)).toEqual([
+      { singles: [1, 2], doubles: [1] },
+      { singles: [3, 4], doubles: [2] },
+      { singles: [], doubles: [3, 4] },
+    ]);
+  });
+
+  it('maps saved court numbers to rounds, and spots a kid on two lines at once', () => {
+    const sheet = [
+      { courtNumber: 1, courtType: 'singles' as const, player1Id: 'gavin', player2Id: null },
+      { courtNumber: 2, courtType: 'singles' as const, player1Id: 'b', player2Id: null },
+      { courtNumber: 3, courtType: 'singles' as const, player1Id: 'c', player2Id: null },
+      { courtNumber: 4, courtType: 'singles' as const, player1Id: 'd', player2Id: null },
+      // Sound on 2 courts except Doubles 5, which puts Gavin beside his own
+      // Singles 1 — the exact mistake Darrin flagged.
+      { courtNumber: 5, courtType: 'doubles' as const, player1Id: 'gavin', player2Id: 'c' },
+      { courtNumber: 6, courtType: 'doubles' as const, player1Id: 'c', player2Id: 'd' },
+      { courtNumber: 7, courtType: 'doubles' as const, player1Id: 'gavin', player2Id: 'b' },
+      { courtNumber: 8, courtType: 'doubles' as const, player1Id: 'b', player2Id: 'c' },
+    ];
+    expect([...roundsByCourt(sheet, 2).entries()]).toEqual([
+      [1, 1], [5, 1], [2, 2], [6, 2], [3, 3], [7, 3], [4, 4], [8, 4],
+    ]);
+    // 2 courts: Gavin on Singles 1 AND Doubles 5 — both round 1. Nobody else.
+    expect(roundClashes(sheet, 2)).toEqual([{ round: 1, playerId: 'gavin', courtNumbers: [1, 5] }]);
+    // 3 courts: S1, S2 and D5 share round 1, so Gavin still clashes there.
+    expect(roundClashes(sheet, 3).map((c) => c.playerId)).toContain('gavin');
+  });
+});
+
+describe.each(FORMATS)('%i-court format', (courtFormat) => {
+  const go = (available: Player[], extra: Partial<Parameters<typeof generateJttLineup>[0]> = {}) =>
+    run(available, { courtFormat, ...extra });
+
+  describe('the shape of the sheet', () => {
+    it('always lays out 8 lines: 4 singles then 4 doubles', () => {
+      const r = go(kids(6));
+      expect(r.courts).toHaveLength(8);
+      expect(r.courts.filter((c) => c.courtType === 'singles')).toHaveLength(4);
+      expect(r.courts.filter((c) => c.courtType === 'doubles')).toHaveLength(4);
+      expect(r.courts.map((c) => c.courtNumber)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    });
+
+    it('labels every line with the round of this format', () => {
+      const r = go(kids(6));
+      const singles = r.courts.filter((c) => c.courtType === 'singles').map((c) => roundOf(c.notes));
+      const doubles = r.courts.filter((c) => c.courtType === 'doubles').map((c) => roundOf(c.notes));
+      if (courtFormat === 2) {
+        expect(singles).toEqual([1, 2, 3, 4]);
+        expect(doubles).toEqual([1, 2, 3, 4]);
+      } else {
+        expect(singles).toEqual([1, 1, 2, 2]);
+        expect(doubles).toEqual([1, 2, 3, 3]);
+      }
+    });
+  });
+
+  describe('four players — the minimum that fills the sheet', () => {
+    const r = go(kids(4));
+
+    it('seats every line with nobody missing', () => {
+      expect(r.courts.every((c) => c.player1Id)).toBe(true);
+      expect(r.unassigned).toEqual([]);
+    });
+
+    it('gives all four kids three lines each', () => {
+      expect(linesByPlayer(r.courts)).toEqual({ p1: 3, p2: 3, p3: 3, p4: 3 });
+    });
+
+    it('gives each kid exactly one singles', () => {
+      const singles = r.courts.filter((c) => c.courtType === 'singles').map((c) => c.player1Id);
+      expect(new Set(singles).size).toBe(4);
+    });
+
+    it('never puts the same kid on two lines in one round', () => {
+      expectNoDoubleBooking(r.courts);
+    });
+
+    it('never repeats a doubles partnership within the match', () => {
+      const pairs = r.courts
+        .filter((c) => c.courtType === 'doubles' && c.player1Id && c.player2Id)
+        .map((c) => [c.player1Id, c.player2Id].sort().join('|'));
+      expect(new Set(pairs).size).toBe(pairs.length);
+    });
+  });
+
+  describe('six players — the sweet spot', () => {
+    const r = go(kids(6));
+
+    it('fills all eight lines', () => {
+      expect(r.courts.every((c) => c.player1Id)).toBe(true);
+    });
+
+    it('gives everybody exactly two lines', () => {
+      expect(Object.values(linesByPlayer(r.courts))).toEqual([2, 2, 2, 2, 2, 2]);
+    });
+
+    it('warns about nothing — this is the turnout the format wants', () => {
+      expect(r.warnings).toEqual([]);
+    });
+
+    it('never double-books a round', () => {
+      expectNoDoubleBooking(r.courts);
+    });
+  });
+
+  describe('three players — playable, with defaults', () => {
+    const r = go(kids(3));
+    // 2 courts spreads the doubles over four rounds, so three kids cover one
+    // more line than they can on 3 courts.
+    const expectedEmpty = courtFormat === 2 ? 2 : 3;
+
+    it('is allowed to play', () => {
+      expect(r.warnings.some((w) => w.includes('cannot be played'))).toBe(false);
+    });
+
+    it('leaves the uncoverable lines empty rather than inventing players', () => {
+      const empty = r.courts.filter((c) => !c.player1Id);
+      expect(empty).toHaveLength(expectedEmpty);
+      expect(empty.every((c) => c.notes.join(' ').includes('default'))).toBe(true);
+    });
+
+    it('says how many lines get defaulted, and what would fix it', () => {
+      expect(r.warnings.join(' ')).toContain(`${expectedEmpty} of the 8 lines`);
+      expect(r.warnings.join(' ')).toMatch(/4 players covers the whole sheet/);
+    });
+
+    it('still refuses to double-book a round', () => {
+      expectNoDoubleBooking(r.courts);
+    });
+  });
+
+  describe('two players — not a match', () => {
+    const r = go(kids(2));
+
+    it('produces no lineup at all', () => {
+      expect(r.courts).toEqual([]);
+    });
+
+    it('says so plainly, and says what to do instead', () => {
+      expect(r.warnings[0]).toMatch(/at least 3/);
+      expect(r.warnings[0]).toMatch(/conceded or rescheduled/);
+    });
+  });
+
+  describe('every turnout', () => {
+    it('never double-books a round, for 3 to 13 kids', () => {
+      for (let n = 3; n <= 13; n++) expectNoDoubleBooking(go(kids(n)).courts);
+    });
+
+    it('fills the whole sheet from four kids up', () => {
+      for (let n = 4; n <= 12; n++) {
+        expect(go(kids(n)).courts.every((c) => c.player1Id)).toBe(true);
+      }
+    });
+  });
+
+  describe('more than six', () => {
+    it('warns that someone is only getting one line', () => {
+      const r = go(kids(8));
+      expect(r.warnings.join(' ')).toMatch(/some players only get one line/);
+    });
+
+    it('still never gives anyone more than three, or fewer than one', () => {
+      for (const n of [7, 8, 10, 12]) {
+        const counts = Object.values(linesByPlayer(go(kids(n)).courts));
+        expect(Math.max(...counts)).toBeLessThanOrEqual(3);
+        expect(Math.min(...counts)).toBeGreaterThanOrEqual(1);
+      }
+    });
+
+    it('names anyone who came and got no line at all', () => {
+      const r = go(kids(13));
+      expect(r.unassigned).toHaveLength(1);
+      expect(r.warnings.join(' ')).toMatch(/No line for Kid M/);
+    });
+
+    it('keeps the within-match spread to a single line', () => {
+      for (const n of [5, 7, 8, 9, 11]) {
+        const counts = Object.values(linesByPlayer(go(kids(n)).courts));
+        expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+      }
+    });
+  });
+
+  describe('hard constraints still hold', () => {
+    it('honours never-pair across every doubles round', () => {
+      const r = go(kids(6), { neverPairs: [{ playerAId: 'p1', playerBId: 'p2' }] });
+      const together = r.courts.some(
+        (c) =>
+          (c.player1Id === 'p1' && c.player2Id === 'p2') ||
+          (c.player1Id === 'p2' && c.player2Id === 'p1'),
+      );
+      expect(together).toBe(false);
+    });
+
+    it('keeps a doubles-only kid off the singles lines', () => {
+      const roster = kids(6);
+      roster[0].courtLimit = 'doubles_only';
+      const r = go(roster);
+      const singles = r.courts.filter((c) => c.courtType === 'singles').map((c) => c.player1Id);
+      expect(singles).not.toContain('p1');
+    });
+
+    it('keeps a singles-only kid off the doubles lines', () => {
+      const roster = kids(6);
+      roster[0].courtLimit = 'singles_only';
+      const r = go(roster);
+      const doubles = r.courts
+        .filter((c) => c.courtType === 'doubles')
+        .flatMap((c) => [c.player1Id, c.player2Id]);
+      expect(doubles).not.toContain('p1');
+    });
+  });
+
+  describe('equal play looks at the season, not just the sheet', () => {
+    it('hands the spare line to whoever has played least', () => {
+      // 5 kids, 12 slots: 2 kids get 3 lines, 3 get 2. Kid E is the weakest but
+      // has played nothing all season, so equal_play must seat her for the extra.
+      const roster = kids(5);
+      roster.forEach((p, i) => (p.matchesPlayed = i === 4 ? 0 : 4));
+      const counts = linesByPlayer(go(roster, { captainingStyle: 'equal_play' }).courts);
+      expect(counts.p5).toBe(3);
+    });
+
+    it('play_to_win gives it to the strongest instead', () => {
+      const roster = kids(5);
+      roster.forEach((p, i) => (p.matchesPlayed = i === 4 ? 0 : 4));
+      const counts = linesByPlayer(go(roster, { captainingStyle: 'play_to_win' }).courts);
+      expect(counts.p1).toBe(3);
+    });
+  });
+
+  describe('determinism', () => {
+    it('produces the identical sheet from identical input', () => {
+      expect(go(kids(6)).courts).toEqual(go(kids(6)).courts);
+    });
+  });
+});
+
+describe('the default format', () => {
+  it('is 3 courts when none is given', () => {
     const doubles = run(kids(6)).courts.filter((c) => c.courtType === 'doubles');
-    expect(doubles.map((c) => roundOf(c.notes))).toEqual([2, 2, 3, 3]);
-  });
-});
-
-describe('four players — the minimum that fills the sheet', () => {
-  const r = run(kids(4));
-
-  it('seats every line with nobody missing', () => {
-    expect(r.courts.every((c) => c.player1Id)).toBe(true);
-    expect(r.unassigned).toEqual([]);
-  });
-
-  it('gives all four kids three lines each', () => {
-    expect(linesByPlayer(r.courts)).toEqual({ p1: 3, p2: 3, p3: 3, p4: 3 });
-  });
-
-  it('gives each kid exactly one singles', () => {
-    const singles = r.courts.filter((c) => c.courtType === 'singles').map((c) => c.player1Id);
-    expect(new Set(singles).size).toBe(4);
-  });
-
-  it('never puts the same kid on two lines in one round', () => {
-    for (const round of [1, 2, 3]) {
-      const inRound = r.courts
-        .filter((c) => roundOf(c.notes) === round)
-        .flatMap((c) => [c.player1Id, c.player2Id])
-        .filter(Boolean);
-      expect(new Set(inRound).size).toBe(inRound.length);
-    }
-  });
-
-  it('never repeats a doubles partnership within the match', () => {
-    const pairs = r.courts
-      .filter((c) => c.courtType === 'doubles' && c.player1Id && c.player2Id)
-      .map((c) => [c.player1Id, c.player2Id].sort().join('|'));
-    expect(new Set(pairs).size).toBe(pairs.length);
-  });
-});
-
-describe('six players — the sweet spot', () => {
-  const r = run(kids(6));
-
-  it('fills all eight lines', () => {
-    expect(r.courts.every((c) => c.player1Id)).toBe(true);
-  });
-
-  it('gives everybody exactly two lines', () => {
-    expect(Object.values(linesByPlayer(r.courts))).toEqual([2, 2, 2, 2, 2, 2]);
-  });
-
-  it('warns about nothing — this is the turnout the format wants', () => {
-    expect(r.warnings).toEqual([]);
-  });
-});
-
-describe('three players — playable, with defaults', () => {
-  const r = run(kids(3));
-
-  it('is allowed to play', () => {
-    expect(r.warnings.some((w) => w.includes('cannot be played'))).toBe(false);
-  });
-
-  it('leaves the uncoverable lines empty rather than inventing players', () => {
-    const empty = r.courts.filter((c) => !c.player1Id);
-    expect(empty).toHaveLength(3);
-    expect(empty.every((c) => c.notes.join(' ').includes('default'))).toBe(true);
-  });
-
-  it('says how many lines get defaulted, and what would fix it', () => {
-    expect(r.warnings.join(' ')).toMatch(/3 of the 8 lines/);
-    expect(r.warnings.join(' ')).toMatch(/4 players covers the whole sheet/);
-  });
-
-  it('still refuses to double-book a round', () => {
-    for (const round of [1, 2, 3]) {
-      const inRound = r.courts
-        .filter((c) => roundOf(c.notes) === round)
-        .flatMap((c) => [c.player1Id, c.player2Id])
-        .filter(Boolean);
-      expect(new Set(inRound).size).toBe(inRound.length);
-    }
-  });
-});
-
-describe('two players — not a match', () => {
-  const r = run(kids(2));
-
-  it('produces no lineup at all', () => {
-    expect(r.courts).toEqual([]);
-  });
-
-  it('says so plainly, and says what to do instead', () => {
-    expect(r.warnings[0]).toMatch(/at least 3/);
-    expect(r.warnings[0]).toMatch(/conceded or rescheduled/);
-  });
-});
-
-describe('more than six', () => {
-  it('warns that someone is only getting one line', () => {
-    const r = run(kids(8));
-    expect(r.warnings.join(' ')).toMatch(/some players only get one line/);
-  });
-
-  it('still never gives anyone more than three, or fewer than one', () => {
-    for (const n of [7, 8, 10, 12]) {
-      const counts = Object.values(linesByPlayer(run(kids(n)).courts));
-      expect(Math.max(...counts)).toBeLessThanOrEqual(3);
-      expect(Math.min(...counts)).toBeGreaterThanOrEqual(1);
-    }
-  });
-
-  it('names anyone who came and got no line at all', () => {
-    const r = run(kids(13));
-    expect(r.unassigned).toHaveLength(1);
-    expect(r.warnings.join(' ')).toMatch(/No line for Kid M/);
-  });
-
-  it('keeps the within-match spread to a single line', () => {
-    for (const n of [5, 7, 8, 9, 11]) {
-      const counts = Object.values(linesByPlayer(run(kids(n)).courts));
-      expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
-    }
-  });
-});
-
-describe('hard constraints still hold', () => {
-  it('honours never-pair across both doubles rounds', () => {
-    const r = run(kids(6), { neverPairs: [{ playerAId: 'p1', playerBId: 'p2' }] });
-    const together = r.courts.some(
-      (c) =>
-        (c.player1Id === 'p1' && c.player2Id === 'p2') ||
-        (c.player1Id === 'p2' && c.player2Id === 'p1'),
-    );
-    expect(together).toBe(false);
-  });
-
-  it('keeps a doubles-only kid off the singles lines', () => {
-    const roster = kids(6);
-    roster[0].courtLimit = 'doubles_only';
-    const r = run(roster);
-    const singles = r.courts.filter((c) => c.courtType === 'singles').map((c) => c.player1Id);
-    expect(singles).not.toContain('p1');
-  });
-
-  it('keeps a singles-only kid off the doubles lines', () => {
-    const roster = kids(6);
-    roster[0].courtLimit = 'singles_only';
-    const r = run(roster);
-    const doubles = r.courts
-      .filter((c) => c.courtType === 'doubles')
-      .flatMap((c) => [c.player1Id, c.player2Id]);
-    expect(doubles).not.toContain('p1');
-  });
-});
-
-describe('equal play looks at the season, not just the sheet', () => {
-  it('hands the spare line to whoever has played least', () => {
-    // 5 kids, 12 slots: 2 kids get 3 lines, 3 get 2. Kid E is the weakest but
-    // has played nothing all season, so equal_play must seat her for the extra.
-    const roster = kids(5);
-    roster.forEach((p, i) => (p.matchesPlayed = i === 4 ? 0 : 4));
-    const counts = linesByPlayer(run(roster, { captainingStyle: 'equal_play' }).courts);
-    expect(counts.p5).toBe(3);
-  });
-
-  it('play_to_win gives it to the strongest instead', () => {
-    const roster = kids(5);
-    roster.forEach((p, i) => (p.matchesPlayed = i === 4 ? 0 : 4));
-    const counts = linesByPlayer(run(roster, { captainingStyle: 'play_to_win' }).courts);
-    expect(counts.p1).toBe(3);
-  });
-});
-
-describe('determinism', () => {
-  it('produces the identical sheet from identical input', () => {
-    const a = run(kids(6));
-    const b = run(kids(6));
-    expect(a.courts).toEqual(b.courts);
+    expect(doubles.map((c) => roundOf(c.notes))).toEqual([1, 2, 3, 3]);
   });
 });

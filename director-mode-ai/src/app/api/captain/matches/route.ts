@@ -123,6 +123,8 @@ export async function PATCH(req: Request) {
     'opposing_captain_phone',
     'singles_courts',
     'doubles_courts',
+    // Courts played at once (JTT: 2 or 3) — decides which lines share a round.
+    'court_format',
     'status',
   ];
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };

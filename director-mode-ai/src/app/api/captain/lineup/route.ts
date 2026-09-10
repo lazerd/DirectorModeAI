@@ -22,6 +22,7 @@ import {
   type RatingType,
 } from '@/lib/captain/lineup';
 import { generateJttLineup } from '@/lib/captain/jttLineup';
+import { DEFAULT_JTT_COURT_FORMAT, jttRoundPlan, roundPlanText } from '@/lib/captain/leagues';
 import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
 import { leagueSpec } from '@/lib/captain/leagues';
 import { resolveAvailability } from '@/lib/captain/availability';
@@ -157,6 +158,11 @@ export async function POST(req: Request) {
      * once — would report a six-child team as six players short of twelve.
      */
     const multiLine = leagueSpec(team.league_type as string).multiLine;
+    // The match's own format (the host's courts) beats the team default.
+    const courtFormat =
+      (match.court_format as number | null) ??
+      (team.court_format as number | null) ??
+      DEFAULT_JTT_COURT_FORMAT;
 
     const result = multiLine
       ? generateJttLineup({
@@ -164,6 +170,7 @@ export async function POST(req: Request) {
           singlesCourts,
           doublesCourts,
           rules: multiLine,
+          courtFormat,
           partnerPrefs,
           neverPairs,
           pairHistory: history,
@@ -204,6 +211,11 @@ export async function POST(req: Request) {
       `${available.length} of ${rosterSize} said yes. This match needs ${spots}` +
         (singles ? ` — ${singles} singles and ${doubles} doubles courts.` : ` — ${doubles} doubles courts.`),
     ];
+    if (multiLine) {
+      summary.push(
+        `${courtFormat}-court format — ${roundPlanText(jttRoundPlan(courtFormat, singles, doubles), singles)}. Nobody is on two lines in the same round.`,
+      );
+    }
 
     if (style === 'equal_play') {
       // Name the numbers being compared, because "equal play" is the setting a
