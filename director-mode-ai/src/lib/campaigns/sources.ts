@@ -483,16 +483,17 @@ export async function stringingCampaign(user: SessionUser): Promise<SourceResult
   };
 }
 
-// ---------------- Stringing re-string reminder (last job ≥ N days ago) ----------------
-// targetId = the day threshold. Skips customers who have never strung here and
-// anyone whose racket is in the shop right now (pending / in progress).
-export async function stringingRestringCampaign(daysArg: string, user: SessionUser): Promise<SourceResult> {
-  const days = Math.max(7, Math.min(730, parseInt(daysArg, 10) || 90));
+// ---------------- Stringing re-string nudge (one customer, on demand) ----------------
+// targetId = stringing_customers.id. Only ever sent from the Nudge button — no
+// schedule. Days-since is filled in from their latest job. Skips customers who
+// have never strung here or whose racket is in the shop right now.
+export async function stringingRestringCampaign(customerId: string, user: SessionUser): Promise<SourceResult> {
   const admin = getSupabaseAdmin();
   const { data: custRows } = await admin
     .from('stringing_customers')
     .select('id, full_name, email')
-    .eq('user_id', user.id);
+    .eq('user_id', user.id)
+    .eq('id', customerId);
   const customers = ((custRows as Array<Record<string, unknown>>) || []).filter((c) => c.email);
   const custIds = customers.map((c) => c.id as string);
 
@@ -514,7 +515,6 @@ export async function stringingRestringCampaign(daysArg: string, user: SessionUs
       if (!j) continue;
       if (j.status === 'pending' || j.status === 'in_progress') continue;
       const since = Math.floor((now - new Date(j.created_at as string).getTime()) / 86_400_000);
-      if (since < days) continue;
       const cat = j.string as { brand: string; name: string } | null;
       const stringName = cat ? `${cat.brand} ${cat.name}` : (j.custom_string_name as string) || '';
       const tension = j.cross_tension_lbs ? `${j.main_tension_lbs}/${j.cross_tension_lbs} lbs` : `${j.main_tension_lbs} lbs`;
@@ -552,7 +552,7 @@ export async function stringingRestringCampaign(daysArg: string, user: SessionUs
       liveUrl: '',
       liveUrlLabel: '',
       deadlineNote: null,
-      stats: [{ label: `Due for a re-string (${days}+ days)`, value: `${nudge.length}` }],
+      stats: [{ label: 'Re-string nudge', value: `${nudge.length}` }],
       everyone: [],
       nudge,
       copy,

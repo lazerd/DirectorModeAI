@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Clock, Wrench, CheckCircle, Package, RefreshCw, Mail, Search } from 'lucide-react';
+import { Plus, Clock, Wrench, CheckCircle, Package, RefreshCw, Mail, Search, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import NudgePanel from '@/components/campaigns/NudgePanel';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -37,9 +37,8 @@ export default function StringingJobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'done' | 'completed' | 'customers'>('all');
-  const [customers, setCustomers] = useState<{ id: string; full_name: string }[]>([]);
+  const [customers, setCustomers] = useState<{ id: string; full_name: string; email: string | null }[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
-  const [restringDays, setRestringDays] = useState(90);
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -67,7 +66,7 @@ export default function StringingJobsPage() {
 
     const { data: custData } = await supabase
       .from('stringing_customers')
-      .select('id, full_name')
+      .select('id, full_name, email')
       .order('full_name');
     if (custData) setCustomers(custData);
     setLoading(false);
@@ -279,8 +278,6 @@ export default function StringingJobsPage() {
             lastJob={lastJobByCustomer}
             search={customerSearch}
             onSearch={setCustomerSearch}
-            restringDays={restringDays}
-            onRestringDays={setRestringDays}
           />
         ) : loading ? (
           <div className="flex items-center justify-center py-12">
@@ -325,45 +322,17 @@ function CustomersView({
   lastJob,
   search,
   onSearch,
-  restringDays,
-  onRestringDays,
 }: {
-  customers: { id: string; full_name: string }[];
+  customers: { id: string; full_name: string; email: string | null }[];
   lastJob: Map<string, Job>;
   search: string;
   onSearch: (v: string) => void;
-  restringDays: number;
-  onRestringDays: (d: number) => void;
 }) {
+  const [nudging, setNudging] = useState<{ id: string; full_name: string } | null>(null);
   const daysSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
   return (
-    <div className="space-y-4">
-    {/* Re-string reminder */}
     <div>
-      <div className="flex flex-wrap items-center gap-2 mb-2 text-sm text-gray-400">
-        <span>Remind customers whose last string job was</span>
-        <select
-          value={restringDays}
-          onChange={(e) => onRestringDays(Number(e.target.value))}
-          className="input w-auto py-1"
-        >
-          {[30, 60, 90, 120, 180, 365].map((d) => (
-            <option key={d} value={d}>{d}</option>
-          ))}
-        </select>
-        <span>or more days ago</span>
-      </div>
-      <NudgePanel
-        surface="stringing-restring"
-        targetId={String(restringDays)}
-        only={['nudge']}
-        nudgeCopy={{
-          title: '🔁 Time for a re-string?',
-          desc: `Emails each customer how many days it's been, with their last string and tension, and suggests bringing the racket back in. Skips anyone whose racket is in the shop right now.`,
-          empty: `Nobody is past ${restringDays} days right now.`,
-        }}
-      />
-    </div>
+    {nudging && <RestringNudgeModal customer={nudging} onClose={() => setNudging(null)} />}
     <div className="card p-4">
       <div className="relative mb-4 max-w-sm">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -385,7 +354,8 @@ function CustomersView({
                 <th className="py-2 pr-4 font-medium">Customer</th>
                 <th className="py-2 pr-4 font-medium">Last tension</th>
                 <th className="py-2 pr-4 font-medium">String</th>
-                <th className="py-2 font-medium">Last visit</th>
+                <th className="py-2 pr-4 font-medium">Last visit</th>
+                <th className="py-2"></th>
               </tr>
             </thead>
             <tbody>
@@ -410,14 +380,19 @@ function CustomersView({
                         <span className="text-gray-500">No jobs yet</span>
                       )}
                     </td>
-                    <td className="py-2.5 whitespace-nowrap text-gray-500">
-                      {last && (
-                        <>
-                          {format(new Date(last.created_at), 'MMM d, yyyy')}
-                          <span className={daysSince(last.created_at) >= restringDays ? 'text-amber-400' : ''}>
-                            {' '}· {daysSince(last.created_at)} days ago
-                          </span>
-                        </>
+                    <td className="py-2.5 pr-4 whitespace-nowrap text-gray-500">
+                      {last && <>{format(new Date(last.created_at), 'MMM d, yyyy')} · {daysSince(last.created_at)} days ago</>}
+                    </td>
+                    <td className="py-2.5 text-right whitespace-nowrap">
+                      {!last ? null : last.status === 'pending' || last.status === 'in_progress' ? (
+                        <span className="text-xs text-gray-500">In the shop</span>
+                      ) : !c.email ? (
+                        <span className="text-xs text-gray-500">No email</span>
+                      ) : (
+                        <button onClick={() => setNudging(c)} className="btn btn-sm btn-secondary">
+                          <Mail size={14} />
+                          Nudge
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -428,6 +403,92 @@ function CustomersView({
         </div>
       )}
     </div>
+    </div>
+  );
+}
+
+// One-customer re-string nudge: opens on the preview (days since last job
+// already filled in). Nothing sends until "Send to <name>" is clicked.
+function RestringNudgeModal({ customer, onClose }: { customer: { id: string; full_name: string }; onClose: () => void }) {
+  const [preview, setPreview] = useState<{ count?: number; subject?: string; sampleHtml?: string } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const firstName = customer.full_name.split(' ')[0];
+
+  const call = async (mode: 'preview' | 'test' | 'live') => {
+    if (mode === 'live' && !confirm(`Email ${customer.full_name} a re-string reminder?`)) return;
+    setBusy(mode);
+    setMsg(null);
+    try {
+      const r = await fetch('/api/campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ surface: 'stringing-restring', targetId: customer.id, kind: 'nudge', mode }),
+      });
+      const d = await r.json();
+      if (!r.ok) setMsg(d.error === 'credit_limit' ? d.message : d.error || 'Something went wrong');
+      else if (mode === 'preview') setPreview(d);
+      else if (mode === 'test') setMsg(d.sent ? 'Test sent to your inbox.' : d.note || 'Nothing to send.');
+      else if (d.sent) {
+        setSent(true);
+        setMsg(`Sent to ${customer.full_name}.`);
+      } else setMsg(`Not sent${d.failures?.[0] ? `: ${d.failures[0].reason}` : '.'}`);
+    } catch (e) {
+      setMsg('Error: ' + (e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  useEffect(() => {
+    call('preview');
+  }, []);
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white text-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-lg">Re-string nudge → {customer.full_name}</h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100" aria-label="Close">
+            <X size={18} />
+          </button>
+        </div>
+        {!preview ? (
+          <p className="text-sm text-gray-500">{msg || 'Loading preview…'}</p>
+        ) : preview.sampleHtml ? (
+          <>
+            <p className="text-sm mb-2">
+              <span className="text-gray-500">Subject:</span> <strong>{preview.subject}</strong>
+            </p>
+            <iframe title="Email preview" srcDoc={preview.sampleHtml} className="w-full h-[420px] rounded-lg border border-gray-200 bg-white" />
+          </>
+        ) : (
+          <p className="text-sm text-gray-500">Nothing to send. They have no email on file, or their racket is in the shop right now.</p>
+        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            onClick={() => call('test')}
+            disabled={!!busy || !preview?.sampleHtml}
+            className="rounded-lg bg-[#0C7B8C] px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-40"
+          >
+            {busy === 'test' ? '…' : 'Send test to me'}
+          </button>
+          <button
+            onClick={() => call('live')}
+            disabled={!!busy || !preview?.sampleHtml || sent}
+            className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-40"
+          >
+            {busy === 'live' ? 'Sending…' : sent ? 'Sent ✓' : `Send to ${firstName}`}
+          </button>
+        </div>
+        {msg && preview && (
+          <p className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">{msg}</p>
+        )}
+      </div>
     </div>
   );
 }
