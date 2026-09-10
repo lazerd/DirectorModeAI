@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { sendSmsBatch } from '@/lib/twilio';
-import { getPlanContext, eventHasDayPass, CreditLimitError } from '@/lib/billing';
+import { hasFeature, eventHasDayPass, CreditLimitError } from '@/lib/billing';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,9 +18,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'eventId_and_roundId_required' }, { status: 400 });
     }
 
-    // Gate: paid plan, OR event has Day Pass purchased
-    const ctx = await getPlanContext(user.id);
-    if (ctx.effectiveTier === 'free') {
+    // Gate: the 'sms' feature (so FOUNDING_MODE applies, like every other
+    // gate), OR the event has a Day Pass. This used to read effectiveTier
+    // directly, which 402'd every founding club with a $9 Day Pass pitch.
+    if (!(await hasFeature(user.id, 'sms'))) {
       const dayPass = await eventHasDayPass(eventId);
       if (!dayPass) {
         return NextResponse.json(

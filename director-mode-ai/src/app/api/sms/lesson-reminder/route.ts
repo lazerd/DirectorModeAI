@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { sendSms } from '@/lib/twilio';
-import { getPlanContext, CreditLimitError } from '@/lib/billing';
+import { hasFeature, CreditLimitError } from '@/lib/billing';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,8 +13,8 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-    const ctx = await getPlanContext(user.id);
-    if (ctx.effectiveTier === 'free') {
+    // Through hasFeature so FOUNDING_MODE applies, like every other gate.
+    if (!(await hasFeature(user.id, 'sms'))) {
       return NextResponse.json(
         { error: 'sms_locked', message: 'SMS lesson reminders require Pro.', upgradeUrl: '/pricing' },
         { status: 402 }

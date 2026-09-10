@@ -38,20 +38,6 @@ function CreateEventForm() {
     gender_restriction: 'coed' as 'boys' | 'girls' | 'coed',
     registration_closes_at: '',
   });
-  const [stripeReady, setStripeReady] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('stripe_account_id, stripe_charges_enabled')
-        .eq('id', user.id)
-        .maybeSingle();
-      setStripeReady(!!(profile?.stripe_account_id && profile?.stripe_charges_enabled));
-    })();
-  }, []);
 
   const slugify = (input: string) =>
     input.toLowerCase().trim().replace(/['"]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
@@ -122,20 +108,18 @@ function CreateEventForm() {
 
       const eventCode = generateEventCode();
 
-      // Public-signup events need a slug + Stripe Connect snapshot if paid
+      // Public-signup events need a slug. Paid online entry isn't offered for
+      // mixers: the only rail /api/events/register had was Stripe Connect, and
+      // the platform Stripe account is disabled.
       let publicFields: Record<string, any> = {};
       if (publicCfg.public_registration) {
-        const wantsPayment = publicCfg.entry_fee_dollars > 0;
-        if (wantsPayment && !stripeReady) {
-          setError('Connect Stripe before charging entry fees. Open Settings → Payouts.');
+        if (publicCfg.entry_fee_dollars > 0) {
+          setError(
+            'Online entry fees aren’t available for mixers yet — set the fee to 0 and collect at check-in.'
+          );
           setLoading(false);
           return;
         }
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('stripe_account_id')
-          .eq('id', user.id)
-          .maybeSingle();
         const slugBase = slugify(formData.name);
         const slug = `${slugBase}-${Math.random().toString(36).slice(2, 6)}`;
         const ageNum =
@@ -155,7 +139,6 @@ function CreateEventForm() {
           registration_closes_at: publicCfg.registration_closes_at
             ? new Date(publicCfg.registration_closes_at).toISOString()
             : null,
-          stripe_account_id: profile?.stripe_account_id || null,
           public_status: 'open',
         };
       }
@@ -450,15 +433,12 @@ function CreateEventForm() {
 
           {publicCfg.public_registration && (
             <>
-              {publicCfg.entry_fee_dollars > 0 && stripeReady === false && (
+              {publicCfg.entry_fee_dollars > 0 && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg p-3 flex items-start gap-2 text-sm">
                   <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
                   <div>
-                    Stripe not connected.{' '}
-                    <Link href="/mixer/settings" className="underline font-medium">
-                      Connect Stripe →
-                    </Link>{' '}
-                    required for paid events.
+                    Online entry fees aren&apos;t available for mixers yet — set the fee to 0 and
+                    collect at check-in.
                   </div>
                 </div>
               )}
@@ -484,7 +464,7 @@ function CreateEventForm() {
                     />
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
-                    0 = free. Paid via Stripe Connect (3% platform fee).
+                    0 = free. Collect any fee at check-in for now.
                   </p>
                 </div>
                 <div>

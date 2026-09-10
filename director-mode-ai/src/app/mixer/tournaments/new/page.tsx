@@ -19,6 +19,7 @@ import {
   type QuadScoringFormatId,
   type GenderRestriction,
 } from '@/lib/quads';
+import { SQUARE_ACCOUNT_OWNER_ID, isPaymentLink } from '@/config/payments';
 
 const FORMAT_LABELS: Record<string, string> = {
   'rr-singles': 'Round Robin — Singles',
@@ -60,7 +61,6 @@ function CreateTournamentForm() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stripeConnected, setStripeConnected] = useState<boolean | null>(null);
 
   const [form, setForm] = useState({
     name: '',
@@ -73,7 +73,8 @@ function CreateTournamentForm() {
     gender_restriction: 'coed' as GenderRestriction,
     scoring_format: 'pro8' as QuadScoringFormatId,
     custom_scoring: '',
-    entry_fee_dollars: 25,
+    entry_fee_dollars: 0,
+    external_payment_url: '',
     max_players: 16,
     public_registration: true,
     registration_opens_now: true,
@@ -86,18 +87,6 @@ function CreateTournamentForm() {
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
     setForm((p) => ({ ...p, event_date: today, end_date: today }));
-    (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('stripe_account_id, stripe_charges_enabled')
-        .eq('id', user.id)
-        .maybeSingle();
-      setStripeConnected(!!(profile?.stripe_account_id && profile?.stripe_charges_enabled));
-    })();
   }, []);
 
   if (!validFormat) {
@@ -129,16 +118,15 @@ function CreateTournamentForm() {
         return;
       }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('stripe_account_id, stripe_charges_enabled')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      const wantsPayment = (form.entry_fee_dollars ?? 0) > 0;
-      const stripeReady = !!(profile?.stripe_account_id && profile?.stripe_charges_enabled);
-      if (wantsPayment && !stripeReady) {
-        setError('Connect Stripe before creating a paid tournament. Open Settings → Payouts.');
+      // Paid entry is a payment link the director pastes. Stripe Connect is
+      // gone (the platform account is disabled) and the app's Square token is
+      // one club's seller account, so it only serves that club's events.
+      const paymentLink = form.external_payment_url.trim();
+      const wantsPayment = form.public_registration && (form.entry_fee_dollars ?? 0) > 0;
+      if (wantsPayment && user.id !== SQUARE_ACCOUNT_OWNER_ID && !isPaymentLink(paymentLink)) {
+        setError(
+          'A paid entry needs a payment link — paste your Square, PayPal or Venmo link, or set the fee to 0.'
+        );
         setLoading(false);
         return;
       }
@@ -183,7 +171,7 @@ function CreateTournamentForm() {
             form.scoring_format === 'custom'
               ? form.custom_scoring.trim() || 'Custom format'
               : form.scoring_format,
-          stripe_account_id: profile?.stripe_account_id || null,
+          external_payment_url: wantsPayment && paymentLink ? paymentLink : null,
           public_status: form.public_registration ? 'open' : 'draft',
           default_match_length_minutes: form.default_match_length_minutes,
           player_rest_minutes: form.player_rest_minutes,
@@ -223,21 +211,6 @@ function CreateTournamentForm() {
           <p className="text-gray-500 text-sm">{FORMAT_LABELS[validFormat]}</p>
         </div>
       </div>
-
-      {form.public_registration && form.entry_fee_dollars > 0 && stripeConnected === false && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 flex items-start gap-3">
-          <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
-          <div className="text-sm flex-1">
-            <p className="font-medium">Stripe not connected.</p>
-            <p>
-              Required for paid tournaments.{' '}
-              <Link href="/mixer/settings" className="underline font-medium">
-                Connect Stripe →
-              </Link>
-            </p>
-          </div>
-        </div>
-      )}
 
       <form onSubmit={submit} className="space-y-6">
         {/* Tournament details */}
@@ -533,9 +506,24 @@ function CreateTournamentForm() {
                 />
               </div>
               <p className="text-xs text-gray-500 mt-2">
-                0 = free tournament. Paid entries flow through Stripe Connect to your account
-                (3% platform fee).
+                0 = free tournament. For a paid entry, add your own payment link below —
+                players pay you directly.
               </p>
+              {form.entry_fee_dollars > 0 && (
+                <div className="mt-3">
+                  <label className="block text-sm font-medium mb-1">Payment link</label>
+                  <input
+                    type="url"
+                    value={form.external_payment_url}
+                    onChange={(e) => setForm({ ...form, external_payment_url: e.target.value })}
+                    placeholder="https://… (Square, PayPal or Venmo link)"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Players see this link after they sign up. ClubMode never handles the money.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

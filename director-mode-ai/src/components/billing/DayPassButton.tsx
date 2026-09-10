@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { FOUNDING_MODE } from '@/config/pricing';
 
 export default function DayPassButton({ eventId }: { eventId: string }) {
   const [loading, setLoading] = useState(false);
@@ -19,6 +20,9 @@ export default function DayPassButton({ eventId }: { eventId: string }) {
       alert(data.message || 'Could not start checkout.');
     }
   }
+
+  // No day passes are sold while founding mode is on — everything is unlocked.
+  if (FOUNDING_MODE) return null;
 
   return (
     <button

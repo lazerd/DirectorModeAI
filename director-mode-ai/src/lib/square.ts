@@ -14,10 +14,46 @@
  *   SQUARE_LOCATION_ID    — optional; auto-discovered from the token if absent
  */
 
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { SQUARE_ACCOUNT_OWNER_ID } from '@/config/payments';
+
 const SQUARE_VERSION = '2025-01-23';
 
 export function squareConfigured(): boolean {
   return !!process.env.SQUARE_ACCESS_TOKEN;
+}
+
+/**
+ * Whether an event's entry fees may go through the platform Square account.
+ *
+ * The token is one club's seller account, so only that club may use it: the
+ * owner themself, or staff of a club they own. Anyone else gets false and falls
+ * through to the event's pasted external_payment_url. Uses the real service-role
+ * client — the public register routes have no user session to scope by.
+ */
+export async function squareEnabledForEventOwner(
+  eventOwnerId: string | null | undefined
+): Promise<boolean> {
+  if (!squareConfigured() || !eventOwnerId) return false;
+  if (eventOwnerId === SQUARE_ACCOUNT_OWNER_ID) return true;
+  try {
+    const db = getSupabaseAdmin();
+    const { data: memberships } = await db
+      .from('cc_club_members')
+      .select('club_id')
+      .eq('user_id', eventOwnerId);
+    const clubIds = ((memberships as { club_id: string }[]) || []).map((m) => m.club_id);
+    if (!clubIds.length) return false;
+    const { data: clubs } = await db
+      .from('cc_clubs')
+      .select('id')
+      .in('id', clubIds)
+      .eq('owner_id', SQUARE_ACCOUNT_OWNER_ID)
+      .limit(1);
+    return !!clubs && clubs.length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function baseUrl(): string {

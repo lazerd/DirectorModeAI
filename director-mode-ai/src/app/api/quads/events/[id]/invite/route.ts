@@ -13,7 +13,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { squareConfigured, createEntryPaymentLink } from '@/lib/square';
+import { squareEnabledForEventOwner, createEntryPaymentLink } from '@/lib/square';
 import { sendQuadInviteEmail, sendQuadCompConfirmedEmail } from '@/lib/quadEmails';
 import { discountedCents } from '@/lib/quadCoupons';
 import { parseDivisions, divisionLabel, formatDeadline } from '@/lib/quadDivisions';
@@ -59,9 +59,12 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const fee = e.entry_fee_cents ?? 0;
-  if (fee > 0 && !squareConfigured() && !e.external_payment_url) {
+  // Square only for the club that owns the Square account; everyone else
+  // invites with the payment link pasted on the event.
+  const useSquare = await squareEnabledForEventOwner(e.user_id);
+  if (fee > 0 && !useSquare && !e.external_payment_url) {
     return NextResponse.json(
-      { error: 'No payment rail configured — set SQUARE_ACCESS_TOKEN or an external payment URL.' },
+      { error: 'This event has an entry fee but no payment link. Add one, or set the fee to 0.' },
       { status: 400 }
     );
   }
@@ -141,7 +144,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       let orderId: string | null = null;
       let paymentLinkId: string | null = null;
 
-      if (owed > 0 && squareConfigured()) {
+      if (owed > 0 && useSquare) {
         // Idempotency key inside createEntryPaymentLink is `entry-<id>`, so a
         // re-invite returns the SAME Square link rather than a second charge.
         const link = await createEntryPaymentLink({

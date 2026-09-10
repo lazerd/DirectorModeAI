@@ -1,12 +1,18 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { CreditCard, ArrowRight, Sparkles, Calendar, Mail, MessageSquare } from 'lucide-react';
+import { CreditCard, Sparkles, Mail, MessageSquare } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
-import { getPlanContext, getUsage, TIER_LIMITS } from '@/lib/billing';
-import { PRO_PRICE_USD } from '@/config/pricing';
+import { getPlanContext, getUsage, TIER_LIMITS, FOUNDING_MODE, FOUNDING_LABEL } from '@/lib/billing';
+import {
+  PRO_PRICE_USD,
+  FOUNDING_PRICE_USD,
+  FOUNDING_LOCK_MONTHS,
+  RATE_CHANGE_NOTICE_DAYS,
+} from '@/config/pricing';
 import ManagePlanButton from '@/components/billing/ManagePlanButton';
 import UpgradeButton from '@/components/billing/UpgradeButton';
 import { lsCheckoutMode } from '@/lib/lemonsqueezy';
+import { isAdminAuthenticated } from '@/lib/adminAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,19 +27,27 @@ export default async function MixerSubscriptionPage() {
   const usage = await getUsage(user.id);
   const limits = TIER_LIMITS[ctx.effectiveTier];
 
-  const tierLabel = {
-    free: 'Free',
-    pro: `Pro — $${PRO_PRICE_USD}/mo`,
-  }[ctx.effectiveTier];
+  const tierLabel = FOUNDING_MODE
+    ? FOUNDING_LABEL
+    : {
+        free: 'Free',
+        pro: `Pro — $${PRO_PRICE_USD}/mo`,
+      }[ctx.effectiveTier];
 
-  const onTrial = ctx.rawTier === 'grandfathered' && (ctx.grandfatheredDaysRemaining ?? 0) > 0;
+  const onTrial =
+    !FOUNDING_MODE && ctx.rawTier === 'grandfathered' && (ctx.grandfatheredDaysRemaining ?? 0) > 0;
+  const isSubscriber = ctx.subscriptionStatus === 'active' || ctx.subscriptionStatus === 'trialing';
+
+  // The checkout-config warning is an operator note ("set this env var in
+  // Vercel"), not something a customer should ever read. Platform admin only.
+  const showCheckoutConfig = lsCheckoutMode() === 'test' && (await isAdminAuthenticated());
 
   return (
     <div className="px-4 md:px-8 py-8 md:py-12 max-w-4xl mx-auto">
-      {lsCheckoutMode() === 'test' && (
+      {showCheckoutConfig && (
         <div className="mb-4 rounded-xl border-2 px-4 py-3 text-sm"
              style={{ borderColor: '#f59e0b', background: '#fffbeb', color: '#92400e' }}>
-          <strong>Test mode.</strong> Checkout is still pointed at the LemonSqueezy test store, so an
+          <strong>Admin: test mode.</strong> Checkout is still pointed at the LemonSqueezy test store, so an
           upgrade here completes without charging anything. Set{' '}
           <code>LEMONSQUEEZY_BUY_LINK_PRO_MONTHLY</code> in Vercel to start taking real payments.
         </div>
@@ -43,7 +57,11 @@ export default async function MixerSubscriptionPage() {
         <CreditCard className="text-orange-400" size={24} />
         <h1 className="font-display text-3xl text-white">Subscription</h1>
       </div>
-      <p className="text-white/50">Manage your plan, see your usage, and upgrade or cancel any time.</p>
+      <p className="text-white/50">
+        {FOUNDING_MODE
+          ? 'Your plan and this month’s usage. Nothing is charged during the beta.'
+          : 'Manage your plan, see your usage, and upgrade or cancel any time.'}
+      </p>
 
       {onTrial && (
         <div className="mt-6 rounded-2xl border border-yellow-300/30 bg-yellow-300/5 p-5">
@@ -81,13 +99,20 @@ export default async function MixerSubscriptionPage() {
             )}
           </div>
           <div className="flex flex-col items-stretch sm:items-end gap-3">
-            {!ctx.isBillingOwner ? (
+            {isSubscriber && ctx.isBillingOwner ? (
+              <ManagePlanButton />
+            ) : FOUNDING_MODE ? (
+              <div className="text-sm text-white/50 max-w-xs sm:text-right">
+                Every tool is unlocked for your whole staff. When paid plans launch, founding
+                clubs get ${FOUNDING_PRICE_USD}/month locked for {FOUNDING_LOCK_MONTHS} months
+                (list ${PRO_PRICE_USD}), with {RATE_CHANGE_NOTICE_DAYS} days&apos; notice before
+                anything is charged.
+              </div>
+            ) : !ctx.isBillingOwner ? (
               <div className="text-sm text-white/50 max-w-xs sm:text-right">
                 Your club is on the <span className="text-white">{tierLabel}</span> plan.
                 Billing is managed by your club owner.
               </div>
-            ) : ctx.subscriptionStatus === 'active' || ctx.subscriptionStatus === 'trialing' ? (
-              <ManagePlanButton />
             ) : (
               <>
                 <UpgradeButton />
@@ -107,22 +132,22 @@ export default async function MixerSubscriptionPage() {
             icon={Mail}
             label="Emails sent"
             used={usage.emails_used}
-            limit={limits.emails}
+            limit={FOUNDING_MODE ? -1 : limits.emails}
             color="text-blue-400"
           />
           <UsageCard
             icon={MessageSquare}
             label="SMS sent"
             used={usage.sms_used}
-            limit={limits.sms}
+            limit={FOUNDING_MODE ? -1 : limits.sms}
             color="text-emerald-400"
-            overageCents={usage.sms_overage_cents}
+            overageCents={FOUNDING_MODE ? 0 : usage.sms_overage_cents}
           />
           <UsageCard
             icon={Sparkles}
             label="AI recommendations"
             used={usage.ai_calls_used}
-            limit={ctx.effectiveTier === 'free' ? 0 : -1}
+            limit={FOUNDING_MODE || ctx.effectiveTier !== 'free' ? -1 : 0}
             color="text-pink-400"
           />
         </div>

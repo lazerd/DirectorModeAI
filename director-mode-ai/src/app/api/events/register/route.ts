@@ -17,7 +17,6 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { stripe, platformFeeForCents } from '@/lib/stripe';
 import { computeQuadComposite } from '@/lib/quads';
 import { sendQuadsConfirmEmail, sendQuadsWaitlistEmail } from '@/lib/quadEmails';
 
@@ -254,55 +253,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ entry_id: (entry as any).id, free: true, position });
     }
 
-    if (!e.stripe_account_id) {
-      return NextResponse.json(
-        {
-          error:
-            "This event requires payment but the director hasn't connected Stripe. Contact the director.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const origin = new URL(request.url).origin;
-    const applicationFee = platformFeeForCents(fee);
-    const session = await stripe.checkout.sessions.create(
+    // Paid online entry for mixers ran only on Stripe Connect, and the
+    // platform Stripe account is disabled — a checkout here could only fail.
+    // The create form no longer allows a fee; this answers any older event.
+    return NextResponse.json(
       {
-        mode: 'payment',
-        payment_method_types: ['card'],
-        line_items: [
-          {
-            quantity: 1,
-            price_data: {
-              currency: 'usd',
-              unit_amount: fee,
-              product_data: {
-                name: `Entry: ${e.name}`,
-                description: `${player_name}${isDoubles && partner_name ? ` + ${partner_name}` : ''}`,
-              },
-            },
-          },
-        ],
-        ...(applicationFee > 0 && {
-          payment_intent_data: { application_fee_amount: applicationFee },
-        }),
-        customer_email: player_email || parent_email || undefined,
-        success_url: `${origin}/events/${slug}/registered?entry=${(entry as any).id}`,
-        cancel_url: `${origin}/events/${slug}?cancelled=1`,
-        metadata: {
-          tournament_entry_id: (entry as any).id,
-          slug,
-        },
+        error:
+          'Online payment isn’t available for this event. Please contact the director to pay at check-in.',
       },
-      { stripeAccount: e.stripe_account_id }
+      { status: 410 }
     );
-
-    await admin
-      .from('tournament_entries')
-      .update({ stripe_session_id: session.id })
-      .eq('id', (entry as any).id);
-
-    return NextResponse.json({ url: session.url, entry_id: (entry as any).id });
   } catch (err: any) {
     return NextResponse.json({ error: err?.message || 'Server error' }, { status: 500 });
   }

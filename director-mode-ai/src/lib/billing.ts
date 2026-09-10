@@ -1,5 +1,14 @@
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { INCLUDED_TEXTS, TEXT_OVERAGE_CENTS } from '@/config/pricing';
+import {
+  INCLUDED_TEXTS,
+  TEXT_OVERAGE_CENTS,
+  FOUNDING_MODE,
+  FOUNDING_LABEL,
+} from '@/config/pricing';
+
+// FOUNDING_MODE / FOUNDING_LABEL are defined in config/pricing (client-safe, so
+// banners can read them) and re-exported here for the server-side callers.
+export { FOUNDING_MODE, FOUNDING_LABEL };
 
 export type PlanTier = 'free' | 'pro';
 export type RawPlanTier = PlanTier | 'grandfathered';
@@ -25,25 +34,6 @@ export type Feature =
   // board packet, ICS export). Free tier can browse the idea catalog and
   // view a club's published calendar — gated at the route/UI, same as above.
   | 'calendar_mode';
-
-/**
- * FOUNDING MODE — everything is unlocked for everyone.
- *
- * ClubMode has zero paying customers. Enforcing caps against nobody costs real
- * engineering time and can only ever produce one outcome: a new director hits a
- * wall on their first afternoon and leaves. So every feature gate and every
- * usage cap below is inert while this is on, and the account state reads
- * "Founding club — everything unlocked".
- *
- * The machinery is deliberately left standing rather than deleted — the limits
- * in TIER_LIMITS are the real published numbers, so turning this off is a
- * one-line change that starts enforcing the plan as advertised. Build the first
- * limit when a real user actually hits it.
- */
-export const FOUNDING_MODE = true;
-
-/** Shown wherever the plan state is surfaced while FOUNDING_MODE is on. */
-export const FOUNDING_LABEL = 'Founding club — everything unlocked';
 
 /**
  * The published plan limits (pricing page, Aug 2026). Inert while FOUNDING_MODE
@@ -275,6 +265,9 @@ export async function getUsage(userId: string) {
     .select('*')
     .eq('user_id', billingUserId)
     .single();
+  // Anything accrued before founding mode zeroed the overage math must not
+  // surface either — nothing is charged while it is on.
+  if (data && FOUNDING_MODE) return { ...data, sms_overage_cents: 0 };
   return (
     data || {
       user_id: billingUserId,
@@ -349,7 +342,10 @@ export async function consumeSmsCredits(
   const overSomeBy = Math.max(0, newUsed - limit);
   const previousOver = Math.max(0, used - limit);
   const incrementalOver = overSomeBy - previousOver;
-  const overageCentsThisCall = incrementalOver * overagePerSmsCents;
+  // Founding mode: texts are counted but never priced. The free tier's SMS
+  // limit is 0, so without this every founding-club text accrued 2¢ of
+  // "overage" that the subscription page then showed as a bill.
+  const overageCentsThisCall = FOUNDING_MODE ? 0 : incrementalOver * overagePerSmsCents;
   await supabase
     .from('usage_credits')
     .update({

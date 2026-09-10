@@ -5,7 +5,7 @@ import {
   ShieldCheck, CalendarClock, ArrowRight, Trophy, RefreshCw, Sparkles,
 } from 'lucide-react';
 import { APP_HOST } from '@/lib/appUrl';
-import { CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD } from '@/config/pricing';
+import { CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD, CAPTAIN_MAX_TEAMS } from '@/config/pricing';
 import ProductShots from '@/components/captain/ProductShots';
 
 /**
@@ -232,7 +232,7 @@ export default function CaptainModePage() {
         <div className="mx-auto max-w-3xl text-center">
           <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">You pay, not your club</h2>
           <p className="mx-auto mt-3 max-w-lg text-[15px] leading-relaxed text-white/50">
-            Your own card, no committee, no approval. Up to three teams. Co-captains are free.
+            Your own card, no committee, no approval. Up to {CAPTAIN_MAX_TEAMS} teams. Co-captains are free.
           </p>
 
           <div className="mt-9 grid gap-4 sm:grid-cols-2">

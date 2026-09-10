@@ -21,7 +21,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { stripe, platformFeeForCents } from '@/lib/stripe';
-import { squareConfigured, createEntryPaymentLink } from '@/lib/square';
+import { squareEnabledForEventOwner, createEntryPaymentLink } from '@/lib/square';
 import { computeQuadComposite } from '@/lib/quads';
 import { sendQuadsConfirmEmail, sendQuadsWaitlistEmail } from '@/lib/quadEmails';
 
@@ -241,8 +241,9 @@ export async function POST(request: Request) {
     // Square-hosted payment link bound to THIS entry (order.reference_id =
     // entry id), so the webhook marks the exact entry paid — the payment
     // already knows the division because the entry does. Parent is redirected
-    // to Square to pay, then back to the confirmation page.
-    if (fee > 0 && squareConfigured()) {
+    // to Square to pay, then back to the confirmation page. Only for the club
+    // that owns the Square account — anyone else's fees would land in it.
+    if (fee > 0 && (await squareEnabledForEventOwner(e.user_id))) {
       const origin = new URL(request.url).origin;
       try {
         const { url, orderId, paymentLinkId } = await createEntryPaymentLink({

@@ -26,7 +26,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { stripe, platformFeeForCents } from '@/lib/stripe';
-import { squareConfigured, createEntryPaymentLink } from '@/lib/square';
+import { squareEnabledForEventOwner, createEntryPaymentLink } from '@/lib/square';
 import { computeQuadComposite } from '@/lib/quads';
 import {
   sendQuadsConfirmEmail,
@@ -438,7 +438,8 @@ export async function POST(request: Request) {
     // Square-hosted checkout — the current payment rail (Stripe is unavailable).
     // The order's reference_id is this entry's id, so the Square webhook marks
     // the exact entry paid and seats it, even if the parent closes the tab.
-    if (squareConfigured()) {
+    // Only for the club that owns the Square account (see config/payments).
+    if (await squareEnabledForEventOwner(e.user_id)) {
       try {
         const { url, orderId, paymentLinkId } = await createEntryPaymentLink({
           entryId: (entry as any).id,

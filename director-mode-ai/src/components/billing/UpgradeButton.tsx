@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { ArrowRight, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { PRO_PRICE_USD } from '@/config/pricing';
+import { PRO_PRICE_USD, FOUNDING_MODE } from '@/config/pricing';
 
 /**
  * The real Pro purchase path. POSTs to /api/billing/checkout with a subscription
@@ -39,6 +39,10 @@ export default function UpgradeButton({
       setLoading(false);
     }
   };
+
+  // Nothing to buy while founding mode is on — and the checkout behind this is
+  // still the LemonSqueezy test store. Safety net for any surface that forgets.
+  if (FOUNDING_MODE) return null;
 
   return (
     <button

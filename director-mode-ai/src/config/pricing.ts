@@ -17,6 +17,26 @@
  * or the page and the invoice will disagree.
  */
 
+/**
+ * FOUNDING MODE — everything is unlocked for everyone.
+ *
+ * ClubMode has zero paying customers. Enforcing caps against nobody costs real
+ * engineering time and can only ever produce one outcome: a new director hits a
+ * wall on their first afternoon and leaves. So every feature gate, every usage
+ * cap and every upgrade prompt is inert while this is on, and the account state
+ * reads "Founding club — everything unlocked".
+ *
+ * Lives here (client-safe) rather than in src/lib/billing.ts so 'use client'
+ * banners and buttons can hide themselves too; billing.ts re-exports it. The
+ * machinery is deliberately left standing — the limits in TIER_LIMITS are the
+ * real published numbers, so turning this off is a one-line change that starts
+ * enforcing the plan as advertised.
+ */
+export const FOUNDING_MODE = true;
+
+/** Shown wherever the plan state is surfaced while FOUNDING_MODE is on. */
+export const FOUNDING_LABEL = 'Founding club — everything unlocked';
+
 /** ClubMode Pro, per month, list price. */
 export const PRO_PRICE_USD = 49;
 
@@ -45,14 +65,19 @@ export const ANNUAL_PLAN_OFFERED = false;
 /* ----------------------------- CaptainMode ----------------------------- */
 /**
  * CaptainMode is billed to the CAPTAIN, not the club, and the rate depends on
- * whether their club is on ClubMode Pro. Which rate applies is resolved
- * server-side in resolveCaptainRate() — never chosen by the client.
+ * whether their club is on ClubMode (Pro, or any club while FOUNDING_MODE is
+ * on). Which rate applies is resolved server-side in resolveCaptainRate() —
+ * never chosen by the client.
  *
- * Note the gap is deliberately small for now. It means the club-linked rate is
- * a courtesy rather than a lever: nobody switches club software to save $2 a
- * month. If CaptainMode is ever meant to pull clubs onto ClubMode, the
- * standalone price is the one that has to move, and moving it upward on
- * existing subscribers is the hard direction.
+ * These are the ONLY CaptainMode numbers. /pricing, /captainmode, /captain/start
+ * and /captain/subscribe used to type their own ($12 vs $20, "3 teams" vs the 6
+ * the teams route enforces); every surface now reads these.
  */
 export const CAPTAIN_CLUB_PRICE_USD = 10;
-export const CAPTAIN_SOLO_PRICE_USD = 12;
+export const CAPTAIN_SOLO_PRICE_USD = 20;
+
+/**
+ * Owned teams per CaptainMode subscription (co-captained teams don't count).
+ * Enforced by the teams route via MAX_TEAMS_PER_CAPTAIN in lib/captain/access.
+ */
+export const CAPTAIN_MAX_TEAMS = 6;

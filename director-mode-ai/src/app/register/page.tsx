@@ -7,6 +7,13 @@ import Link from 'next/link';
 import { Trophy, Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
+/**
+ * globals.css sets `.input` padding outside any CSS layer, which beats
+ * Tailwind's `pl-11`, so the icons sat on top of the typed text. An inline
+ * style wins over both; 44px is pl-11.
+ */
+const INPUT_ICON_PAD = { paddingLeft: 44 } as const;
+
 function RegisterForm() {
   const router = useRouter();
   /**
@@ -138,6 +145,7 @@ function RegisterForm() {
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     className="input pl-11"
+                    style={INPUT_ICON_PAD}
                     placeholder="John Smith"
                     required
                   />
@@ -156,6 +164,7 @@ function RegisterForm() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="input pl-11"
+                    style={INPUT_ICON_PAD}
                     placeholder="you@example.com"
                     required
                     autoComplete="email"
@@ -175,6 +184,7 @@ function RegisterForm() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="input pl-11 pr-11"
+                    style={{ ...INPUT_ICON_PAD, paddingRight: 44 }}
                     placeholder="At least 8 characters"
                     required
                     minLength={8}
@@ -209,6 +219,18 @@ function RegisterForm() {
                   'Create Account'
                 )}
               </button>
+
+              <p className="text-xs text-white/40 text-center">
+                By creating an account you agree to the{' '}
+                <Link href="/terms" className="underline hover:text-white/70">
+                  Terms
+                </Link>{' '}
+                and{' '}
+                <Link href="/privacy" className="underline hover:text-white/70">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
             </form>
 
             <div className="mt-6 text-center text-sm text-slate-400">
