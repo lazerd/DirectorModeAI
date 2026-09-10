@@ -8,16 +8,18 @@
  * Public by default: /terms is not in middleware's protectedPaths, and it must
  * never be added — a login wall here fails the carrier check.
  */
+import type { Metadata } from 'next';
 import Link from 'next/link';
 
-export const metadata = {
-  title: 'Terms of Service · ClubMode',
+export const metadata: Metadata = {
+  title: 'Terms of Service — ClubMode AI',
   description:
-    'The terms covering use of ClubMode, including the team text-messaging programme.',
+    'The terms covering use of ClubMode AI, including the team text-messaging programme.',
+  alternates: { canonical: '/terms' },
 };
 
 const UPDATED = 'August 28, 2026';
-const CONTACT = 'darrinjco@gmail.com';
+const CONTACT = 'hello@clubmode.ai';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -43,6 +45,8 @@ export default function TermsPage() {
           These terms cover your use of ClubMode (
           <span className="text-white/85">clubmode.ai</span>), software for running
           racquet-sports clubs, leagues and teams. By using the service you agree to them.
+          ClubMode AI is built and operated by Darrin Cohen; &ldquo;we&rdquo; and
+          &ldquo;us&rdquo; below means him.
         </p>
 
         <Section title="The service">

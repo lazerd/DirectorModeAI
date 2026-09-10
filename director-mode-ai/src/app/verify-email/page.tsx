@@ -8,6 +8,10 @@ import { Mail, Trophy } from 'lucide-react';
 function VerifyEmailContent() {
   const params = useSearchParams();
   const email = params.get('email') || '';
+  // Carry the signup's destination (an invite, say) through to sign-in, so
+  // confirming the email doesn't strand them on a generic page.
+  const next = params.get('next');
+  const signInHref = next ? `/login?next=${encodeURIComponent(next)}` : '/login';
 
   return (
     <div className="min-h-screen bg-[#001820] flex items-center justify-center p-6">
@@ -30,7 +34,7 @@ function VerifyEmailContent() {
             Click the link to activate your account, then sign in.
           </p>
 
-          <Link href="/login" className="btn btn-primary w-full">
+          <Link href={signInHref} className="btn btn-primary w-full">
             Go to Sign In
           </Link>
 

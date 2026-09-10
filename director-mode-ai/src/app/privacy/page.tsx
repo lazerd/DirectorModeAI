@@ -14,16 +14,18 @@
  * Public by default: /privacy is not in middleware's protectedPaths, and it
  * must never be added — a login wall here fails the carrier check.
  */
+import type { Metadata } from 'next';
 import Link from 'next/link';
 
-export const metadata = {
-  title: 'Privacy Policy · ClubMode',
+export const metadata: Metadata = {
+  title: 'Privacy Policy — ClubMode AI',
   description:
-    'How ClubMode handles club, player and contact information, including mobile numbers used for team messaging.',
+    'How ClubMode AI handles club, player and contact information, including mobile numbers used for team messaging.',
+  alternates: { canonical: '/privacy' },
 };
 
 const UPDATED = 'August 28, 2026';
-const CONTACT = 'darrinjco@gmail.com';
+const CONTACT = 'hello@clubmode.ai';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -49,6 +51,8 @@ export default function PrivacyPage() {
           ClubMode (<span className="text-white/85">clubmode.ai</span>) is software that
           racquet-sports clubs and league captains use to run teams, courts, programs and events.
           This policy covers the information the service holds and what is done with it.
+          ClubMode AI is built and operated by Darrin Cohen; &ldquo;we&rdquo; and
+          &ldquo;us&rdquo; below means him.
         </p>
 
         <Section title="What we collect">
