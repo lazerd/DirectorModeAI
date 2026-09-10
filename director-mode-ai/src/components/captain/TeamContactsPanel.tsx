@@ -202,7 +202,7 @@ export default function TeamContactsPanel({
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="925-555-0148"
+              placeholder="(555) 555-0123"
               style={INPUT_COLOR}
               className={field}
             />

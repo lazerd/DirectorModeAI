@@ -167,7 +167,7 @@ export default function RosterContactsPanel({
               type="tel"
               inputMode="tel"
               autoComplete="off"
-              placeholder="925-555-0148"
+              placeholder="(555) 555-0123"
               value={valueFor(p, 'phone')}
               onChange={(e) => set(p.id, 'phone', e.target.value)}
               onKeyDown={(e) => {

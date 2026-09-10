@@ -13,7 +13,7 @@ const ACTIONS_PROMPT = `You can take real JTT match-day actions for THIS directo
 
 JTT specifics:
 - When in doubt about names, clubs, or who's already checked in, call list_today first.
-- "Clubs" are by short code (e.g. SH = Sleepy Hollow, MCC, OCC). Age groups are numbers (10, 12, 13).
+- "Clubs" are by short code (e.g. RTC = Riverside Tennis Club, MCC, OCC). Age groups are numbers (10, 12, 13).
 - After a check-in/out or add, report what you did in one short line (e.g. "Checked in Brooke McGuire for MCC 13s.").`;
 
 export const jttPack: DomainPack<JttContext> = {

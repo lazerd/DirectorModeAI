@@ -51,7 +51,7 @@ export const JTT_TOOLS: Anthropic.Messages.Tool[] = [
     input_schema: {
       type: 'object',
       properties: {
-        club: { type: 'string', description: 'Club name or short code, e.g. "SH", "MCC".' },
+        club: { type: 'string', description: 'Club name or short code, e.g. "RTC", "MCC".' },
         age: { type: 'string', description: 'Age group number, e.g. "10", "12", "13".' },
         player: { type: 'string', description: 'Player full name, or "all" for the whole active roster.' },
       },
