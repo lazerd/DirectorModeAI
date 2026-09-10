@@ -14,7 +14,12 @@
 import { NextResponse } from 'next/server';
 import { requireTeam, isError, type CaptainCtx } from '@/lib/captain/server';
 import { seasonAvailabilityEmail, sendAll, type MatchInfo } from '@/lib/captain/emails';
-import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
+import {
+  teamCcRecipients,
+  ccPayloads,
+  withSecondContact,
+  recipientRows,
+} from '@/lib/captain/teamContacts';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
 
@@ -24,6 +29,8 @@ type Player = {
   id: string;
   name: string;
   email: string | null;
+  contact2_name?: string | null;
+  contact2_email?: string | null;
   player_token: string;
   is_sub: boolean;
 };
@@ -114,7 +121,7 @@ export async function POST(req: Request) {
 
   const { data: players } = await db
     .from('captain_players')
-    .select('id, name, email, player_token, is_sub')
+    .select('id, name, email, player_token, is_sub, contact2_name, contact2_email')
     .eq('team_id', teamId)
     .eq('active', true);
 
@@ -153,12 +160,15 @@ export async function POST(req: Request) {
 
   if (!roster.length) return NextResponse.json({ ok: true, sent: 0, skipped: 'everyone answered' });
 
-  const payloads = roster.map((p) =>
-    seasonAvailabilityEmail(
-      team.name,
-      matches,
-      { playerId: p.id, name: p.name, email: p.email as string, token: p.player_token },
-      { tz: TZ, reminder: !!body.only_missing, answered: answeredCount[p.id] ?? 0 },
+  const payloads = roster.flatMap((p) =>
+    withSecondContact(
+      seasonAvailabilityEmail(
+        team.name,
+        matches,
+        { playerId: p.id, name: p.name, email: p.email as string, token: p.player_token },
+        { tz: TZ, reminder: !!body.only_missing, answered: answeredCount[p.id] ?? 0 },
+      ),
+      p.contact2_email,
     ),
   );
 
@@ -170,7 +180,7 @@ export async function POST(req: Request) {
    */
   const ccs = body.player_ids?.length
     ? []
-    : await teamCcRecipients(ctx.db, ctx.teamId, roster.map((p) => p.email as string));
+    : await teamCcRecipients(ctx.db, ctx.teamId, payloads.map((p) => p.to));
   const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];
 
   // Show, then send. The preview is the first real payload — same builder, same
@@ -183,7 +193,7 @@ export async function POST(req: Request) {
       sample_for: roster[0].name,
       count: payloads.length,
       matches: matches.length,
-      recipients: roster.map((p) => ({ name: p.name, email: p.email })),
+      recipients: roster.flatMap(recipientRows),
       copied_to: ccs.map((c) => ({ name: c.name, email: c.email })),
     });
   }

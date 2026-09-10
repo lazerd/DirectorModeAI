@@ -25,6 +25,8 @@ export type RecapPlayer = {
   name: string;
   email: string | null;
   player_token: string;
+  contact2_name?: string | null;
+  contact2_email?: string | null;
 };
 
 type LineupRow = {
@@ -78,7 +80,7 @@ export async function loadRecapContext(
     await Promise.all([
       db
         .from('captain_players')
-        .select('id, name, email, player_token')
+        .select('id, name, email, player_token, contact2_name, contact2_email')
         .eq('team_id', teamId)
         .eq('active', true)
         .order('name'),

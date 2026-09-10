@@ -58,6 +58,41 @@ export async function teamCcRecipients(
 }
 
 /**
+ * The same email, also to the player's second parent.
+ *
+ * Junior contacts are parents, and there are usually two — Powell Jose never
+ * heard about a JTT match because only Kiki's mum was on file. Unlike a coach
+ * copy this is the player's OWN email, untouched: the magic link inside is the
+ * kid's, so whichever parent taps Yes answers for her.
+ *
+ * Returns the copy immediately after the original so a caller that lines
+ * results up against a parallel names list can keep doing so.
+ */
+export function withSecondContact<P extends { to: string }>(
+  payload: P,
+  contact2: string | null | undefined,
+): P[] {
+  const c = (contact2 || '').trim();
+  if (!c || c.toLowerCase() === payload.to.trim().toLowerCase()) return [payload];
+  return [payload, { ...payload, to: c }];
+}
+
+/** Preview rows matching withSecondContact — one per email that will go out. */
+export function recipientRows(p: {
+  name: string;
+  email: string | null;
+  contact2_name?: string | null;
+  contact2_email?: string | null;
+}): { name: string; email: string | null }[] {
+  const rows = [{ name: p.name, email: p.email }];
+  const c = (p.contact2_email || '').trim();
+  if (c && c.toLowerCase() !== (p.email || '').trim().toLowerCase()) {
+    rows.push({ name: `${p.name} · ${p.contact2_name?.trim() || '2nd parent'}`, email: c });
+  }
+  return rows;
+}
+
+/**
  * Copy a team-wide email to the coaches.
  *
  * Takes the payload the players are getting and re-addresses it, with one line

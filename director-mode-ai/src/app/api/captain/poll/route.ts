@@ -5,7 +5,12 @@
  *   `preview:true` returns the exact payload without sending it.
  */
 import { NextResponse } from 'next/server';
-import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
+import {
+  teamCcRecipients,
+  ccPayloads,
+  withSecondContact,
+  recipientRows,
+} from '@/lib/captain/teamContacts';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { availabilityEmail, nudgeEmail, sendAll, type MatchInfo } from '@/lib/captain/emails';
 import { resolveSettings, type SettingRow } from '@/lib/captain/timeline';
@@ -39,13 +44,20 @@ export async function POST(req: Request) {
 
   const { data: players } = await db
     .from('captain_players')
-    .select('id, name, email, player_token, is_sub')
+    .select('id, name, email, player_token, is_sub, contact2_name, contact2_email')
     .eq('team_id', teamId)
     .eq('active', true)
     .eq('is_sub', false);
 
   let roster =
-    (players as { id: string; name: string; email: string | null; player_token: string }[]) || [];
+    (players as {
+      id: string;
+      name: string;
+      email: string | null;
+      player_token: string;
+      contact2_name: string | null;
+      contact2_email: string | null;
+    }[]) || [];
   roster = roster.filter((p) => !!p.email);
 
   if (body.only_missing) {
@@ -86,18 +98,21 @@ export async function POST(req: Request) {
   );
 
   const build = body.only_missing ? nudgeEmail : availabilityEmail;
-  const payloads = roster.map((p) =>
-    build(
-      team.name,
-      info,
-      {
-        playerId: p.id,
-        name: p.name,
-        email: p.email as string,
-        token: p.player_token,
-      },
-      undefined,
-      custom,
+  const payloads = roster.flatMap((p) =>
+    withSecondContact(
+      build(
+        team.name,
+        info,
+        {
+          playerId: p.id,
+          name: p.name,
+          email: p.email as string,
+          token: p.player_token,
+        },
+        undefined,
+        custom,
+      ),
+      p.contact2_email,
     ),
   );
 
@@ -106,7 +121,7 @@ export async function POST(req: Request) {
   // so only the full team send carries them.
   const ccs = body.only_missing
     ? []
-    : await teamCcRecipients(ctx.db, ctx.teamId, roster.map((p) => p.email as string));
+    : await teamCcRecipients(ctx.db, ctx.teamId, payloads.map((p) => p.to));
   const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];
 
   if (body.preview) {
@@ -116,7 +131,7 @@ export async function POST(req: Request) {
       html: payloads[0].html,
       sample_for: roster[0].name,
       count: payloads.length,
-      recipients: roster.map((p) => ({ name: p.name, email: p.email })),
+      recipients: roster.flatMap(recipientRows),
       copied_to: ccs.map((c) => ({ name: c.name, email: c.email })),
     });
   }

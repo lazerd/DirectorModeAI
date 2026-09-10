@@ -19,6 +19,7 @@ import { requireTeam, isError } from '@/lib/captain/server';
 // takes ~11s for 20 players — comfortably past the default function timeout.
 export const maxDuration = 60;
 import { preseasonIntakeEmail, sendAll, type Recipient } from '@/lib/captain/emails';
+import { withSecondContact } from '@/lib/captain/teamContacts';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
 
@@ -26,6 +27,7 @@ type Row = {
   id: string;
   name: string;
   email: string | null;
+  contact2_email?: string | null;
   player_token: string;
   intake_completed_at: string | null;
 };
@@ -68,7 +70,7 @@ export async function POST(req: Request) {
 
   const { data } = await db
     .from('captain_players')
-    .select('id, name, email, player_token, intake_completed_at')
+    .select('id, name, email, player_token, intake_completed_at, contact2_email')
     .eq('team_id', teamId)
     .eq('active', true);
 
@@ -102,9 +104,16 @@ export async function POST(req: Request) {
     );
   }
 
-  const payloads = recipients.map((r) =>
-    preseasonIntakeEmail(team.name, r, { reminder: body.only_missing === true }),
+  // One entry per email that goes out — the second parent included — each
+  // carrying the player's name so a failure can still say who missed out.
+  const contact2Of = new Map(rows.map((p) => [p.id, p.contact2_email]));
+  const sends = recipients.flatMap((r) =>
+    withSecondContact(
+      preseasonIntakeEmail(team.name, r, { reminder: body.only_missing === true }),
+      contact2Of.get(r.playerId),
+    ).map((payload) => ({ payload, name: r.name })),
   );
+  const payloads = sends.map((s) => s.payload);
 
   // Show, then send — same builder, same data, so what the captain approves is
   // literally what goes out. Matches /api/captain/poll and /season-poll.
@@ -115,7 +124,7 @@ export async function POST(req: Request) {
       html: payloads[0].html,
       sample_for: recipients[0].name,
       count: payloads.length,
-      recipients: recipients.map((r) => ({ name: r.name, email: r.email })),
+      recipients: sends.map((s) => ({ name: s.name, email: s.payload.to })),
     });
   }
 
@@ -125,7 +134,7 @@ export async function POST(req: Request) {
     // Name the people who didn't get it. A bare count ("9 failed") tells a captain
     // nothing they can act on — they need to know who to chase or resend to.
     const failedNames = results
-      .map((r, i) => (r.sent ? null : { name: recipients[i].name, reason: r.reason }))
+      .map((r, i) => (r.sent ? null : { name: sends[i].name, reason: r.reason }))
       .filter(Boolean) as { name: string; reason: string }[];
     return NextResponse.json({
       sent,

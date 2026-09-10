@@ -15,7 +15,13 @@ import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { normalizePhone } from '@/lib/captain/phone';
 
-type Update = { player_id?: string; phone?: string | null; email?: string | null };
+type Update = {
+  player_id?: string;
+  phone?: string | null;
+  email?: string | null;
+  /** Second parent — copied on everything the first contact gets. */
+  contact2_email?: string | null;
+};
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -79,6 +85,12 @@ export async function POST(req: Request) {
     if ('email' in u) {
       const raw = (u.email ?? '').toString().trim();
       patch.email = raw || null;
+      touched = true;
+    }
+
+    if ('contact2_email' in u) {
+      const raw = (u.contact2_email ?? '').toString().trim();
+      patch.contact2_email = raw || null;
       touched = true;
     }
 

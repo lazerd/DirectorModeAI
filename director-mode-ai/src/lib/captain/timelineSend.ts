@@ -29,13 +29,21 @@ import {
   type TimelineCounts,
   type TimelineEvent,
 } from './timeline';
+import { withSecondContact, recipientRows } from './teamContacts';
 
 export const MATCH_COLUMNS =
   'id, team_id, match_at, status, is_home, opponent, location, arrival_note, ' +
   'opposing_captain_name, opposing_captain_phone, availability_poll_sent_at, ' +
   'nudge_sent_at, lineup_email_sent_at, reminder_sent_at';
 
-type PlayerRow = { id: string; name: string; email: string | null; player_token: string };
+type PlayerRow = {
+  id: string;
+  name: string;
+  email: string | null;
+  player_token: string;
+  contact2_name?: string | null;
+  contact2_email?: string | null;
+};
 type CourtRow = {
   match_id: string;
   court_number: number;
@@ -93,7 +101,7 @@ export async function loadTeamEmailContext(
     await Promise.all([
       db
         .from('captain_players')
-        .select('id, name, email, player_token')
+        .select('id, name, email, player_token, contact2_name, contact2_email')
         .eq('team_id', team.id)
         .eq('active', true),
       matchIds.length
@@ -204,14 +212,18 @@ export function payloadsFor(
   const audience = only ? ctx.roster.filter((p) => only.has(p.id)) : ctx.roster;
 
   if (kind === 'poll') {
-    return audience.map((p) => availabilityEmail(teamName, info, recipientOf(p), undefined, custom));
+    return audience.flatMap((p) =>
+      withSecondContact(availabilityEmail(teamName, info, recipientOf(p), undefined, custom), p.contact2_email),
+    );
   }
 
   if (kind === 'nudge') {
     const done = ctx.answered.get(matchId) || new Set<string>();
     return audience
       .filter((p) => !done.has(p.id))
-      .map((p) => nudgeEmail(teamName, info, recipientOf(p), undefined, custom));
+      .flatMap((p) =>
+        withSecondContact(nudgeEmail(teamName, info, recipientOf(p), undefined, custom), p.contact2_email),
+      );
   }
 
   if (!courts.length) return []; // lineup + reminder both depend on a built lineup
@@ -227,8 +239,11 @@ export function payloadsFor(
     const playing = new Set(
       courts.flatMap((c) => [c.player1_id, c.player2_id]).filter(Boolean) as string[],
     );
-    return audience.map((p) =>
-      lineupEmail(teamName, info, rows, recipientOf(p), playing.has(p.id), undefined, custom),
+    return audience.flatMap((p) =>
+      withSecondContact(
+        lineupEmail(teamName, info, rows, recipientOf(p), playing.has(p.id), undefined, custom),
+        p.contact2_email,
+      ),
     );
   }
 
@@ -239,7 +254,12 @@ export function payloadsFor(
   };
   return audience
     .filter((p) => !!courtFor(p.id))
-    .map((p) => matchReminderEmail(teamName, info, recipientOf(p), courtFor(p.id), undefined, custom));
+    .flatMap((p) =>
+      withSecondContact(
+        matchReminderEmail(teamName, info, recipientOf(p), courtFor(p.id), undefined, custom),
+        p.contact2_email,
+      ),
+    );
 }
 
 /**
@@ -259,15 +279,15 @@ export function recipientsFor(
 
   if (kind === 'nudge') {
     const done = ctx.answered.get(matchId) || new Set<string>();
-    return audience.filter((p) => !done.has(p.id)).map((p) => ({ name: p.name, email: p.email }));
+    return audience.filter((p) => !done.has(p.id)).flatMap(recipientRows);
   }
   if (kind === 'reminder') {
     const named = new Set(
       courts.flatMap((c) => [c.player1_id, c.player2_id]).filter(Boolean) as string[],
     );
-    return audience.filter((p) => named.has(p.id)).map((p) => ({ name: p.name, email: p.email }));
+    return audience.filter((p) => named.has(p.id)).flatMap(recipientRows);
   }
-  return audience.map((p) => ({ name: p.name, email: p.email }));
+  return audience.flatMap(recipientRows);
 }
 
 /** The season timeline, with every subject line rendered from the real builder. */
