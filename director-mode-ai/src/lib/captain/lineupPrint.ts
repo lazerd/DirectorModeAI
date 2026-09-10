@@ -79,13 +79,18 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
       } else if (byRound && !c.round) {
         roundCell = '<td class="round"></td>';
       }
+      // Blank write-in lines for whoever the other captain puts out — one per
+      // player on that line, so a doubles pair has room for both names.
+      const writeIns = (c.courtType === 'doubles' ? 2 : 1);
+      const opponents = Array.from({ length: writeIns }, () => '<span class="write"></span>').join('');
       return `<tr>${roundCell}<td class="line">${lineLabel(c)}</td><td class="names">${
         names.length ? names.map(esc).join(' &nbsp;/&nbsp; ') : '<span class="muted">— default —</span>'
-      }</td><td class="score"></td></tr>`;
+      }</td><td class="opp">${opponents}</td><td class="score"></td></tr>`;
     })
     .join('');
 
-  const vs = input.opponent ? ` vs ${esc(input.opponent)}` : '';
+  // No opponent on file yet — leave a line to write the club in by hand.
+  const vs = input.opponent ? ` vs ${esc(input.opponent)}` : ' vs <span class="write inline"></span>';
   const where = `${input.isHome ? 'Home' : 'Away'}${input.location ? ` · ${esc(input.location)}` : ''}`;
   const meta = [
     where,
@@ -112,7 +117,12 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
   td { border-bottom: 1px solid #cbd5e1; padding: 12px 10px; vertical-align: middle; }
   td.round { font-weight: 700; white-space: nowrap; border-right: 1px solid #cbd5e1; }
   td.line { white-space: nowrap; color: #334155; width: 1%; }
-  td.score { width: 22%; border-left: 1px solid #cbd5e1; }
+  td.opp { width: 30%; border-left: 1px solid #cbd5e1; }
+  td.score { width: 16%; border-left: 1px solid #cbd5e1; }
+  /* A ruled line to write a name on, by hand, at the courts. */
+  .write { display: block; height: 22px; border-bottom: 1px solid #475569; }
+  .write + .write { margin-top: 10px; }
+  .write.inline { display: inline-block; width: 260px; height: auto; vertical-align: baseline; }
   .muted { color: #94a3b8; }
   .footer { position: fixed; left: 0; right: 0; bottom: 16px; text-align: center; font-size: 14px; }
   .actions { margin-top: 24px; }
@@ -127,7 +137,7 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
   ${input.arrivalNote?.trim() ? `<p class="note">${esc(input.arrivalNote.trim())}</p>` : ''}
   ${input.draft ? '<p class="draft">DRAFT — not yet saved or sent to the team</p>' : ''}
   <table>
-    <thead><tr>${byRound ? '<th>Round</th>' : ''}<th>Line</th><th>Players</th><th>Score</th></tr></thead>
+    <thead><tr>${byRound ? '<th>Round</th>' : ''}<th>Line</th><th>Players</th><th>Opponents</th><th>Score</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="actions"><button onclick="window.print()">Print / Save as PDF</button></div>

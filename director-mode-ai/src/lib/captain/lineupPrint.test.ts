@@ -56,6 +56,21 @@ describe('the printable lineup', () => {
     expect(odd).toContain('&lt;b&gt;Bobby&lt;/b&gt; &amp; Co');
   });
 
+  it('leaves room to write in the opponents — one line per player', () => {
+    expect(html).toContain('<th>Opponents</th>');
+    const cells = html.match(/<td class="opp">(.*?)<\/td>/g) ?? [];
+    expect(cells).toHaveLength(4);
+    const blanks = cells.map((c) => (c.match(/class="write"/g) ?? []).length);
+    // singles 1, doubles 5, singles 2, doubles 6
+    expect(blanks).toEqual([1, 2, 1, 2]);
+  });
+
+  it('gives a blank for the opponent team when it is not known yet', () => {
+    expect(html).toContain('vs Orinda Country Club - 10U Green');
+    const unknown = lineupPrintHtml({ ...base, opponent: null });
+    expect(unknown).toContain('vs <span class="write inline"></span>');
+  });
+
   it('says DRAFT only when the sheet on screen is unsaved', () => {
     expect(html).not.toContain('DRAFT');
     expect(lineupPrintHtml({ ...base, draft: true })).toContain('DRAFT');
