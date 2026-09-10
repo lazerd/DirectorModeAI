@@ -156,6 +156,14 @@ const PUBLIC_PREFIXES = [
   '/pathway/curriculum',
 ];
 
+/**
+ * Public pages a GUEST reaches but a director also uses. Signed out, the rail
+ * hides (fifteen tools a stranger cannot open, and its phone opener sat on top
+ * of the page logo). Signed in, the rail stays, so a director browsing
+ * Benchmarks or a coach profile still has their way back — same rule as '/'.
+ */
+const GUEST_ONLY_PREFIXES = ['/find-coach', '/benchmarks', '/connect', '/coach'];
+
 export default function ClubSidebar() {
   const pathname = usePathname() || '/';
   /**
@@ -169,9 +177,11 @@ export default function ClubSidebar() {
    * stays hidden for that first beat rather than flashing in for a guest.
    */
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const underAny = (prefixes: string[]) =>
+    prefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
   const isPublic =
-    (pathname === '/' && signedIn !== true) ||
-    PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + '/'));
+    (signedIn !== true && (pathname === '/' || underAny(GUEST_ONLY_PREFIXES))) ||
+    underAny(PUBLIC_PREFIXES);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hovering, setHovering] = useState(false); // hover-to-peek when collapsed
