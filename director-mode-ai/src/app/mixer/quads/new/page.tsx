@@ -19,6 +19,7 @@ import {
   type QuadScoringFormatId,
   type GenderRestriction,
 } from '@/lib/quads';
+import { SQUARE_ACCOUNT_OWNER_ID, isPaymentLink } from '@/config/payments';
 
 function slugify(input: string): string {
   return input
@@ -41,7 +42,6 @@ export default function NewQuadsTournamentPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [stripeConnected, setStripeConnected] = useState<boolean | null>(null);
 
   const [form, setForm] = useState({
     name: '',
@@ -53,6 +53,7 @@ export default function NewQuadsTournamentPage() {
     scoring_format: 'pro8' as QuadScoringFormatId,
     custom_scoring: '',
     entry_fee_dollars: 25,
+    external_payment_url: '',
     max_players: 16,
     registration_opens_now: true,
     registration_closes_at: '',
@@ -61,19 +62,6 @@ export default function NewQuadsTournamentPage() {
   useEffect(() => {
     const today = new Date().toISOString().slice(0, 10);
     setForm((p) => ({ ...p, event_date: today }));
-    // Check Stripe Connect status
-    (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('stripe_account_id, stripe_charges_enabled')
-        .eq('id', user.id)
-        .maybeSingle();
-      setStripeConnected(!!(profile?.stripe_account_id && profile?.stripe_charges_enabled));
-    })();
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -91,18 +79,14 @@ export default function NewQuadsTournamentPage() {
         return;
       }
 
-      // Get director's Stripe account snapshot
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('stripe_account_id, stripe_charges_enabled')
-        .eq('id', user.id)
-        .maybeSingle();
-
+      // Paid entry is a payment link the director pastes. Stripe Connect is
+      // gone (the platform account is disabled) and the app's Square token is
+      // one club's seller account, so it only serves that club's events.
+      const paymentLink = form.external_payment_url.trim();
       const wantsPayment = (form.entry_fee_dollars ?? 0) > 0;
-      const stripeReady = !!(profile?.stripe_account_id && profile?.stripe_charges_enabled);
-      if (wantsPayment && !stripeReady) {
+      if (wantsPayment && user.id !== SQUARE_ACCOUNT_OWNER_ID && !isPaymentLink(paymentLink)) {
         setError(
-          'Connect Stripe before creating a paid tournament. Open Settings → Payouts.'
+          'A paid entry needs a payment link — paste your Square, PayPal or Venmo link, or set the fee to 0.'
         );
         setLoading(false);
         return;
@@ -147,7 +131,7 @@ export default function NewQuadsTournamentPage() {
             form.scoring_format === 'custom'
               ? form.custom_scoring.trim() || 'Custom format'
               : form.scoring_format,
-          stripe_account_id: profile?.stripe_account_id || null,
+          external_payment_url: wantsPayment && paymentLink ? paymentLink : null,
           public_status: 'open',
         })
         .select('id, slug')
@@ -186,21 +170,6 @@ export default function NewQuadsTournamentPage() {
           </p>
         </div>
       </div>
-
-      {stripeConnected === false && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 flex items-start gap-3">
-          <AlertCircle size={18} className="mt-0.5 flex-shrink-0" />
-          <div className="text-sm flex-1">
-            <p className="font-medium">Stripe not connected.</p>
-            <p>
-              You need to connect Stripe to accept entry fees.{' '}
-              <Link href="/mixer/settings" className="underline font-medium">
-                Connect Stripe →
-              </Link>
-            </p>
-          </div>
-        </div>
-      )}
 
       <form onSubmit={submit} className="space-y-6">
         {/* Tournament details */}
@@ -387,9 +356,24 @@ export default function NewQuadsTournamentPage() {
             />
           </div>
           <p className="text-xs text-gray-500 mt-2">
-            Set to 0 for a free tournament. Paid entries go straight to your connected Stripe
-            account.
+            Set to 0 for a free tournament. For a paid entry, add your own payment link below —
+            players pay you directly.
           </p>
+          {form.entry_fee_dollars > 0 && (
+            <div className="mt-3">
+              <label className="block text-sm font-medium mb-1">Payment link</label>
+              <input
+                type="url"
+                value={form.external_payment_url}
+                onChange={(e) => setForm({ ...form, external_payment_url: e.target.value })}
+                placeholder="https://… (Square, PayPal or Venmo link)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Players see this link after they sign up. ClubMode never handles the money.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Registration window */}
