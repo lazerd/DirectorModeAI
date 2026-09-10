@@ -11,6 +11,13 @@ const supabase = createClient(
 
 // Cron-triggered: send reminders for events happening tomorrow
 export async function GET(request: NextRequest) {
+  // Vercel cron sends `Authorization: Bearer $CRON_SECRET`. Fail closed: with
+  // no secret configured nobody can fire a round of reminder emails.
+  const secret = process.env.CRON_SECRET;
+  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     // Get tomorrow's date
     const tomorrow = new Date();

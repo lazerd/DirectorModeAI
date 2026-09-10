@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { parseRosterPaste, isNotAName, MAX_ROSTER_ROWS } from './rosterPaste';
 
-/** Lines lifted verbatim from the 2026-09-03 EBWT C paste that created 240 rows. */
+/**
+ * Page furniture shaped line-for-line like the 2026-09-03 league-site paste
+ * that created 240 rows. The person, phone and email in it are made up.
+ */
 const REAL_JUNK = [
-  'Megan Sullivan   Help  Search',
+  'Robin Castellano   Help  Search',
   'Lessons',
   'Courts/ Reservations',
   'Activity Schedule',
@@ -11,11 +14,11 @@ const REAL_JUNK = [
   'Meet Players',
   'Calendar',
   'Standings Schedule Availability Practices New QR Code Player Standings Results Print',
-  'Sleepy Hollow S&T 18+ C',
+  'Hillcrest S&T 18+ C',
   'Click to update',
   'Captain',
-  '206-930-8791',
-  'meganmariasullivan@gmail.com',
+  '206-555-0191',
+  'robinmcastellano@example.com',
   'League',
   '2026/27 East Bay Division 18+',
   'Season Dates',
@@ -27,16 +30,16 @@ const REAL_JUNK = [
   'Preferred Time',
 ];
 
-/** Real EBWT C players, from the master roster CSV. These must survive. */
+/** Fictional players with the same shapes as a real roster. These must survive. */
 const REAL_PLAYERS = [
-  'Megan Sullivan',
-  'Karen Yoo',
-  'Jennifer Walker',
-  'Ariel Kurland',
-  'Caedmon Patalano',
-  'Hedieh Haghighi',
-  'Michaela M Katari',
-  'Lisa San Vicente',
+  'Robin Castellano',
+  'Dana Kowalski',
+  'Jennifer Albright',
+  'Ariel Brennan',
+  'Caspian Moretti',
+  'Leila Farahani',
+  'Joanna R Whitcomb',
+  'Rosa San Martin',
 ];
 
 const ok = (text: string) => parseRosterPaste(text).rows.filter((r) => r.confidence === 'ok');
@@ -63,38 +66,38 @@ describe('parseRosterPaste', () => {
 
   it('doubts a line that repeats, because labels repeat and people do not', () => {
     const { rows } = parseRosterPaste(
-      ['Sandra Fox', 'Team Contact', 'Elaine Hackenkamp', 'Team Contact'].join('\n'),
+      ['Nora Vance', 'Team Contact', 'Greta Lindqvist', 'Team Contact'].join('\n'),
     );
     const contact = rows.find((r) => r.name === 'Team Contact');
     expect(contact?.confidence).toBe('suspect');
     expect(contact?.reason).toMatch(/more than once/);
-    expect(rows.find((r) => r.name === 'Sandra Fox')?.confidence).toBe('ok');
+    expect(rows.find((r) => r.name === 'Nora Vance')?.confidence).toBe('ok');
   });
 
   it('parses the documented "Name, email, rating" line', () => {
-    const { rows } = parseRosterPaste('Karen Yoo, karen@example.com, 3.5');
+    const { rows } = parseRosterPaste('Dana Kowalski, dana@example.com, 3.5');
     expect(rows[0]).toMatchObject({
-      name: 'Karen Yoo',
-      email: 'karen@example.com',
+      name: 'Dana Kowalski',
+      email: 'dana@example.com',
       rating: 3.5,
       confidence: 'ok',
     });
   });
 
   it('reads a spreadsheet paste with tabs', () => {
-    const { rows } = parseRosterPaste('Jenna King\tjenna@example.com\t3.0');
-    expect(rows[0]).toMatchObject({ name: 'Jenna King', email: 'jenna@example.com', rating: 3.0 });
+    const { rows } = parseRosterPaste('Jill Marsh\tjill@example.com\t3.0');
+    expect(rows[0]).toMatchObject({ name: 'Jill Marsh', email: 'jill@example.com', rating: 3.0 });
   });
 
   it('takes the email and rating from any column', () => {
-    const { rows } = parseRosterPaste('Blair Halsey, 3.5, blair@example.com');
+    const { rows } = parseRosterPaste('Blair Tolliver, 3.5, blair@example.com');
     expect(rows[0]).toMatchObject({ email: 'blair@example.com', rating: 3.5 });
   });
 
   it('refuses a rating outside the NTRP range instead of storing it', () => {
     // A win-loss column of 8-4 or a WTN of 31 must not become an NTRP rating.
-    expect(parseRosterPaste('Emily Stein, 31').rows[0].rating).toBeNull();
-    expect(parseRosterPaste('Emily Stein, 8').rows[0].rating).toBeNull();
+    expect(parseRosterPaste('Emma Stroud, 31').rows[0].rating).toBeNull();
+    expect(parseRosterPaste('Emma Stroud, 8').rows[0].rating).toBeNull();
   });
 
   it('warns when the paste is page-sized', () => {
@@ -104,7 +107,7 @@ describe('parseRosterPaste', () => {
   });
 
   it('warns about the unticked lines', () => {
-    const { warnings } = parseRosterPaste(['Karen Yoo', 'Calendar', 'Lessons'].join('\n'));
+    const { warnings } = parseRosterPaste(['Dana Kowalski', 'Calendar', 'Lessons'].join('\n'));
     expect(warnings.join(' ')).toMatch(/don't look like names/);
   });
 
@@ -116,7 +119,7 @@ describe('parseRosterPaste', () => {
   });
 
   it('collapses the same name pasted twice', () => {
-    const { rows } = parseRosterPaste('Karen Yoo\nKaren Yoo');
+    const { rows } = parseRosterPaste('Dana Kowalski\nDana Kowalski');
     expect(rows).toHaveLength(1);
   });
 
@@ -136,8 +139,8 @@ describe('isNotAName (server guard)', () => {
   });
 
   it('refuses what can never be a name', () => {
-    expect(isNotAName('meganmariasullivan@gmail.com')).toMatch(/email/);
-    expect(isNotAName('206-930-8791')).toMatch(/phone/);
+    expect(isNotAName('robinmcastellano@example.com')).toMatch(/email/);
+    expect(isNotAName('206-555-0191')).toMatch(/phone/);
     expect(isNotAName('https://topdoglive.com/team')).toMatch(/web address/);
     expect(isNotAName('8/31/2026 - 5/3/2027')).toMatch(/date/);
     expect(isNotAName('   ')).toBeTruthy();
@@ -153,40 +156,40 @@ describe('isNotAName (server guard)', () => {
 
 describe('shapes captains actually paste', () => {
   it('flips "Last, First" instead of importing everyone by surname', () => {
-    const { rows, warnings } = parseRosterPaste('Sullivan, Megan\nYoo, Karen\nLe, Vi D');
-    expect(rows.map((r) => r.name)).toEqual(['Megan Sullivan', 'Karen Yoo', 'Vi D Le']);
+    const { rows, warnings } = parseRosterPaste('Castellano, Robin\nKowalski, Dana\nHo, Mi J');
+    expect(rows.map((r) => r.name)).toEqual(['Robin Castellano', 'Dana Kowalski', 'Mi J Ho']);
     expect(rows.every((r) => r.confidence === 'ok')).toBe(true);
     expect(warnings.join(' ')).toMatch(/Last, First/);
   });
 
   it('leaves "First Last, email, rating" alone', () => {
-    const { rows, warnings } = parseRosterPaste('Megan Sullivan, megan@example.com, 2.5');
+    const { rows, warnings } = parseRosterPaste('Robin Castellano, robin@example.com, 2.5');
     expect(rows[0]).toMatchObject({
-      name: 'Megan Sullivan',
-      email: 'megan@example.com',
+      name: 'Robin Castellano',
+      email: 'robin@example.com',
       rating: 2.5,
     });
     expect(warnings.join(' ')).not.toMatch(/Last, First/);
   });
 
   it('reads "Last, First" with the rest of the columns still attached', () => {
-    const { rows } = parseRosterPaste('Sullivan, Megan, megan@example.com, 925-788-8058, 2.5');
+    const { rows } = parseRosterPaste('Castellano, Robin, robin@example.com, 925-555-0142, 2.5');
     expect(rows[0]).toMatchObject({
-      name: 'Megan Sullivan',
-      email: 'megan@example.com',
-      phone: '925-788-8058',
+      name: 'Robin Castellano',
+      email: 'robin@example.com',
+      phone: '925-555-0142',
       rating: 2.5,
     });
   });
 
   it('picks up a phone in any column and any shape', () => {
-    expect(parseRosterPaste('Karen Yoo, (925) 788-8058').rows[0].phone).toBe('(925) 788-8058');
-    expect(parseRosterPaste('Karen Yoo, 925.788.8058, k@x.com').rows[0].phone).toBe('925.788.8058');
-    expect(parseRosterPaste('Karen Yoo, k@x.com, 3.5').rows[0].phone).toBeNull();
+    expect(parseRosterPaste('Dana Kowalski, (925) 555-0142').rows[0].phone).toBe('(925) 555-0142');
+    expect(parseRosterPaste('Dana Kowalski, 925.555.0142, k@x.com').rows[0].phone).toBe('925.555.0142');
+    expect(parseRosterPaste('Dana Kowalski, k@x.com, 3.5').rows[0].phone).toBeNull();
   });
 
   it('does not mistake a rating or a name for a phone number', () => {
-    expect(parseRosterPaste('Karen Yoo, 3.5').rows[0].phone).toBeNull();
-    expect(parseRosterPaste('Karen Yoo, 3.5').rows[0].rating).toBe(3.5);
+    expect(parseRosterPaste('Dana Kowalski, 3.5').rows[0].phone).toBeNull();
+    expect(parseRosterPaste('Dana Kowalski, 3.5').rows[0].rating).toBe(3.5);
   });
 });

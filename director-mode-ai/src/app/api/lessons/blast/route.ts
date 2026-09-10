@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { sendBilledEmails, resolveCoachUserId, creditLimitResponse, CreditLimitError } from '@/lib/email';
+import { createClient as createUserClient } from '@/lib/supabase/server';
+import { sendBilledEmails, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
 import { APP_URL } from '@/lib/appUrl';
 const supabase = createClient(
@@ -10,17 +11,61 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
-    const { coachId, slotIds, clientEmails, coachName, coachEmail, timezone } = await request.json();
+    const userClient = await createUserClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+    }
 
-    // Get slot details
+    const { coachId, slotIds, clientEmails, coachName, timezone } = await request.json();
+
+    if (!coachId || !Array.isArray(slotIds) || !Array.isArray(clientEmails)) {
+      return NextResponse.json({ error: 'coachId, slotIds and clientEmails required' }, { status: 400 });
+    }
+
+    // The caller must be this coach.
+    const { data: coach } = await supabase
+      .from('lesson_coaches')
+      .select('id, profile_id, display_name, email')
+      .eq('id', coachId)
+      .maybeSingle();
+    if (!coach || coach.profile_id !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const coachEmail: string | undefined = coach.email || user.email || undefined;
+
+    // Get slot details — only this coach's slots.
     const { data: slots } = await supabase
       .from('lesson_slots')
       .select('*')
       .in('id', slotIds)
+      .eq('coach_id', coach.id)
       .order('start_time');
 
     if (!slots || slots.length === 0) {
       return NextResponse.json({ error: 'No slots found' }, { status: 400 });
+    }
+
+    // Only send to people who are actually this coach's clients.
+    const { data: myClients } = await supabase
+      .from('lesson_clients')
+      .select('email, lesson_client_coaches!inner(coach_id)')
+      .eq('lesson_client_coaches.coach_id', coach.id);
+    const allowed = new Set(
+      ((myClients as { email: string | null }[]) || [])
+        .map((c) => (c.email || '').trim().toLowerCase())
+        .filter(Boolean)
+    );
+    const recipients: string[] = Array.from(
+      new Set(
+        clientEmails
+          .filter((e: unknown): e is string => typeof e === 'string')
+          .map((e: string) => e.trim().toLowerCase())
+          .filter((e: string) => allowed.has(e))
+      )
+    );
+    if (recipients.length === 0) {
+      return NextResponse.json({ error: 'No clients to notify' }, { status: 400 });
     }
 
     const baseUrl = APP_URL;
@@ -77,7 +122,7 @@ export async function POST(request: NextRequest) {
         <p style="color: #475569; font-size: 16px; line-height: 1.6;">Hi there!</p>
         
         <p style="color: #475569; font-size: 16px; line-height: 1.6;">
-          Great news! <strong>${coachName || 'Your coach'}</strong> has ${slots.length > 1 ? 'some last-minute openings' : 'a last-minute opening'} available.
+          Great news! <strong>${coachName || coach.display_name || 'Your coach'}</strong> has ${slots.length > 1 ? 'some last-minute openings' : 'a last-minute opening'} available.
         </p>
         
         <div style="margin: 24px 0;">
@@ -97,15 +142,15 @@ export async function POST(request: NextRequest) {
       </div>
     `;
 
-    // Resolve who pays for these emails (the coach owns the blast)
-    const ownerUserId = await resolveCoachUserId(coachId, coachEmail);
+    // The coach owns (and pays for) the blast
+    const ownerUserId = coach.profile_id;
 
     // Send to all clients
-    const payloads = clientEmails.map((email: string) => ({
+    const payloads = recipients.map((email: string) => ({
       from: process.env.RESEND_FROM_EMAIL || 'LessonMode <noreply@mail.clubmode.ai>',
       to: email,
       replyTo: coachEmail,
-      subject: `🎾 ${coachName || 'Your Coach'} has lesson time available!`,
+      subject: `🎾 ${coachName || coach.display_name || 'Your Coach'} has lesson time available!`,
       html: emailHtml,
     }));
 
@@ -117,11 +162,11 @@ export async function POST(request: NextRequest) {
     await supabase
       .from('lesson_slots')
       .update({ notifications_sent: true, notified_at: new Date().toISOString() })
-      .in('id', slotIds);
+      .in('id', slots.map((s) => s.id));
 
     // Record the blast
     await supabase.from('lesson_blasts').insert({
-      coach_id: coachId,
+      coach_id: coach.id,
       slots_count: slots.length,
       recipients_count: successCount,
       sent_at: new Date().toISOString(),

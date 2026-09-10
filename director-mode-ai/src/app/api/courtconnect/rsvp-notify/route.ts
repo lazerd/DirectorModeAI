@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createUserClient } from '@/lib/supabase/server';
 import { sendBilledEmail, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
 import { APP_URL } from '@/lib/appUrl';
@@ -8,13 +9,52 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+/** Only notify about an RSVP the caller actually just made — not a replay. */
+const RECENT_RSVP_MS = 10 * 60 * 1000;
+
+// Fired by a signed-in player right after they RSVP. The player's name and
+// their status come from the database, never from the request body, so this
+// can't be used to put arbitrary text in front of an organizer.
 export async function POST(request: NextRequest) {
   try {
-    const { eventId, playerName, rsvpStatus } = await request.json();
+    const userClient = await createUserClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+    }
 
-    if (!eventId || !playerName || !rsvpStatus) {
+    const { eventId } = await request.json();
+
+    if (!eventId) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
+
+    const { data: myPlayer } = await supabase
+      .from('cc_players')
+      .select('id, display_name')
+      .eq('profile_id', user.id)
+      .maybeSingle();
+    if (!myPlayer) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const { data: myRsvp } = await supabase
+      .from('cc_event_players')
+      .select('status, responded_at')
+      .eq('event_id', eventId)
+      .eq('player_id', myPlayer.id)
+      .maybeSingle();
+    const respondedAt = myRsvp?.responded_at ? new Date(myRsvp.responded_at).getTime() : 0;
+    if (
+      !myRsvp ||
+      !['accepted', 'waitlisted', 'declined'].includes(myRsvp.status) ||
+      Date.now() - respondedAt > RECENT_RSVP_MS
+    ) {
+      return NextResponse.json({ error: 'No recent RSVP to notify about' }, { status: 409 });
+    }
+
+    const playerName: string = myPlayer.display_name || 'A player';
+    const rsvpStatus: string = myRsvp.status;
 
     // Get event details
     const { data: event } = await supabase

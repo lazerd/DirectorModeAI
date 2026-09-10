@@ -8,40 +8,43 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function formatDateForCalendar(startTime: Date, endTime: Date): { start: string; end: string } {
-  const formatDate = (d: Date): string => {
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const h = String(d.getHours()).padStart(2, '0');
-    const m = String(d.getMinutes()).padStart(2, '0');
-    return `${year}${month}${day}T${h}${m}00`;
-  };
+// The server runs in UTC, so every human-facing time must name a zone — else a
+// 4:00 PM Pacific lesson reads "11:00 PM". Coach's zone first, then the club's home.
+const DEFAULT_TZ = 'America/Los_Angeles';
 
-  return {
-    start: formatDate(startTime),
-    end: formatDate(endTime)
-  };
+/** Google's compact UTC form (the trailing Z makes it an instant, not a wall time). */
+function toGoogleUtc(d: Date): string {
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
 function generateCalendarLinks(title: string, startTime: Date, endTime: Date, location?: string | null) {
-  const { start, end } = formatDateForCalendar(startTime, endTime);
   const encodedTitle = encodeURIComponent(title);
   const details = encodeURIComponent('Lesson reminder from LessonMode');
   const loc = encodeURIComponent(location || '');
 
-  const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodedTitle}&dates=${start}/${end}&details=${details}&location=${loc}`;
-  const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?subject=${encodedTitle}&startdt=${start}&enddt=${end}&body=${details}&location=${loc}`;
+  const googleUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodedTitle}&dates=${toGoogleUtc(startTime)}/${toGoogleUtc(endTime)}&details=${details}&location=${loc}`;
+  const outlookUrl = `https://outlook.live.com/calendar/0/deeplink/compose?subject=${encodedTitle}&startdt=${encodeURIComponent(startTime.toISOString())}&enddt=${encodeURIComponent(endTime.toISOString())}&body=${details}&location=${loc}`;
 
   return { googleUrl, outlookUrl };
 }
 
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+function formatTime(date: Date, timeZone: string): string {
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone });
 }
 
-function formatDate(date: Date): string {
-  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+function formatDate(date: Date, timeZone: string): string {
+  return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone });
+}
+
+/** A usable IANA zone name, or the default when it's missing or bogus. */
+function resolveTimeZone(tz: unknown): string {
+  if (typeof tz !== 'string' || !tz) return DEFAULT_TZ;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return tz;
+  } catch {
+    return DEFAULT_TZ;
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -68,7 +71,7 @@ export async function GET(request: NextRequest) {
         end_time,
         location,
         reminder_sent,
-        lesson_coaches(display_name, email),
+        lesson_coaches(display_name, email, timezone),
         lesson_clients(name, email)
       `)
       .eq('status', 'booked')
@@ -97,6 +100,7 @@ export async function GET(request: NextRequest) {
 
       const coachName = coach?.display_name || 'your coach';
       const clientName = client?.name || 'there';
+      const tz = resolveTimeZone(coach?.timezone);
       const calendarLinks = generateCalendarLinks(
         `Tennis Lesson with ${coachName}`,
         startTime,
@@ -119,8 +123,8 @@ export async function GET(request: NextRequest) {
               <p>This is a friendly reminder that you have a lesson scheduled for <strong>tomorrow</strong>:</p>
               <div style="background: #eff6ff; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #2563eb;">
                 <p style="margin: 0;"><strong>Coach:</strong> ${coachName}</p>
-                <p style="margin: 8px 0 0 0;"><strong>Date:</strong> ${formatDate(startTime)}</p>
-                <p style="margin: 8px 0 0 0;"><strong>Time:</strong> ${formatTime(startTime)} - ${formatTime(endTime)}</p>
+                <p style="margin: 8px 0 0 0;"><strong>Date:</strong> ${formatDate(startTime, tz)}</p>
+                <p style="margin: 8px 0 0 0;"><strong>Time:</strong> ${formatTime(startTime, tz)} - ${formatTime(endTime, tz)}</p>
                 ${slot.location ? `<p style="margin: 8px 0 0 0;"><strong>Location:</strong> ${slot.location}</p>` : ''}
               </div>
               <p style="margin-top: 24px;"><strong>Add to your calendar:</strong></p>

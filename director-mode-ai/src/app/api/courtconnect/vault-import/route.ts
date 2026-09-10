@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createUserClient } from '@/lib/supabase/server';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,17 +9,24 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
+    const userClient = await createUserClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+    }
+
     const { vaultPlayerIds } = await request.json();
 
-    if (!vaultPlayerIds || vaultPlayerIds.length === 0) {
+    if (!Array.isArray(vaultPlayerIds) || vaultPlayerIds.length === 0) {
       return NextResponse.json({ error: 'No players specified' }, { status: 400 });
     }
 
-    // Get vault players
+    // Get vault players — only the caller's own vault (same scope the vault page reads).
     const { data: vaultPlayers } = await supabase
       .from('cc_vault_players')
       .select('*')
-      .in('id', vaultPlayerIds);
+      .in('id', vaultPlayerIds)
+      .eq('director_id', user.id);
 
     if (!vaultPlayers || vaultPlayers.length === 0) {
       return NextResponse.json({ error: 'No players found' }, { status: 404 });

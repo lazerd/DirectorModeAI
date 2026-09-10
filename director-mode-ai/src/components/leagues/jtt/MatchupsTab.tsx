@@ -117,9 +117,7 @@ export default function MatchupsTab({
   if (matchups.length === 0) {
     return (
       <div className="bg-white rounded-xl border border-gray-200 p-6 text-gray-500 text-sm">
-        No matchups scheduled yet. Seed the Lamorinda schedule from the
-        <code className="mx-1 px-1 bg-gray-100 rounded text-xs">/api/leagues/seed-lamorinda-jtt</code>
-        endpoint, or build a scheduler here.
+        No matchups scheduled yet.
       </div>
     );
   }

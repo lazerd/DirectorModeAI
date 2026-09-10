@@ -13,7 +13,7 @@
  * moved on by the next run. Now a send stays due until it happens, and each
  * `*_sent_at` stamp is what stops it repeating.
  */
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendAll } from '@/lib/captain/emails';
 import { EMAIL_KINDS, KIND_META, isDue, type EmailKind, type MatchRow } from '@/lib/captain/timeline';
@@ -26,7 +26,14 @@ const HORIZON_DAYS = 150;
 
 type TeamRow = { id: string; name: string; captain_user_id: string };
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Vercel cron sends `Authorization: Bearer $CRON_SECRET`. Fail closed: with
+  // no secret configured nobody can trigger a pass of team emails.
+  const secret = process.env.CRON_SECRET;
+  if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const admin = getSupabaseAdmin();
   const now = new Date();
   const summary = {

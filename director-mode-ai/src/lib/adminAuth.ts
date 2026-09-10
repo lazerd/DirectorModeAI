@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'masterdirector!';
+// No fallback: with ADMIN_PASSWORD unset, admin access is simply closed.
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const COOKIE_NAME = 'clubmode_admin';
 const COOKIE_MAX_AGE = 60 * 60 * 8; // 8 hours
 
@@ -14,7 +15,8 @@ function generateToken(): string {
 export const validTokens = new Set<string>();
 
 export function checkPassword(password: string): boolean {
-  return password === ADMIN_PASSWORD;
+  if (!ADMIN_PASSWORD) return false;
+  return typeof password === 'string' && password === ADMIN_PASSWORD;
 }
 
 export function createAdminToken(): string {
@@ -58,6 +60,7 @@ export async function isAdminRequest(request: Request): Promise<boolean> {
   // Check cookie first
   if (await isAdminAuthenticated()) return true;
   // Fallback: check header (for backward compat during transition)
+  if (!ADMIN_PASSWORD) return false;
   const headerKey = request.headers.get('X-Admin-Key');
   return headerKey === ADMIN_PASSWORD;
 }

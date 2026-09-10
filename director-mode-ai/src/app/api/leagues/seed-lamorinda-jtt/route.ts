@@ -10,16 +10,26 @@
  *   - empty league_matchup_lines for each matchup per division.line_format
  *
  * Idempotent-ish: refuses to run if a league with the seed slug already
- * exists for the director. Pass `overwrite: true` to delete-and-recreate.
+ * exists. Pass `overwrite: true` to delete-and-recreate.
+ *
+ * Platform-admin only: the slug lookup and the overwrite delete run with the
+ * service role across every director, so this must never be open to any
+ * signed-in user. Needs both a normal login (the new league's director) and
+ * the /admin session.
  */
 
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { isAdminRequest } from '@/lib/adminAuth';
 import { LAMORINDA_2026, linesForFormat } from '@/lib/jtt';
 
 export async function POST(request: Request) {
   try {
+    if (!(await isAdminRequest(request))) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    }
+
     const userClient = await createClient();
     const {
       data: { user },

@@ -1,10 +1,16 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Users, Calendar } from 'lucide-react';
-import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { DAY_OF_WEEK_LABELS } from '@/lib/jtt';
 
 export const dynamic = 'force-dynamic';
+
+// Public page, read with the service role (league_clubs / league_matchup_lines
+// are not readable by visitors). Everything below is scoped to this league's
+// slug, and only published leagues resolve — same as the old RLS gate.
+const PUBLISHED = ['open', 'closed', 'running', 'completed'];
+const RESULTS_VISIBLE = ['running', 'completed'];
 
 type League = {
   id: string;
@@ -21,13 +27,14 @@ export default async function PublicRostersPage({
 }: {
   params: { slug: string };
 }) {
-  const supabase = await createClient();
+  const supabase = getSupabaseAdmin();
 
   const { data: league } = await supabase
     .from('leagues')
     .select('id, name, slug, start_date, end_date, status, format')
     .eq('slug', params.slug)
-    .single();
+    .in('status', PUBLISHED)
+    .maybeSingle();
   if (!league) notFound();
   const leagueRow = league as League;
 
@@ -44,36 +51,47 @@ export default async function PublicRostersPage({
     );
   }
 
-  const [clubsRes, divisionsRes, dcRes, rostersRes, matchupsRes] = await Promise.all([
-    supabase.from('league_clubs').select('*').eq('league_id', leagueRow.id).order('sort_order'),
+  const [clubsRes, divisionsRes] = await Promise.all([
+    // Never select roster_token here — it's a coach's write credential.
+    supabase
+      .from('league_clubs')
+      .select('id, name, short_code, sort_order')
+      .eq('league_id', leagueRow.id)
+      .order('sort_order'),
     supabase.from('league_divisions').select('*').eq('league_id', leagueRow.id).order('sort_order'),
-    supabase.from('league_division_clubs').select('*'),
-    supabase.from('league_team_rosters').select('*'),
-    supabase.from('league_team_matchups').select('id, division_id'),
   ]);
 
   const clubs = (clubsRes.data as any[]) || [];
   const divisions = (divisionsRes.data as any[]) || [];
-  const dcAll = (dcRes.data as any[]) || [];
-  const rostersAll = (rostersRes.data as any[]) || [];
-  const matchupsAll = (matchupsRes.data as any[]) || [];
+  const divisionIdList = divisions.map(d => d.id as string);
 
-  const divisionIds = new Set(divisions.map(d => d.id));
-  const divisionClubs = dcAll.filter(dc => divisionIds.has(dc.division_id));
-  const rosters = rostersAll.filter(r => divisionIds.has(r.division_id));
-  const matchups = matchupsAll.filter(m => divisionIds.has(m.division_id));
+  const [dcRes, rostersRes, matchupsRes] = divisionIdList.length
+    ? await Promise.all([
+        supabase.from('league_division_clubs').select('*').in('division_id', divisionIdList),
+        supabase
+          .from('league_team_rosters')
+          .select('id, division_id, club_id, player_name, ladder_position')
+          .in('division_id', divisionIdList),
+        supabase.from('league_team_matchups').select('id, division_id').in('division_id', divisionIdList),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }];
 
-  const { data: linesRes } = matchups.length
-    ? await supabase
-        .from('league_matchup_lines')
-        .select(
-          'matchup_id, line_type, home_player1_id, home_player2_id, away_player1_id, away_player2_id, winner, status'
-        )
-        .in(
-          'matchup_id',
-          matchups.map(m => m.id)
-        )
-    : { data: [] as any[] };
+  const divisionClubs = (dcRes.data as any[]) || [];
+  const rosters = (rostersRes.data as any[]) || [];
+  const matchups = (matchupsRes.data as any[]) || [];
+
+  const { data: linesRes } =
+    matchups.length && RESULTS_VISIBLE.includes(leagueRow.status)
+      ? await supabase
+          .from('league_matchup_lines')
+          .select(
+            'matchup_id, line_type, home_player1_id, home_player2_id, away_player1_id, away_player2_id, winner, status'
+          )
+          .in(
+            'matchup_id',
+            matchups.map(m => m.id)
+          )
+      : { data: [] as any[] };
   const lines = (linesRes as any[]) || [];
 
   // Roster-level records from completed lines
