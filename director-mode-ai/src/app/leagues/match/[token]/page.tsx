@@ -113,7 +113,7 @@ export default function MatchPage() {
           <div className="w-10 h-10 rounded-xl bg-[#D3FB52] flex items-center justify-center">
             <Trophy size={22} className="text-[#002838]" />
           </div>
-          <span className="font-display text-2xl">CoachMode Leagues</span>
+          <span className="font-display text-2xl">ClubMode Leagues</span>
         </div>
 
         {loading && (

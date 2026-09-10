@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Plus, Trophy, Calendar, Users, AlertCircle, ArrowRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
+import { FLEX_CONFIG } from '@/lib/flexDivisions';
 
 type League = {
   id: string;
@@ -29,6 +30,9 @@ export default function LeaguesListPage() {
   const [leagues, setLeagues] = useState<League[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The Summer Flex League hub (/flex) is one club's event, not a product
+  // feature — only the director who owns its division events sees the link.
+  const [ownsFlex, setOwnsFlex] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -45,6 +49,12 @@ export default function LeaguesListPage() {
         .order('created_at', { ascending: false });
       if (err) setError(err.message);
       else setLeagues((data as League[]) || []);
+      const { count: flexEvents } = await supabase
+        .from('events')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .in('slug', FLEX_CONFIG.map((d) => d.slug));
+      setOwnsFlex((flexEvents ?? 0) > 0);
       setLoading(false);
     })();
   }, []);
@@ -54,7 +64,7 @@ export default function LeaguesListPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="font-semibold text-2xl sm:text-3xl mb-1">LeagueMode</h1>
-          <p className="text-gray-500">Multi-week leagues — round-robin, JTT team tennis, and the adult Flex league.</p>
+          <p className="text-gray-500">Multi-week leagues — round-robin, compass draw, and JTT team tennis.</p>
         </div>
         <Link
           href="/mixer/leagues/new"
@@ -65,6 +75,7 @@ export default function LeaguesListPage() {
         </Link>
       </div>
 
+      {ownsFlex && (
       <Link
         href="/flex"
         className="group flex items-center justify-between gap-4 mb-6 rounded-xl border border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50 p-4 hover:shadow-md transition-all"
@@ -84,6 +95,7 @@ export default function LeaguesListPage() {
           Open <ArrowRight size={16} />
         </span>
       </Link>
+      )}
 
       {error && (
         <div className="bg-red-50 text-red-700 border border-red-200 rounded-lg p-3 mb-4 flex items-start gap-2">
@@ -138,8 +150,10 @@ export default function LeaguesListPage() {
               <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
                 <Calendar size={14} />
                 <span>
-                  {format(new Date(league.start_date), 'MM/dd/yyyy')} –{' '}
-                  {format(new Date(league.end_date), 'MM/dd/yyyy')}
+                  {/* parseISO reads a bare YYYY-MM-DD as LOCAL midnight; new Date()
+                      reads it as UTC and shows the day before west of Greenwich. */}
+                  {format(parseISO(league.start_date), 'MM/dd/yyyy')} –{' '}
+                  {format(parseISO(league.end_date), 'MM/dd/yyyy')}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-gray-600">

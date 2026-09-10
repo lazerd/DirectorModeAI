@@ -575,7 +575,7 @@ export default function OpenLessonTimePage() {
                       <input
                         value={joinCode}
                         onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                        placeholder="SHTENNIS26"
+                        placeholder="RTCTENNIS26"
                         style={INPUT}
                         className="min-w-[10rem] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-[14px] font-mono outline-none focus:border-slate-500"
                       />

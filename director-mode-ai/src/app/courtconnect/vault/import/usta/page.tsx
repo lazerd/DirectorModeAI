@@ -210,7 +210,7 @@ export default function UstaImportPage() {
           <ArrowLeft size={18} />
         </Link>
         <div>
-          <h1 className="text-2xl font-display">Import from USTA</h1>
+          <h1 className="text-2xl font-display">Import from USTA NorCal</h1>
           <p className="text-gray-500 text-sm">
             Paste a USTA NorCal team page URL and pull the full roster straight into your PlayerVault.
           </p>

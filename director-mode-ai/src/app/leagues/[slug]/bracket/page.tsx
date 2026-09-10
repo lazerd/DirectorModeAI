@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Trophy, Calendar, ArrowLeft } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { type CategoryKey } from '@/lib/leagueUtils';
 import {
@@ -112,8 +112,8 @@ export default async function PublicBracketPage({ params }: { params: Promise<{ 
         <div className="flex items-start gap-2 text-sm text-gray-500 mb-6">
           <Calendar size={16} className="mt-0.5 flex-shrink-0" />
           <span>
-            {format(new Date(l.start_date), 'MMMM d, yyyy')} –{' '}
-            {format(new Date(l.end_date), 'MMMM d, yyyy')}
+            {format(parseISO(l.start_date), 'MMMM d, yyyy')} –{' '}
+            {format(parseISO(l.end_date), 'MMMM d, yyyy')}
           </span>
           <span className="px-2 py-0.5 rounded-full text-xs bg-gray-100 text-gray-700 ml-2">
             {leagueType === 'compass' ? 'Compass Draw' : leagueType === 'round_robin' ? 'Round Robin' : 'Single Elimination'}
@@ -129,7 +129,7 @@ export default async function PublicBracketPage({ params }: { params: Promise<{ 
         />
 
         <div className="text-center text-xs text-gray-600 mt-8 py-6 border-t border-gray-200">
-          Powered by <Link href="/" className="text-orange-600 hover:underline">CoachMode AI</Link>
+          Powered by <Link href="/" className="text-orange-600 hover:underline">ClubMode</Link>
         </div>
       </main>
     </div>

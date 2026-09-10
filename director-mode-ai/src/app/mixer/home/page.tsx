@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Calendar, Users, Trophy, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { isMixerEvent } from '@/lib/eventCategory';
 
 type Event = {
@@ -81,8 +81,8 @@ export default function MixerHomePage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   
-  const upcomingEvents = events.filter(e => new Date(e.event_date) >= today);
-  const pastEvents = events.filter(e => new Date(e.event_date) < today);
+  const upcomingEvents = events.filter(e => parseISO(e.event_date) >= today);
+  const pastEvents = events.filter(e => parseISO(e.event_date) < today);
 
   const getFormatLabel = (fmt: string | null) => {
     const labels: Record<string, string> = {
@@ -144,7 +144,7 @@ export default function MixerHomePage() {
           <div>
             <div className="text-sm text-gray-500">This Month</div>
             <div className="text-2xl font-semibold">{events.filter(e => {
-              const d = new Date(e.event_date);
+              const d = parseISO(e.event_date);
               const now = new Date();
               return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
             }).length}</div>
@@ -174,7 +174,7 @@ export default function MixerHomePage() {
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-lg truncate">{event.name}</h3>
                         <p className="text-sm text-gray-500">
-                          {format(new Date(event.event_date), 'MMM d, yyyy')}
+                          {format(parseISO(event.event_date), 'MMM d, yyyy')}
                           {event.start_time && ` at ${event.start_time}`}
                         </p>
                       </div>
@@ -209,7 +209,7 @@ export default function MixerHomePage() {
                       <div className="flex-1 min-w-0">
                         <h3 className="font-semibold text-lg truncate">{event.name}</h3>
                         <p className="text-sm text-gray-700">
-                          {format(new Date(event.event_date), 'MMM d, yyyy')}
+                          {format(parseISO(event.event_date), 'MMM d, yyyy')}
                           {event.start_time && ` at ${event.start_time}`}
                         </p>
                       </div>

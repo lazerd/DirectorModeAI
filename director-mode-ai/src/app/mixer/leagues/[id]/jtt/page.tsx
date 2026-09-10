@@ -21,6 +21,7 @@ import SettingsTab from '@/components/leagues/jtt/SettingsTab';
 import ResultsEmailModal from '@/components/leagues/jtt/ResultsEmailModal';
 import TournamentEmailModal from '@/components/leagues/jtt/TournamentEmailModal';
 import NudgePanel from '@/components/campaigns/NudgePanel';
+import { SEASON_END_DIVISIONS } from '@/lib/jttTournamentEmail';
 
 type League = {
   id: string;
@@ -148,6 +149,9 @@ export default function JTTLeaguePage() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [tourneyEmailOpen, setTourneyEmailOpen] = useState(false);
   const [draws, setDraws] = useState<SeasonEndDraw[]>([]);
+  // The tournament email advertises one club's fixed season-end events (dates,
+  // venues, sign-up links). Only the director who owns those events gets it.
+  const [ownsSeasonEnd, setOwnsSeasonEnd] = useState(false);
 
   const fetchAll = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
@@ -179,6 +183,16 @@ export default function JTTLeaguePage() {
       .in('public_status', ['running', 'completed'])
       .order('name')
       .then(({ data }) => setDraws((data as SeasonEndDraw[]) || []));
+
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) return;
+      const { count } = await supabase
+        .from('events')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .in('slug', SEASON_END_DIVISIONS.map((d) => d.slug));
+      setOwnsSeasonEnd((count ?? 0) > 0);
+    });
 
     const [cRes, dRes, dcRes, rRes, mRes] = await Promise.all([
       supabase.from('league_clubs').select('*').eq('league_id', id).order('sort_order'),
@@ -278,6 +292,7 @@ export default function JTTLeaguePage() {
             {clubs.length} clubs · {divisions.length} divisions · {matchups.length} matchups
           </p>
         </div>
+        {ownsSeasonEnd && (
         <button
           onClick={() => setTourneyEmailOpen(true)}
           className="shrink-0 inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-medium rounded-lg px-3 py-2 text-sm"
@@ -285,6 +300,7 @@ export default function JTTLeaguePage() {
           <Trophy size={16} />
           <span className="hidden sm:inline">Email tournament</span>
         </button>
+        )}
         <button
           onClick={() => setEmailOpen(true)}
           className="shrink-0 inline-flex items-center gap-2 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-lg px-3 py-2 text-sm"

@@ -9,6 +9,7 @@
 
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { primaryClubFor } from '@/lib/clubs/primaryClub';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -22,14 +23,14 @@ export async function GET(_req: Request, { params }: { params: { token: string }
 
   const { data: player } = await admin
     .from('pathway_players')
-    .select('id, name, level, enrolled, active, created_at')
+    .select('id, name, level, enrolled, active, created_at, director_id')
     .eq('family_token', token)
     .maybeSingle();
   if (!player || !(player as any).active) {
     return NextResponse.json({ error: 'Link not recognized.' }, { status: 404 });
   }
 
-  const [{ data: awards }, { data: checks }] = await Promise.all([
+  const [{ data: awards }, { data: checks }, club] = await Promise.all([
     admin
       .from('pathway_awards')
       .select('stripe_key, awarded_on')
@@ -39,6 +40,8 @@ export async function GET(_req: Request, { params }: { params: { token: string }
       .from('pathway_test_checks')
       .select('stripe_key, test_index, passed_on')
       .eq('player_id', (player as any).id),
+    // The page is headed with the kid's club — the director's primary club.
+    primaryClubFor(admin, (player as any).director_id).catch(() => null),
   ]);
 
   return NextResponse.json({
@@ -47,6 +50,7 @@ export async function GET(_req: Request, { params }: { params: { token: string }
       level: (player as any).level,
       enrolled: (player as any).enrolled,
     },
+    clubName: club?.name ?? null,
     awards: awards ?? [],
     checks: checks ?? [],
   });

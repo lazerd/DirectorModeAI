@@ -53,6 +53,16 @@ export async function POST(
     if ((league as any).format !== 'team') {
       return NextResponse.json({ error: 'Not a JTT (team-format) league.' }, { status: 400 });
     }
+    // The email's divisions, dates, venues and links are one club's fixed
+    // season-end events. A director who doesn't own them has nothing to send.
+    const { count: ownedEvents } = await admin
+      .from('events')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .in('slug', SEASON_END_DIVISIONS.map(d => d.slug));
+    if (!ownedEvents) {
+      return NextResponse.json({ error: 'No season-end tournament is set up for this league.' }, { status: 404 });
+    }
 
     const cleanEmails = (list: unknown): string[] =>
       (Array.isArray(list) ? list : [])

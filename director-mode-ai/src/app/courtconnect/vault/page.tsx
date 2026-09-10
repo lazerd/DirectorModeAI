@@ -312,7 +312,7 @@ export default function PlayerVaultPage() {
         <div className="flex gap-2">
           <Link href="/courtconnect/vault/import/usta" className="btn bg-white/10 text-white hover:bg-white/20">
             <Trophy size={18} />
-            USTA Import
+            USTA NorCal Import
           </Link>
           <Link href="/courtconnect/vault/import" className="btn bg-white/10 text-white hover:bg-white/20">
             <FileUp size={18} />

@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Loader2, Printer } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { LEVELS, HOUSE_RULES, type LevelKey } from '@/lib/pathway/curriculum';
+import { pickPrimaryClub } from '@/lib/clubRoles';
 
 type Player = { id: string; name: string; level: LevelKey; enrolled: boolean };
 type Award = { player_id: string; stripe_key: string };
@@ -29,6 +30,7 @@ export default function PathwayPrintPage() {
   const [awards, setAwards] = useState<Award[]>([]);
   const [checks, setChecks] = useState<TestCheck[]>([]);
   const [loading, setLoading] = useState(true);
+  const [clubName, setClubName] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -48,6 +50,21 @@ export default function PathwayPrintPage() {
       setAwards((aw as Award[]) || []);
       setChecks((ch as TestCheck[]) || []);
       setLoading(false);
+
+      // The packet header names the director's club; a blank lookup just
+      // leaves it as "Junior Pathway".
+      const [{ data: mem }, { data: owned }] = await Promise.all([
+        supabase.from('cc_club_members').select('club_id, role, created_at').eq('user_id', user.id),
+        supabase.from('cc_clubs').select('id').eq('owner_id', user.id).order('created_at').limit(1).maybeSingle(),
+      ]);
+      const clubId = pickPrimaryClub(
+        (mem as { club_id: string; role: string; created_at: string }[]) || [],
+        (owned?.id as string) || null,
+      );
+      if (clubId) {
+        const { data: club } = await supabase.from('cc_clubs').select('name').eq('id', clubId).maybeSingle();
+        if (club?.name) setClubName(club.name as string);
+      }
     })();
   }, [router]);
 
@@ -103,7 +120,7 @@ export default function PathwayPrintPage() {
                 <h2 className="text-2xl font-extrabold" style={{ fontFamily: '"Barlow Condensed", sans-serif' }}>
                   {lvl.name.toUpperCase()} — TEST DAY
                 </h2>
-                <span className="text-sm font-semibold text-gray-600">{monthPT()} · Sleepy Hollow Junior Pathway</span>
+                <span className="text-sm font-semibold text-gray-600">{monthPT()} · {clubName ? `${clubName} ` : ''}Junior Pathway</span>
               </div>
 
               <p className="text-[13px] text-gray-700 mb-4">

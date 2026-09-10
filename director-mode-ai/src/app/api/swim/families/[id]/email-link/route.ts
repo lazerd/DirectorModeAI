@@ -78,7 +78,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         sent: false,
         error:
           result.reason === 'unsubscribed'
-            ? 'This recipient has unsubscribed from CoachMode emails.'
+            ? 'This recipient has unsubscribed from ClubMode emails.'
             : 'Email failed to send.',
         reason: result.reason,
       },

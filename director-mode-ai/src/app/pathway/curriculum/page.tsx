@@ -28,7 +28,7 @@ export default function PathwayCurriculumPage() {
             className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-500"
             style={{ fontFamily: 'Inter, sans-serif' }}
           >
-            The Sleepy Hollow Junior Pathway
+            The Junior Pathway
           </p>
           <h1
             className="mt-2 leading-none"
@@ -84,7 +84,7 @@ export default function PathwayCurriculumPage() {
 
         <footer className="mt-12 pt-6 border-t border-gray-200 text-center">
           <p className="text-xs text-gray-400">
-            Sleepy Hollow Junior Tennis · The Junior Pathway, powered by <strong>ClubMode</strong>
+            The Junior Pathway, powered by <strong>ClubMode</strong>
           </p>
         </footer>
       </div>

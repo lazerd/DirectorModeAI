@@ -319,7 +319,7 @@ export default async function PublicResultsPage({
             <Link href={`/quads/${slug}`} className="hover:text-white/60 print:hidden">
               ← Back to tournament
             </Link>
-            <div className="mt-2 hidden print:block">Powered by CoachMode</div>
+            <div className="mt-2 hidden print:block">Powered by ClubMode</div>
           </div>
         </main>
       </div>

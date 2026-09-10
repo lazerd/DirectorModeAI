@@ -373,7 +373,7 @@ export default function RosterPanel({
                             <input
                               type="tel"
                               defaultValue={p.phone ?? ''}
-                              placeholder="925-555-0148"
+                              placeholder="(555) 555-0123"
                               onBlur={(ev) => patch(p.id, { phone: ev.target.value.trim() || null })}
                               className={field}
                             />

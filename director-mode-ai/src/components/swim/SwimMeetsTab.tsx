@@ -121,7 +121,7 @@ export default function SwimMeetsTab({
               <input
                 type="text"
                 required
-                placeholder='e.g. "Home vs Lamorinda" or "League Championships"'
+                placeholder='e.g. "Home vs Riverside" or "League Championships"'
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm"
@@ -142,7 +142,7 @@ export default function SwimMeetsTab({
                 type="text"
                 value={form.opponent}
                 onChange={(e) => setForm({ ...form, opponent: e.target.value })}
-                placeholder="e.g. Lamorinda Sharks"
+                placeholder="e.g. Riverside Sharks"
                 className="w-full px-3 py-2 border rounded-lg text-gray-900 text-sm"
               />
             </div>

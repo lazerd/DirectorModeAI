@@ -433,9 +433,12 @@ export const HOUSE_RULES = [
   'Not everyone passes — and that is the point. Passed tests are banked; retest only what is left next month.',
 ];
 
-/** What clearing Yellow 5 / topping the ladder earns at Sleepy Hollow. */
+/**
+ * What clearing Yellow 5 / topping the ladder earns. Shown to families at
+ * every club, so nothing here may assume one club's merch, pro shop or staff.
+ */
 export const SUMMIT_REWARDS = [
-  'A club hoodie with your rank on the sleeve',
-  'Your name on the board in the pro shop',
-  'A match against the Director of Tennis',
+  'An invitation to High Performance training',
+  'Your name on the Pathway honor roll',
+  'A summit certificate, presented on Test Day',
 ];

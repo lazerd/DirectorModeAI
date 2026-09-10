@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import NudgePanel from '@/components/campaigns/NudgePanel';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import QRCode from 'qrcode';
 import { CATEGORY_LABELS, formatMoney, isDoubles, type CategoryKey } from '@/lib/leagueUtils';
 import FlightBracketView, {
@@ -622,7 +622,7 @@ export default function LeagueDetailPage() {
           <div className="flex items-center gap-3 text-sm text-gray-500">
             <span className="inline-flex items-center gap-1">
               <Calendar size={14} />
-              {format(new Date(league.start_date), 'MM/dd/yyyy')} – {format(new Date(league.end_date), 'MM/dd/yyyy')}
+              {format(parseISO(league.start_date), 'MM/dd/yyyy')} – {format(parseISO(league.end_date), 'MM/dd/yyyy')}
             </span>
             <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">{league.status}</span>
           </div>

@@ -51,7 +51,7 @@ export default function ConfirmPartnerPage() {
           <div className="w-10 h-10 rounded-xl bg-[#D3FB52] flex items-center justify-center">
             <Trophy size={22} className="text-[#002838]" />
           </div>
-          <span className="font-display text-2xl">CoachMode Leagues</span>
+          <span className="font-display text-2xl">ClubMode Leagues</span>
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-xl p-6 sm:p-8 text-center">
@@ -98,7 +98,7 @@ export default function ConfirmPartnerPage() {
 
           <div className="mt-6 pt-6 border-t border-white/10">
             <Link href="/" className="text-xs text-white/40 hover:text-white">
-              ← Back to CoachMode
+              ← Back to ClubMode
             </Link>
           </div>
         </div>

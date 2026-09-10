@@ -110,7 +110,12 @@ export default function StartPage() {
   const [courtCount, setCourtCount] = useState(6);
   const [leagueName, setLeagueName] = useState('');
   const [categoryKey, setCategoryKey] = useState('');
-  const [leagueStart, setLeagueStart] = useState(() => new Date().toISOString().slice(0, 10));
+  // Local calendar date, not toISOString() — that is the UTC date, which is
+  // already tomorrow after 5pm Pacific.
+  const [leagueStart, setLeagueStart] = useState(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
   const [players, setPlayers] = useState(['', '', '']);
 
   const [result, setResult] = useState<{
@@ -256,7 +261,7 @@ export default function StartPage() {
                 value={clubName}
                 onChange={(e) => setClubName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && clubName.trim()) setStep(1); }}
-                placeholder="Sleepy Hollow Swim & Tennis Club"
+                placeholder="Riverside Tennis Club"
                 style={INPUT}
                 className="mt-4 w-full rounded-xl border border-white/10 px-4 py-3 text-[15px] outline-none placeholder:text-white/25 focus:border-[#D3FB52]/50"
               />

@@ -1,5 +1,5 @@
 import { notFound } from 'next/navigation';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import DrawView from '@/components/tournament/DrawView';
 import PrintBar from './PrintBar';
@@ -102,8 +102,8 @@ export default async function PrintDrawPage({
             <h1 className="text-3xl font-bold print:text-2xl">{e.name}</h1>
             <p className="text-sm text-gray-600 print:text-xs">
               {FORMAT_LABELS[e.match_format]}
-              {e.event_date && ` · ${format(new Date(e.event_date), 'EEEE, MMMM d, yyyy')}`}
-              {e.event_date !== e.end_date && e.end_date && ` – ${format(new Date(e.end_date), 'MMMM d, yyyy')}`}
+              {e.event_date && ` · ${format(parseISO(e.event_date), 'EEEE, MMMM d, yyyy')}`}
+              {e.event_date !== e.end_date && e.end_date && ` – ${format(parseISO(e.end_date), 'MMMM d, yyyy')}`}
             </p>
           </div>
 

@@ -151,7 +151,7 @@ export default async function PublicQuadsLandingPage({
             <Trophy size={22} className="text-[#002838]" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-white/40">CoachMode Quads</div>
+            <div className="text-xs text-white/40">ClubMode Quads</div>
             <h1 className="text-xl sm:text-2xl font-semibold truncate">{e.name}</h1>
           </div>
         </div>
@@ -247,7 +247,7 @@ export default async function PublicQuadsLandingPage({
 
         <div className="text-center text-xs text-white/40">
           <Link href="/" className="hover:text-white/60">
-            Powered by CoachMode
+            Powered by ClubMode
           </Link>
         </div>
       </main>

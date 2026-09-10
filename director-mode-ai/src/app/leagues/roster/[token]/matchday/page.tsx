@@ -218,7 +218,7 @@ export default function MatchDayPage() {
         })}
 
       <div className="text-center text-xs text-gray-400 mt-8">
-        Powered by <a href={APP_URL} className="underline">CoachMode</a>
+        Powered by <a href={APP_URL} className="underline">ClubMode</a>
       </div>
     </div>
   );

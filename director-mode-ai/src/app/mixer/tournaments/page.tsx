@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Calendar, Trophy, Target, ExternalLink, ClipboardList, ListOrdered } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { isTournamentEvent } from '@/lib/eventCategory';
 
 type Event = {
@@ -75,8 +75,8 @@ export default function TournamentModePage() {
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const upcoming = events.filter((e) => new Date(e.event_date) >= today);
-  const past = events.filter((e) => new Date(e.event_date) < today);
+  const upcoming = events.filter((e) => parseISO(e.event_date) >= today);
+  const past = events.filter((e) => parseISO(e.event_date) < today);
 
   if (loading) {
     return (
@@ -97,7 +97,7 @@ export default function TournamentModePage() {
           <Link href={`/mixer/events/${event.id}`} className="flex-1 min-w-0">
             <h3 className="font-semibold text-lg truncate text-gray-900 hover:text-yellow-700">{event.name}</h3>
             <p className="text-sm text-gray-500">
-              {format(new Date(event.event_date), 'MMM d, yyyy')}
+              {format(parseISO(event.event_date), 'MMM d, yyyy')}
               {event.start_time && ` at ${event.start_time}`}
             </p>
           </Link>

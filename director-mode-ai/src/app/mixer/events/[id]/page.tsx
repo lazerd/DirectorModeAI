@@ -30,7 +30,7 @@ const TOURNAMENT_FORMATS = new Set([
   'ffic-singles', 'ffic-doubles',
   'compass-singles', 'compass-doubles',
 ]);
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 
 interface Event {
   id: string;
@@ -265,12 +265,12 @@ export default function EventDashboard() {
               <ResultsPoster
                 url={`/event/${event.event_code}`}
                 title={event.name}
-                subtitle={format(new Date(event.event_date), "EEEE, MMMM d")}
+                subtitle={format(parseISO(event.event_date), "EEEE, MMMM d")}
                 variant="dark"
               />
             </div>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              {format(new Date(event.event_date), "EEEE, MMMM d, yyyy")}
+              {format(parseISO(event.event_date), "EEEE, MMMM d, yyyy")}
               {event.start_time && ` at ${event.start_time}`}
             </p>
             <div className="flex flex-wrap gap-2 sm:gap-3 mt-2">

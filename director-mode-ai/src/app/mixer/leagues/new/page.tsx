@@ -179,7 +179,7 @@ export default function NewLeaguePage() {
                 value={name}
                 onChange={e => setName(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                placeholder="Lamorinda Summer 2026"
+                placeholder="Fall Ladder 2026"
                 required
               />
             </div>
@@ -192,7 +192,7 @@ export default function NewLeaguePage() {
                   value={effectiveSlug}
                   onChange={e => { setSlug(slugify(e.target.value)); setSlugDirty(true); }}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-gray-900 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                  placeholder="lamorinda-summer-2026"
+                  placeholder="fall-ladder-2026"
                   required
                 />
               </div>
@@ -390,7 +390,7 @@ export default function NewLeaguePage() {
                 type="text"
                 value={venmo}
                 onChange={e => setVenmo(e.target.value)}
-                placeholder="@darrin-cohen"
+                placeholder="@your-club-tennis"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
             </div>
@@ -400,7 +400,7 @@ export default function NewLeaguePage() {
                 type="text"
                 value={zelle}
                 onChange={e => setZelle(e.target.value)}
-                placeholder="darrin@example.com"
+                placeholder="tennis@yourclub.com"
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
               />
             </div>
