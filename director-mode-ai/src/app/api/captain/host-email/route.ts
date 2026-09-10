@@ -13,6 +13,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
+import { pickOpponentRow } from '@/lib/captain/opponentMatch';
 import { createServiceClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
@@ -29,6 +30,12 @@ import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
 
 export const dynamic = 'force-dynamic';
+
+type OpponentRow = {
+  opponent: string | null;
+  captain_name: string | null;
+  captain_email: string | null;
+};
 
 type Body = {
   match_id?: string;
@@ -115,16 +122,20 @@ export async function POST(req: Request) {
   // The opponent directory is the real source: contacts are pulled off the
   // league site once per season and apply to every fixture against that club.
   if (!known.email && matchRow.opponent) {
-    const { data: opp } = await admin
+    // Read the team's directory and match in code rather than asking the
+    // database for an exact string. A fixture names the division inside the
+    // opponent ("Orinda Country Club - 10U Green") while the directory keeps it
+    // in its own column, so `.eq('opponent', …)` never matched for a JTT team
+    // and the captain was asked to retype a contact that was already saved.
+    const { data: opps } = await admin
       .from('captain_opponents')
-      .select('captain_name, captain_email')
-      .eq('team_id', matchRow.team_id)
-      .eq('opponent', matchRow.opponent as string)
-      .maybeSingle();
+      .select('opponent, captain_name, captain_email')
+      .eq('team_id', matchRow.team_id);
+    const opp = pickOpponentRow(matchRow.opponent as string, (opps as OpponentRow[]) || []);
     if (opp?.captain_email) {
       known = {
-        email: opp.captain_email as string,
-        name: (opp.captain_name as string | null) ?? known.name,
+        email: opp.captain_email,
+        name: opp.captain_name ?? known.name,
       };
     }
   }

@@ -1,12 +1,16 @@
 /**
- * Record a confirmation the captain collected off-app.
- *   POST { team_id, match_id, player_id, state: 'in' | 'out' | 'clear', note? }
+ * Record an answer the captain collected off-app.
+ *   POST { team_id, match_id, player_id, state: 'in' | 'maybe' | 'out' | 'clear', note? }
  *
- * Players confirm by text, in the parking lot, at the club — anywhere but the
+ * Players answer by text, in the parking lot, at the club — anywhere but the
  * button in the email. Without this the roll-call keeps saying "no answer yet"
  * for someone the captain has already spoken to, so the one screen that is
  * supposed to tell them who is missing stops being trustworthy and they go back
  * to a paper list.
+ *
+ * It works whether or not the player is on a court yet. Most of the time they
+ * are not: a JTT parent texts "she can play Sunday" days before there is a
+ * lineup to be on, and that yes has to land in availability all the same.
  *
  * The answer is stamped as coming from the captain, not the player, so the two
  * kinds of yes stay distinguishable — a captain chasing a bail wants to know
@@ -19,7 +23,7 @@ type Body = {
   team_id?: string;
   match_id?: string;
   player_id?: string;
-  state?: 'in' | 'out' | 'clear';
+  state?: 'in' | 'maybe' | 'out' | 'clear';
   note?: string;
 };
 
@@ -33,8 +37,11 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  if (state !== 'in' && state !== 'out' && state !== 'clear') {
-    return NextResponse.json({ error: "state must be 'in', 'out' or 'clear'." }, { status: 400 });
+  if (state !== 'in' && state !== 'maybe' && state !== 'out' && state !== 'clear') {
+    return NextResponse.json(
+      { error: "state must be 'in', 'maybe', 'out' or 'clear'." },
+      { status: 400 },
+    );
   }
 
   const ctx = await requireTeam(body.team_id);
@@ -122,15 +129,10 @@ export async function POST(req: Request) {
       }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-  } else if (state === 'in') {
-    // Confirming somebody who isn't on a court would leave the captain with a
-    // green tick against nothing. Say so rather than writing a fact about a
-    // slot that doesn't exist.
-    return NextResponse.json(
-      { error: `${name} isn't in this lineup — put her on a court first.` },
-      { status: 400 },
-    );
   }
+  // No court yet is the normal case before a lineup exists — the answer still
+  // belongs in availability, so there is nothing to refuse. `court` stays null
+  // and the caller can say "recorded" rather than "confirmed on Doubles 2".
 
   // Keep availability in step, exactly as the player's own tap does. 'clear'
   // removes the answer entirely so the poll counts stop claiming one.
@@ -146,7 +148,15 @@ export async function POST(req: Request) {
         team_id: teamId,
         match_id: body.match_id,
         player_id: body.player_id,
-        status: state === 'in' ? 'yes' : 'no',
+        status: state === 'in' ? 'yes' : state === 'maybe' ? 'maybe' : 'no',
+        // The qualifier — "doubles only", "arriving late" — into the same
+        // column the player's own answer uses, so it reads the same everywhere.
+        //
+        // Only when one was actually typed: upsert writes the keys it is given,
+        // so sending note: null on a bare "she said yes" would erase a
+        // "doubles only" the player set herself, and that is how somebody ends
+        // up on a singles court she told you she couldn't play.
+        ...(note ? { note } : {}),
         responded_at: now,
       },
       { onConflict: 'match_id,player_id' },
