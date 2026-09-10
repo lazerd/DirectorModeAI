@@ -12,6 +12,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { hasFeature } from '@/lib/billing';
 import type { Club } from './types';
 import { newClubRow, uniqueJoinCode } from '@/lib/clubs/newClub';
+import { pickPrimaryClub, type Membership } from '@/lib/clubRoles';
 
 export type StaffRole = 'owner' | 'director' | 'coach' | 'front_desk';
 
@@ -68,17 +69,19 @@ export async function requireStaffForClub(
 
   // 2. Else a club where they're STAFF (director / coach / front desk) — this
   //    is what makes "one subscription, whole team" reach CourtSheet & calendar.
+  //    Several staff rows → the most senior role, then the earliest (the shared
+  //    pickPrimaryClub rule), not whichever row an unordered limit(1) returns.
   if (!club) {
-    const { data: staffMem } = await db
+    const { data: staffMems } = await db
       .from('cc_club_members')
-      .select('club_id, role')
+      .select('club_id, role, created_at')
       .eq('user_id', user.id)
-      .in('role', ['owner', 'director', 'coach', 'front_desk'])
-      .limit(1)
-      .maybeSingle();
-    if (staffMem) {
-      const { data: staffClub } = await db.from('cc_clubs').select(CLUB_COLS).eq('id', staffMem.club_id).maybeSingle();
-      if (staffClub) { club = staffClub; role = staffMem.role as StaffRole; }
+      .in('role', ['owner', 'director', 'coach', 'front_desk']);
+    const staffClubId = pickPrimaryClub((staffMems as Membership[]) || []);
+    if (staffClubId) {
+      const { data: staffClub } = await db.from('cc_clubs').select(CLUB_COLS).eq('id', staffClubId).maybeSingle();
+      const staffRole = (staffMems as Membership[]).find((m) => m.club_id === staffClubId)?.role;
+      if (staffClub) { club = staffClub; role = staffRole as StaffRole; }
     }
   }
 

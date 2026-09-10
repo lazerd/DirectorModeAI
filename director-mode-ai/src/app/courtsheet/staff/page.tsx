@@ -1,8 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import StaffSheetClient from './StaffSheetClient';
-import { newClubRow, uniqueJoinCode } from '@/lib/clubs/newClub';
+import { requireStaffForClub } from '@/lib/courtsheet/routeAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,67 +12,23 @@ export default async function CourtSheetStaffPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect('/login?redirect=/courtsheet/staff');
 
-  const db = getSupabaseAdmin();
-
-  // Resolve / bootstrap the user's club inline so the page renders without
-  // a separate round-trip.
-  let { data: club } = await db
-    .from('cc_clubs')
-    .select('id, slug, name, timezone, operating_hours, is_public, owner_id')
-    .eq('owner_id', user.id)
-    .order('name', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  if (!club) {
-    // Mirrors requireStaffForClub() — same flow.
-    const baseSlug = (user.email ?? 'club').split('@')[0].toLowerCase().replace(/[^a-z0-9-]/g, '-');
-    let slug = baseSlug || 'club';
-    let n = 1;
-    while (true) {
-      const { data: existing } = await db.from('cc_clubs').select('id').eq('slug', slug).maybeSingle();
-      if (!existing) break;
-      n += 1;
-      slug = `${baseSlug}-${n}`;
-      if (n > 50) {
-        slug = `${baseSlug}-${Date.now()}`;
-        break;
-      }
-    }
-    const { data: created } = await db
-      .from('cc_clubs')
-      .insert(
-        // Shared defaults so a club bootstrapped here is the same shape as one
-        // created by /start — a join code above all, which this path used to
-        // omit, leaving the director unable to invite anyone.
-        newClubRow({
-          ownerId: user.id,
-          name: `${(user.email ?? 'My').split('@')[0]}'s Club`,
-          slug,
-          isPublic: false,
-          joinCode: await uniqueJoinCode(async (code) => {
-            const { data } = await db.from('cc_clubs').select('id').ilike('join_code', code).limit(1).maybeSingle();
-            return !!data;
-          }),
-        }),
-      )
-      .select('id, slug, name, timezone, operating_hours, is_public, owner_id')
-      .single();
-    club = created;
-    if (club) {
-      await db
-        .from('cc_club_members')
-        .insert({ club_id: club.id, user_id: user.id, role: 'owner' });
-    }
-  }
-
-  if (!club) {
+  // Same resolution as every CourtSheet API route: a club they own, else the
+  // club they're staff at (an invited director / coach / front desk), and only
+  // a brand-new user with no club at all gets one bootstrapped. This page used
+  // to look for an OWNED club only, so invited staff got a stray
+  // "<email>'s Club" instead of their real one.
+  const ctx = await requireStaffForClub();
+  if ('error' in ctx) {
+    // A plain member has no business on the staff sheet — send them home.
+    if (ctx.error.status === 403) redirect('/client/dashboard');
+    if (ctx.error.status === 401) redirect('/login?redirect=/courtsheet/staff');
     return (
       <div className="min-h-screen bg-[#001820] text-white p-8">
         Could not initialize club.
       </div>
     );
   }
+  const { club, db } = ctx;
 
   const { data: courts } = await db
     .from('courts')
