@@ -263,6 +263,20 @@ export default function MatchWorkspace({
   const roundOf = format != null ? roundsByCourt(courts, format) : null;
   const clashes = format != null ? roundClashes(courts, format) : [];
 
+  /**
+   * JTT: lay the sheet out the way it is played — round 1's lines together,
+   * then round 2 — rather than every singles then every doubles. Display order
+   * only: court numbers, and what is saved, never change.
+   */
+  const displayCourts = roundOf
+    ? [...courts].sort(
+        (a, b) =>
+          (roundOf.get(a.courtNumber) ?? 99) - (roundOf.get(b.courtNumber) ?? 99) ||
+          (a.courtType === b.courtType ? 0 : a.courtType === 'singles' ? -1 : 1) ||
+          a.courtNumber - b.courtNumber,
+      )
+    : courts;
+
   const nameOf = (id: string | null) => (id ? players.find((p) => p.id === id)?.name ?? '—' : '—');
 
   /**
@@ -1893,8 +1907,20 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         )}
 
         <div className="mt-3 space-y-2">
-          {courts.map((c) => (
-            <div key={c.courtNumber} className="rounded-xl border border-white/[0.08] bg-[#002838] p-4">
+          {displayCourts.map((c, i) => (
+            <div key={c.courtNumber}>
+              {/* A heading where each round starts, so the lines played together read together. */}
+              {roundOf &&
+                roundOf.get(c.courtNumber) != null &&
+                (i === 0 ||
+                  roundOf.get(displayCourts[i - 1].courtNumber) !== roundOf.get(c.courtNumber)) && (
+                  <h3
+                    className={`${i === 0 ? '' : 'pt-4'} pb-1 text-[#D3FB52] text-sm font-semibold uppercase tracking-wide`}
+                  >
+                    Round {roundOf.get(c.courtNumber)}
+                  </h3>
+                )}
+            <div className="rounded-xl border border-white/[0.08] bg-[#002838] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <div className="text-white/50 text-xs uppercase tracking-wide">
@@ -2173,6 +2199,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                     );
                   })}
               </div>
+            </div>
             </div>
           ))}
         </div>
