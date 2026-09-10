@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendBilledEmail, creditLimitResponse, CreditLimitError } from '@/lib/email';
 import { createClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { primaryClubFor } from '@/lib/clubs/primaryClub';
+
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,10 +21,17 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
     const ownerUserId = user?.id || null;
 
+    // The customer knows the club, not our product — sign the email as the
+    // stringer's club when we can tell which one that is.
+    const club = ownerUserId ? await primaryClubFor(getSupabaseAdmin(), ownerUserId).catch(() => null) : null;
+    const shopName = club?.name?.trim() || '';
+    const fromName = shopName.replace(/[<>",]/g, '') || 'StringingMode';
+    const signature = shopName ? escapeHtml(shopName) : 'StringingMode';
+
     const result = await sendBilledEmail(ownerUserId, {
-      from: 'StringingMode <noreply@mail.clubmode.ai>',
+      from: `${fromName} <noreply@mail.clubmode.ai>`,
       to,
-      subject: '🎾 Your Racket is Ready for Pickup!',
+      subject: shopName ? `🎾 Your racket is ready for pickup at ${shopName}` : '🎾 Your Racket is Ready for Pickup!',
       html: `
         <!DOCTYPE html>
         <html>
@@ -65,7 +77,7 @@ export async function POST(request: NextRequest) {
 
               <div class="footer">
                 <p>Thanks for choosing us for your stringing needs!</p>
-                <p style="color: #9333ea; font-weight: 600;">StringingMode</p>
+                <p style="color: #9333ea; font-weight: 600;">${signature}</p>
               </div>
             </div>
           </div>
