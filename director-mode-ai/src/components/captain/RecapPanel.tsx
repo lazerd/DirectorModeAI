@@ -28,6 +28,10 @@ type Outcome = 'win' | 'loss' | 'tie';
 
 type Preview = {
   outcome: Outcome;
+  /** What the scores alone decide — the captain's pick can differ. */
+  auto_outcome: Outcome;
+  scoring: 'courts' | 'topdog';
+  points: { ours: number; theirs: number } | null;
   scoreline: string;
   courts_won: number;
   courts_lost: number;
@@ -84,6 +88,8 @@ export default function RecapPanel({
    * captain who wants it kept ticks it back deliberately.
    */
   const [aiDrafted, setAiDrafted] = useState(false);
+  /** The captain's call on the result; null = whatever the scores say. */
+  const [outcomeOverride, setOutcomeOverride] = useState<Outcome | null>(null);
 
   // Nothing to recap until the scores are in the database.
   if (!hasResults) return null;
@@ -92,7 +98,11 @@ export default function RecapPanel({
     const res = await fetch('/api/captain/recap', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ match_id: matchId, ...payload }),
+      body: JSON.stringify({
+        match_id: matchId,
+        ...(outcomeOverride ? { outcome: outcomeOverride } : {}),
+        ...payload,
+      }),
     });
     const j = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(j.error || 'Something went wrong.');
@@ -148,6 +158,8 @@ export default function RecapPanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           match_id: matchId,
+          // Draft in the voice of the result the captain picked, not just the scores'.
+          ...(outcomeOverride ? { outcome: outcomeOverride } : {}),
           instructions: steer.trim() || undefined,
           current: { subject, body },
         }),
@@ -189,6 +201,30 @@ export default function RecapPanel({
       setError(e instanceof Error ? e.message : 'Send failed.');
     } finally {
       setSending(false);
+    }
+  };
+
+  /**
+   * Win / loss / tie by hand. The scores decide it where we know the league's
+   * rule (courts, or TopDog points), but an unfamiliar rule must never trap a
+   * captain in the wrong template. Picking one loads that result's template.
+   */
+  const chooseOutcome = async (o: Outcome) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const j = (await post({ preview: true, outcome: o })) as Preview;
+      setOutcomeOverride(o === j.auto_outcome ? null : o);
+      setSubject(j.template.subject);
+      setBody(j.template.body);
+      setEdited(false);
+      setAiDrafted(false);
+      setSaveTemplate(true);
+      setPreview(j);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Preview failed.');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -254,9 +290,39 @@ export default function RecapPanel({
       {preview && (
         <>
           <p className="mt-2 text-[13px] text-white/45">
-            Built from the scores saved for this match ({preview.courts_won}–{preview.courts_lost} on
-            courts). Goes to all {preview.count} players on the roster with an email address.
+            Built from the scores saved for this match —{' '}
+            {preview.scoring === 'topdog' && preview.points
+              ? `${preview.points.ours}–${preview.points.theirs} on TopDog points (${preview.courts_won}–${preview.courts_lost} on courts)`
+              : `${preview.courts_won}–${preview.courts_lost} on courts`}
+            . Goes to all {preview.count} players on the roster with an email address.
           </p>
+
+          {/* The result, overridable — picks which template the recap uses. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-xs text-white/45">Result</span>
+            {(['win', 'loss', 'tie'] as Outcome[]).map((o) => {
+              const on = preview.outcome === o;
+              return (
+                <button
+                  key={o}
+                  onClick={() => chooseOutcome(o)}
+                  disabled={busy || sending || drafting || on}
+                  aria-pressed={on}
+                  className={`rounded-lg border px-3 py-1.5 text-[13px] font-semibold transition disabled:cursor-default ${
+                    on ? '' : 'border-white/15 text-white/60 hover:border-white/30 hover:text-white'
+                  }`}
+                  style={
+                    on
+                      ? { color: TONE[o].color, borderColor: `${TONE[o].color}88`, background: `${TONE[o].color}1a` }
+                      : undefined
+                  }
+                >
+                  {TONE[o].label}
+                  {o === preview.auto_outcome ? ' (from the scores)' : ''}
+                </button>
+              );
+            })}
+          </div>
 
           {/* Don't like the wording? Have it written for you. Drafts only. */}
           <div className="mt-4 rounded-xl border border-white/10 bg-[#001820] p-3">

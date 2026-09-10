@@ -94,7 +94,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    outcome = ctx.tally.outcome;
+    // The captain's pick on the recap panel wins over the scores, same as the send.
+    outcome =
+      body.outcome && RECAP_OUTCOMES.includes(body.outcome) ? body.outcome : ctx.tally.outcome;
 
     const swept = ctx.tally.lost === 0 && ctx.tally.won > 1;
     const swept_against = ctx.tally.won === 0 && ctx.tally.lost > 1;
@@ -103,7 +105,9 @@ export async function POST(req: Request) {
       `Team: ${teamName}`,
       `Opponent: ${ctx.match.opponent || 'the other club'}`,
       `We played ${ctx.match.isHome ? 'at home' : 'away'}.`,
-      `Courts won ${ctx.tally.won}, lost ${ctx.tally.lost} — the scoreline is "${ctx.tally.scoreline}".`,
+      ctx.tally.points
+        ? `Courts won ${ctx.tally.won}, lost ${ctx.tally.lost}, but this league scores on points (3 for a straight-set win, 2 for a three-set win, 1 for a three-set loss) — the scoreline is "${ctx.tally.scoreline}" on points.`
+        : `Courts won ${ctx.tally.won}, lost ${ctx.tally.lost} — the scoreline is "${ctx.tally.scoreline}".`,
       `Season record after this match: ${ctx.record.label}.`,
       swept ? 'We took every court.' : null,
       swept_against ? 'They took every court.' : null,

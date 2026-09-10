@@ -425,6 +425,8 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         doublesCourts={courts.doubles}
         courtFormat={team.court_format}
         showCourtFormat={!!leagueSpec(team.league_type).multiLine}
+        matchScoring={(team as unknown as { match_scoring?: string | null }).match_scoring ?? null}
+        showMatchScoring={!leagueSpec(team.league_type).multiLine}
         teamName={team.name}
         level={team.level}
         levelLabel={leagueSpec(team.league_type).levelLabel}

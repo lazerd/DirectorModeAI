@@ -9,6 +9,7 @@
  * generator's partnership-chemistry signal.
  */
 import { NextResponse } from 'next/server';
+import { tallyCourts, type MatchScoring } from '@/lib/captain/recap';
 import { requireTeam, isError, pairRecords } from '@/lib/captain/server';
 
 export async function GET(req: Request) {
@@ -87,20 +88,36 @@ export async function POST(req: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const courtsWon = rows.filter((r) => r.won === true).length;
-  const courtsLost = rows.filter((r) => r.won === false).length;
+  // Decided the team's way — courts won, or TopDog points — so saving a 2-2
+  // split that is an 8-4 win on points doesn't report a tie.
+  const { data: scoringRow } = await db
+    .from('captain_teams')
+    .select('match_scoring')
+    .eq('id', teamId)
+    .maybeSingle();
+  const scoring: MatchScoring =
+    (scoringRow as { match_scoring?: string } | null)?.match_scoring === 'topdog' ? 'topdog' : 'courts';
+  const decided = rows.some((r) => r.won === true || r.won === false);
+  const tally = tallyCourts(
+    rows.map((r) => ({
+      won: (r.won as boolean | null) ?? null,
+      score: ((r as { score?: string | null }).score as string | null) ?? null,
+      defaulted: (r as { defaulted?: boolean }).defaulted === true,
+    })),
+    scoring,
+  );
 
   return NextResponse.json({
     ok: true,
     saved: rows.length,
     played: !!body.mark_played,
-    teamResult:
-      courtsWon || courtsLost
-        ? courtsWon > courtsLost
-          ? 'won'
-          : courtsWon < courtsLost
-            ? 'lost'
-            : 'tied'
-        : null,
+    teamResult: decided
+      ? tally.outcome === 'win'
+        ? 'won'
+        : tally.outcome === 'loss'
+          ? 'lost'
+          : 'tied'
+      : null,
+    scoreline: decided ? tally.scoreline : null,
   });
 }

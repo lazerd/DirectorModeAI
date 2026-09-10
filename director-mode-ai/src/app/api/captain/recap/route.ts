@@ -53,6 +53,8 @@ export async function POST(req: Request) {
     subject?: string;
     body?: string;
     save_template?: boolean;
+    /** The captain's call on the result, when the league scores it a way we don't. */
+    outcome?: string;
   };
   if (!body.match_id) return NextResponse.json({ error: 'match_id is required.' }, { status: 400 });
 
@@ -76,13 +78,21 @@ export async function POST(req: Request) {
     );
   }
 
-  const outcome: RecapOutcome = ctx.tally.outcome;
+  /*
+   * The scores decide the result (courts, or TopDog points for teams that play
+   * that way) — but a league rule we haven't met must never trap a captain in
+   * the wrong template, so an explicit choice wins. It also fills {result}.
+   */
+  const outcome: RecapOutcome = RECAP_OUTCOMES.includes(body.outcome as RecapOutcome)
+    ? (body.outcome as RecapOutcome)
+    : ctx.tally.outcome;
+  const rctx = { ...ctx, tally: { ...ctx.tally, outcome } };
   const saved = templateFor(outcome, ctx.templates);
   const subjectTpl = body.subject !== undefined ? body.subject : saved.subject;
   const bodyTpl = body.body !== undefined ? body.body : saved.body;
 
   const buildFor = (p: RecapPlayer) => {
-    const vars = recapVars(ctx, team.name, p.name);
+    const vars = recapVars(rctx, team.name, p.name);
     return matchRecapEmail(
       team.name,
       ctx.match,
@@ -112,6 +122,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       preview: true,
       outcome,
+      /** What the scores alone say — the panel marks it "(from the scores)". */
+      auto_outcome: ctx.tally.outcome,
+      scoring: ctx.scoring,
+      points: ctx.tally.points,
       scoreline: ctx.tally.scoreline,
       courts_won: ctx.tally.won,
       courts_lost: ctx.tally.lost,

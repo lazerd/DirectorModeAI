@@ -152,6 +152,8 @@ export async function PATCH(req: Request) {
      */
     apply_courts_to_upcoming?: boolean;
     court_format?: number;
+    /** How a match is decided: 'courts' won, or 'topdog' points. */
+    match_scoring?: string;
     source_team_id?: string;
   };
 
@@ -246,6 +248,13 @@ export async function PATCH(req: Request) {
       );
     }
     patch.court_format = n;
+  }
+
+  if (body.match_scoring !== undefined) {
+    if (body.match_scoring !== 'courts' && body.match_scoring !== 'topdog') {
+      return NextResponse.json({ error: 'Unknown match scoring.' }, { status: 400 });
+    }
+    patch.match_scoring = body.match_scoring;
   }
 
   if (body.eligibility_enabled !== undefined) patch.eligibility_enabled = !!body.eligibility_enabled;

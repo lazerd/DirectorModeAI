@@ -28,23 +28,93 @@ export type RecapCourt = {
 };
 
 /**
+ * How a team match is decided — a TEAM setting (captain_teams.match_scoring).
+ *
+ *   courts  most courts won takes the match (USTA).
+ *   topdog  points per court, the way TopDog / EBWT score it: straight-set win
+ *           3, 3-set win 2, 3-set loss 1, straight-set loss 0; a default 3-0.
+ *
+ * Fall B2/B3 split Orinda 2-2 on courts on 2026-09-10 and won 8-4 on points —
+ * the recap called it a tie, and there was no way to send the win.
+ */
+export type MatchScoring = 'courts' | 'topdog';
+
+type ScoredCourt = { won: boolean | null; score?: string | null; defaulted?: boolean | null };
+
+/**
+ * Sets each side won, read off a score written from OUR side — "6-4, 4-6, 0-1",
+ * "6-4, 5-6 RET", "7-6(5), 6-3". A match tiebreak counts as a set; an
+ * unfinished set at a retirement goes to whoever was ahead in it.
+ */
+export function setsFromScore(score: string | null | undefined): { ours: number; theirs: number } {
+  let ours = 0;
+  let theirs = 0;
+  for (const m of (score || '').matchAll(/(\d+)\s*-\s*(\d+)/g)) {
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    if (a > b) ours++;
+    else if (b > a) theirs++;
+  }
+  return { ours, theirs };
+}
+
+/** TopDog points for one court, or null while it has no result. */
+export function topdogPoints(c: ScoredCourt): { ours: number; theirs: number } | null {
+  if (c.won == null) return null;
+  if (c.defaulted) return c.won ? { ours: 3, theirs: 0 } : { ours: 0, theirs: 3 };
+  const sets = setsFromScore(c.score);
+  // The loser taking a set is what costs the winner a point and earns the loser one.
+  const loserTookASet = (c.won ? sets.theirs : sets.ours) > 0;
+  const winner = loserTookASet ? 2 : 3;
+  const loser = loserTookASet ? 1 : 0;
+  return c.won ? { ours: winner, theirs: loser } : { ours: loser, theirs: winner };
+}
+
+/**
  * The team result from the courts.
  *
  * Defaulted courts count — they carry a point for the team even though nobody
  * played them, which is exactly how the league scores them. Courts with no
  * win/loss recorded yet are ignored rather than counted as losses.
+ *
+ * Under `topdog` the outcome and scoreline come from points; `won`/`lost`
+ * still report courts, so the captain can see both.
  */
-export function tallyCourts(courts: RecapCourt[]): {
+export function tallyCourts(
+  courts: ScoredCourt[],
+  scoring: MatchScoring = 'courts',
+): {
   won: number;
   lost: number;
+  /** TopDog points for / against; null when the team scores by courts. */
+  points: { ours: number; theirs: number } | null;
   outcome: RecapOutcome;
   scoreline: string;
 } {
   const won = courts.filter((c) => c.won === true).length;
   const lost = courts.filter((c) => c.won === false).length;
+  if (scoring === 'topdog') {
+    let ours = 0;
+    let theirs = 0;
+    for (const c of courts) {
+      const p = topdogPoints(c);
+      if (p) {
+        ours += p.ours;
+        theirs += p.theirs;
+      }
+    }
+    return {
+      won,
+      lost,
+      points: { ours, theirs },
+      outcome: ours > theirs ? 'win' : ours < theirs ? 'loss' : 'tie',
+      scoreline: `${ours}-${theirs}`,
+    };
+  }
   return {
     won,
     lost,
+    points: null,
     outcome: won > lost ? 'win' : won < lost ? 'loss' : 'tie',
     scoreline: `${won}-${lost}`,
   };
@@ -158,18 +228,19 @@ export function templateFor(
  * one win or loss per MATCH, from that match's court tally, not per court.
  */
 export function seasonRecord(
-  matches: { matchId: string; courts: { won: boolean | null }[] }[],
+  matches: { matchId: string; courts: ScoredCourt[] }[],
+  scoring: MatchScoring = 'courts',
 ): { wins: number; losses: number; ties: number; label: string } {
   let wins = 0;
   let losses = 0;
   let ties = 0;
   for (const m of matches) {
-    const won = m.courts.filter((c) => c.won === true).length;
-    const lost = m.courts.filter((c) => c.won === false).length;
     // A played match with nothing recorded is not a tie — it is unscored.
-    if (!won && !lost) continue;
-    if (won > lost) wins++;
-    else if (won < lost) losses++;
+    if (!m.courts.some((c) => c.won === true || c.won === false)) continue;
+    // Same rule as the match's own recap, so the record never disagrees with it.
+    const { outcome } = tallyCourts(m.courts, scoring);
+    if (outcome === 'win') wins++;
+    else if (outcome === 'loss') losses++;
     else ties++;
   }
   return {

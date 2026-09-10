@@ -25,6 +25,10 @@ type Props = {
   courtFormat: number | null;
   /** Only leagues where players share lines need to publish this. */
   showCourtFormat: boolean;
+  /** How a match is decided: 'courts' won, or 'topdog' points. */
+  matchScoring: string | null;
+  /** Adult leagues only — JTT is decided on games. */
+  showMatchScoring: boolean;
   teamName: string;
   level: string | null;
   levelLabel: string;
@@ -61,6 +65,25 @@ const INPUT_COLOR = { color: '#ffffff' } as const;
 const field =
   'w-24 px-3 py-2 rounded-lg bg-[#001820] border border-white/10 focus:border-[#D3FB52]/50 focus:outline-none text-sm';
 
+/**
+ * How a team match is decided. TopDog / EBWT leagues score points per court,
+ * so a 2–2 split on courts can be an 8–4 win — which the recap used to call a
+ * tie with no way out (Fall B2/B3 vs Orinda, 2026-09-10).
+ */
+const SCORING = [
+  {
+    value: 'courts',
+    title: 'Courts won',
+    blurb: 'Most courts takes the match — how USTA leagues score it. 3 courts to 2 is a 3–2 win.',
+  },
+  {
+    value: 'topdog',
+    title: 'TopDog points',
+    blurb:
+      'Points per court: 3 for a straight-set win, 2 for a three-set win, 1 for a three-set loss. A 2–2 split on courts can be an 8–4 win.',
+  },
+];
+
 export default function TeamSettingsPanel({
   teamId,
   captainingStyle,
@@ -70,6 +93,8 @@ export default function TeamSettingsPanel({
   doublesCourts,
   courtFormat,
   showCourtFormat,
+  matchScoring,
+  showMatchScoring,
   teamName,
   level,
   levelLabel,
@@ -125,6 +150,13 @@ export default function TeamSettingsPanel({
     const previous = style;
     setStyle(v); // optimistic: the cards should respond to the click at once
     if (!(await save({ captaining_style: v }))) setStyle(previous);
+  }
+
+  const [scoring, setScoring] = useState(matchScoring === 'topdog' ? 'topdog' : 'courts');
+  async function pickScoring(v: string) {
+    const previous = scoring;
+    setScoring(v);
+    if (!(await save({ match_scoring: v }))) setScoring(previous);
   }
 
   /*
@@ -306,6 +338,46 @@ export default function TeamSettingsPanel({
         <p className="text-xs text-white/35 mt-2">
           What a new match starts with — every match can still be changed on its own.
         </p>
+      )}
+
+      {showMatchScoring && (
+        <>
+          <h3 className="text-white/50 text-sm uppercase tracking-wide mt-8 mb-2">
+            How a match is won
+          </h3>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {SCORING.map((s) => {
+              const on = scoring === s.value;
+              return (
+                <button
+                  key={s.value}
+                  onClick={() => pickScoring(s.value)}
+                  disabled={busy}
+                  aria-pressed={on}
+                  className={`text-left rounded-2xl border p-4 transition disabled:opacity-60 ${
+                    on
+                      ? 'border-[#D3FB52]/60 bg-[#D3FB52]/[0.07]'
+                      : 'border-white/[0.08] bg-[#002838] hover:border-white/25'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`w-3 h-3 rounded-full shrink-0 ${
+                        on ? 'bg-[#D3FB52]' : 'border border-white/25'
+                      }`}
+                    />
+                    <span className="text-white font-medium">{s.title}</span>
+                  </div>
+                  <p className="text-sm text-white/50 mt-1.5">{s.blurb}</p>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-white/35 mt-2">
+            Decides which recap goes out — win, loss or tie — the score it prints, and your season
+            record. You can still pick the result by hand on any recap.
+          </p>
+        </>
       )}
 
       {showCourtFormat && (

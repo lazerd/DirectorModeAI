@@ -12,6 +12,7 @@ import {
   firstName,
   seasonRecord,
   tallyCourts,
+  type MatchScoring,
   type RecapOutcome,
   type RecapVars,
   type TemplateRow,
@@ -48,7 +49,9 @@ export type RecapContext = {
   /** Active players with an email — everyone the recap would go to. */
   roster: RecapPlayer[];
   courts: RecapCourtRow[];
-  tally: { won: number; lost: number; outcome: RecapOutcome; scoreline: string };
+  tally: ReturnType<typeof tallyCourts>;
+  /** How this team's matches are decided — courts won, or TopDog points. */
+  scoring: MatchScoring;
   record: { wins: number; losses: number; ties: number; label: string };
   nextMatch: MatchInfo | null;
   templates: TemplateRow[];
@@ -76,8 +79,13 @@ export async function loadRecapContext(
 ): Promise<RecapContext> {
   const matchId = matchRow.id as string;
 
-  const [{ data: players }, { data: lineups }, { data: results }, { data: templates }] =
-    await Promise.all([
+  const [
+    { data: players },
+    { data: lineups },
+    { data: results },
+    { data: templates },
+    { data: teamRow },
+  ] = await Promise.all([
       db
         .from('captain_players')
         .select('id, name, email, player_token, contact2_name, contact2_email')
@@ -94,7 +102,11 @@ export async function loadRecapContext(
         .select('court_number, score, won, defaulted')
         .eq('match_id', matchId),
       db.from('captain_recap_templates').select('outcome, subject, body').eq('team_id', teamId),
+      db.from('captain_teams').select('match_scoring').eq('id', teamId).maybeSingle(),
     ]);
+
+  const scoring: MatchScoring =
+    (teamRow as { match_scoring?: string } | null)?.match_scoring === 'topdog' ? 'topdog' : 'courts';
 
   const all = (players as RecapPlayer[]) || [];
   const nameOf = (id: string | null) => (id ? (all.find((p) => p.id === id)?.name ?? '—') : '—');
@@ -140,9 +152,15 @@ export async function loadRecapContext(
   ];
   const { data: seasonResults } = await db
     .from('captain_results')
-    .select('match_id, won')
+    .select('match_id, won, score, defaulted')
     .in('match_id', playedIds);
-  const seasonRows = (seasonResults as { match_id: string; won: boolean | null }[]) || [];
+  const seasonRows =
+    (seasonResults as {
+      match_id: string;
+      won: boolean | null;
+      score: string | null;
+      defaulted: boolean | null;
+    }[]) || [];
 
   // Next fixture, so the recap ends looking forward instead of stopping dead.
   const { data: nextRow } = await db
@@ -159,10 +177,12 @@ export async function loadRecapContext(
     match: recapMatchInfo(matchRow),
     roster: all.filter((p) => !!p.email),
     courts,
-    tally: tallyCourts(courts),
+    tally: tallyCourts(courts, scoring),
     record: seasonRecord(
       playedIds.map((id) => ({ matchId: id, courts: seasonRows.filter((r) => r.match_id === id) })),
+      scoring,
     ),
+    scoring,
     nextMatch: nextRow ? recapMatchInfo(nextRow as Record<string, unknown>) : null,
     templates: (templates as TemplateRow[]) || [],
     hasResults: resultRows.length > 0,
