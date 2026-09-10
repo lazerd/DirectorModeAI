@@ -30,11 +30,12 @@ import {
   type TimelineEvent,
 } from './timeline';
 import { withSecondContact, recipientRows } from './teamContacts';
+import { DEFAULT_JTT_COURT_FORMAT, leagueSpec, roundsByCourt } from './leagues';
 
 export const MATCH_COLUMNS =
   'id, team_id, match_at, status, is_home, opponent, location, arrival_note, ' +
   'opposing_captain_name, opposing_captain_phone, availability_poll_sent_at, ' +
-  'nudge_sent_at, lineup_email_sent_at, reminder_sent_at';
+  'nudge_sent_at, lineup_email_sent_at, reminder_sent_at, court_format';
 
 type PlayerRow = {
   id: string;
@@ -63,6 +64,11 @@ export type TeamEmailContext = {
   settings: Record<EmailKind, ResolvedSetting>;
   overrides: OverrideRow[];
   counts: TimelineCounts;
+  /**
+   * JTT only: courts played at once for each match (match → team → 3), which
+   * decides the rounds the lineup and reminder emails print. Empty for adults.
+   */
+  roundFormat: Map<string, number>;
 };
 
 function infoOf(m: Record<string, unknown>): MatchInfo {
@@ -97,8 +103,14 @@ export async function loadTeamEmailContext(
 ): Promise<TeamEmailContext> {
   const matchIds = matches.map((m) => m.id as string);
 
-  const [{ data: players }, { data: avail }, { data: courtRows }, { data: settingRows }, { data: ovRows }] =
-    await Promise.all([
+  const [
+    { data: players },
+    { data: avail },
+    { data: courtRows },
+    { data: settingRows },
+    { data: ovRows },
+    { data: teamShape },
+  ] = await Promise.all([
       db
         .from('captain_players')
         .select('id, name, email, player_token, contact2_name, contact2_email')
@@ -124,7 +136,21 @@ export async function loadTeamEmailContext(
             .select('match_id, kind, skip, send_at, subject_override, intro_override')
             .in('match_id', matchIds)
         : Promise.resolve({ data: [] as OverrideRow[] }),
+      // League + default format, for the rounds a JTT email prints. Read here
+      // rather than widened on every caller's team row, so no caller can forget.
+      db.from('captain_teams').select('league_type, court_format').eq('id', team.id).maybeSingle(),
     ]);
+
+  const shape = teamShape as { league_type: string | null; court_format: number | null } | null;
+  const roundFormat = new Map<string, number>();
+  if (leagueSpec(shape?.league_type).multiLine) {
+    for (const m of matches) {
+      roundFormat.set(
+        m.id as string,
+        (m.court_format as number | null) ?? shape?.court_format ?? DEFAULT_JTT_COURT_FORMAT,
+      );
+    }
+  }
 
   const roster = ((players as PlayerRow[]) || []).filter((p) => !!p.email);
 
@@ -173,6 +199,7 @@ export async function loadTeamEmailContext(
     settings: resolveSettings((settingRows as SettingRow[]) || []),
     overrides: (ovRows as OverrideRow[]) || [],
     counts,
+    roundFormat,
   };
 }
 
@@ -230,11 +257,21 @@ export function payloadsFor(
 
   const nameOf = (id: string | null) => (id ? (ctx.roster.find((p) => p.id === id)?.name ?? '—') : '—');
 
+  // JTT: which round each line is played in, from the same plan the match page uses.
+  const fmt = ctx.roundFormat.get(matchId);
+  const rounds = fmt
+    ? roundsByCourt(
+        courts.map((c) => ({ courtNumber: c.court_number, courtType: c.court_type })),
+        fmt,
+      )
+    : null;
+
   if (kind === 'lineup') {
     const rows: LineupRow[] = courts.map((c) => ({
       courtNumber: c.court_number,
       courtType: c.court_type,
       names: [nameOf(c.player1_id)].concat(c.court_type === 'doubles' ? [nameOf(c.player2_id)] : []),
+      round: rounds?.get(c.court_number) ?? null,
     }));
     const playing = new Set(
       courts.flatMap((c) => [c.player1_id, c.player2_id]).filter(Boolean) as string[],
@@ -248,9 +285,22 @@ export function payloadsFor(
   }
 
   // reminder
+  // Every line the player is on — a JTT child can have three — with its round.
   const courtFor = (pid: string) => {
-    const c = courts.find((x) => x.player1_id === pid || x.player2_id === pid);
-    return c ? `${c.court_type === 'singles' ? 'Singles' : 'Doubles'} ${c.court_number}` : null;
+    const mine = courts
+      .filter((x) => x.player1_id === pid || x.player2_id === pid)
+      .sort(
+        (a, b) =>
+          (rounds?.get(a.court_number) ?? 0) - (rounds?.get(b.court_number) ?? 0) ||
+          a.court_number - b.court_number,
+      );
+    if (!mine.length) return null;
+    return mine
+      .map((c) => {
+        const r = rounds?.get(c.court_number);
+        return `${c.court_type === 'singles' ? 'Singles' : 'Doubles'} ${c.court_number}${r ? ` (round ${r})` : ''}`;
+      })
+      .join(', ');
   };
   return audience
     .filter((p) => !!courtFor(p.id))

@@ -223,7 +223,12 @@ export type LineupRow = {
   courtNumber: number;
   courtType: 'singles' | 'doubles';
   names: string[];
+  /** JTT: the round the line is played in. Groups the table by round when set. */
+  round?: number | null;
 };
+
+const lineupLineLabel = (row: LineupRow) =>
+  `${row.courtType === 'singles' ? 'Singles' : 'Doubles'} ${row.courtNumber}`;
 
 /**
  * Lineup, 7 days out. Goes to the WHOLE team so nobody has to ask whether
@@ -238,26 +243,53 @@ export function lineupEmail(
   tz?: string,
   c?: EmailCustom,
 ): { to: string; subject: string; html: string } {
-  const table = rows
-    .map(
-      (row) => `
+  /*
+   * JTT: grouped by round, the way the match is played — a parent needs to
+   * know WHEN their child is on, not just which line. Adult sheets have no
+   * rounds and keep the plain court list.
+   */
+  const byRound = rows.some((row) => row.round);
+  const ordered = byRound
+    ? [...rows].sort(
+        (a, b) =>
+          (a.round ?? 99) - (b.round ?? 99) ||
+          (a.courtType === b.courtType ? 0 : a.courtType === 'singles' ? -1 : 1) ||
+          a.courtNumber - b.courtNumber,
+      )
+    : rows;
+
+  let table = '';
+  let lastRound: number | null | undefined;
+  for (const row of ordered) {
+    if (byRound && row.round !== lastRound) {
+      lastRound = row.round;
+      table += `
+      <tr>
+        <td colspan="2" style="padding:14px 12px 6px;border-bottom:2px solid #0f172a;font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase;color:#0f172a">
+          ${row.round ? `Round ${row.round}` : 'Other'}
+        </td>
+      </tr>`;
+    }
+    table += `
       <tr>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;white-space:nowrap;color:#64748b;font-size:13px">
-          ${row.courtType === 'singles' ? 'Singles' : 'Doubles'} ${row.courtNumber}
+          ${lineupLineLabel(row)}
         </td>
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:15px">${row.names.join(' / ')}</td>
-      </tr>`,
-    )
-    .join('');
+      </tr>`;
+  }
 
-  const yourCourt =
-    rows.find((row) => row.names.includes(r.name)) ?? null;
-  const courtLabel = yourCourt
-    ? `${yourCourt.courtType === 'singles' ? 'Singles' : 'Doubles'} ${yourCourt.courtNumber}`
+  // A JTT child can be on up to three lines — name every one, with its round.
+  const mine = ordered.filter((row) => row.names.includes(r.name));
+  const courtLabel = mine.length
+    ? mine.map((row) => `${lineupLineLabel(row)}${row.round ? ` (round ${row.round})` : ''}`).join(', ')
     : null;
 
+  // Say it in words, not just in the table: a JTT parent scanning eight lines
+  // for their child's name three times is exactly the reading this saves.
   const confirm = isPlaying
-    ? `<div style="margin:20px 0 8px">
+    ? `${courtLabel ? `<p style="font-size:16px;margin:8px 0"><strong>You're on ${courtLabel}</strong></p>` : ''}
+       <div style="margin:20px 0 8px">
          ${button(`${BASE}/api/captain/confirm/${r.token}/${m.id}/yes`, "✓ Yes — I'll be there", BRAND)}
          ${button(`${BASE}/captain/confirm/${r.token}/${m.id}?a=out`, '✗ Sorry — I can’t play', '#fee2e2', '#991b1b')}
        </div>

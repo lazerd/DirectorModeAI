@@ -22,7 +22,12 @@ import {
   type RatingType,
 } from '@/lib/captain/lineup';
 import { generateJttLineup } from '@/lib/captain/jttLineup';
-import { DEFAULT_JTT_COURT_FORMAT, jttRoundPlan, roundPlanText } from '@/lib/captain/leagues';
+import {
+  DEFAULT_JTT_COURT_FORMAT,
+  jttRoundPlan,
+  roundPlanText,
+  roundsByCourt,
+} from '@/lib/captain/leagues';
 import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
 import { leagueSpec } from '@/lib/captain/leagues';
 import { resolveAvailability } from '@/lib/captain/availability';
@@ -369,12 +374,27 @@ export async function POST(req: Request) {
       }[]) || [];
     const nameOf = (id: string | null) => (id ? roster.find((p) => p.id === id)?.name ?? '—' : '—');
 
-    const rows: LineupRow[] = ((lineups as Record<string, unknown>[]) || []).map((l) => ({
+    // JTT: print each line's round, from the same plan the match page shows.
+    const lineRows = (lineups as Record<string, unknown>[]) || [];
+    const rounds = leagueSpec(team.league_type as string).multiLine
+      ? roundsByCourt(
+          lineRows.map((l) => ({
+            courtNumber: l.court_number as number,
+            courtType: l.court_type as 'singles' | 'doubles',
+          })),
+          (match.court_format as number | null) ??
+            (team.court_format as number | null) ??
+            DEFAULT_JTT_COURT_FORMAT,
+        )
+      : null;
+
+    const rows: LineupRow[] = lineRows.map((l) => ({
       courtNumber: l.court_number as number,
       courtType: l.court_type as 'singles' | 'doubles',
       names: [nameOf(l.player1_id as string | null)].concat(
         l.court_type === 'doubles' ? [nameOf(l.player2_id as string | null)] : [],
       ),
+      round: rounds?.get(l.court_number as number) ?? null,
     }));
 
     const playing = new Set(

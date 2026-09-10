@@ -8,6 +8,7 @@ import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 import { lineupAsText } from '@/lib/captain/lineupText';
 import { JTT_COURT_FORMATS, leagueSpec, roundClashes, roundsByCourt } from '@/lib/captain/leagues';
 import { lineupPrintHtml } from '@/lib/captain/lineupPrint';
+import { shrinkImage } from '@/lib/captain/shrinkImage';
 
 export type MatchPlayer = {
   id: string;
@@ -931,21 +932,28 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     setReading(true);
     setReadNote(null);
     try {
-      const data = await new Promise<string>((resolve, reject) => {
-        const fr = new FileReader();
-        fr.onerror = () => reject(new Error('Could not read that file.'));
-        // strip the "data:<type>;base64," prefix the API does not want
-        fr.onload = () => resolve(String(fr.result).split(',')[1] ?? '');
-        fr.readAsDataURL(file);
-      });
+      // Shrink first. A phone photo is 3–8 MB, and Vercel rejects anything over
+      // ~4.5 MB before it reaches the route — that was the "Request En…" error.
+      const { data, mediaType } = await shrinkImage(file);
 
       const res = await fetch('/api/captain/read-scorecard', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ match_id: matchId, mediaType: file.type, data }),
+        body: JSON.stringify({ match_id: matchId, mediaType, data }),
       });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error || 'Could not read the scorecard.');
+      // A platform error (413 too large, 504 timeout) arrives as plain text,
+      // not JSON — say what happened instead of surfacing a parser error.
+      const j = (await res.json().catch(() => ({}))) as { error?: string; courts?: unknown[] };
+      if (!res.ok) {
+        throw new Error(
+          j.error ||
+            (res.status === 413
+              ? 'That photo is too large to upload. Try again a little further back from the scorecard.'
+              : res.status === 504
+                ? 'Reading the scorecard took too long. Try again — a straighter, brighter photo reads faster.'
+                : `Could not read the scorecard (error ${res.status}).`),
+        );
+      }
 
       const rows = (j.courts ?? []) as {
         court_number: number;

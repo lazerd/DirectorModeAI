@@ -22,7 +22,10 @@ export const dynamic = 'force-dynamic';
 const MODEL = process.env.AI_MODEL_VISION ?? 'claude-opus-4-8';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY ?? process.env.AI_API_KEY;
 const IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-const MAX_BYTES = 12 * 1024 * 1024;
+// Vercel rejects request bodies over ~4.5 MB before this route even runs, so a
+// bigger cap here was unreachable. The match page shrinks photos to ~0.5 MB
+// first (shrinkImage); this only catches a caller that skips that.
+const MAX_BYTES = 4 * 1024 * 1024;
 
 const RATE_WINDOW_MS = 60_000;
 const RATE_MAX = 8;
