@@ -18,7 +18,12 @@
  * about and what the email prints can never disagree.
  */
 import { NextResponse } from 'next/server';
-import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
+import {
+  teamCcRecipients,
+  ccPayloads,
+  withSecondContact,
+  recipientRows,
+} from '@/lib/captain/teamContacts';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { matchRecapEmail, sendAll } from '@/lib/captain/emails';
@@ -115,7 +120,7 @@ export async function POST(req: Request) {
       html: email.html,
       sample_for: ctx.roster.length ? sample.name : null,
       count: ctx.roster.length,
-      recipients: ctx.roster.map((p) => ({ name: p.name, email: p.email })),
+      recipients: ctx.roster.flatMap(recipientRows),
       already_sent_at: ((matchRow as Record<string, unknown>).recap_sent_at as string) ?? null,
       template: {
         subject: subjectTpl,
@@ -164,11 +169,11 @@ export async function POST(req: Request) {
   }
 
   // The result goes to the coaching staff as well — they were there.
-  const payloads = ctx.roster.map(buildFor);
+  const payloads = ctx.roster.flatMap((p) => withSecondContact(buildFor(p), p.contact2_email));
   const ccs = await teamCcRecipients(
     db,
     teamId,
-    ctx.roster.map((p) => (p as { email?: string | null }).email ?? null),
+    payloads.map((p) => p.to),
   );
   const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];
 

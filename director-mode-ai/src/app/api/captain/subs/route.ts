@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { requireTeam, isError, capForTeam } from '@/lib/captain/server';
 import { subRequestEmail, sendAll, type MatchInfo } from '@/lib/captain/emails';
+import { withSecondContact } from '@/lib/captain/teamContacts';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
 
@@ -73,7 +74,7 @@ export async function POST(req: Request) {
 
   const { data: players } = await db
     .from('captain_players')
-    .select('id, name, email, player_token, rating, gender, court_limit')
+    .select('id, name, email, player_token, rating, gender, court_limit, contact2_email')
     .eq('team_id', teamId)
     .eq('active', true);
 
@@ -84,6 +85,7 @@ export async function POST(req: Request) {
       id: string;
       name: string;
       email: string | null;
+      contact2_email: string | null;
       player_token: string;
       rating: number | null;
       gender: 'M' | 'F' | null;
@@ -143,13 +145,16 @@ export async function POST(req: Request) {
   try {
     const results = await sendAll(
       ctx.userId,
-      eligible.map((p) =>
-        subRequestEmail(team.name, info, request.request_token, {
-          playerId: p.id,
-          name: p.name,
-          email: p.email as string,
-          token: p.player_token,
-        }),
+      eligible.flatMap((p) =>
+        withSecondContact(
+          subRequestEmail(team.name, info, request.request_token, {
+            playerId: p.id,
+            name: p.name,
+            email: p.email as string,
+            token: p.player_token,
+          }),
+          p.contact2_email,
+        ),
       ),
     );
     return NextResponse.json({

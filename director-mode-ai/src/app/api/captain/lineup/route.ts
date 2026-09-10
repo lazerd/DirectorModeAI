@@ -27,6 +27,7 @@ import { leagueSpec } from '@/lib/captain/leagues';
 import { resolveAvailability } from '@/lib/captain/availability';
 import { answersByPlayer, rowsWithAnswers, answerTally } from '@/lib/captain/lineupSave';
 import { lineupEmail, sendAll, type LineupRow, type MatchInfo } from '@/lib/captain/emails';
+import { withSecondContact } from '@/lib/captain/teamContacts';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
 
@@ -342,11 +343,18 @@ export async function POST(req: Request) {
 
     const { data: players } = await db
       .from('captain_players')
-      .select('id, name, email, player_token')
+      .select('id, name, email, player_token, contact2_email')
       .eq('team_id', teamId)
       .eq('active', true);
 
-    const roster = (players as { id: string; name: string; email: string | null; player_token: string }[]) || [];
+    const roster =
+      (players as {
+        id: string;
+        name: string;
+        email: string | null;
+        player_token: string;
+        contact2_email: string | null;
+      }[]) || [];
     const nameOf = (id: string | null) => (id ? roster.find((p) => p.id === id)?.name ?? '—' : '—');
 
     const rows: LineupRow[] = ((lineups as Record<string, unknown>[]) || []).map((l) => ({
@@ -376,13 +384,16 @@ export async function POST(req: Request) {
 
     const payloads = roster
       .filter((p) => !!p.email)
-      .map((p) =>
-        lineupEmail(
-          team.name,
-          info,
-          rows,
-          { playerId: p.id, name: p.name, email: p.email as string, token: p.player_token },
-          playing.has(p.id),
+      .flatMap((p) =>
+        withSecondContact(
+          lineupEmail(
+            team.name,
+            info,
+            rows,
+            { playerId: p.id, name: p.name, email: p.email as string, token: p.player_token },
+            playing.has(p.id),
+          ),
+          p.contact2_email,
         ),
       );
 
@@ -391,7 +402,7 @@ export async function POST(req: Request) {
     const ccs = await teamCcRecipients(
       db,
       ctx.teamId,
-      (players ?? []).filter((p) => !!p.email).map((p) => p.email as string),
+      payloads.map((p) => p.to),
     );
     const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];
 

@@ -30,7 +30,13 @@ export type ContactRow = {
   is_sub: boolean;
 };
 
-type Draft = { email?: string; phone?: string };
+type Draft = { email?: string; phone?: string; contact2_email?: string };
+
+// Literal class strings so Tailwind keeps them. Juniors get a second parent
+// column: both parents want the match emails, and a copy to the second one is
+// the difference between "I never heard about Sunday" and a yes.
+const GRID_ADULT = 'sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]';
+const GRID_JUNIOR = 'sm:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_minmax(0,1.3fr)_minmax(0,1fr)]';
 
 const field =
   'w-full px-2.5 py-2 rounded-lg bg-[#001820] border border-white/10 placeholder-white/25 focus:border-[#D3FB52]/50 focus:outline-none text-sm';
@@ -55,7 +61,13 @@ export default function RosterContactsPanel({
   const [error, setError] = useState<string | null>(null);
 
   const valueFor = (p: ContactRow, k: keyof Draft) =>
-    draft[p.id]?.[k] ?? (k === 'phone' ? formatPhone(p.phone) || '' : p.email || '');
+    draft[p.id]?.[k] ??
+    (k === 'phone'
+      ? formatPhone(p.phone) || ''
+      : k === 'contact2_email'
+        ? p.contact2_email || ''
+        : p.email || '');
+  const grid = juniors ? GRID_JUNIOR : GRID_ADULT;
 
   const set = (id: string, k: keyof Draft, v: string) =>
     setDraft((d) => ({ ...d, [id]: { ...d[id], [k]: v } }));
@@ -117,7 +129,7 @@ export default function RosterContactsPanel({
 
       <p className="text-white/40 text-xs mt-1">
         {juniors
-          ? 'Availability, lineups and match reminders go to the parent. Without an email a player simply never hears from the team.'
+          ? 'Availability, lineups and match reminders go to the parent — and to the 2nd parent too, if you add one. Without an email a player simply never hears from the team.'
           : 'Without an email a player never gets the availability poll or the lineup. The mobile is for a late change on match day.'}
       </p>
 
@@ -138,17 +150,15 @@ export default function RosterContactsPanel({
 
       <div className="mt-4 space-y-2">
         {/* Column headers, so the two boxes are never a guess. */}
-        <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-2 text-[11px] uppercase tracking-wider text-white/30">
+        <div className={`hidden sm:grid ${grid} gap-2 text-[11px] uppercase tracking-wider text-white/30`}>
           <span>Player</span>
           <span>{juniors ? 'Parent email' : 'Email'}</span>
+          {juniors && <span>2nd parent email</span>}
           <span>Mobile</span>
         </div>
 
         {players.map((p) => (
-          <div
-            key={p.id}
-            className="grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] gap-2 items-center"
-          >
+          <div key={p.id} className={`grid grid-cols-1 ${grid} gap-2 items-center`}>
             <span className="min-w-0 truncate text-white text-sm">
               {p.name}
               {p.is_sub && <span className="text-white/30 text-xs"> · sub</span>}
@@ -163,6 +173,18 @@ export default function RosterContactsPanel({
               style={INPUT_COLOR}
               className={field}
             />
+            {juniors && (
+              <input
+                type="email"
+                inputMode="email"
+                autoComplete="off"
+                placeholder="2nd parent (optional)"
+                value={valueFor(p, 'contact2_email')}
+                onChange={(e) => set(p.id, 'contact2_email', e.target.value)}
+                style={INPUT_COLOR}
+                className={field}
+              />
+            )}
             <input
               type="tel"
               inputMode="tel"
