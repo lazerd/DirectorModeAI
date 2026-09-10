@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { FOUNDING_PRICE_USD, FOUNDING_LOCK_MONTHS } from '@/config/pricing';
 
 /**
  * page.tsx is a client component, so a `metadata` export there is silently
@@ -7,8 +8,7 @@ import type { Metadata } from 'next';
  */
 export const metadata: Metadata = {
   title: 'Pricing — ClubMode AI',
-  description:
-    'Free to run your club. $49/mo when you want texting and AI. No card to start.',
+  description: `Founding clubs get every ClubMode tool free during beta — your whole staff, no card, no trial clock. $${FOUNDING_PRICE_USD}/month locked for ${FOUNDING_LOCK_MONTHS} months when paid plans launch.`,
   alternates: { canonical: '/pricing' },
 };
 
