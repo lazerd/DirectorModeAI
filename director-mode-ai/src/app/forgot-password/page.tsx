@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Trophy, Mail, ArrowLeft } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { friendlyAuthError } from '@/lib/authErrors';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -34,7 +35,7 @@ export default function ForgotPasswordPage() {
       );
 
       if (resetErr) {
-        setError(resetErr.message);
+        setError(friendlyAuthError(resetErr.message, "We couldn't send the reset link. Please try again."));
         setLoading(false);
         return;
       }

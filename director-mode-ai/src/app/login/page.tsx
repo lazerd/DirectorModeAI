@@ -3,14 +3,20 @@
 import { useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Trophy, Eye, EyeOff } from 'lucide-react';
+import { Zap, Eye, EyeOff } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { safeNext, defaultDestination } from '@/lib/postLogin';
+import { friendlyAuthError } from '@/lib/authErrors';
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect');
-  
+  // Middleware sends `redirect`; signup and email flows use `next`. Either way
+  // it must be a relative path, or it's ignored.
+  const redirectTo = safeNext(searchParams.get('redirect') ?? searchParams.get('next'));
+  // Set by /auth/confirm when an email link was expired or already used.
+  const linkFailed = searchParams.get('error') === 'link';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -30,7 +36,7 @@ function LoginForm() {
       });
 
       if (error) {
-        setError(error.message);
+        setError(friendlyAuthError(error.message, error.message));
         setLoading(false);
         return;
       }
@@ -42,8 +48,9 @@ function LoginForm() {
         return;
       }
 
-      // Otherwise, always go to homepage - let user choose their tool
-      router.push('/');
+      // Otherwise their own home: /welcome for directors, /member for members.
+      // Not '/', which is the marketing page for a product they already use.
+      router.push(await defaultDestination(supabase, data.user.id));
       router.refresh();
     } catch {
       setError('An error occurred. Please try again.');
@@ -56,6 +63,12 @@ function LoginForm() {
     <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
       <h2 className="font-semibold text-2xl mb-2 text-slate-900">Sign in</h2>
       <p className="text-gray-500 mb-6">Enter your credentials to continue</p>
+
+      {linkFailed && (
+        <div className="bg-amber-50 text-amber-800 p-3 rounded-lg text-sm mb-4">
+          That email link has expired or was already used. Sign in below, or request a new one.
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -133,9 +146,11 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center gap-2.5 mb-8">
           <div className="w-10 h-10 rounded-xl bg-[#D3FB52] flex items-center justify-center">
-            <Trophy size={22} className="text-[#002838]" />
+            <Zap size={22} className="text-[#002838]" />
           </div>
-          <span className="font-semibold text-2xl text-white">ClubMode AI</span>
+          <span className="font-semibold text-2xl text-white">
+            ClubMode<span className="text-[#D3FB52]"> AI</span>
+          </span>
         </div>
 
         <Suspense fallback={<div className="rounded-xl border border-white/10 bg-white/[0.03] p-6 text-center text-white/50">Loading...</div>}>
