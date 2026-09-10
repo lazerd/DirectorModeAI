@@ -37,6 +37,7 @@ const fmt = (d: string) =>
 export default function PathwayFamilyPage() {
   const { token } = useParams<{ token: string }>();
   const [player, setPlayer] = useState<PlayerState | null>(null);
+  const [clubName, setClubName] = useState<string | null>(null);
   const [awards, setAwards] = useState<Award[]>([]);
   const [checks, setChecks] = useState<Check[]>([]);
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading');
@@ -48,6 +49,7 @@ export default function PathwayFamilyPage() {
         if (!res.ok) throw new Error();
         const j = await res.json();
         setPlayer(j.player);
+        setClubName(j.clubName || null);
         setAwards(j.awards || []);
         setChecks(j.checks || []);
         setState('ok');
@@ -109,7 +111,7 @@ export default function PathwayFamilyPage() {
             className="text-[11px] font-semibold tracking-[0.22em] uppercase text-gray-500"
             style={{ fontFamily: 'Inter, sans-serif' }}
           >
-            The Sleepy Hollow Junior Pathway
+            {clubName ? `${clubName} · Junior Pathway` : 'The Junior Pathway'}
           </p>
           <h1
             className="mt-2 leading-none"
@@ -264,7 +266,7 @@ export default function PathwayFamilyPage() {
 
         <footer className="mt-12 pt-6 border-t border-gray-200 text-center">
           <p className="text-xs text-gray-400">
-            Sleepy Hollow Junior Tennis · powered by <strong>ClubMode</strong>
+            {clubName ? `${clubName} · ` : ''}powered by <strong>ClubMode</strong>
           </p>
         </footer>
       </div>
