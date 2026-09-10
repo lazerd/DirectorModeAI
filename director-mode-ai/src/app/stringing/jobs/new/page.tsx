@@ -146,15 +146,27 @@ export default function NewStringingJobPage() {
   };
 
   const createCustomer = async () => {
-    if (!newCustomer.full_name) return;
-    
+    if (!newCustomer.full_name.trim()) {
+      setError('Enter the customer\'s name.');
+      return;
+    }
+    setError('');
+
     const supabase = createClient();
     const { data, error } = await supabase
       .from('stringing_customers')
-      .insert(newCustomer)
+      .insert({
+        full_name: newCustomer.full_name.trim(),
+        email: newCustomer.email.trim() || null,
+        phone: newCustomer.phone.trim() || null,
+      })
       .select()
       .single();
-    
+
+    if (error) {
+      setError(`Couldn't create customer: ${error.message}`);
+      return;
+    }
     if (data) {
       setSelectedCustomer(data);
       setShowNewCustomer(false);
@@ -163,15 +175,24 @@ export default function NewStringingJobPage() {
   };
 
   const createRacket = async () => {
-    if (!selectedCustomer || !newRacket.brand) return;
-    
+    if (!selectedCustomer) return;
+    if (!newRacket.brand.trim()) {
+      setError('Enter the racket brand.');
+      return;
+    }
+    setError('');
+
     const supabase = createClient();
     const { data, error } = await supabase
       .from('stringing_rackets')
       .insert({ ...newRacket, customer_id: selectedCustomer.id })
       .select()
       .single();
-    
+
+    if (error) {
+      setError(`Couldn't add racket: ${error.message}`);
+      return;
+    }
     if (data) {
       setSelectedRacket(data);
       setShowNewRacket(false);
@@ -367,8 +388,9 @@ export default function NewStringingJobPage() {
                     placeholder="(555) 123-4567"
                   />
                 </div>
+                {error && <div className="alert alert-error">{error}</div>}
                 <div className="flex gap-3">
-                  <button onClick={() => setShowNewCustomer(false)} className="btn btn-secondary flex-1">
+                  <button onClick={() => { setShowNewCustomer(false); setError(''); }} className="btn btn-secondary flex-1">
                     Cancel
                   </button>
                   <button onClick={createCustomer} className="btn btn-stringing flex-1">
@@ -454,8 +476,9 @@ export default function NewStringingJobPage() {
                     placeholder="16x19"
                   />
                 </div>
+                {error && <div className="alert alert-error">{error}</div>}
                 <div className="flex gap-3">
-                  <button onClick={() => setShowNewRacket(false)} className="btn btn-secondary flex-1">
+                  <button onClick={() => { setShowNewRacket(false); setError(''); }} className="btn btn-secondary flex-1">
                     Cancel
                   </button>
                   <button onClick={createRacket} className="btn btn-stringing flex-1">
