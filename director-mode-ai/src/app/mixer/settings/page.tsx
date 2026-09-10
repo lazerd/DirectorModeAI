@@ -251,7 +251,7 @@ export default function MixerSettingsPage() {
         </div>
         <p className="text-sm text-gray-600">
           Connect your Stripe account to accept entry fees for paid Quads tournaments. Money
-          goes directly to your account; CoachMode never holds funds.
+          goes directly to your account; ClubMode never holds funds.
         </p>
 
         {!stripe?.stripe_account_id && (

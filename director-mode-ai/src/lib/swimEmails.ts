@@ -53,7 +53,7 @@ export async function sendSwimFamilyLinkEmail(args: {
       </div>
 
       <p style="color: #888; font-size: 12px; margin-top: 32px; border-top: 1px solid #eee; padding-top: 16px;">
-        Sent by your swim team lead via CoachMode SwimMode. Reply to this email for help.
+        Sent by your swim team lead via ClubMode SwimMode. Reply to this email for help.
       </p>
     </div>
   `;

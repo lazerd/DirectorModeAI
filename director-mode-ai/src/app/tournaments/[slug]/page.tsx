@@ -214,7 +214,7 @@ export default async function PublicTournamentLandingPage({
 
         <div className="text-center text-xs text-white/40">
           <Link href="/" className="hover:text-white/60">
-            Powered by CoachMode
+            Powered by ClubMode
           </Link>
         </div>
       </main>

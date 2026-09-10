@@ -78,7 +78,7 @@ export default async function PublicLeaguePage({ params }: { params: Promise<{ s
             <Trophy size={22} className="text-[#002838]" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-white/40">CoachMode Leagues</div>
+            <div className="text-xs text-white/40">ClubMode Leagues</div>
             <h1 className="font-display text-xl truncate">{l.name}</h1>
           </div>
         </div>
@@ -163,7 +163,7 @@ export default async function PublicLeaguePage({ params }: { params: Promise<{ s
         )}
 
         <div className="text-center text-xs text-white/30 mt-8 py-6 border-t border-white/10">
-          Powered by <Link href="/" className="text-[#D3FB52] hover:underline">CoachMode AI</Link>
+          Powered by <Link href="/" className="text-[#D3FB52] hover:underline">ClubMode</Link>
         </div>
       </main>
     </div>
@@ -231,7 +231,7 @@ async function JTTLanding({ league }: { league: any }) {
             <Trophy size={22} className="text-[#002838]" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-white/40">CoachMode Leagues · JTT</div>
+            <div className="text-xs text-white/40">ClubMode Leagues · JTT</div>
             <h1 className="font-display text-xl truncate">{league.name}</h1>
           </div>
         </div>
@@ -420,7 +420,7 @@ async function JTTLanding({ league }: { league: any }) {
         </section>
 
         <div className="text-center text-xs text-white/30 mt-8 py-6 border-t border-white/10">
-          Powered by <Link href="/" className="text-[#D3FB52] hover:underline">CoachMode AI</Link>
+          Powered by <Link href="/" className="text-[#D3FB52] hover:underline">ClubMode</Link>
         </div>
       </main>
     </div>

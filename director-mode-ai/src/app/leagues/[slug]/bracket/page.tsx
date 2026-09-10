@@ -129,7 +129,7 @@ export default async function PublicBracketPage({ params }: { params: Promise<{ 
         />
 
         <div className="text-center text-xs text-gray-600 mt-8 py-6 border-t border-gray-200">
-          Powered by <Link href="/" className="text-orange-600 hover:underline">CoachMode AI</Link>
+          Powered by <Link href="/" className="text-orange-600 hover:underline">ClubMode</Link>
         </div>
       </main>
     </div>

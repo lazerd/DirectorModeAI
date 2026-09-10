@@ -19,7 +19,7 @@ function htmlShell(title: string, body: string) {
       <h2 style="color: #ea580c;">${title}</h2>
       ${body}
       <p style="color: #888; font-size: 12px; margin-top: 24px;">
-        Sent by CoachMode Quads. Reply to this email for help.
+        Sent by ClubMode Quads. Reply to this email for help.
       </p>
     </div>
   `;

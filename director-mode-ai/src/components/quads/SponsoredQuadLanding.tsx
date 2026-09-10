@@ -789,7 +789,7 @@ export default function SponsoredQuadLanding({
             className="inline-block text-[11px] font-semibold"
             style={{ color: 'rgba(0,0,0,0.35)' }}
           >
-            Powered by CoachMode
+            Powered by ClubMode
           </Link>
         </footer>
       </main>
