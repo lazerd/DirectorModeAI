@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Clock, Wrench, CheckCircle, Package, RefreshCw, Mail } from 'lucide-react';
+import { Plus, Clock, Wrench, CheckCircle, Package, RefreshCw, Mail, Search } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import NudgePanel from '@/components/campaigns/NudgePanel';
 import { format, formatDistanceToNow } from 'date-fns';
@@ -16,6 +16,8 @@ type Job = {
   custom_string_name: string | null;
   quoted_ready_at: string | null;
   created_at: string;
+  completed_at: string | null;
+  picked_up_at: string | null;
   customer: {
     full_name: string;
     email: string | null;
@@ -33,7 +35,9 @@ type Job = {
 export default function StringingJobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'done'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'done' | 'completed'>('all');
+  const [customers, setCustomers] = useState<{ id: string; full_name: string }[]>([]);
+  const [customerSearch, setCustomerSearch] = useState('');
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -52,13 +56,18 @@ export default function StringingJobsPage() {
         racket:stringing_rackets(brand, model),
         string:stringing_catalog(brand, name)
       `)
-      .not('status', 'eq', 'picked_up')
       .not('status', 'eq', 'cancelled')
       .order('created_at', { ascending: false });
 
     if (!error && data) {
       setJobs(data as Job[]);
     }
+
+    const { data: custData } = await supabase
+      .from('stringing_customers')
+      .select('id, full_name')
+      .order('full_name');
+    if (custData) setCustomers(custData);
     setLoading(false);
   };
 
@@ -143,14 +152,25 @@ export default function StringingJobsPage() {
     }
   };
 
-  const filteredJobs = jobs.filter(job => {
-    if (filter === 'all') return true;
-    return job.status === filter;
-  });
+  // Board = active work; Completed = rackets already picked up, newest first.
+  const activeJobs = jobs.filter(j => j.status !== 'picked_up');
+  const completedJobs = jobs
+    .filter(j => j.status === 'picked_up')
+    .sort((a, b) => (b.picked_up_at || b.created_at).localeCompare(a.picked_up_at || a.created_at));
+  const filteredJobs =
+    filter === 'all' ? activeJobs
+    : filter === 'completed' ? completedJobs
+    : activeJobs.filter(j => j.status === filter);
 
-  const pendingJobs = jobs.filter(j => j.status === 'pending');
-  const inProgressJobs = jobs.filter(j => j.status === 'in_progress');
-  const doneJobs = jobs.filter(j => j.status === 'done');
+  const pendingJobs = activeJobs.filter(j => j.status === 'pending');
+  const inProgressJobs = activeJobs.filter(j => j.status === 'in_progress');
+  const doneJobs = activeJobs.filter(j => j.status === 'done');
+
+  // Latest job per customer (jobs are newest-first) — "how did they string it last time?"
+  const lastJobByCustomer = new Map<string, Job>();
+  for (const j of jobs) if (!lastJobByCustomer.has(j.customer_id)) lastJobByCustomer.set(j.customer_id, j);
+  const q = customerSearch.trim().toLowerCase();
+  const customerList = customers.filter(c => !q || (c.full_name || '').toLowerCase().includes(q));
 
   return (
     <div className="p-6 lg:p-8">
@@ -208,13 +228,15 @@ export default function StringingJobsPage() {
           />
         </section>
 
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
+        <div className="min-w-0">
         {/* Filter Tabs */}
-        <div className="tabs mb-6 inline-flex">
+        <div className="tabs mb-6 inline-flex flex-wrap">
           <button
             onClick={() => setFilter('all')}
             className={`tab ${filter === 'all' ? 'tab-active' : ''}`}
           >
-            All ({jobs.length})
+            All ({activeJobs.length})
           </button>
           <button
             onClick={() => setFilter('pending')}
@@ -233,6 +255,12 @@ export default function StringingJobsPage() {
             className={`tab ${filter === 'done' ? 'tab-active' : ''}`}
           >
             Ready ({doneJobs.length})
+          </button>
+          <button
+            onClick={() => setFilter('completed')}
+            className={`tab ${filter === 'completed' ? 'tab-active' : ''}`}
+          >
+            Completed ({completedJobs.length})
           </button>
         </div>
 
@@ -270,9 +298,62 @@ export default function StringingJobsPage() {
             ))}
           </div>
         )}
+        </div>
+
+        {/* Customers — click a name to see how they strung it last time */}
+        <aside className="card p-4 lg:sticky lg:top-6">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-display text-lg">Customers</h2>
+            <Link href="/stringing/customers" className="text-xs text-gray-400 hover:text-stringing">
+              Manage
+            </Link>
+          </div>
+          <div className="relative mb-3">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={customerSearch}
+              onChange={(e) => setCustomerSearch(e.target.value)}
+              className="input pl-9"
+              placeholder="Find a customer…"
+            />
+          </div>
+          <div className="max-h-[480px] overflow-y-auto space-y-1">
+            {customerList.length === 0 ? (
+              <p className="text-sm text-gray-500 px-2">No customers found.</p>
+            ) : (
+              customerList.map((c) => {
+                const last = lastJobByCustomer.get(c.id);
+                return (
+                  <Link
+                    key={c.id}
+                    href={`/stringing/customers/${c.id}`}
+                    className="block rounded-lg px-2 py-2 hover:bg-white/5 transition-colors"
+                  >
+                    <div className="font-medium text-sm">{c.full_name}</div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {last
+                        ? `Last: ${stringLabel(last)} · ${tensionLabel(last)} · ${format(new Date(last.created_at), 'MMM d, yyyy')}`
+                        : 'No jobs yet'}
+                    </div>
+                  </Link>
+                );
+              })
+            )}
+          </div>
+        </aside>
+        </div>
       </div>
     </div>
   );
+}
+
+function stringLabel(job: Job) {
+  return job.string ? `${job.string.brand} ${job.string.name}` : job.custom_string_name || 'Custom string';
+}
+
+function tensionLabel(job: Job) {
+  return job.cross_tension_lbs ? `${job.main_tension_lbs}/${job.cross_tension_lbs} lbs` : `${job.main_tension_lbs} lbs`;
 }
 
 function StatCard({
@@ -320,6 +401,7 @@ function JobCard({
     pending: 'badge-warning',
     in_progress: 'badge-primary',
     done: 'badge-success',
+    picked_up: 'badge-success',
   };
 
   const stringName = job.string 
@@ -342,7 +424,7 @@ function JobCard({
               {job.customer?.full_name || 'Unknown customer'}
             </Link>
             <span className={`badge ${statusColors[job.status as keyof typeof statusColors]}`}>
-              {job.status.replace('_', ' ')}
+              {job.status === 'picked_up' ? 'completed' : job.status.replace('_', ' ')}
             </span>
             {job.customer?.email && (
               <Mail size={14} className="text-gray-400" />
@@ -359,7 +441,10 @@ function JobCard({
           
           <div className="text-xs text-gray-600 mt-2">
             Created {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
-            {job.quoted_ready_at && (
+            {job.status === 'picked_up' && job.picked_up_at && (
+              <> • Picked up {format(new Date(job.picked_up_at), 'EEE, MMM d')}</>
+            )}
+            {job.status !== 'picked_up' && job.quoted_ready_at && (
               <> • Due {format(new Date(job.quoted_ready_at), 'EEE, MMM d')} ({formatDistanceToNow(new Date(job.quoted_ready_at), { addSuffix: true })})</>
             )}
           </div>
