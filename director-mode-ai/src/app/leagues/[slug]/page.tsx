@@ -11,7 +11,7 @@ import {
   ListChecks,
   UserCheck,
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { CATEGORY_LABELS, CATEGORY_ORDER, formatMoney, type CategoryKey } from '@/lib/leagueUtils';
 import { DAY_OF_WEEK_LABELS } from '@/lib/jtt';
@@ -113,8 +113,8 @@ export default async function PublicLeaguePage({ params }: { params: Promise<{ s
           <div className="flex items-start gap-2 text-sm text-white/60 mb-3">
             <Calendar size={16} className="mt-0.5 flex-shrink-0" />
             <span>
-              {format(new Date(l.start_date), 'MMMM d, yyyy')} –{' '}
-              {format(new Date(l.end_date), 'MMMM d, yyyy')}
+              {format(parseISO(l.start_date), 'MMMM d, yyyy')} –{' '}
+              {format(parseISO(l.end_date), 'MMMM d, yyyy')}
             </span>
           </div>
           {l.description && (
@@ -242,8 +242,8 @@ async function JTTLanding({ league }: { league: any }) {
           <div className="flex items-start gap-2 text-sm text-white/60 mb-3">
             <Calendar size={16} className="mt-0.5 flex-shrink-0" />
             <span>
-              {format(new Date(league.start_date), 'MMMM d, yyyy')} –{' '}
-              {format(new Date(league.end_date), 'MMMM d, yyyy')}
+              {format(parseISO(league.start_date), 'MMMM d, yyyy')} –{' '}
+              {format(parseISO(league.end_date), 'MMMM d, yyyy')}
             </span>
           </div>
           {league.description && (
