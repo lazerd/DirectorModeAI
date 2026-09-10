@@ -29,13 +29,14 @@ type Job = {
   string: {
     brand: string;
     name: string;
+    string_type?: string | null;
   } | null;
 };
 
 export default function StringingJobsPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'done' | 'completed'>('all');
+  const [filter, setFilter] = useState<'all' | 'pending' | 'in_progress' | 'done' | 'completed' | 'customers'>('all');
   const [customers, setCustomers] = useState<{ id: string; full_name: string }[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [sendingEmail, setSendingEmail] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export default function StringingJobsPage() {
         *,
         customer:stringing_customers(full_name, email),
         racket:stringing_rackets(brand, model),
-        string:stringing_catalog(brand, name)
+        string:stringing_catalog(brand, name, string_type)
       `)
       .not('status', 'eq', 'cancelled')
       .order('created_at', { ascending: false });
@@ -170,7 +171,9 @@ export default function StringingJobsPage() {
   const lastJobByCustomer = new Map<string, Job>();
   for (const j of jobs) if (!lastJobByCustomer.has(j.customer_id)) lastJobByCustomer.set(j.customer_id, j);
   const q = customerSearch.trim().toLowerCase();
-  const customerList = customers.filter(c => !q || (c.full_name || '').toLowerCase().includes(q));
+  const customerList = customers
+    .filter(c => !q || (c.full_name || '').toLowerCase().includes(q))
+    .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '', undefined, { sensitivity: 'base' }));
 
   return (
     <div className="p-6 lg:p-8">
@@ -228,8 +231,6 @@ export default function StringingJobsPage() {
           />
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px] items-start">
-        <div className="min-w-0">
         {/* Filter Tabs */}
         <div className="tabs mb-6 inline-flex flex-wrap">
           <button
@@ -262,10 +263,23 @@ export default function StringingJobsPage() {
           >
             Completed ({completedJobs.length})
           </button>
+          <button
+            onClick={() => setFilter('customers')}
+            className={`tab ${filter === 'customers' ? 'tab-active' : ''}`}
+          >
+            Customers ({customers.length})
+          </button>
         </div>
 
-        {/* Jobs List */}
-        {loading ? (
+        {/* Jobs List (or the Customers tab) */}
+        {filter === 'customers' ? (
+          <CustomersView
+            customers={customerList}
+            lastJob={lastJobByCustomer}
+            search={customerSearch}
+            onSearch={setCustomerSearch}
+          />
+        ) : loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="spinner" />
           </div>
@@ -298,52 +312,79 @@ export default function StringingJobsPage() {
             ))}
           </div>
         )}
-        </div>
-
-        {/* Customers — click a name to see how they strung it last time */}
-        <aside className="card p-4 lg:sticky lg:top-6">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-display text-lg">Customers</h2>
-            <Link href="/stringing/customers" className="text-xs text-gray-400 hover:text-stringing">
-              Manage
-            </Link>
-          </div>
-          <div className="relative mb-3">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              value={customerSearch}
-              onChange={(e) => setCustomerSearch(e.target.value)}
-              className="input pl-9"
-              placeholder="Find a customer…"
-            />
-          </div>
-          <div className="max-h-[480px] overflow-y-auto space-y-1">
-            {customerList.length === 0 ? (
-              <p className="text-sm text-gray-500 px-2">No customers found.</p>
-            ) : (
-              customerList.map((c) => {
-                const last = lastJobByCustomer.get(c.id);
-                return (
-                  <Link
-                    key={c.id}
-                    href={`/stringing/customers/${c.id}`}
-                    className="block rounded-lg px-2 py-2 hover:bg-white/5 transition-colors"
-                  >
-                    <div className="font-medium text-sm">{c.full_name}</div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {last
-                        ? `Last: ${stringLabel(last)} · ${tensionLabel(last)} · ${format(new Date(last.created_at), 'MMM d, yyyy')}`
-                        : 'No jobs yet'}
-                    </div>
-                  </Link>
-                );
-              })
-            )}
-          </div>
-        </aside>
-        </div>
       </div>
+    </div>
+  );
+}
+
+function CustomersView({
+  customers,
+  lastJob,
+  search,
+  onSearch,
+}: {
+  customers: { id: string; full_name: string }[];
+  lastJob: Map<string, Job>;
+  search: string;
+  onSearch: (v: string) => void;
+}) {
+  return (
+    <div className="card p-4">
+      <div className="relative mb-4 max-w-sm">
+        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => onSearch(e.target.value)}
+          className="input pl-9"
+          placeholder="Find a customer…"
+        />
+      </div>
+      {customers.length === 0 ? (
+        <p className="text-sm text-gray-500">No customers found.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs uppercase tracking-wide text-gray-500 border-b border-white/10">
+                <th className="py-2 pr-4 font-medium">Customer</th>
+                <th className="py-2 pr-4 font-medium">Last tension</th>
+                <th className="py-2 pr-4 font-medium">String</th>
+                <th className="py-2 font-medium">Last visit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {customers.map((c) => {
+                const last = lastJob.get(c.id);
+                const type = last?.string?.string_type?.replace('_', ' ');
+                return (
+                  <tr key={c.id} className="border-b border-white/5 hover:bg-white/5">
+                    <td className="py-2.5 pr-4">
+                      <Link href={`/stringing/customers/${c.id}`} className="font-medium hover:text-stringing transition-colors">
+                        {c.full_name}
+                      </Link>
+                    </td>
+                    <td className="py-2.5 pr-4 whitespace-nowrap">{last ? tensionLabel(last) : '—'}</td>
+                    <td className="py-2.5 pr-4">
+                      {last ? (
+                        <>
+                          {stringLabel(last)}
+                          {type && <span className="text-gray-500"> · {type}</span>}
+                        </>
+                      ) : (
+                        <span className="text-gray-500">No jobs yet</span>
+                      )}
+                    </td>
+                    <td className="py-2.5 whitespace-nowrap text-gray-500">
+                      {last ? format(new Date(last.created_at), 'MMM d, yyyy') : ''}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
