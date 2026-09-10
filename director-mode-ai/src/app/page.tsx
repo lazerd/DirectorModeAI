@@ -69,11 +69,13 @@ export default function HomePage() {
     router.push("/");
   };
 
+  // A stranger clicking a tool should meet signup, not a login wall for an
+  // account they don't have yet. /register links "Sign in" for returning users.
   const goToTool = (href: string) => {
     if (user) {
       router.push(href);
     } else {
-      router.push("/login");
+      router.push("/register");
     }
   };
 
@@ -559,8 +561,8 @@ export default function HomePage() {
           {[
             { value: String(PRODUCT_COUNT), label: "Tools, one login" },
             { value: "4", label: "Event formats" },
-            { value: "11", label: "Courts, live-tracked" },
-            { value: "5", label: "Clubs in one league" },
+            { value: "5 min", label: "To set up your club" },
+            { value: "$0", label: "For founding clubs" },
           ].map((s) => (
             <div key={s.label}>
               <p className="text-4xl sm:text-5xl font-bold text-[#D3FB52] tracking-tight mb-1">{s.value}</p>
@@ -759,6 +761,13 @@ export default function HomePage() {
               <p className="text-white/40 text-sm leading-relaxed max-w-xs">
                 The complete platform for racquet sports clubs, coaches, and directors — courts, leagues, lessons, and more in one login.
               </p>
+              {/* Who is behind it — for a director audience, the strongest trust signal there is. */}
+              <p className="text-white/55 text-sm leading-relaxed max-w-xs mt-4">
+                Built by Darrin Cohen, a Director of Tennis, for the job he does every day.
+              </p>
+              <a href="mailto:hello@clubmode.ai" className="inline-block mt-2 text-sm text-[#D3FB52] hover:underline">
+                hello@clubmode.ai
+              </a>
             </div>
             {/* All three columns render from src/config/nav.ts. There is no
                 hand-kept list here to drift out of sync with the nav or /tools. */}
