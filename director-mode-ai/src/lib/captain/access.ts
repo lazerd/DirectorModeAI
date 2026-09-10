@@ -4,14 +4,17 @@
  * CaptainMode is NOT a ClubMode Pro feature — it is a separate per-captain
  * subscription, so it deliberately does not go through hasFeature(). A captain
  * may be on ClubMode free and still pay for CaptainMode; the club's Pro status
- * only decides the price:
+ * only decides the price (amounts in config/pricing):
  *
- *   club on ClubMode Pro -> $10/mo  (rate_type 'club_linked')
- *   otherwise            -> $20/mo  (rate_type 'standalone')
+ *   club on ClubMode Pro -> CAPTAIN_CLUB_PRICE_USD  (rate_type 'club_linked')
+ *     (any ClubMode club while FOUNDING_MODE is on)
+ *   otherwise            -> CAPTAIN_SOLO_PRICE_USD  (rate_type 'standalone')
  */
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { getPlanContext } from '@/lib/billing';
+import { getPlanContext, FOUNDING_MODE } from '@/lib/billing';
+import { CAPTAIN_MAX_TEAMS } from '@/config/pricing';
+import { captainCheckoutConfigured } from '@/lib/lemonsqueezy';
 
 /**
  * Authorization reads run on the real service-role client, NOT
@@ -28,9 +31,10 @@ const adminDb = () => getSupabaseAdmin();
  * Owned teams per subscription. Raised from 3 to 6 on 2026-09-04: a junior
  * coach commonly captains one team per age division (10U / 12U / 14U) on top
  * of an adult team, which is four before anyone has done anything unusual.
- * Co-captained teams do not count — only teams this user owns.
+ * Co-captained teams do not count — only teams this user owns. The number lives
+ * in config/pricing so the client pricing pages advertise the enforced limit.
  */
-export const MAX_TEAMS_PER_CAPTAIN = 6;
+export const MAX_TEAMS_PER_CAPTAIN = CAPTAIN_MAX_TEAMS;
 
 export type CaptainRate = 'club_linked' | 'standalone';
 
@@ -48,6 +52,11 @@ export type CaptainAccess = {
   onTrial: boolean;
   /** True when a trial was started and has since run out. */
   trialExpired: boolean;
+  /**
+   * The trial has run out but CaptainMode can't be bought yet (no buy links),
+   * so access continues. Pages say "Paid plans are coming soon".
+   */
+  paidPlansComingSoon: boolean;
 };
 
 /**
@@ -79,6 +88,7 @@ export async function getCaptainAccess(userId: string): Promise<CaptainAccess> {
       trialDaysLeft: 0,
       onTrial: false,
       trialExpired: false,
+      paidPlansComingSoon: false,
     };
   }
   const row = data as {
@@ -101,9 +111,16 @@ export async function getCaptainAccess(userId: string): Promise<CaptainAccess> {
   const msLeft = trialEndsAt ? new Date(trialEndsAt).getTime() - Date.now() : 0;
   const trialLive = row.status === 'trialing' && !!trialEndsAt && msLeft > 0;
   const trialExpired = row.status === 'trialing' && (!trialEndsAt || msLeft <= 0);
+  // A lapsed trial only walls the captain once there is something to buy.
+  // Until the CaptainMode buy links exist the wall could only say "checkout
+  // isn't configured" and 402 every route, so access simply continues.
+  const paidPlansComingSoon = trialExpired && !captainCheckoutConfigured();
 
   return {
-    active: row.status === 'trialing' ? trialLive : ACTIVE_STATUSES.has(row.status),
+    active:
+      row.status === 'trialing'
+        ? trialLive || paidPlansComingSoon
+        : ACTIVE_STATUSES.has(row.status),
     rateType: row.rate_type,
     status: row.status,
     currentPeriodEnd: row.current_period_end,
@@ -112,6 +129,7 @@ export async function getCaptainAccess(userId: string): Promise<CaptainAccess> {
     trialDaysLeft: trialLive ? Math.max(0, Math.ceil(msLeft / 86_400_000)) : 0,
     onTrial: trialLive,
     trialExpired,
+    paidPlansComingSoon,
   };
 }
 
@@ -120,9 +138,11 @@ export async function hasCaptainAccess(userId: string): Promise<boolean> {
 }
 
 /**
- * $10 or $20 — decided by whether the captain's club owner has ClubMode Pro.
- * Called at checkout and re-evaluated at renewal; an existing subscriber keeps
- * their rate until the current period ends.
+ * Club or standalone rate — decided by whether the captain's club owner has
+ * ClubMode Pro. While FOUNDING_MODE is on every club is effectively Pro (it has
+ * everything unlocked), so a captain at a founding club is never quoted the
+ * higher standalone price. Called at checkout and re-evaluated at renewal; an
+ * existing subscriber keeps their rate until the current period ends.
  */
 export async function resolveCaptainRate(clubId: string | null): Promise<CaptainRate> {
   if (!clubId) return 'standalone';
@@ -134,6 +154,7 @@ export async function resolveCaptainRate(clubId: string | null): Promise<Captain
     .maybeSingle();
   const ownerId = (club as { owner_id: string } | null)?.owner_id;
   if (!ownerId) return 'standalone';
+  if (FOUNDING_MODE) return 'club_linked';
 
   const plan = await getPlanContext(ownerId);
   return plan.effectiveTier === 'pro' ? 'club_linked' : 'standalone';
@@ -162,7 +183,7 @@ export async function listCaptainTeams(userId: string) {
   return (data as Record<string, unknown>[]) || [];
 }
 
-/** Only teams the captain OWNS count toward the 3-team limit; co-captaining is free. */
+/** Only teams the captain OWNS count toward the team limit; co-captaining is free. */
 export async function ownedTeamCount(userId: string): Promise<number> {
   const db = adminDb();
   const { count } = await db

@@ -93,6 +93,18 @@ export function lsCheckoutMode(): 'live' | 'test' {
   return process.env.LEMONSQUEEZY_BUY_LINK_PRO_MONTHLY ? 'live' : 'test';
 }
 
+/**
+ * Whether CaptainMode can be sold at all. Both rate products need a buy link —
+ * until then a captain whose trial ends keeps access (see getCaptainAccess)
+ * rather than hitting a checkout that can only fail.
+ */
+export function captainCheckoutConfigured(): boolean {
+  return (
+    !!process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_CLUB &&
+    !!process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_SOLO
+  );
+}
+
 /** Build a hosted-checkout URL for a plan with the account id attached. */
 export function buildCheckoutUrl(
   priceKey: PriceKey,

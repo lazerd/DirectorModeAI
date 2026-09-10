@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { getCaptainAccess, TRIAL_DAYS } from '@/lib/captain/access';
+import { CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD } from '@/config/pricing';
 import StartTrialButton from '@/components/captain/StartTrialButton';
 
 export const dynamic = 'force-dynamic';
@@ -102,8 +103,8 @@ export default async function StartTrial({
               {/* Said before the click, not after. A captain who finds out the
                   price on the far side of a signup does not come back. */}
               <p className="text-white/45 text-[13px] mt-3">
-                {TRIAL_DAYS} days free, no card. After that it&rsquo;s $20 a month, or $10 if your
-                club is on ClubMode. Cancel any time.
+                {TRIAL_DAYS} days free, no card. After that it&rsquo;s ${CAPTAIN_SOLO_PRICE_USD} a
+                month, or ${CAPTAIN_CLUB_PRICE_USD} if your club is on ClubMode. Cancel any time.
               </p>
             </div>
           </>

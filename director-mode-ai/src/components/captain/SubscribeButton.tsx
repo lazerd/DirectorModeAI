@@ -34,7 +34,7 @@ export default function SubscribeButton({
       if (!res.ok || !j.url) {
         setError(
           j.error === 'price_not_configured'
-            ? 'Checkout isn’t configured yet — the CaptainMode product needs a LemonSqueezy buy link.'
+            ? 'Paid plans are coming soon — you keep access in the meantime.'
             : j.message || j.error || 'Could not start checkout.',
         );
         return;
