@@ -21,7 +21,10 @@ const DEPT_LABEL: Record<string, string> = {
   Golf: 'Golf',
   GM: 'GM / COO',
 };
-const usd = (n: number | null) => (n != null ? `$${Math.round(n).toLocaleString()}` : '—');
+const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
+// "1 director open to work" reads as an empty room, so small counts become an
+// invitation instead. Medians under the pool API's own floor come back null.
+const MIN_PUBLIC_COUNT = 10;
 
 export default function ConnectLanding() {
   const [pool, setPool] = useState<Pool | null>(null);
@@ -62,11 +65,27 @@ export default function ConnectLanding() {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Stat label="Directors open to work" value={pool ? String(pool.total_candidates) : '—'} />
-            <Stat label="Open positions" value={pool ? String(pool.open_openings) : '—'} />
-            {pool && Object.entries(pool.by_dept).slice(0, 2).map(([dept, d]) => (
-              <Stat key={dept} label={`${DEPT_LABEL[dept] || dept} median`} value={usd(d.median_comp)} />
-            ))}
+            {!pool ? (
+              <>
+                <Stat label="Directors open to work" value="—" />
+                <Stat label="Open positions" value="—" />
+              </>
+            ) : (
+              <>
+                {pool.total_candidates >= MIN_PUBLIC_COUNT
+                  ? <Stat label="Directors open to work" value={String(pool.total_candidates)} />
+                  : <Stat label="Be one of the first directors here" value="New" />}
+                {pool.open_openings >= MIN_PUBLIC_COUNT
+                  ? <Stat label="Open positions" value={String(pool.open_openings)} />
+                  : <Stat label="Be one of the first clubs to post an opening" value="New" />}
+                {Object.entries(pool.by_dept)
+                  .filter(([, d]) => d.median_comp != null)
+                  .slice(0, 2)
+                  .map(([dept, d]) => (
+                    <Stat key={dept} label={`${DEPT_LABEL[dept] || dept} median`} value={usd(d.median_comp as number)} />
+                  ))}
+              </>
+            )}
           </div>
 
           <div className="mt-5 flex flex-wrap items-end gap-3">

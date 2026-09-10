@@ -3,8 +3,9 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 // Owner-only curation of the /benchmarks 990 dataset: hide a bogus person-row
-// or an entire club. Everyone can GET the removal list (it's just "what's
-// hidden"); only Darrin's logins can add/undo.
+// or an entire club. Signed-in users can GET the removal list (the named table
+// filters with it); it carries person names, so logged-out callers get an empty
+// list. Only Darrin's logins can add/undo.
 export const dynamic = 'force-dynamic';
 
 const ADMIN_EMAILS = new Set([
@@ -13,14 +14,21 @@ const ADMIN_EMAILS = new Set([
   'darrin@sleepyhollowclub.com',
 ]);
 
-async function callerIsAdmin() {
+async function currentUser() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  return user;
+}
+
+async function callerIsAdmin() {
+  const user = await currentUser();
   return !!(user?.email && ADMIN_EMAILS.has(user.email.toLowerCase()));
 }
 
 export async function GET() {
-  const isAdmin = await callerIsAdmin();
+  const user = await currentUser();
+  if (!user) return NextResponse.json({ removals: [], isAdmin: false });
+  const isAdmin = !!(user.email && ADMIN_EMAILS.has(user.email.toLowerCase()));
   const db = getSupabaseAdmin();
   const { data, error } = await db
     .from('benchmark_removals')

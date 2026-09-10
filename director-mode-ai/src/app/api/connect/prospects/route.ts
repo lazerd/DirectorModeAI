@@ -1,15 +1,21 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { zipToLatLng, normalizeZip } from '@/lib/geo';
 import { findProspects, bandInsight } from '@/lib/connect/prospects';
 
 // POST /api/connect/prospects — warm-start candidate suggestions for a club
 // opening, pulled straight from the public 990 dataset (no opt-in required),
-// plus a read on how competitive the pay band is. Public data, so no auth; the
-// result is capped so it can't be used to dump the dataset.
+// plus a read on how competitive the pay band is. The result names people, so
+// it's signed-in only (its one caller, /connect/clubs, is behind login) and
+// capped so it can't be used to dump the dataset.
 const DEPTS = new Set(['Tennis/Racquets', 'Golf', 'GM']);
 const REGIONS = new Set(['Northeast', 'South', 'Midwest', 'West']);
 
 export async function POST(req: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+
   const body = await req.json().catch(() => ({}));
 
   const dept = String(body.dept || '');
