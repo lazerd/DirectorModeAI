@@ -89,6 +89,7 @@ export default function NewStringingJobPage() {
   
   // Final state
   const [quotedReadyAt, setQuotedReadyAt] = useState('');
+  const [readyDate, setReadyDate] = useState('');
   const [internalNotes, setInternalNotes] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -236,6 +237,11 @@ export default function NewStringingJobPage() {
   const createJob = async () => {
     if (!selectedCustomer) return;
     
+    if (quotedReadyAt === 'date' && !readyDate) {
+      setError('Pick the date the racket will be ready.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     
@@ -244,6 +250,12 @@ export default function NewStringingJobPage() {
     
     const readyAtIso = (() => {
       if (!quotedReadyAt) return null;
+      if (quotedReadyAt === 'date') {
+        // Build in local time — new Date('YYYY-MM-DD') is UTC midnight,
+        // which lands on the previous day in Pacific. Ready by 5 PM.
+        const [y, m, d] = readyDate.split('-').map(Number);
+        return new Date(y, m - 1, d, 17, 0).toISOString();
+      }
       const offsetHours: Record<string, number> = { '2h': 2, '4h': 4, '24h': 24 };
       const hours = offsetHours[quotedReadyAt];
       if (hours == null) return null;
@@ -751,7 +763,17 @@ export default function NewStringingJobPage() {
                   <option value="2h">2 hours</option>
                   <option value="4h">4 hours</option>
                   <option value="24h">Tomorrow</option>
+                  <option value="date">Pick a date…</option>
                 </select>
+                {quotedReadyAt === 'date' && (
+                  <input
+                    type="date"
+                    value={readyDate}
+                    min={new Date().toLocaleDateString('en-CA')}
+                    onChange={(e) => setReadyDate(e.target.value)}
+                    className="input mt-2"
+                  />
+                )}
               </div>
 
               <div>

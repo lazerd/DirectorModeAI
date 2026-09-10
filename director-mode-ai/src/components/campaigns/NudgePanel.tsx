@@ -18,7 +18,24 @@ type Status = {
 
 export type CampaignSurface = 'tournament' | 'quad' | 'league' | 'jtt' | 'swim' | 'stringing' | 'courtconnect';
 
-export default function NudgePanel({ surface, targetId }: { surface: CampaignSurface; targetId: string }) {
+type Kind = 'update' | 'nudge' | 'reminder';
+
+// `only` narrows the panel to the one email that makes sense for a surface
+// (e.g. stringing = "your racket is ready", never a blast to every customer).
+type NudgeCopy = { title: string; desc: string; empty: string };
+
+export default function NudgePanel({
+  surface,
+  targetId,
+  only,
+  nudgeCopy,
+}: {
+  surface: CampaignSurface;
+  targetId: string;
+  only?: Kind[];
+  nudgeCopy?: NudgeCopy;
+}) {
+  const show = (k: Kind) => !only || only.includes(k);
   const [status, setStatus] = useState<Status | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -39,6 +56,34 @@ export default function NudgePanel({ surface, targetId }: { surface: CampaignSur
   if (err) return <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{err}</div>;
   if (!status) return <div className="text-sm text-gray-500">Loading…</div>;
 
+  const nudgeCard = (
+    <ActionCard
+      surface={surface}
+      targetId={targetId}
+      kind="nudge"
+      count={status.nudgeCount}
+      title={nudgeCopy?.title ?? '🎾 Send a Gentle Nudge'}
+      desc={
+        nudgeCopy?.desc ??
+        'Personalized reminder to only the people who still have something outstanding — with the specifics filled in for each one.'
+      }
+      confirmVerb={`Send a nudge to the ${status.nudgeCount} who still have something outstanding`}
+      emptyNote={nudgeCopy?.empty ?? 'Nobody owes a match right now. 🎉'}
+    />
+  );
+
+  // Single-purpose surface: just the one card, sender line folded in.
+  if (only && only.length === 1 && only[0] === 'nudge') {
+    return (
+      <div>
+        {nudgeCard}
+        <p className="mt-2 text-xs text-gray-500">
+          Emails send from <span className="font-medium">{status.clubName}</span> · reply-to your address.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -55,7 +100,7 @@ export default function NudgePanel({ surface, targetId }: { surface: CampaignSur
         </p>
       </div>
 
-      {status.reminderWhen && (
+      {show('reminder') && status.reminderWhen && (
         <ActionCard
           surface={surface}
           targetId={targetId}
@@ -68,24 +113,19 @@ export default function NudgePanel({ surface, targetId }: { surface: CampaignSur
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <ActionCard
-          surface={surface}
-          targetId={targetId}
-          kind="update"
-          count={status.everyoneCount}
-          title="📣 Send an Update"
-          desc="One warm status email to everyone on the list — where things stand and what's next."
-          confirmVerb={`Send an update to all ${status.everyoneCount} recipients`}
-        />
-        <ActionCard
-          surface={surface}
-          targetId={targetId}
-          kind="nudge"
-          count={status.nudgeCount}
-          title="🎾 Send a Gentle Nudge"
-          desc="Personalized reminder to only the people who still have something outstanding — with the specifics filled in for each one."
-          confirmVerb={`Send a nudge to the ${status.nudgeCount} who still have something outstanding`}
-        />
+        {show('update') && (
+          <ActionCard
+            surface={surface}
+            targetId={targetId}
+            kind="update"
+            count={status.everyoneCount}
+            title="📣 Send an Update"
+            desc="One warm status email to everyone on the list — where things stand and what's next."
+            confirmVerb={`Send an update to all ${status.everyoneCount} recipients`}
+            emptyNote="No recipients with an email yet."
+          />
+        )}
+        {show('nudge') && nudgeCard}
       </div>
     </div>
   );
@@ -99,14 +139,16 @@ function ActionCard({
   title,
   desc,
   confirmVerb,
+  emptyNote,
 }: {
   surface: string;
   targetId: string;
-  kind: 'update' | 'nudge' | 'reminder';
+  kind: Kind;
   count: number;
   title: string;
   desc: string;
   confirmVerb: string;
+  emptyNote?: string;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ count: number; subject?: string; sampleHtml?: string } | null>(null);
@@ -158,7 +200,7 @@ function ActionCard({
           {busy === 'live' ? 'Sending…' : 'Send to all'}
         </button>
       </div>
-      {disabled && <p className="mt-2 text-xs text-gray-500">{kind === 'nudge' ? 'Nobody owes a match right now. 🎉' : 'No recipients with an email yet.'}</p>}
+      {disabled && <p className="mt-2 text-xs text-gray-500">{emptyNote ?? 'No recipients with an email yet.'}</p>}
       {result && <p className="mt-3 rounded-lg bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-800">{result}</p>}
       {preview && (
         <div className="mt-3">

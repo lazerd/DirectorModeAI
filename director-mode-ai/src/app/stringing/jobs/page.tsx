@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Plus, Clock, Wrench, CheckCircle, Package, RefreshCw, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import NudgePanel from '@/components/campaigns/NudgePanel';
-import { formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 
 type Job = {
   id: string;
@@ -194,11 +194,18 @@ export default function StringingJobsPage() {
           />
         </div>
 
-        {/* Pickup reminders */}
+        {/* Pickup reminders — only the "your racket is ready" email belongs here */}
         <section className="mb-6">
-          <h2 className="font-semibold text-base mb-1 text-gray-900">Pickup reminders</h2>
-          <p className="text-xs text-gray-500 mb-3">Send a “your racket is ready” nudge to every customer whose finished job hasn&apos;t been picked up. Preview and test to yourself first.</p>
-          <NudgePanel surface="stringing" targetId="me" />
+          <NudgePanel
+            surface="stringing"
+            targetId="me"
+            only={['nudge']}
+            nudgeCopy={{
+              title: '📬 Tell them it’s ready',
+              desc: 'Email every customer whose racket is done but hasn’t been picked up yet. Preview or send a test to yourself first.',
+              empty: 'No finished rackets waiting for pickup.',
+            }}
+          />
         </section>
 
         {/* Filter Tabs */}
@@ -353,7 +360,7 @@ function JobCard({
           <div className="text-xs text-gray-600 mt-2">
             Created {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
             {job.quoted_ready_at && (
-              <> • Due {formatDistanceToNow(new Date(job.quoted_ready_at), { addSuffix: true })}</>
+              <> • Due {format(new Date(job.quoted_ready_at), 'EEE, MMM d')} ({formatDistanceToNow(new Date(job.quoted_ready_at), { addSuffix: true })})</>
             )}
           </div>
         </div>
