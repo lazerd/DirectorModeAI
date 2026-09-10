@@ -164,23 +164,12 @@ export default function EventDetailPage() {
         });
     }
 
-    // Get player name for notification
-    const { data: myPlayer } = await supabase
-      .from('cc_players')
-      .select('display_name')
-      .eq('id', myPlayerId)
-      .single();
-
-    // Notify event creator
+    // Notify event creator (the server reads our name + status from the DB)
     try {
       await fetch('/api/courtconnect/rsvp-notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          eventId,
-          playerName: myPlayer?.display_name || 'A player',
-          rsvpStatus: newStatus,
-        }),
+        body: JSON.stringify({ eventId }),
       });
     } catch (err) {
       // Don't block RSVP on notification failure
@@ -300,7 +289,7 @@ export default function EventDetailPage() {
       const res = await fetch('/api/courtconnect/create-mixer-event', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ccEventId: eventId, userId: currentUserId }),
+        body: JSON.stringify({ ccEventId: eventId }),
       });
       const data = await res.json();
       if (data.success && data.mixerEventId) {

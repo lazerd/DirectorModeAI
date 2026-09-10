@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createUserClient } from '@/lib/supabase/server';
 import { sendBilledEmail, creditLimitResponse, CreditLimitError } from '@/lib/email';
 
 import { APP_URL } from '@/lib/appUrl';
@@ -10,6 +11,12 @@ const supabase = createClient(
 
 export async function POST(request: NextRequest) {
   try {
+    const userClient = await createUserClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+    }
+
     const { eventId, subject, message } = await request.json();
 
     if (!eventId || !message) {
@@ -25,6 +32,11 @@ export async function POST(request: NextRequest) {
 
     if (!event) {
       return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+
+    // Only the organizer can message the event's players.
+    if (event.created_by !== user.id) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Get creator info

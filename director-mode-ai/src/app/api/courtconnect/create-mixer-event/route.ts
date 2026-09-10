@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createUserClient } from '@/lib/supabase/server';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,10 +19,18 @@ function generateEventCode(): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { ccEventId, userId } = await request.json();
+    const userClient = await createUserClient();
+    const { data: { user } } = await userClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Sign in required' }, { status: 401 });
+    }
+    // The owner comes from the session, never the request body.
+    const userId = user.id;
 
-    if (!ccEventId || !userId) {
-      return NextResponse.json({ error: 'Missing eventId or userId' }, { status: 400 });
+    const { ccEventId } = await request.json();
+
+    if (!ccEventId) {
+      return NextResponse.json({ error: 'Missing eventId' }, { status: 400 });
     }
 
     // Get CourtConnect event
@@ -33,6 +42,10 @@ export async function POST(request: NextRequest) {
 
     if (!ccEvent) {
       return NextResponse.json({ error: 'CourtConnect event not found' }, { status: 404 });
+    }
+
+    if (ccEvent.created_by !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Get accepted players
