@@ -1,9 +1,22 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { PRO_PRICE_USD } from '@/config/pricing';
+import { PRO_PRICE_USD, FOUNDING_MODE } from '@/config/pricing';
 import { usePathname } from 'next/navigation';
 import { Sparkles, X, Loader2, ArrowRight } from 'lucide-react';
+
+/**
+ * Renders nothing while FOUNDING_MODE is on. Every signup is stamped
+ * 'grandfathered' with a 14-day trial by the handle_new_user trigger, so without
+ * this a brand-new director saw "14 days left on your free Pro trial — $49/mo ·
+ * Go Pro" (a test-store checkout) on every page while setting up a club that is
+ * free. A wrapper rather than an early return so the hooks below stay
+ * unconditional.
+ */
+export default function TrialBanner() {
+  if (FOUNDING_MODE) return null;
+  return <TrialBannerInner />;
+}
 
 /**
  * Slim global banner for billing owners who aren't yet paying: nudges free
@@ -11,7 +24,7 @@ import { Sparkles, X, Loader2, ArrowRight } from 'lucide-react';
  * members/coaches (they inherit the club plan), active subscribers, and guests.
  * Dismissible for the session.
  */
-export default function TrialBanner() {
+function TrialBannerInner() {
   const pathname = usePathname() || '';
   const [state, setState] = useState<null | { onTrial: boolean; days: number | null; tier: string }>(null);
   const [dismissed, setDismissed] = useState(true);

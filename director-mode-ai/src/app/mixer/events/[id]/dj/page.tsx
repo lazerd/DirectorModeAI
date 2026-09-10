@@ -78,7 +78,7 @@ export default async function DJConsolePage({ params }: { params: Promise<{ id: 
           </div>
           <h1 className="font-display text-3xl mb-2">DJ Console</h1>
           <p className="text-white/70 mb-6">
-            Walk-on songs and a hype announcer voice for every player. Like Ballpark DJ — but for tennis. Free users get one event lifetime; this slot is already used. Upgrade to Pro or unlock just this event with a $9 Day Pass.
+            Walk-on songs and a hype announcer voice for every player. Like Ballpark DJ — but for tennis. DJ Console isn&apos;t included on your club&apos;s current plan.
           </p>
           <div className="flex flex-col sm:flex-row flex-wrap gap-3">
             <UpgradeButton />

@@ -1,8 +1,12 @@
 import Link from 'next/link';
 import { Sparkles, ArrowRight } from 'lucide-react';
-import { getCurrentUserPlan } from '@/lib/billing';
+import { getCurrentUserPlan, FOUNDING_MODE } from '@/lib/billing';
 
 export default async function GrandfatherTrialBanner() {
+  // Every signup is 'grandfathered' with a 14-day trial (handle_new_user), so
+  // this told founding clubs to "upgrade to keep DJ Console, SMS…" right next
+  // to the "everything unlocked" badge. Nothing expires in founding mode.
+  if (FOUNDING_MODE) return null;
   const ctx = await getCurrentUserPlan();
   if (!ctx) return null;
   if (ctx.rawTier !== 'grandfathered') return null;
