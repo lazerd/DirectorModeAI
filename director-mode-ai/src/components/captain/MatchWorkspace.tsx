@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 import { lineupAsText } from '@/lib/captain/lineupText';
 import { JTT_COURT_FORMATS, leagueSpec, roundClashes, roundsByCourt } from '@/lib/captain/leagues';
+import { lineupPrintHtml } from '@/lib/captain/lineupPrint';
 
 export type MatchPlayer = {
   id: string;
@@ -470,6 +471,41 @@ export default function MatchWorkspace({
           .map((id) => nameOf(id)),
       })),
     });
+
+  /**
+   * Print the sheet on screen — or save it as a PDF from the same dialog.
+   * Its own window, so none of the app's dark chrome comes along, and built
+   * from what is on screen so an unsaved tweak prints too (marked DRAFT).
+   */
+  function printLineup() {
+    const w = window.open('', '_blank');
+    if (!w) {
+      setError('Your browser blocked the print window — allow pop-ups for clubmode.ai and try again.');
+      return;
+    }
+    w.document.open();
+    w.document.write(
+      lineupPrintHtml({
+        teamName,
+        matchAt,
+        opponent,
+        isHome,
+        location,
+        arrivalNote,
+        courtFormat: format,
+        draft: dirty,
+        courts: courts.map((c) => ({
+          courtNumber: c.courtNumber,
+          courtType: c.courtType,
+          round: roundOf?.get(c.courtNumber) ?? null,
+          names: ([c.player1Id] as (string | null)[])
+            .concat(c.courtType === 'doubles' ? [c.player2Id] : [])
+            .map((id) => nameOf(id)),
+        })),
+      }),
+    );
+    w.document.close();
+  }
 
   async function copyShareText(text: string) {
     try {
@@ -1591,6 +1627,16 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                   className={ghost}
                 >
                   Copy for the group chat
+                </button>
+                {/* Paper for the clipboard at the courts. The browser's print
+                    dialog also has "Save as PDF". */}
+                <button
+                  onClick={printLineup}
+                  disabled={!!busy}
+                  title="Print the lineup, or save it as a PDF"
+                  className={ghost}
+                >
+                  Print
                 </button>
                 <button
                   onClick={previewLineup}
