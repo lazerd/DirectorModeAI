@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { zipToLatLng, normalizeZip } from '@/lib/geo';
 import { milesBetween } from '@/lib/geo';
+import { MIN_GROUP_SIZE } from '@/lib/benchmarks/aggregate';
 
 // GET — anonymous market snapshot for the /connect landing page. Returns
 // aggregate counts + comp bands by department, with PII fully stripped. Never
-// exposes any individual candidate. Optional ?zip=&radius= narrows to a
-// geographic area ("23 directors open to work within 50mi of you").
+// exposes any individual candidate: a median over one or two people IS their
+// pay, so medians under MIN_GROUP_SIZE come back null. Optional ?zip=&radius=
+// narrows to a geographic area ("23 directors open to work within 50mi of you").
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const zip = normalizeZip(searchParams.get('zip'));
@@ -43,7 +45,7 @@ export async function GET(req: Request) {
       .sort((a, b) => a - b);
     byDept[dept] = {
       count: comps.length,
-      median_comp: comps.length ? comps[Math.floor(comps.length / 2)] : null,
+      median_comp: comps.length >= MIN_GROUP_SIZE ? comps[Math.floor(comps.length / 2)] : null,
     };
   }
 
