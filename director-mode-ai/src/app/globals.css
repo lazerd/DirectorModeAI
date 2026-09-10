@@ -921,10 +921,44 @@ textarea {
 @keyframes hm-spin-slow { to { transform: rotate(360deg); } }
 .hm-spin-slow { animation: hm-spin-slow 14s linear infinite; }
 
+/* Scroll reveal — see components/home/Reveal.tsx. */
+.hm-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1), transform 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.hm-reveal.is-shown { opacity: 1; transform: none; }
+
+/* Typewriter caret for the rotating headline word and the demo's AI bar. */
+@keyframes hm-blink { 50% { opacity: 0; } }
+.hm-caret {
+  display: inline-block;
+  width: 0.08em;
+  min-width: 2px;
+  height: 0.9em;
+  margin-left: 0.06em;
+  vertical-align: -0.08em;
+  background: #D3FB52;
+  animation: hm-blink 1s steps(1) infinite;
+}
+
+/* Fills left to right — the tour timer on the demo's active tool, bar charts. */
+@keyframes hm-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.hm-progress { transform-origin: left center; animation: hm-progress linear both; }
+
+/* Small idle bob for icon tiles. */
+@keyframes hm-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+.hm-bob { animation: hm-bob 5s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .hm-aurora, .hm-aurora-slow, .hm-float, .hm-marquee,
-  .hm-fade-up, .hm-gradient-text, .hm-pulse-ring, .hm-spin-slow {
+  .hm-fade-up, .hm-gradient-text, .hm-pulse-ring, .hm-spin-slow,
+  .hm-caret, .hm-progress, .hm-bob {
     animation: none !important;
   }
   .hm-gradient-text { background-position: 0 center; }
+  .hm-reveal { opacity: 1; transform: none; transition: none; }
 }

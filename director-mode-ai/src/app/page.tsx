@@ -7,13 +7,37 @@ import {
   Shuffle, Clock, Wrench, ArrowRight, LogOut, User, Calendar,
   UserCircle, Trophy, Users, GraduationCap, Database, ExternalLink,
   Sparkles, Check, ChevronRight, Zap, BarChart3, Waves,
-  LayoutGrid, ListOrdered, Radio, MapPin, Star, ShieldCheck,
+  LayoutGrid, ListOrdered, MapPin, Star, ShieldCheck,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import ProductShowcase from "@/components/shared/ProductShowcase";
+import AppShellDemo from "@/components/home/AppShellDemo";
+import RotatingWord from "@/components/home/RotatingWord";
+import Reveal from "@/components/home/Reveal";
 import { PRODUCTS, PRODUCT_COUNT, SECTIONS, FOR_PLAYERS, FOR_YOU, ALL_TOOLS_ITEM, type Tool } from "@/config/nav";
 
-import { APP_HOST } from '@/lib/appUrl';
+/** The rotating word in the headline. Module-level so its identity is stable. */
+const CLUB_KINDS = [
+  "tennis club", "pickleball club", "racquet club", "swim & tennis club",
+  "junior academy", "country club",
+] as const;
+
+/**
+ * "Retire the patchwork" — the workaround each tool replaces. Tool names must
+ * match src/config/nav.ts; an entry whose tool is missing is dropped, never
+ * rendered half-empty.
+ */
+const PATCHWORK = [
+  { was: "The paper court sheet by the desk", tool: "CourtSheet" },
+  { was: "Group texts to set a lineup", tool: "CaptainMode" },
+  { was: "A bracket spreadsheet on draw day", tool: "TournamentMode" },
+  { was: "A sign-up sheet for every social", tool: "MixerMode" },
+  { was: "Back-and-forth texts to book a lesson", tool: "LessonMode" },
+  { was: "The stringing clipboard", tool: "StringingMode" },
+]
+  .map((p) => ({ ...p, t: PRODUCTS.find((x) => x.name === p.tool) }))
+  .filter((p): p is typeof p & { t: Tool } => !!p.t);
+
 export default function HomePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -116,10 +140,11 @@ export default function HomePage() {
             <div className="w-9 h-9 bg-[#D3FB52] rounded-xl flex items-center justify-center shadow-lg shadow-[#D3FB52]/20 group-hover:scale-105 transition-transform">
               <Zap className="text-[#002838]" size={18} />
             </div>
-            <span className="font-bold text-lg tracking-tight">ClubMode<span className="text-[#D3FB52]"> AI</span></span>
+            <span className="font-bold text-lg tracking-tight whitespace-nowrap">ClubMode<span className="text-[#D3FB52]"> AI</span></span>
           </Link>
 
           <nav className="hidden md:flex items-center gap-7 text-sm text-white/60">
+            <a href="#tour" className="hover:text-white transition-colors">Tour</a>
             <a href="#tools" className="hover:text-white transition-colors">Platform</a>
             <a href="#leagues" className="hover:text-white transition-colors">Leagues &amp; JTT</a>
             <a href="#players" className="hover:text-white transition-colors">For Players</a>
@@ -153,11 +178,12 @@ export default function HomePage() {
               </>
             ) : (
               <>
-                <Link href="/login" className="block text-white/80 hover:text-white text-sm font-semibold transition-colors px-2 sm:px-3 py-2.5">
+                <Link href="/login" className="block whitespace-nowrap text-white/80 hover:text-white text-sm font-semibold transition-colors px-2 sm:px-3 py-2.5">
                   Sign In
                 </Link>
-                <Link href="/register" className="px-4 sm:px-5 py-2.5 bg-[#D3FB52] text-[#002838] rounded-lg font-semibold text-sm hover:bg-[#c5f035] hover:shadow-lg hover:shadow-[#D3FB52]/25 transition-all">
-                  Get Started Free
+                <Link href="/register" className="whitespace-nowrap px-4 sm:px-5 py-2.5 bg-[#D3FB52] text-[#002838] rounded-lg font-semibold text-sm hover:bg-[#c5f035] hover:shadow-lg hover:shadow-[#D3FB52]/25 transition-all">
+                  <span className="sm:hidden">Start free</span>
+                  <span className="hidden sm:inline">Get Started Free</span>
                 </Link>
               </>
             )}
@@ -175,30 +201,33 @@ export default function HomePage() {
           <div className="absolute inset-0 opacity-[0.04] [background-image:linear-gradient(#fff_1px,transparent_1px),linear-gradient(90deg,#fff_1px,transparent_1px)] [background-size:54px_54px] [mask-image:radial-gradient(ellipse_at_center,black_30%,transparent_72%)]" />
         </div>
 
-        <div className="relative z-10 max-w-7xl mx-auto grid lg:grid-cols-[1.05fr_0.95fr] gap-14 lg:gap-10 items-center">
-          {/* Left: copy */}
-          <div className="text-center lg:text-left">
+        {/* Centered copy over a live product shell — the memorang.com pattern:
+            show the real app with every tool in the rail, not an illustration. */}
+        <div className="relative z-10 max-w-4xl mx-auto">
+          <div className="text-center">
             <div className="hm-fade-up inline-flex items-center gap-2 px-3.5 py-1.5 bg-white/[0.06] border border-white/10 rounded-full text-xs sm:text-sm font-medium text-white/80 mb-7 backdrop-blur-sm">
               <span className="relative flex h-2 w-2">
                 <span className="hm-pulse-ring absolute inline-flex h-full w-full rounded-full bg-[#D3FB52]" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-[#D3FB52]" />
               </span>
-              New: Team Leagues &amp; Junior Team Tennis
+              {PRODUCT_COUNT} tools · one login · built by a Director of Tennis
             </div>
 
-            <h1 className="hm-fade-up text-[2.7rem] leading-[1.05] sm:text-6xl lg:text-[4.4rem] font-bold tracking-tight mb-6" style={{ animationDelay: "0.05s" }}>
-              Run your entire club
+            <h1 className="hm-fade-up text-[2.5rem] leading-[1.05] sm:text-6xl lg:text-[4.6rem] font-bold tracking-tight mb-6" style={{ animationDelay: "0.05s" }}>
+              Run your
               <br />
-              from <span className="hm-gradient-text">one screen.</span>
+              <RotatingWord words={CLUB_KINDS} className="hm-gradient-text" />
+              <br />
+              from one screen.
             </h1>
 
-            <p className="hm-fade-up text-lg sm:text-xl text-white/60 mb-9 max-w-xl mx-auto lg:mx-0 leading-relaxed" style={{ animationDelay: "0.12s" }}>
+            <p className="hm-fade-up text-lg sm:text-xl text-white/60 mb-9 max-w-2xl mx-auto leading-relaxed" style={{ animationDelay: "0.12s" }}>
               Court sheets, team leagues, junior team tennis, mixers, tournaments,
               lessons, stringing, player matching, and AI coaching — every tool your
               club needs, one login, zero spreadsheets.
             </p>
 
-            <div className="hm-fade-up flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5 mb-10" style={{ animationDelay: "0.18s" }}>
+            <div className="hm-fade-up flex flex-col sm:flex-row items-center justify-center gap-3.5 mb-10" style={{ animationDelay: "0.18s" }}>
               <Link
                 href="/register"
                 className="w-full sm:w-auto px-8 py-4 bg-[#D3FB52] text-[#002838] rounded-xl font-semibold text-base hover:bg-[#c5f035] transition-all shadow-xl shadow-[#D3FB52]/20 hover:shadow-2xl hover:shadow-[#D3FB52]/30 hover:-translate-y-0.5 inline-flex items-center justify-center gap-2"
@@ -214,95 +243,24 @@ export default function HomePage() {
             </div>
 
             {/* Stat strip */}
-            <div className="hm-fade-up grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-5 max-w-lg mx-auto lg:mx-0" style={{ animationDelay: "0.24s" }}>
+            <div className="hm-fade-up grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-5 max-w-lg mx-auto" style={{ animationDelay: "0.24s" }}>
               <HeroStat value={String(PRODUCT_COUNT)} label="connected tools" />
               <HeroStat value="4" label="event formats" />
               <HeroStat value="All" label="racquet sports" />
               <HeroStat value="0" label="spreadsheets" />
             </div>
           </div>
+        </div>
 
-          {/* Right: floating live court-sheet mockup */}
-          <div className="hm-fade-up relative" style={{ animationDelay: "0.2s" }}>
-            <div className="hm-float relative">
-              <div aria-hidden className="absolute -inset-6 bg-[#D3FB52]/10 rounded-[2rem] blur-3xl" />
-              <div
-                className="relative rounded-2xl overflow-hidden border border-white/10 shadow-2xl shadow-black/50 bg-[#001016]"
-                style={{ transform: "perspective(1400px) rotateY(-4deg) rotateX(2deg)" }}
-              >
-                {/* window chrome */}
-                <div className="flex items-center gap-2 px-4 py-2.5 bg-[#0a1822] border-b border-white/[0.06]">
-                  <div className="flex gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full bg-red-400/70" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-yellow-400/70" />
-                    <span className="w-2.5 h-2.5 rounded-full bg-green-400/70" />
-                  </div>
-                  <div className="flex-1 flex justify-center">
-                    <span className="bg-white/5 rounded-md px-3 py-1 text-[11px] text-white/40">{APP_HOST}/courtsheet</span>
-                  </div>
-                  <span className="flex items-center gap-1 text-[10px] font-semibold text-[#D3FB52]">
-                    <Radio size={11} /> LIVE
-                  </span>
-                </div>
-
-                {/* live court grid */}
-                <div className="p-4 bg-gradient-to-br from-[#001620] to-[#001016]">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-semibold text-white/70">Today &middot; 11 courts</span>
-                    <span className="text-[10px] text-white/40">4:00 PM</span>
-                  </div>
-                  <div className="space-y-1.5">
-                    {[
-                      { court: "Court 1", label: "Cardio Tennis", who: "Coach Diesel", tone: "lime", w: "78%" },
-                      { court: "Court 2", label: "Singles · Sarah vs Mike", who: "Member", tone: "cyan", w: "55%" },
-                      { court: "Court 3", label: "JTT 12U match", who: "League", tone: "yellow", w: "92%" },
-                      { court: "Court 4", label: "Open", who: "", tone: "muted", w: "0%" },
-                      { court: "Court 11a", label: "Pickleball clinic", who: "Pro shop", tone: "pink", w: "40%" },
-                    ].map((r) => (
-                      <div key={r.court} className="flex items-center gap-3">
-                        <span className="text-[10px] text-white/40 w-14 shrink-0">{r.court}</span>
-                        <div className="flex-1 h-7 rounded-md bg-white/[0.04] border border-white/[0.06] relative overflow-hidden">
-                          {r.w !== "0%" && (
-                            <div
-                              className={`absolute inset-y-0 left-0 rounded-md flex items-center px-2.5 ${
-                                r.tone === "lime" ? "bg-[#D3FB52]/20 border border-[#D3FB52]/30"
-                                : r.tone === "yellow" ? "bg-amber-400/20 border border-amber-400/30"
-                                : r.tone === "cyan" ? "bg-cyan-400/20 border border-cyan-400/30"
-                                : "bg-pink-400/20 border border-pink-400/30"
-                              }`}
-                              style={{ width: r.w }}
-                            >
-                              <span className="text-[10px] text-white/80 font-medium truncate">{r.label}</span>
-                            </div>
-                          )}
-                          {r.w === "0%" && (
-                            <span className="absolute inset-0 flex items-center px-2.5 text-[10px] text-white/25">Open</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* AI command bar */}
-                  <div className="mt-3 flex items-center gap-2 bg-white/[0.05] border border-white/10 rounded-lg px-3 py-2.5">
-                    <Sparkles size={14} className="text-[#D3FB52] shrink-0" />
-                    <span className="text-[11px] text-white/60 truncate">&ldquo;Book court 4 for a 5pm clinic and text the waitlist&rdquo;</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* floating callout */}
-              <div className="absolute -bottom-4 -left-4 bg-[#0a1822] border border-[#D3FB52]/25 rounded-xl px-3.5 py-2.5 shadow-xl hidden sm:flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-full bg-[#D3FB52]/15 flex items-center justify-center">
-                  <BarChart3 size={14} className="text-[#D3FB52]" />
-                </div>
-                <div>
-                  <p className="text-[9px] text-white/40 leading-none mb-0.5">Courts filled today</p>
-                  <p className="text-sm font-bold text-white leading-none">+38%</p>
-                </div>
-              </div>
-            </div>
+        {/* The product itself, running: every tool in the rail, touring on its own. */}
+        <div id="tour" className="hm-fade-up relative z-10 max-w-6xl mx-auto mt-16 sm:mt-20 scroll-mt-24" style={{ animationDelay: "0.3s" }}>
+          <div aria-hidden className="absolute -inset-x-10 -top-10 bottom-0 bg-[#D3FB52]/[0.07] rounded-[3rem] blur-3xl pointer-events-none" />
+          <div className="relative">
+            <AppShellDemo />
           </div>
+          <p className="relative text-center text-xs text-white/35 mt-6">
+            The real sidebar, live. Hover to pause &middot; click any tool to jump to it.
+          </p>
         </div>
       </section>
 
@@ -324,6 +282,49 @@ export default function HomePage() {
               ))}
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ===================== RETIRE THE PATCHWORK ===================== */}
+      {/* memorang's "replace dozens of point solutions" beat, in club terms:
+          the workaround on the left, the tool that retires it on the right. */}
+      <section className="relative py-20 sm:py-28 px-5 sm:px-6 bg-[#001820] overflow-hidden">
+        <div className="max-w-6xl mx-auto">
+          <Reveal className="text-center mb-14 max-w-2xl mx-auto">
+            <h2 className="text-sm font-semibold text-[#D3FB52] uppercase tracking-widest mb-3">One login</h2>
+            <p className="text-3xl sm:text-5xl font-bold tracking-tight mb-4">Retire the patchwork.</p>
+            <p className="text-white/50 text-lg">
+              Every club runs on a pile of workarounds. Each one has a tool here that replaces it — and they all share the same players, courts and calendar.
+            </p>
+          </Reveal>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            {PATCHWORK.map(({ was, t }, i) => {
+              const Icon = t.icon;
+              return (
+                <Reveal key={t.name} delay={(i % 3) * 90} className="h-full">
+                  <button
+                    type="button"
+                    onClick={() => openTool(t)}
+                    className="group h-full w-full text-left relative bg-white/[0.03] border border-white/[0.07] rounded-2xl p-6 overflow-hidden hover:bg-white/[0.06] hover:border-white/[0.14] hover:-translate-y-1 transition-all duration-300"
+                  >
+                    <div aria-hidden className="absolute -right-12 -top-12 w-36 h-36 rounded-full blur-3xl opacity-40 group-hover:opacity-70 transition-opacity" style={{ background: `${t.color}33` }} />
+                    <p className="relative text-sm text-white/40 line-through decoration-white/25 mb-5">{was}</p>
+                    <div className="relative flex items-center gap-3 mb-3">
+                      <div className="hm-bob w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${t.color}1f`, animationDelay: `${i * 0.6}s` }}>
+                        <Icon size={20} style={{ color: t.color }} />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: t.color }}>Now</p>
+                        <p className="text-lg font-bold tracking-tight">{t.name}</p>
+                      </div>
+                    </div>
+                    <p className="relative text-white/50 text-sm leading-relaxed">{t.description}</p>
+                  </button>
+                </Reveal>
+              );
+            })}
+          </div>
         </div>
       </section>
 
@@ -429,13 +430,13 @@ export default function HomePage() {
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
-            {PRODUCTS.map((tool) => {
+            {PRODUCTS.map((tool, i) => {
               const Icon = tool.icon;
               return (
+                <Reveal key={tool.href} delay={(i % 3) * 90} className="h-full">
                 <div
-                  key={tool.href}
                   onClick={() => openTool(tool)}
-                  className="group relative bg-white/[0.03] border border-white/[0.07] rounded-2xl p-6 sm:p-7 cursor-pointer
+                  className="group relative h-full bg-white/[0.03] border border-white/[0.07] rounded-2xl p-6 sm:p-7 cursor-pointer
                     hover:bg-white/[0.06] hover:border-white/[0.14] hover:shadow-2xl hover:shadow-black/30 hover:-translate-y-1
                     transition-all duration-300 overflow-hidden"
                 >
@@ -474,6 +475,7 @@ export default function HomePage() {
                     {user ? "Open Tool" : "Get Started"} <ArrowRight size={14} />
                   </div>
                 </div>
+                </Reveal>
               );
             })}
           </div>
@@ -555,7 +557,7 @@ export default function HomePage() {
       <section className="py-16 px-5 sm:px-6 bg-[#002838] border-y border-white/[0.06]">
         <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
           {[
-            { value: "9", label: "Tools, one login" },
+            { value: String(PRODUCT_COUNT), label: "Tools, one login" },
             { value: "4", label: "Event formats" },
             { value: "11", label: "Courts, live-tracked" },
             { value: "5", label: "Clubs in one league" },
@@ -716,7 +718,11 @@ export default function HomePage() {
         </div>
         <div className="relative z-10 max-w-3xl mx-auto text-center">
           <h2 className="text-3xl sm:text-5xl font-bold mb-5 tracking-tight">
-            Ready to run your club from <span className="hm-gradient-text">one screen?</span>
+            Ready to run your
+            <br />
+            <RotatingWord words={CLUB_KINDS} className="hm-gradient-text" />
+            <br />
+            from one screen?
           </h2>
           <p className="text-white/55 text-lg mb-10 max-w-xl mx-auto">
             Set up in five minutes. Free plan, forever — fill courts, run your season, and ditch the spreadsheets.
