@@ -2,16 +2,20 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { zonedWallTimeToIso } from '@/lib/captain/clubTime';
 
 export default function AddMatchForm({
   teamId,
   singlesCourts,
   doublesCourts,
+  timeZone,
 }: {
   teamId: string;
   /** The team's default lines, so the form opens on the right shape. */
   singlesCourts: number;
   doublesCourts: number;
+  /** The club's IANA zone — what the captain types is club time, not browser time. */
+  timeZone: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -36,7 +40,7 @@ export default function AddMatchForm({
           team_id: teamId,
           matches: [
             {
-              match_at: new Date(when).toISOString(),
+              match_at: zonedWallTimeToIso(when, timeZone) ?? new Date(when).toISOString(),
               opponent,
               is_home: isHome,
               location,

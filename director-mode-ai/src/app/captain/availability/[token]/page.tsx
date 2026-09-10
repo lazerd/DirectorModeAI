@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import AvailabilityList, { type AvailMatch } from './AvailabilityList';
+import { CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +40,7 @@ export default async function CaptainAvailabilityPage({
 
   const { data: team } = await admin
     .from('captain_teams')
-    .select('name, level')
+    .select(`name, level, ${CLUB_TZ_EMBED}`)
     .eq('id', player.team_id)
     .maybeSingle();
 
@@ -83,6 +84,7 @@ export default async function CaptainAvailabilityPage({
       teamLevel={t?.level || null}
       matches={list}
       preselect={pre}
+      timeZone={clubTimeZoneOf(team)}
     />
   );
 }

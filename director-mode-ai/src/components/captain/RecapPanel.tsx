@@ -61,10 +61,13 @@ export default function RecapPanel({
   matchId,
   hasResults,
   recapSentAt,
+  timeZone,
 }: {
   matchId: string;
   hasResults: boolean;
   recapSentAt: string | null;
+  /** The club's IANA zone. */
+  timeZone: string;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -249,7 +252,7 @@ export default function RecapPanel({
         {sent && (
           <p className="mt-2 text-xs text-white/35">
             Recap sent{' '}
-            {new Date(sent).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })}
+            {new Date(sent).toLocaleString('en-US', { timeZone })}
           </p>
         )}
         {note && <p className="mt-2 text-xs text-[#D3FB52]">{note}</p>}
@@ -427,7 +430,7 @@ export default function RecapPanel({
           {sent && (
             <p className="mt-3 text-xs text-amber-300/80">
               A recap already went out{' '}
-              {new Date(sent).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })} — sending
+              {new Date(sent).toLocaleString('en-US', { timeZone })} — sending
               again mails the whole team a second copy.
             </p>
           )}

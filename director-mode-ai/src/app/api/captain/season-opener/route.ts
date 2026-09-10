@@ -19,7 +19,7 @@ import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { seasonOpenerBodyText, seasonOpenerEmail, seasonWhenText } from '@/lib/captain/emails';
-import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
 import { leagueSpec, defaultCourts } from '@/lib/captain/leagues';
 import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
@@ -41,12 +41,14 @@ async function build(teamId: string) {
   const { data: teamRow } = await db
     .from('captain_teams')
     .select(
-      'id, name, level, league_type, club_id, host_notes, court_format, default_singles_courts, default_doubles_courts',
+      `id, name, level, league_type, club_id, host_notes, court_format, default_singles_courts, default_doubles_courts, ${CLUB_TZ_EMBED}`,
     )
     .eq('id', teamId)
     .maybeSingle();
   if (!teamRow) return null;
   const team = teamRow as Record<string, unknown>;
+  // Our fixtures, stated in our club's time.
+  const tz = clubTimeZoneOf(teamRow);
 
   const [{ data: matches }, { data: opponents }] = await Promise.all([
     db
@@ -86,7 +88,7 @@ async function build(teamId: string) {
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
-      timeZone: CLUB_TZ,
+      timeZone: tz,
     }).format(new Date(d));
 
   const recipients: Recipient[] = [];
@@ -151,7 +153,7 @@ async function build(teamId: string) {
     spec,
     courts,
     recipients,
-    whenText: seasonWhenText(fixtures.map((m) => m.match_at as string)),
+    whenText: seasonWhenText(fixtures.map((m) => m.match_at as string), tz),
   };
 }
 

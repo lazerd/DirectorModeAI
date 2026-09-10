@@ -31,6 +31,8 @@ import {
 } from './timeline';
 import { withSecondContact, recipientRows } from './teamContacts';
 import { DEFAULT_JTT_COURT_FORMAT, leagueSpec, roundsByCourt } from './leagues';
+import { resolveTeamTimeZone } from './clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const MATCH_COLUMNS =
   'id, team_id, match_at, status, is_home, opponent, location, arrival_note, ' +
@@ -69,6 +71,8 @@ export type TeamEmailContext = {
    * decides the rounds the lineup and reminder emails print. Empty for adults.
    */
   roundFormat: Map<string, number>;
+  /** The club's IANA zone — every time in every email is written in it. */
+  timeZone: string;
 };
 
 function infoOf(m: Record<string, unknown>): MatchInfo {
@@ -110,6 +114,7 @@ export async function loadTeamEmailContext(
     { data: settingRows },
     { data: ovRows },
     { data: teamShape },
+    timeZone,
   ] = await Promise.all([
       db
         .from('captain_players')
@@ -139,6 +144,9 @@ export async function loadTeamEmailContext(
       // League + default format, for the rounds a JTT email prints. Read here
       // rather than widened on every caller's team row, so no caller can forget.
       db.from('captain_teams').select('league_type, court_format').eq('id', team.id).maybeSingle(),
+      // Admin, not `db`: the preview (RLS-scoped) and the cron (admin) must
+      // resolve the same zone or the preview stops being the send.
+      resolveTeamTimeZone(getSupabaseAdmin(), team.id),
     ]);
 
   const shape = teamShape as { league_type: string | null; court_format: number | null } | null;
@@ -200,6 +208,7 @@ export async function loadTeamEmailContext(
     overrides: (ovRows as OverrideRow[]) || [],
     counts,
     roundFormat,
+    timeZone,
   };
 }
 
@@ -240,7 +249,7 @@ export function payloadsFor(
 
   if (kind === 'poll') {
     return audience.flatMap((p) =>
-      withSecondContact(availabilityEmail(teamName, info, recipientOf(p), undefined, custom), p.contact2_email),
+      withSecondContact(availabilityEmail(teamName, info, recipientOf(p), ctx.timeZone, custom), p.contact2_email),
     );
   }
 
@@ -249,7 +258,7 @@ export function payloadsFor(
     return audience
       .filter((p) => !done.has(p.id))
       .flatMap((p) =>
-        withSecondContact(nudgeEmail(teamName, info, recipientOf(p), undefined, custom), p.contact2_email),
+        withSecondContact(nudgeEmail(teamName, info, recipientOf(p), ctx.timeZone, custom), p.contact2_email),
       );
   }
 
@@ -278,7 +287,7 @@ export function payloadsFor(
     );
     return audience.flatMap((p) =>
       withSecondContact(
-        lineupEmail(teamName, info, rows, recipientOf(p), playing.has(p.id), undefined, custom),
+        lineupEmail(teamName, info, rows, recipientOf(p), playing.has(p.id), ctx.timeZone, custom),
         p.contact2_email,
       ),
     );
@@ -306,7 +315,7 @@ export function payloadsFor(
     .filter((p) => !!courtFor(p.id))
     .flatMap((p) =>
       withSecondContact(
-        matchReminderEmail(teamName, info, recipientOf(p), courtFor(p.id), undefined, custom),
+        matchReminderEmail(teamName, info, recipientOf(p), courtFor(p.id), ctx.timeZone, custom),
         p.contact2_email,
       ),
     );
@@ -374,10 +383,11 @@ function sampleSubject(kind: EmailKind, ctx: TeamEmailContext, matchId: string):
     token: 'sample',
   };
   const t = ctx.team.name;
-  if (kind === 'poll') return availabilityEmail(t, info, r, undefined, custom).subject;
-  if (kind === 'nudge') return nudgeEmail(t, info, r, undefined, custom).subject;
-  if (kind === 'lineup') return lineupEmail(t, info, [], r, false, undefined, custom).subject;
-  return matchReminderEmail(t, info, r, null, undefined, custom).subject;
+  const tz = ctx.timeZone;
+  if (kind === 'poll') return availabilityEmail(t, info, r, tz, custom).subject;
+  if (kind === 'nudge') return nudgeEmail(t, info, r, tz, custom).subject;
+  if (kind === 'lineup') return lineupEmail(t, info, [], r, false, tz, custom).subject;
+  return matchReminderEmail(t, info, r, null, tz, custom).subject;
 }
 
 export { EMAIL_KINDS };

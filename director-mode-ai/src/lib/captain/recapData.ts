@@ -7,7 +7,8 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { formatMatchWhen, type MatchInfo, type RecapCourtRow } from './emails';
-import { CLUB_TZ } from './clubTime';
+import { resolveTeamTimeZone } from './clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   firstName,
   seasonRecord,
@@ -57,6 +58,8 @@ export type RecapContext = {
   templates: TemplateRow[];
   /** False when no court scores have been saved — nothing to recap yet. */
   hasResults: boolean;
+  /** The club's IANA zone, for every time the recap prints. */
+  timeZone: string;
 };
 
 export function recapMatchInfo(m: Record<string, unknown>): MatchInfo {
@@ -85,6 +88,7 @@ export async function loadRecapContext(
     { data: results },
     { data: templates },
     { data: teamRow },
+    timeZone,
   ] = await Promise.all([
       db
         .from('captain_players')
@@ -103,6 +107,8 @@ export async function loadRecapContext(
         .eq('match_id', matchId),
       db.from('captain_recap_templates').select('outcome, subject, body').eq('team_id', teamId),
       db.from('captain_teams').select('match_scoring').eq('id', teamId).maybeSingle(),
+      // Admin: `db` is RLS-scoped, and cc_clubs is not readable by every co-captain.
+      resolveTeamTimeZone(getSupabaseAdmin(), teamId),
     ]);
 
   const scoring: MatchScoring =
@@ -186,6 +192,7 @@ export async function loadRecapContext(
     nextMatch: nextRow ? recapMatchInfo(nextRow as Record<string, unknown>) : null,
     templates: (templates as TemplateRow[]) || [],
     hasResults: resultRows.length > 0,
+    timeZone,
   };
 }
 
@@ -195,7 +202,7 @@ export function recapVars(ctx: RecapContext, teamName: string, playerName: strin
     team: teamName,
     name: firstName(playerName),
     opponent: ctx.match.opponent || 'them',
-    when: formatMatchWhen(ctx.match.matchAt, CLUB_TZ),
+    when: formatMatchWhen(ctx.match.matchAt, ctx.timeZone),
     home_away: ctx.match.isHome ? 'home' : 'away',
     score: ctx.tally.scoreline,
     result: ctx.tally.outcome,

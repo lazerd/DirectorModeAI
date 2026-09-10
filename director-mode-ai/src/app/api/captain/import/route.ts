@@ -20,6 +20,8 @@ import { z } from 'zod';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { defaultCourts } from '@/lib/captain/leagues';
 import { recordAiUsage } from '@/lib/billing';
+import { resolveClubTimeZone, zonedWallTimeToIso } from '@/lib/captain/clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,7 +62,7 @@ type Parsed = z.infer<typeof ParsedZ>;
 
 /**
  * Build a timestamptz for a wall-clock date/time at the club, without pulling in
- * a tz library. Ask Intl what UTC offset America/Los_Angeles had on that date so
+ * a tz library. Ask Intl what UTC offset the CLUB's zone had on that date so
  * matches land at the right local hour on both sides of the DST change.
  */
 /**
@@ -73,25 +75,18 @@ type Parsed = z.infer<typeof ParsedZ>;
  * missing time has to stop the row, not quietly acquire a plausible one:
  * families set alarms by this.
  */
-function clubTimestamp(date: string, time: string): string {
-  const hhmm = time;
-  const naive = new Date(`${date}T${hhmm}:00Z`);
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Los_Angeles',
-    timeZoneName: 'longOffset',
-  });
-  const part = fmt.formatToParts(naive).find((p) => p.type === 'timeZoneName')?.value ?? 'GMT-08:00';
-  const offset = part.replace('GMT', '') || '-08:00';
-  return `${date}T${hhmm}:00${offset}`;
+function clubTimestamp(date: string, time: string, tz: string): string {
+  const hhmm = time.padStart(5, '0');
+  return zonedWallTimeToIso(`${date}T${hhmm}`, tz) ?? `${date}T${hhmm}:00Z`;
 }
 
-function systemPrompt(): string {
+function systemPrompt(tz: string): string {
   // League sites very often print "Fri, Sep 11" with no year — EBWT's master
   // schedule does exactly that. Without today's date the model has nothing to
   // anchor on and guesses; one captain's whole season came back dated 2020-2021
   // and every match rendered as already played. Give it the date explicitly.
   const today = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Los_Angeles',
+    timeZone: tz,
     year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
   return SYSTEM_TEMPLATE.replace('{{TODAY}}', today);
@@ -187,6 +182,7 @@ export async function POST(req: Request) {
   const ctx = await requireTeam(teamId);
   if (isError(ctx)) return ctx.error;
   const { db, userId } = ctx;
+  const tz = await resolveClubTimeZone(getSupabaseAdmin(), ctx.team.club_id);
 
   // ---------------------------------------------------------------- commit --
   if (body.commit) {
@@ -242,7 +238,7 @@ export async function POST(req: Request) {
       .filter((m) => !!m.time)
       .map((m) => ({
         team_id: teamId,
-        match_at: clubTimestamp(m.date, m.time as string),
+        match_at: clubTimestamp(m.date, m.time as string, tz),
         // Unknown home/away is recorded as away but SAID OUT LOUD below, so the
         // captain fixes it rather than discovering it in a parent's reply.
         is_home: m.is_home ?? false,
@@ -307,7 +303,7 @@ export async function POST(req: Request) {
     msg = await anthropic.messages.create({
       model: MODEL,
       max_tokens: 4000,
-      system: systemPrompt(),
+      system: systemPrompt(tz),
       messages: [{ role: 'user', content: text }],
     });
     raw = msg.content.map((c) => (c.type === 'text' ? c.text : '')).join('');

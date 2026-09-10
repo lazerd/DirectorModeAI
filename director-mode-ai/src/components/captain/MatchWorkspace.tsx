@@ -9,6 +9,7 @@ import { lineupAsText } from '@/lib/captain/lineupText';
 import { JTT_COURT_FORMATS, leagueSpec, roundClashes, roundsByCourt } from '@/lib/captain/leagues';
 import { lineupPrintHtml } from '@/lib/captain/lineupPrint';
 import { shrinkImage } from '@/lib/captain/shrinkImage';
+import { isoToZonedWallTime, zonedWallTimeToIso } from '@/lib/captain/clubTime';
 
 export type MatchPlayer = {
   id: string;
@@ -88,14 +89,14 @@ type SmsPreview = {
 type AutoSend = { status: string; sendAt: string; sentAt: string | null };
 
 /** Vercel runs UTC; the banner must speak club time or it will quote the wrong hour. */
-const fmtWhen = (iso: string) =>
+const fmtWhen = (iso: string, timeZone: string) =>
   new Intl.DateTimeFormat('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'America/Los_Angeles',
+    timeZone,
   }).format(new Date(iso));
 
 const btn = 'px-4 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50 transition';
@@ -123,6 +124,7 @@ export default function MatchWorkspace({
   location,
   arrivalNote,
   jttCourtFormat,
+  timeZone,
 }: {
   teamId: string;
   matchId: string;
@@ -159,6 +161,8 @@ export default function MatchWorkspace({
    * round. Null for every other league — they have no rounds.
    */
   jttCourtFormat: number | null;
+  /** The club's IANA zone. Every time on this page — shown, printed or typed — is club time. */
+  timeZone: string;
 }) {
   const router = useRouter();
   const withdrawn = new Map(withdrawals.map((w) => [w.playerId, w]));
@@ -184,12 +188,9 @@ export default function MatchWorkspace({
   const [copied, setCopied] = useState(false);
   const [swapPick, setSwapPick] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
   const [rescheduling, setRescheduling] = useState(false);
-  // datetime-local wants local wall-clock, not an ISO string with a zone.
-  const [newDate, setNewDate] = useState(() => {
-    const d = new Date(matchAt);
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  });
+  // datetime-local wants wall-clock, not an ISO string with a zone — the
+  // club's wall clock, not the browser's.
+  const [newDate, setNewDate] = useState(() => isoToZonedWallTime(matchAt, timeZone));
   const [scoring, setScoring] = useState(status === 'played');
   /**
    * Which player row has its actions open.
@@ -477,6 +478,7 @@ export default function MatchWorkspace({
       isHome,
       location,
       arrivalNote,
+      timeZone,
       courts: courts.map((c) => ({
         courtNumber: c.courtNumber,
         courtType: c.courtType,
@@ -509,6 +511,7 @@ export default function MatchWorkspace({
         arrivalNote,
         courtFormat: format,
         draft: dirty,
+        timeZone,
         courts: courts.map((c) => ({
           courtNumber: c.courtNumber,
           courtType: c.courtType,
@@ -631,8 +634,9 @@ export default function MatchWorkspace({
       answered.length ? `${answered.length} availability answers` : null,
       courts.length ? 'the saved lineup' : null,
     ].filter(Boolean);
+    const newAt = zonedWallTimeToIso(newDate, timeZone) ?? new Date(newDate).toISOString();
     const ok = window.confirm(
-      `Move this match to ${new Date(newDate).toLocaleString()}?` +
+      `Move this match to ${fmtWhen(newAt, timeZone)}?` +
         (losing.length ? `
 
 This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
@@ -649,9 +653,9 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         body: JSON.stringify({
           team_id: teamId,
           match_id: matchId,
-          // datetime-local has no zone; the browser reads it as club-local,
-          // which is what the captain typed.
-          reschedule_to: new Date(newDate).toISOString(),
+          // datetime-local has no zone; read it as club-local, which is what
+          // the captain typed — wherever their browser happens to be.
+          reschedule_to: newAt,
         }),
       });
       const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -1742,7 +1746,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                     <span className="text-white/70 text-sm">
                       {autoSend.status === 'blocked'
                         ? 'Once you save a lineup, the automation will email it on the scheduled day.'
-                        : `Unless you turn this off, the automation emails this lineup on ${fmtWhen(autoSend.sendAt)}.`}
+                        : `Unless you turn this off, the automation emails this lineup on ${fmtWhen(autoSend.sendAt, timeZone)}.`}
                     </span>
                     <button
                       onClick={() => setAutoSendSkip(true)}
@@ -1846,7 +1850,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
             <ul className="mt-1.5 space-y-1 text-red-100/80">
               {bailedInLineup.map((b) => (
                 <li key={b.playerId}>
-                  {b.name} — {fmtWhen(b.at)}
+                  {b.name} — {fmtWhen(b.at, timeZone)}
                   {b.note ? ` · “${b.note}”` : ''}
                 </li>
               ))}
@@ -2045,14 +2049,14 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                           {bailed ? (
                             <span
                               className="text-red-400 text-xs shrink-0 font-semibold"
-                              title={`Pulled out ${fmtWhen(bailed.at)}`}
+                              title={`Pulled out ${fmtWhen(bailed.at, timeZone)}`}
                             >
                               pulled out
                             </span>
                           ) : confirmed ? (
                             <span
                               className="text-[#D3FB52] text-xs shrink-0"
-                              title={`Confirmed ${fmtWhen(confirmedAt as string)}${
+                              title={`Confirmed ${fmtWhen(confirmedAt as string, timeZone)}${
                                 confirmedByCaptain ? ' — recorded by you' : ''
                               }`}
                             >
@@ -2124,7 +2128,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                                 onClick={() =>
                                   openText(
                                     [pid],
-                                    `${nameOf(pid).split(' ')[0]} — you're on ${labelOf(c)} for ${fmtWhen(matchAt)}. Can you confirm?`,
+                                    `${nameOf(pid).split(' ')[0]} — you're on ${labelOf(c)} for ${fmtWhen(matchAt, timeZone)}. Can you confirm?`,
                                   )
                                 }
                                 disabled={!!busy}
@@ -2453,6 +2457,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
             matchId={matchId}
             hasResults={initialResults.length > 0}
             recapSentAt={recapSentAt}
+            timeZone={timeZone}
           />
         </section>
       )}

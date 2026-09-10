@@ -19,9 +19,8 @@ const OPTIONS: { value: 'yes' | 'no' | 'maybe'; label: string; bg: string; fg: s
 
 // Matches are played at the club, so pin every date to club time. A player
 // answering from a trip should still see the 9:30am the team actually plays.
-const TZ = 'America/Los_Angeles';
-const part = (iso: string, opts: Intl.DateTimeFormatOptions) =>
-  new Intl.DateTimeFormat('en-US', { ...opts, timeZone: TZ }).format(new Date(iso));
+const part = (iso: string, opts: Intl.DateTimeFormatOptions, timeZone: string) =>
+  new Intl.DateTimeFormat('en-US', { ...opts, timeZone }).format(new Date(iso));
 
 export default function AvailabilityList({
   token,
@@ -30,6 +29,7 @@ export default function AvailabilityList({
   teamLevel,
   matches,
   preselect,
+  timeZone,
 }: {
   token: string;
   playerName: string;
@@ -37,6 +37,8 @@ export default function AvailabilityList({
   teamLevel: string | null;
   matches: AvailMatch[];
   preselect: { matchId: string; status: 'yes' | 'no' | 'maybe' } | null;
+  /** The club's IANA zone. */
+  timeZone: string;
 }) {
   const [state, setState] = useState<Record<string, AvailMatch['status']>>(
     Object.fromEntries(matches.map((m) => [m.id, m.status])),
@@ -267,7 +269,7 @@ export default function AvailabilityList({
                         padding: '4px 0',
                       }}
                     >
-                      {part(m.matchAt, { month: 'short' }).toUpperCase()}
+                      {part(m.matchAt, { month: 'short' }, timeZone).toUpperCase()}
                     </div>
                     <div
                       style={{
@@ -278,13 +280,13 @@ export default function AvailabilityList({
                         padding: '4px 0 6px',
                       }}
                     >
-                      {part(m.matchAt, { day: 'numeric' })}
+                      {part(m.matchAt, { day: 'numeric' }, timeZone)}
                     </div>
                   </div>
 
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontSize: 19, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
-                      {part(m.matchAt, { weekday: 'long' })}
+                      {part(m.matchAt, { weekday: 'long' }, timeZone)}
                     </div>
                     <div
                       style={{
@@ -299,7 +301,7 @@ export default function AvailabilityList({
                         letterSpacing: '.01em',
                       }}
                     >
-                      {part(m.matchAt, { hour: 'numeric', minute: '2-digit' })}
+                      {part(m.matchAt, { hour: 'numeric', minute: '2-digit' }, timeZone)}
                     </div>
                     <div
                       style={{

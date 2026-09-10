@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import ClaimButton from './ClaimButton';
-import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
 
 export const dynamic = 'force-dynamic';
 
@@ -56,7 +56,7 @@ export default async function ClaimPage({
       .select('match_at, is_home, opponent, location')
       .eq('id', request.match_id)
       .maybeSingle(),
-    admin.from('captain_teams').select('name').eq('id', request.team_id).maybeSingle(),
+    admin.from('captain_teams').select(`name, ${CLUB_TZ_EMBED}`).eq('id', request.team_id).maybeSingle(),
   ]);
 
   const m = match as {
@@ -74,7 +74,7 @@ export default async function ClaimPage({
         day: 'numeric',
         hour: 'numeric',
         minute: '2-digit',
-        timeZone: CLUB_TZ,
+        timeZone: clubTimeZoneOf(team),
       }).format(new Date(m.match_at))
     : '';
 

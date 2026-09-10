@@ -20,7 +20,8 @@ import TeamSettingsPanel from '@/components/captain/TeamSettingsPanel';
 import StrengthOrderPanel from '@/components/captain/StrengthOrderPanel';
 import NeverPairPanel from '@/components/captain/NeverPairPanel';
 import SeasonAvailabilityPanel from '@/components/captain/SeasonAvailabilityPanel';
-import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { resolveClubTimeZone } from '@/lib/captain/clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { defaultCourts, leagueSpec } from '@/lib/captain/leagues';
 
 export const dynamic = 'force-dynamic';
@@ -60,6 +61,12 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
     source_team_id: string | null;
     court_format: number | null;
   };
+
+  // The club's zone — the schedule and new-match entry are both club-local.
+  const timeZone = await resolveClubTimeZone(
+    getSupabaseAdmin(),
+    (teamRow as { club_id?: string | null }).club_id,
+  );
 
   // What a new match starts with. The team's own numbers if it has them,
   // otherwise the shape of its league.
@@ -313,7 +320,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
                     day: 'numeric',
                     hour: 'numeric',
                     minute: '2-digit',
-                    timeZone: CLUB_TZ,
+                    timeZone,
                   }).format(new Date(m.match_at as string))}
                 </div>
                 <div className="text-white/40 text-sm">
@@ -354,7 +361,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
                           day: 'numeric',
                           hour: 'numeric',
                           minute: '2-digit',
-                          timeZone: CLUB_TZ,
+                          timeZone,
                         }).format(new Date(m.match_at as string))}
                       </div>
                       <div className="text-white/30 text-sm">
@@ -378,6 +385,7 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
           teamId={team.id}
           singlesCourts={courts.singles}
           doublesCourts={courts.doubles}
+          timeZone={timeZone}
         />
       </section>
 

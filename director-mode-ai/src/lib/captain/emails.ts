@@ -297,7 +297,7 @@ export function lineupEmail(
          You're in this lineup — please tap one so your captain knows. If you have to pull out,
          say so now and your captain can find a sub while there's still time.
        </p>
-       ${calendarBlock(team, m, courtLabel, r.token)}`
+       ${calendarBlock(team, m, courtLabel, r.token, tz)}`
     : `<p style="font-size:14px;color:#475569">You're not in this lineup, but here it is so you're in the loop.</p>`;
 
   const vars = varsFor(team, r.name, m, tz);
@@ -324,8 +324,9 @@ function calendarBlock(
   m: MatchInfo,
   court: string | null,
   token: string,
+  tz?: string,
 ): string {
-  const gcal = googleCalendarUrl(matchEvent(team, m, court));
+  const gcal = googleCalendarUrl(matchEvent(team, m, court, { timeZone: tz }));
   const ics = `${BASE}/api/captain/calendar/${token}/${m.id}`;
   return `
     <div style="margin:18px 0 4px;padding-top:16px;border-top:1px solid #e2e8f0">
@@ -358,7 +359,7 @@ export function matchReminderEmail(
       `See you tomorrow, ${r.name}`,
       `${introBlock(c, vars)}${matchLines(m, tz)}
        ${yourCourt ? `<p style="font-size:16px;margin:8px 0"><strong>You're on ${yourCourt}</strong></p>` : ''}
-       ${calendarBlock(team, m, yourCourt, r.token)}
+       ${calendarBlock(team, m, yourCourt, r.token, tz)}
        <p style="font-size:13px;color:#64748b;margin:14px 0 0">
          Something come up? <a href="${BASE}/captain/confirm/${r.token}/${m.id}?a=out" style="color:#b91c1c">Let your captain know you can't make it</a>.
        </p>`,

@@ -15,7 +15,8 @@ import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { sendSmsBatch, checkSmsDelivery, describeSmsError } from '@/lib/twilio';
 import { CreditLimitError } from '@/lib/billing';
-import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { resolveClubTimeZone } from '@/lib/captain/clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -177,7 +178,7 @@ export async function POST(req: Request) {
     // separate mishaps — surface it once, at the top.
     commonFailure:
       failed.length > 0 && new Set(failed.map((f) => f.reason)).size === 1 ? failed[0].reason : null,
-    clubTz: CLUB_TZ,
+    clubTz: await resolveClubTimeZone(getSupabaseAdmin(), team.club_id),
   });
 }
 

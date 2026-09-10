@@ -3,7 +3,8 @@ import { redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { getCaptainAccess, listCaptainTeams, MAX_TEAMS_PER_CAPTAIN } from '@/lib/captain/access';
 import NewTeamForm from '@/components/captain/NewTeamForm';
-import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { CLUB_TZ, CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { leagueLabel } from '@/lib/captain/leagues';
 
 export const dynamic = 'force-dynamic';
@@ -49,6 +50,20 @@ export default async function CaptainHome() {
       []) {
       if (!nextByTeam.has(m.team_id)) nextByTeam.set(m.team_id, m);
     }
+  }
+
+  // Each team in its own club's zone. Admin read: cc_clubs is RLS-scoped, and
+  // these ids are already limited to the viewer's own teams.
+  const tzByTeam = new Map<string, string>();
+  if (teams.length) {
+    const { data: zones } = await getSupabaseAdmin()
+      .from('captain_teams')
+      .select(`id, ${CLUB_TZ_EMBED}`)
+      .in(
+        'id',
+        teams.map((t) => t.id),
+      );
+    for (const z of (zones as { id: string }[]) || []) tzByTeam.set(z.id, clubTimeZoneOf(z));
   }
 
   return (
@@ -101,7 +116,7 @@ export default async function CaptainHome() {
                           month: 'short',
                           day: 'numeric',
                           hour: 'numeric',
-                          timeZone: CLUB_TZ,
+                          timeZone: tzByTeam.get(t.id) ?? CLUB_TZ,
                         }).format(new Date(next.match_at))}
                       </div>
                       <div className="text-white/40">{next.opponent || 'next match'}</div>

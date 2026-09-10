@@ -11,6 +11,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { buildIcs, matchEvent } from '@/lib/captain/calendar';
 import type { MatchInfo } from '@/lib/captain/emails';
+import { CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
 
 type Ctx = { params: { token: string; matchId: string } };
 
@@ -36,7 +37,7 @@ export async function GET(_req: Request, { params }: Ctx) {
       .eq('id', params.matchId)
       .eq('team_id', player.team_id)
       .maybeSingle(),
-    admin.from('captain_teams').select('name').eq('id', player.team_id).maybeSingle(),
+    admin.from('captain_teams').select(`name, ${CLUB_TZ_EMBED}`).eq('id', player.team_id).maybeSingle(),
     admin
       .from('captain_lineups')
       .select('court_number, court_type')
@@ -63,7 +64,9 @@ export async function GET(_req: Request, { params }: Ctx) {
   const court = l ? `${l.court_type === 'singles' ? 'Singles' : 'Doubles'} ${l.court_number}` : null;
 
   const ics = buildIcs(
-    matchEvent((teamRow as { name: string } | null)?.name || 'Tennis', info, court),
+    matchEvent((teamRow as { name: string } | null)?.name || 'Tennis', info, court, {
+      timeZone: clubTimeZoneOf(teamRow),
+    }),
   );
 
   const day = new Date(info.matchAt).toISOString().slice(0, 10);

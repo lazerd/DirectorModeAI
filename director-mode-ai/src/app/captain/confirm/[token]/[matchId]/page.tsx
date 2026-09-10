@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { googleCalendarUrl, matchEvent } from '@/lib/captain/calendar';
-import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
 import type { MatchInfo } from '@/lib/captain/emails';
 
 export const dynamic = 'force-dynamic';
@@ -52,7 +52,7 @@ export default async function ConfirmPage({
       .eq('id', params.matchId)
       .eq('team_id', player.team_id)
       .maybeSingle(),
-    admin.from('captain_teams').select('name').eq('id', player.team_id).maybeSingle(),
+    admin.from('captain_teams').select(`name, ${CLUB_TZ_EMBED}`).eq('id', player.team_id).maybeSingle(),
     admin
       .from('captain_lineups')
       .select(
@@ -84,13 +84,14 @@ export default async function ConfirmPage({
   }
 
   // Vercel runs UTC. Without an explicit zone a 9:30am match reads as 4:30 PM.
+  const timeZone = clubTimeZoneOf(team);
   const when = new Intl.DateTimeFormat('en-US', {
     weekday: 'long',
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: CLUB_TZ,
+    timeZone,
   }).format(new Date(m.match_at as string));
 
   const isSlot1 = l ? l.player1_id === player.id : false;
@@ -112,7 +113,7 @@ export default async function ConfirmPage({
     opposingCaptainName: (m.opposing_captain_name as string) || null,
     opposingCaptainPhone: (m.opposing_captain_phone as string) || null,
   };
-  const gcal = googleCalendarUrl(matchEvent(teamName, info, court));
+  const gcal = googleCalendarUrl(matchEvent(teamName, info, court, { timeZone }));
   const ics = `/api/captain/calendar/${params.token}/${params.matchId}`;
 
   const detail = [

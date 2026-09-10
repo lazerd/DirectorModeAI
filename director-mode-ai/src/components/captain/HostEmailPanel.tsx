@@ -51,11 +51,14 @@ export default function HostEmailPanel({
   isHome,
   opponent,
   sentAt,
+  timeZone,
 }: {
   matchId: string;
   isHome: boolean;
   opponent?: string | null;
   sentAt?: string | null;
+  /** The club's IANA zone. */
+  timeZone: string;
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -195,7 +198,7 @@ export default function HostEmailPanel({
 
       {sent && (
         <p className="mt-3 flex items-center gap-2 rounded-lg bg-emerald-50 px-3 py-2 text-[13px] text-emerald-800">
-          <Check size={14} /> Already sent {new Date(sent).toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })}
+          <Check size={14} /> Already sent {new Date(sent).toLocaleString('en-US', { timeZone })}
         </p>
       )}
 

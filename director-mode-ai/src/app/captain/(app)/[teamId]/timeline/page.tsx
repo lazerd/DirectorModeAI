@@ -69,6 +69,7 @@ export default async function TimelinePage({ params }: { params: { teamId: strin
         initialEvents={events}
         initialSettings={settings}
         rosterWithEmail={ctx.counts.roster}
+        timeZone={ctx.timeZone}
       />
 
       {/* The recap is triggered from the match page, not scheduled — but its

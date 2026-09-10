@@ -5,7 +5,8 @@ import { gateTeam } from '@/lib/captain/access';
 import { committedCounts, playedCounts } from '@/lib/captain/server';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
 import HostEmailPanel from '@/components/captain/HostEmailPanel';
-import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { resolveClubTimeZone } from '@/lib/captain/clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { DEFAULT_JTT_COURT_FORMAT, leagueSpec } from '@/lib/captain/leagues';
 
 export const dynamic = 'force-dynamic';
@@ -39,6 +40,10 @@ export default async function MatchPage({
 
   const team = teamRow as { id: string; name: string; level: string | null };
   const match = matchRow as Record<string, unknown>;
+  const timeZone = await resolveClubTimeZone(
+    getSupabaseAdmin(),
+    (teamRow as { club_id?: string | null }).club_id,
+  );
 
   const [{ data: players }, { data: avail }, { data: lineups }, { data: results }] =
     await Promise.all([
@@ -145,7 +150,7 @@ export default async function MatchPage({
           day: 'numeric',
           hour: 'numeric',
           minute: '2-digit',
-          timeZone: CLUB_TZ,
+          timeZone,
         }).format(new Date(match.match_at as string))}
       </h1>
       <p className="text-white/50 mt-1">
@@ -161,6 +166,7 @@ export default async function MatchPage({
           isHome={!!match.is_home}
           opponent={(match.opponent as string) || null}
           sentAt={(match.host_email_sent_at as string) || null}
+          timeZone={timeZone}
         />
       </div>
 
@@ -201,6 +207,7 @@ export default async function MatchPage({
         location={(match.location as string) || null}
         arrivalNote={(match.arrival_note as string) || null}
         jttCourtFormat={jttCourtFormat}
+        timeZone={timeZone}
       />
     </div>
   );

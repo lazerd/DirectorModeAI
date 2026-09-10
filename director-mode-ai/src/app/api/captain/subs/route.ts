@@ -11,6 +11,8 @@ import { NextResponse } from 'next/server';
 import { requireTeam, isError, capForTeam } from '@/lib/captain/server';
 import { subRequestEmail, sendAll, type MatchInfo } from '@/lib/captain/emails';
 import { withSecondContact } from '@/lib/captain/teamContacts';
+import { resolveClubTimeZone } from '@/lib/captain/clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
 
@@ -141,6 +143,7 @@ export async function POST(req: Request) {
     opponent: (match.opponent as string) || null,
     location: (match.location as string) || null,
   };
+  const tz = await resolveClubTimeZone(getSupabaseAdmin(), team.club_id);
 
   try {
     const results = await sendAll(
@@ -152,7 +155,7 @@ export async function POST(req: Request) {
             name: p.name,
             email: p.email as string,
             token: p.player_token,
-          }),
+          }, tz),
           p.contact2_email,
         ),
       ),

@@ -13,8 +13,6 @@ import { useMemo, useState } from 'react';
 import { Check, Mail, Pencil, Send, TriangleAlert, X } from 'lucide-react';
 import type { EmailKind, KindMeta, TimelineEvent, TimelineStatus } from '@/lib/captain/timeline';
 
-const TZ = 'America/Los_Angeles';
-
 type Setting = {
   kind: EmailKind;
   enabled: boolean;
@@ -42,17 +40,18 @@ const STATUS_STYLE: Record<TimelineStatus, { label: string; cls: string }> = {
   missed: { label: 'Never sent', cls: 'bg-red-500/10 text-red-300 border-red-400/25' },
 };
 
-const fmtDay = (iso: string) =>
-  new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: TZ }).format(
+// Every formatter takes the club's zone explicitly — see lib/captain/clubTime.
+const fmtDay = (iso: string, timeZone: string) =>
+  new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone }).format(
     new Date(iso),
   );
-const fmtTime = (iso: string) =>
-  new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: TZ }).format(new Date(iso));
-const fmtMonth = (iso: string) =>
-  new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: TZ }).format(new Date(iso));
+const fmtTime = (iso: string, timeZone: string) =>
+  new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone }).format(new Date(iso));
+const fmtMonth = (iso: string, timeZone: string) =>
+  new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone }).format(new Date(iso));
 /** yyyy-mm-dd in club time, for <input type="date">. */
-const dateInputValue = (iso: string) =>
-  new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: TZ }).format(
+const dateInputValue = (iso: string, timeZone: string) =>
+  new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone }).format(
     new Date(iso),
   );
 
@@ -61,11 +60,14 @@ export default function TimelinePanel({
   initialEvents,
   initialSettings,
   rosterWithEmail,
+  timeZone,
 }: {
   teamId: string;
   initialEvents: TimelineEvent[];
   initialSettings: Setting[];
   rosterWithEmail: number;
+  /** The club's IANA zone. */
+  timeZone: string;
 }) {
   const [events, setEvents] = useState(initialEvents);
   const [settings, setSettings] = useState(initialSettings);
@@ -87,12 +89,12 @@ export default function TimelinePanel({
   const grouped = useMemo(() => {
     const out: { month: string; items: TimelineEvent[] }[] = [];
     for (const e of events) {
-      const month = fmtMonth(e.sentAt || e.sendAt);
+      const month = fmtMonth(e.sentAt || e.sendAt, timeZone);
       if (!out.length || out[out.length - 1].month !== month) out.push({ month, items: [] });
       out[out.length - 1].items.push(e);
     }
     return out;
-  }, [events]);
+  }, [events, timeZone]);
 
   return (
     <>
@@ -137,7 +139,7 @@ export default function TimelinePanel({
               <div className="absolute left-[7px] md:left-[9px] top-2 bottom-2 w-px bg-white/[0.08]" />
               <div className="space-y-2">
                 {g.items.map((e) => (
-                  <Row key={e.id} event={e} onOpen={() => setOpen(e)} />
+                  <Row key={e.id} event={e} onOpen={() => setOpen(e)} timeZone={timeZone} />
                 ))}
               </div>
             </div>
@@ -149,6 +151,7 @@ export default function TimelinePanel({
         <EventEditor
           teamId={teamId}
           event={open}
+          timeZone={timeZone}
           onClose={() => setOpen(null)}
           onChanged={async (msg) => {
             setOpen(null);
@@ -161,7 +164,15 @@ export default function TimelinePanel({
   );
 }
 
-function Row({ event, onOpen }: { event: TimelineEvent; onOpen: () => void }) {
+function Row({
+  event,
+  onOpen,
+  timeZone,
+}: {
+  event: TimelineEvent;
+  onOpen: () => void;
+  timeZone: string;
+}) {
   const s = STATUS_STYLE[event.status];
   const when = event.sentAt || event.sendAt;
   const muted = event.status === 'skipped' || event.status === 'off';
@@ -179,8 +190,8 @@ function Row({ event, onOpen }: { event: TimelineEvent; onOpen: () => void }) {
       />
       <div className="flex items-start gap-4">
         <div className="shrink-0 w-20">
-          <div className="text-white text-sm font-medium">{fmtDay(when)}</div>
-          <div className="text-white/35 text-xs">{fmtTime(when)}</div>
+          <div className="text-white text-sm font-medium">{fmtDay(when, timeZone)}</div>
+          <div className="text-white/35 text-xs">{fmtTime(when, timeZone)}</div>
         </div>
 
         <div className="flex-1 min-w-0">
@@ -202,7 +213,7 @@ function Row({ event, onOpen }: { event: TimelineEvent; onOpen: () => void }) {
           </div>
           <div className="text-white/35 text-xs mt-1.5">
             to {event.audienceCount} {event.audienceCount === 1 ? 'player' : 'players'} ·{' '}
-            {event.opponent ? `vs ${event.opponent}` : 'match'} {fmtDay(event.matchAt)}
+            {event.opponent ? `vs ${event.opponent}` : 'match'} {fmtDay(event.matchAt, timeZone)}
           </div>
           {event.reason && event.status !== 'sent' && (
             <div className="text-orange-300/80 text-xs mt-1.5 flex items-start gap-1.5">
@@ -408,13 +419,15 @@ function EventEditor({
   event,
   onClose,
   onChanged,
+  timeZone,
 }: {
   teamId: string;
   event: TimelineEvent;
   onClose: () => void;
   onChanged: (msg: string) => void;
+  timeZone: string;
 }) {
-  const [sendDate, setSendDate] = useState(dateInputValue(event.sendAt));
+  const [sendDate, setSendDate] = useState(dateInputValue(event.sendAt, timeZone));
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ subject: string; html: string; count: number; sample_for?: string } | null>(
@@ -492,8 +505,8 @@ function EventEditor({
           </div>
           <h3 className="text-white text-lg font-medium mt-1.5 leading-snug">{event.subject}</h3>
           <div className="text-white/45 text-sm mt-2">
-            {alreadySent ? 'Sent' : 'Goes out'} {fmtDay(event.sentAt || event.sendAt)} at{' '}
-            {fmtTime(event.sentAt || event.sendAt)} · to {event.audienceCount}{' '}
+            {alreadySent ? 'Sent' : 'Goes out'} {fmtDay(event.sentAt || event.sendAt, timeZone)} at{' '}
+            {fmtTime(event.sentAt || event.sendAt, timeZone)} · to {event.audienceCount}{' '}
             {event.audienceCount === 1 ? 'player' : 'players'}
           </div>
           {event.reason && <div className="text-orange-300/80 text-sm mt-2">{event.reason}</div>}
@@ -539,7 +552,7 @@ function EventEditor({
                     style={{ color: '#fff', colorScheme: 'dark' }}
                     className="px-3 py-2 text-sm rounded-lg bg-[#001820] border border-white/10 focus:outline-none focus:border-[#D3FB52]/50"
                   />
-                  {dateInputValue(event.sendAt) !== sendDate && (
+                  {dateInputValue(event.sendAt, timeZone) !== sendDate && (
                     <button
                       onClick={() =>
                         // 16:00 UTC is the daily cron tick, so this lands on the
@@ -554,7 +567,7 @@ function EventEditor({
                   )}
                 </div>
                 <p className="text-[11px] text-white/30 mt-1.5">
-                  Emails go out on the daily run, {fmtTime(event.sendAt)} club time.
+                  Emails go out on the daily run, {fmtTime(event.sendAt, timeZone)} club time.
                 </p>
               </div>
 

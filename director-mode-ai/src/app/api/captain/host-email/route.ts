@@ -24,7 +24,7 @@ import {
   defaultVisitingSubject,
   type MatchInfo,
 } from '@/lib/captain/emails';
-import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { CLUB_TZ, normalizeTimeZone } from '@/lib/captain/clubTime';
 import { leagueSpec } from '@/lib/captain/leagues';
 import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
@@ -84,13 +84,16 @@ export async function POST(req: Request) {
   // club's own details into every email.
   let clubName = (matchRow.location as string) || 'our club';
   let address: string | null = null;
+  // The club's zone: the match time in this note is read at the club.
+  let tz = CLUB_TZ;
   if (team.club_id) {
     const { data: club } = await admin
       .from('cc_clubs')
-      .select('name, address, city, state, zip')
+      .select('name, address, city, state, zip, timezone')
       .eq('id', team.club_id)
       .maybeSingle();
     if (club) {
+      tz = normalizeTimeZone(club.timezone);
       clubName = club.name || clubName;
       const parts = [club.address, [club.city, club.state].filter(Boolean).join(', '), club.zip]
         .filter(Boolean)
@@ -203,7 +206,7 @@ export async function POST(req: Request) {
           fromName,
           fromTitle,
         },
-        CLUB_TZ,
+        tz,
       )
     : hostingBodyText(
     m,
@@ -226,20 +229,20 @@ export async function POST(req: Request) {
       fromName,
       fromTitle,
     },
-    CLUB_TZ,
+    tz,
   );
   const bodyText = body.body !== undefined ? body.body : defaultBody;
   const subject =
     body.subject ??
     (m.isHome
-      ? defaultHostingSubject(team.name as string, m, clubName, CLUB_TZ)
-      : defaultVisitingSubject(team.name as string, m, CLUB_TZ));
+      ? defaultHostingSubject(team.name as string, m, clubName, tz)
+      : defaultVisitingSubject(team.name as string, m, tz));
 
   const email = opponentHostingEmail(
     team.name as string,
     m,
     { to: to || 'captain@example.com', clubName, bodyText, subject },
-    CLUB_TZ,
+    tz,
   );
 
   if (body.preview !== false) {

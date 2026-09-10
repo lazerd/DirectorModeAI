@@ -15,6 +15,7 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { buildIcs, matchEvent } from '@/lib/captain/calendar';
 import type { MatchInfo } from '@/lib/captain/emails';
+import { CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
 
 type Ctx = { params: { token: string } };
 
@@ -38,10 +39,11 @@ export async function GET(_req: Request, { params }: Ctx) {
       .eq('team_id', player.team_id)
       .neq('status', 'cancelled')
       .order('match_at'),
-    admin.from('captain_teams').select('name').eq('id', player.team_id).maybeSingle(),
+    admin.from('captain_teams').select(`name, ${CLUB_TZ_EMBED}`).eq('id', player.team_id).maybeSingle(),
   ]);
 
   const teamName = (teamRow as { name: string } | null)?.name ?? 'Team';
+  const timeZone = clubTimeZoneOf(teamRow);
   const matches = (matchRows as Record<string, unknown>[] | null) ?? [];
   if (!matches.length) {
     return NextResponse.json({ error: 'No matches scheduled yet.' }, { status: 404 });
@@ -57,7 +59,7 @@ export async function GET(_req: Request, { params }: Ctx) {
       arrivalNote: (m.arrival_note as string | null) ?? null,
     };
     // No court number: this is the season list, built before any lineup exists.
-    return matchEvent(teamName, info, null);
+    return matchEvent(teamName, info, null, { timeZone });
   });
 
   const filename = `${teamName.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-season.ics`;

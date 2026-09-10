@@ -34,6 +34,8 @@ import { resolveAvailability } from '@/lib/captain/availability';
 import { answersByPlayer, rowsWithAnswers, answerTally } from '@/lib/captain/lineupSave';
 import { lineupEmail, sendAll, type LineupRow, type MatchInfo } from '@/lib/captain/emails';
 import { withSecondContact } from '@/lib/captain/teamContacts';
+import { resolveClubTimeZone } from '@/lib/captain/clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
 
@@ -67,6 +69,8 @@ export async function POST(req: Request) {
     .maybeSingle();
   if (!matchRow) return NextResponse.json({ error: 'Match not found.' }, { status: 404 });
   const match = matchRow as Record<string, unknown>;
+  // The club's zone: blackout weekdays and the lineup email's times are club-local.
+  const tz = await resolveClubTimeZone(getSupabaseAdmin(), team.club_id);
 
   // ---------------------------------------------------------------- generate
   if (body.action === 'generate') {
@@ -95,6 +99,7 @@ export async function POST(req: Request) {
       })),
       answers: (avail as { player_id: string; status: string }[]) || [],
       matchAt: match.match_at as string,
+      timeZone: tz,
     });
 
     // Committed, NOT played. See committedCounts — at lineup time for match 2
@@ -424,6 +429,7 @@ export async function POST(req: Request) {
             rows,
             { playerId: p.id, name: p.name, email: p.email as string, token: p.player_token },
             playing.has(p.id),
+            tz,
           ),
           p.contact2_email,
         ),

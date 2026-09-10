@@ -37,7 +37,7 @@ export function matchEvent(
   teamName: string,
   m: MatchInfo,
   court: string | null,
-  opts?: { playing?: boolean },
+  opts?: { playing?: boolean; timeZone?: string },
 ): CalendarEvent {
   const start = new Date(m.matchAt);
   const end = new Date(start.getTime() + MATCH_DURATION_MIN * 60_000);
@@ -65,7 +65,7 @@ export function matchEvent(
     `Ends around ${new Intl.DateTimeFormat('en-US', {
       hour: 'numeric',
       minute: '2-digit',
-      timeZone: CLUB_TZ,
+      timeZone: opts?.timeZone || CLUB_TZ,
     }).format(end)} — estimated, not an official end time.`,
     'Added from your ClubMode lineup email.',
   ].filter((l) => l !== null) as string[];

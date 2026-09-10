@@ -7,6 +7,7 @@
  */
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendAll, withdrawalAlertEmail, type MatchInfo } from './emails';
+import { CLUB_TZ_EMBED, clubTimeZoneOf } from './clubTime';
 
 export type Answer = 'in' | 'out';
 
@@ -132,7 +133,11 @@ async function alertCaptains(
   try {
     const admin = getSupabaseAdmin();
     const [{ data: teamRow }, { data: matchRow }, { data: staffRows }] = await Promise.all([
-      admin.from('captain_teams').select('id, name, captain_user_id').eq('id', teamId).maybeSingle(),
+      admin
+        .from('captain_teams')
+        .select(`id, name, captain_user_id, ${CLUB_TZ_EMBED}`)
+        .eq('id', teamId)
+        .maybeSingle(),
       admin
         .from('captain_matches')
         .select(
@@ -176,7 +181,9 @@ async function alertCaptains(
     const to = Array.from(new Set(emails));
     const results = await sendAll(
       team.captain_user_id,
-      to.map((addr) => withdrawalAlertEmail(addr, team.name, info, playerName, court, note, team.id)),
+      to.map((addr) =>
+        withdrawalAlertEmail(addr, team.name, info, playerName, court, note, team.id, clubTimeZoneOf(teamRow)),
+      ),
     );
 
     // Loud on failure. A withdrawal alert that quietly doesn't arrive is the one

@@ -22,8 +22,8 @@ import {
 } from '@/lib/captain/teamContacts';
 import { CreditLimitError } from '@/lib/billing';
 import { creditLimitResponse } from '@/lib/email';
-
-const TZ = 'America/Los_Angeles';
+import { resolveClubTimeZone } from '@/lib/captain/clubTime';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 type Player = {
   id: string;
@@ -110,6 +110,7 @@ export async function POST(req: Request) {
   const ctx = await requireTeam(body.team_id);
   if (isError(ctx)) return ctx.error;
   const { db, team, teamId } = ctx;
+  const tz = await resolveClubTimeZone(getSupabaseAdmin(), team.club_id);
 
   const matches = await upcoming(db, teamId);
   if (!matches.length) {
@@ -166,7 +167,7 @@ export async function POST(req: Request) {
         team.name,
         matches,
         { playerId: p.id, name: p.name, email: p.email as string, token: p.player_token },
-        { tz: TZ, reminder: !!body.only_missing, answered: answeredCount[p.id] ?? 0 },
+        { tz, reminder: !!body.only_missing, answered: answeredCount[p.id] ?? 0 },
       ),
       p.contact2_email,
     ),

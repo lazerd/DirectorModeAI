@@ -27,7 +27,6 @@ import {
 import { requireTeam, isError } from '@/lib/captain/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { matchRecapEmail, sendAll } from '@/lib/captain/emails';
-import { CLUB_TZ } from '@/lib/captain/clubTime';
 import {
   loadRecapContext,
   recapVars,
@@ -106,7 +105,7 @@ export async function POST(req: Request) {
         record: ctx.record.label,
         nextMatch: ctx.nextMatch,
       },
-      CLUB_TZ,
+      ctx.timeZone,
     );
   };
 
