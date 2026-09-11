@@ -60,19 +60,27 @@ export default async function ConfirmPage({
       )
       .eq('match_id', params.matchId)
       .or(`player1_id.eq.${player.id},player2_id.eq.${player.id}`)
-      .maybeSingle(),
+      .order('court_number'),
   ]);
 
   const m = match as Record<string, unknown> | null;
-  const l = lineup as {
-    court_number: number;
-    court_type: string;
-    player1_id: string | null;
-    player1_confirmed_at: string | null;
-    player2_confirmed_at: string | null;
-    player1_declined_at: string | null;
-    player2_declined_at: string | null;
-  } | null;
+  /*
+   * Every line the player is on. A JTT child plays up to three, and
+   * `.maybeSingle()` errored on more than one row — so Paloma Branson's mom was
+   * told "You're not in this lineup" for a sheet Paloma was on three times
+   * (2026-09-11).
+   */
+  const lines =
+    (lineup as {
+      court_number: number;
+      court_type: string;
+      player1_id: string | null;
+      player2_id: string | null;
+      player1_confirmed_at: string | null;
+      player2_confirmed_at: string | null;
+      player1_declined_at: string | null;
+      player2_declined_at: string | null;
+    }[] | null) ?? [];
 
   if (!m) {
     return (
@@ -94,11 +102,20 @@ export default async function ConfirmPage({
     timeZone,
   }).format(new Date(m.match_at as string));
 
-  const isSlot1 = l ? l.player1_id === player.id : false;
-  const confirmed = l ? !!(isSlot1 ? l.player1_confirmed_at : l.player2_confirmed_at) : false;
-  const declined = l ? !!(isSlot1 ? l.player1_declined_at : l.player2_declined_at) : false;
-  const court = l ? `${l.court_type === 'singles' ? 'Singles' : 'Doubles'} ${l.court_number}` : null;
-  const inLineup = !!l;
+  const mine = (x: (typeof lines)[number]) => (x.player1_id === player.id ? 1 : 2);
+  const inLineup = lines.length > 0;
+  // One answer covers every line, so "confirmed" means all of them are.
+  const confirmed =
+    inLineup &&
+    lines.every((x) => !!(mine(x) === 1 ? x.player1_confirmed_at : x.player2_confirmed_at));
+  const declined = lines.some(
+    (x) => !!(mine(x) === 1 ? x.player1_declined_at : x.player2_declined_at),
+  );
+  const court = inLineup
+    ? lines
+        .map((x) => `${x.court_type === 'singles' ? 'Singles' : 'Doubles'} ${x.court_number}`)
+        .join(', ')
+    : null;
 
   const teamName = (team as { name: string } | null)?.name || 'your team';
   const post = `/api/captain/confirm/${params.token}/${params.matchId}`;

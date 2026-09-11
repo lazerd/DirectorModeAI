@@ -44,22 +44,31 @@ export async function applyAnswer(
     .maybeSingle();
   if (!matchOwn) return { ok: false, status: 404, error: 'Match not found.' };
 
-  const { data: lineupRow } = await admin
+  /*
+   * EVERY line the player is on, not one. A JTT child plays up to three, and
+   * `.maybeSingle()` errors on more than one row — which read as "not in this
+   * lineup". On 2026-09-11 Paloma Branson's mom tapped "Yes — I'll be there"
+   * for a sheet Paloma was on three times and was told she wasn't playing;
+   * every multi-line JTT kid's confirm and withdraw had been failing the same way.
+   */
+  const { data: lineupRows } = await admin
     .from('captain_lineups')
     .select('id, team_id, match_id, court_number, court_type, player1_id, player2_id')
     .eq('match_id', matchId)
     .or(`player1_id.eq.${player.id},player2_id.eq.${player.id}`)
-    .maybeSingle();
-  const lineup = lineupRow as {
-    id: string;
-    team_id: string;
-    court_number: number;
-    court_type: string;
-    player1_id: string | null;
-    player2_id: string | null;
-  } | null;
+    .order('court_number');
+  const lines = (
+    (lineupRows as {
+      id: string;
+      team_id: string;
+      court_number: number;
+      court_type: string;
+      player1_id: string | null;
+      player2_id: string | null;
+    }[]) || []
+  ).filter((l) => l.team_id === player.team_id);
 
-  const inLineup = !!lineup && lineup.team_id === player.team_id;
+  const inLineup = lines.length > 0;
   const now = new Date().toISOString();
 
   // Saying "I'm in" only makes sense against a slot. Saying "I can't play" is
@@ -71,32 +80,37 @@ export async function applyAnswer(
 
   let court: string | null = null;
 
-  if (inLineup && lineup) {
-    const slot = lineup.player1_id === player.id ? 1 : 2;
-    court = `${lineup.court_type === 'singles' ? 'Singles' : 'Doubles'} ${lineup.court_number}`;
+  if (inLineup) {
+    // "Singles 4, Doubles 5, Doubles 7" — one answer covers every line they're on.
+    court = lines
+      .map((l) => `${l.court_type === 'singles' ? 'Singles' : 'Doubles'} ${l.court_number}`)
+      .join(', ');
 
-    const patch =
-      action === 'in'
-        ? {
-            [`player${slot}_confirmed_at`]: now,
-            // The player tapped it themselves — the strongest kind of yes, and
-            // the captain's roll-call says so.
-            [`player${slot}_confirmed_source`]: 'player',
-            [`player${slot}_declined_at`]: null,
-            [`player${slot}_decline_note`]: null,
-          }
-        : {
-            [`player${slot}_declined_at`]: now,
-            [`player${slot}_confirmed_at`]: null,
-            [`player${slot}_confirmed_source`]: null,
-            [`player${slot}_decline_note`]: note,
-          };
+    for (const lineup of lines) {
+      const slot = lineup.player1_id === player.id ? 1 : 2;
+      const patch =
+        action === 'in'
+          ? {
+              [`player${slot}_confirmed_at`]: now,
+              // The player tapped it themselves — the strongest kind of yes, and
+              // the captain's roll-call says so.
+              [`player${slot}_confirmed_source`]: 'player',
+              [`player${slot}_declined_at`]: null,
+              [`player${slot}_decline_note`]: null,
+            }
+          : {
+              [`player${slot}_declined_at`]: now,
+              [`player${slot}_confirmed_at`]: null,
+              [`player${slot}_confirmed_source`]: null,
+              [`player${slot}_decline_note`]: note,
+            };
 
-    const { error } = await admin
-      .from('captain_lineups')
-      .update({ ...patch, updated_at: now })
-      .eq('id', lineup.id);
-    if (error) return { ok: false, status: 500, error: error.message };
+      const { error } = await admin
+        .from('captain_lineups')
+        .update({ ...patch, updated_at: now })
+        .eq('id', lineup.id);
+      if (error) return { ok: false, status: 500, error: error.message };
+    }
   }
 
   await admin.from('captain_availability').upsert(

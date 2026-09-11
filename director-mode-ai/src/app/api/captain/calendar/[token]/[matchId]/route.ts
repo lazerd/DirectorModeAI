@@ -43,7 +43,8 @@ export async function GET(_req: Request, { params }: Ctx) {
       .select('court_number, court_type')
       .eq('match_id', params.matchId)
       .or(`player1_id.eq.${player.id},player2_id.eq.${player.id}`)
-      .maybeSingle(),
+      // Every line — a JTT child has up to three, and .maybeSingle() errored on that.
+      .order('court_number'),
   ]);
 
   const m = matchRow as Record<string, unknown> | null;
@@ -60,8 +61,12 @@ export async function GET(_req: Request, { params }: Ctx) {
     opposingCaptainPhone: (m.opposing_captain_phone as string) || null,
   };
 
-  const l = lineupRow as { court_number: number; court_type: string } | null;
-  const court = l ? `${l.court_type === 'singles' ? 'Singles' : 'Doubles'} ${l.court_number}` : null;
+  const lines = (lineupRow as { court_number: number; court_type: string }[] | null) ?? [];
+  const court = lines.length
+    ? lines
+        .map((l) => `${l.court_type === 'singles' ? 'Singles' : 'Doubles'} ${l.court_number}`)
+        .join(', ')
+    : null;
 
   const ics = buildIcs(
     matchEvent((teamRow as { name: string } | null)?.name || 'Tennis', info, court, {
