@@ -99,6 +99,11 @@ export default function NewStringingJobPage() {
   const [quotedReadyAt, setQuotedReadyAt] = useState('');
   const [readyDate, setReadyDate] = useState('');
   const [internalNotes, setInternalNotes] = useState('');
+  /** Who is stringing it — suggested from names used on earlier jobs. */
+  const [stringerName, setStringerName] = useState('');
+  const [stringerNames, setStringerNames] = useState<string[]>([]);
+  /** Some customers pay when they drop the racket off. */
+  const [paidAtDropoff, setPaidAtDropoff] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -172,6 +177,23 @@ export default function NewStringingJobPage() {
   // Load strings catalog
   useEffect(() => {
     fetchStrings();
+  }, []);
+
+  // Stringer names already used, for the "Strung by" suggestions.
+  useEffect(() => {
+    (async () => {
+      const supabase = createClient();
+      const { data } = await supabase
+        .from('stringing_jobs')
+        .select('stringer_name')
+        .not('stringer_name', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      const names = Array.from(
+        new Set(((data as { stringer_name: string | null }[]) || []).map((r) => (r.stringer_name || '').trim()).filter(Boolean)),
+      ).sort((a, b) => a.localeCompare(b));
+      setStringerNames(names);
+    })();
   }, []);
 
   const searchCustomers = async () => {
@@ -334,6 +356,8 @@ export default function NewStringingJobPage() {
       requested_by_user_id: user?.id,
       quoted_ready_at: readyAtIso,
       internal_notes: internalNotes || null,
+      stringer_name: stringerName.trim() || null,
+      customer_paid_at: paidAtDropoff ? new Date().toISOString() : null,
       play_style: aiForm.play_style || null,
       skill_level: aiForm.level,
       arm_issues: aiForm.arm_issues || null,
@@ -849,6 +873,33 @@ export default function NewStringingJobPage() {
                   />
                 )}
               </div>
+
+              <div>
+                <label className="label">Strung by</label>
+                <input
+                  type="text"
+                  list="new-job-stringer-names"
+                  value={stringerName}
+                  onChange={(e) => setStringerName(e.target.value)}
+                  className="input"
+                  placeholder="Who is stringing it? (optional — you can add it later)"
+                />
+                <datalist id="new-job-stringer-names">
+                  {stringerNames.map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
+              </div>
+
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={paidAtDropoff}
+                  onChange={(e) => setPaidAtDropoff(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Customer already paid (at drop-off)</span>
+              </label>
 
               <div>
                 <label className="label">Internal Notes</label>

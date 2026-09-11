@@ -25,6 +25,9 @@ type Job = {
   created_at: string;
   completed_at: string | null;
   picked_up_at: string | null;
+  stringer_name: string | null;
+  stringer_paid_at: string | null;
+  customer_paid_at: string | null;
   racket: {
     brand: string | null;
     model: string | null;
@@ -311,6 +314,21 @@ export default function CustomerDetailPage() {
                           <span className="font-medium">{stringName}</span>
                           <span className="mx-2">•</span>
                           <span>{tension}</span>
+                        </div>
+
+                        {/* Who strung it, and whether each side has been paid. */}
+                        <div className="text-xs text-gray-600 mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                          <span>Strung by {job.stringer_name || <span className="text-gray-400">—</span>}</span>
+                          <span className={job.stringer_paid_at ? 'text-green-700' : 'text-amber-700'}>
+                            {job.stringer_paid_at
+                              ? `Stringer paid ${format(new Date(job.stringer_paid_at), 'MM/dd/yyyy')}`
+                              : 'Stringer not paid'}
+                          </span>
+                          <span className={job.customer_paid_at ? 'text-green-700' : 'text-amber-700'}>
+                            {job.customer_paid_at
+                              ? `Customer paid ${format(new Date(job.customer_paid_at), 'MM/dd/yyyy')}`
+                              : 'Customer not paid'}
+                          </span>
                         </div>
 
                         {job.picked_up_at && (

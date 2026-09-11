@@ -18,6 +18,12 @@ type Job = {
   created_at: string;
   completed_at: string | null;
   picked_up_at: string | null;
+  /** Who strung it — free text, suggested from names used before. */
+  stringer_name: string | null;
+  /** When the stringer was paid for this job; null = still owed. */
+  stringer_paid_at: string | null;
+  /** When the customer paid for the restring; null = not paid yet. */
+  customer_paid_at: string | null;
   customer: {
     full_name: string;
     email: string | null;
@@ -153,6 +159,31 @@ export default function StringingJobsPage() {
     }
   };
 
+  // Who strung it and who's been paid — saved the moment it changes, no reload,
+  // so ticking down a list of paid jobs doesn't make the page jump.
+  const updateJob = async (
+    jobId: string,
+    patch: Partial<Pick<Job, 'stringer_name' | 'stringer_paid_at' | 'customer_paid_at'>>,
+  ) => {
+    setJobs((js) => js.map((j) => (j.id === jobId ? { ...j, ...patch } : j)));
+    const supabase = createClient();
+    const { error } = await supabase.from('stringing_jobs').update(patch).eq('id', jobId);
+    if (error) {
+      alert('Could not save: ' + error.message);
+      fetchJobs();
+    }
+  };
+
+  // Names already used, offered as suggestions on every "Strung by" box.
+  const stringerNames = Array.from(
+    new Set(jobs.map((j) => j.stringer_name?.trim()).filter((n): n is string => !!n)),
+  ).sort((a, b) => a.localeCompare(b));
+
+  // Money still outstanding, counted on finished work only.
+  const finished = jobs.filter((j) => j.status === 'done' || j.status === 'picked_up');
+  const customerOwes = finished.filter((j) => !j.customer_paid_at).length;
+  const stringerOwed = finished.filter((j) => j.stringer_name && !j.stringer_paid_at).length;
+
   // Board = active work; Completed = rackets already picked up, newest first.
   const activeJobs = jobs.filter(j => j.status !== 'picked_up');
   const completedJobs = jobs
@@ -216,6 +247,31 @@ export default function StringingJobsPage() {
             color="success"
           />
         </div>
+
+        {(customerOwes > 0 || stringerOwed > 0) && (
+          <p className="text-sm text-gray-500 -mt-2 mb-6">
+            {customerOwes > 0 && (
+              <>
+                <strong className="text-gray-700">{customerOwes}</strong> finished{' '}
+                {customerOwes === 1 ? 'job' : 'jobs'} not paid for by the customer yet
+              </>
+            )}
+            {customerOwes > 0 && stringerOwed > 0 && ' · '}
+            {stringerOwed > 0 && (
+              <>
+                <strong className="text-gray-700">{stringerOwed}</strong>{' '}
+                {stringerOwed === 1 ? 'job' : 'jobs'} still to pay the stringer for
+              </>
+            )}
+          </p>
+        )}
+
+        {/* One suggestion list, shared by every "Strung by" box on the page. */}
+        <datalist id="stringer-names">
+          {stringerNames.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
 
         {/* Pickup reminders — only the "your racket is ready" email belongs here */}
         <section className="mb-6">
@@ -306,6 +362,7 @@ export default function StringingJobsPage() {
                 key={job.id}
                 job={job}
                 onStatusChange={updateJobStatus}
+                onUpdate={updateJob}
                 onSendReminder={sendNotificationEmail}
                 sendingEmail={sendingEmail === job.id}
               />
@@ -534,11 +591,16 @@ function StatCard({
 function JobCard({
   job,
   onStatusChange,
+  onUpdate,
   onSendReminder,
   sendingEmail,
 }: {
   job: Job;
   onStatusChange: (id: string, status: string) => void;
+  onUpdate: (
+    id: string,
+    patch: Partial<Pick<Job, 'stringer_name' | 'stringer_paid_at' | 'customer_paid_at'>>,
+  ) => void;
   onSendReminder: (job: Job) => Promise<boolean>;
   sendingEmail: boolean;
 }) {
@@ -592,6 +654,54 @@ function JobCard({
             {job.status !== 'picked_up' && job.quoted_ready_at && (
               <> • Due {format(new Date(job.quoted_ready_at), 'EEE, MMM d')} ({formatDistanceToNow(new Date(job.quoted_ready_at), { addSuffix: true })})</>
             )}
+          </div>
+
+          {/* Who strung it, and who has been paid. Each saves the moment it changes. */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-3 text-sm">
+            <label className="flex items-center gap-2">
+              <span className="text-gray-500">Strung by</span>
+              <input
+                list="stringer-names"
+                defaultValue={job.stringer_name ?? ''}
+                placeholder="Who strung it?"
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (v !== (job.stringer_name ?? '')) onUpdate(job.id, { stringer_name: v || null });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                }}
+                className="input py-1 px-2 text-sm w-40"
+              />
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!job.stringer_paid_at}
+                onChange={(e) =>
+                  onUpdate(job.id, { stringer_paid_at: e.target.checked ? new Date().toISOString() : null })
+                }
+                className="w-4 h-4"
+              />
+              <span>Stringer paid</span>
+              {job.stringer_paid_at && (
+                <span className="text-xs text-gray-500">{format(new Date(job.stringer_paid_at), 'MMM d')}</span>
+              )}
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={!!job.customer_paid_at}
+                onChange={(e) =>
+                  onUpdate(job.id, { customer_paid_at: e.target.checked ? new Date().toISOString() : null })
+                }
+                className="w-4 h-4"
+              />
+              <span>Customer paid</span>
+              {job.customer_paid_at && (
+                <span className="text-xs text-gray-500">{format(new Date(job.customer_paid_at), 'MMM d')}</span>
+              )}
+            </label>
           </div>
         </div>
 
