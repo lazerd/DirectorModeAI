@@ -27,6 +27,7 @@ import {
   jttRoundPlan,
   roundPlanText,
   roundsByCourt,
+  rosterWindow,
 } from '@/lib/captain/leagues';
 import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
 import { leagueSpec } from '@/lib/captain/leagues';
@@ -174,6 +175,47 @@ export async function POST(req: Request) {
       (team.court_format as number | null) ??
       DEFAULT_JTT_COURT_FORMAT;
 
+    /*
+     * JTT: the most children the team brings — the team's setting, else the
+     * league's (6: past that somebody drives there for one short set). When
+     * more say yes, the generator picks who sits, so it needs to know how many
+     * OTHER upcoming dates each child can make and when each one signed up.
+     */
+    const squadMax = multiLine
+      ? ((team as Record<string, unknown>).max_players as number | null) ??
+        rosterWindow({ singles: singlesCourts, doubles: doublesCourts }, multiLine).idealMax
+      : 0;
+    let squad: { max: number; otherYes: Record<string, number>; joinedAt: Record<string, string> } | null =
+      null;
+    if (multiLine && available.length > squadMax) {
+      const { data: others } = await db
+        .from('captain_matches')
+        .select('id')
+        .eq('team_id', teamId)
+        .eq('status', 'scheduled')
+        .gt('match_at', new Date().toISOString())
+        .neq('id', body.match_id);
+      const otherIds = ((others as { id: string }[]) || []).map((o) => o.id);
+      const { data: yesRows } = otherIds.length
+        ? await db
+            .from('captain_availability')
+            .select('player_id')
+            .in('match_id', otherIds)
+            .eq('status', 'yes')
+        : { data: [] as { player_id: string }[] };
+      const otherYes: Record<string, number> = {};
+      for (const r of (yesRows as { player_id: string }[]) || []) {
+        otherYes[r.player_id] = (otherYes[r.player_id] ?? 0) + 1;
+      }
+      const joinedAt = Object.fromEntries(
+        ((players as Record<string, unknown>[]) || []).map((p) => [
+          p.id as string,
+          (p.created_at as string) ?? '',
+        ]),
+      );
+      squad = { max: squadMax, otherYes, joinedAt };
+    }
+
     const result = multiLine
       ? generateJttLineup({
           available,
@@ -181,6 +223,7 @@ export async function POST(req: Request) {
           doublesCourts,
           rules: multiLine,
           courtFormat,
+          squad,
           partnerPrefs,
           neverPairs,
           pairHistory: history,
@@ -224,6 +267,13 @@ export async function POST(req: Request) {
     if (multiLine) {
       summary.push(
         `${courtFormat}-court format — ${roundPlanText(jttRoundPlan(courtFormat, singles, doubles), singles)}. Nobody is on two lines in the same round.`,
+      );
+    }
+    if (result.sitting?.length) {
+      summary.push(
+        `The team brings ${squadMax} at most, so ${result.sitting
+          .map((s) => nameOf(s.id) ?? 'someone')
+          .join(', ')} ${result.sitting.length === 1 ? 'sits' : 'sit'} this one. Who plays: fewest matches so far first, then whoever can make the fewest other dates, then whoever signed up first. Change the max under team settings.`,
       );
     }
 
@@ -288,13 +338,15 @@ export async function POST(req: Request) {
     const seatedIds = new Set(
       result.courts.flatMap((c) => [c.player1Id, c.player2Id]).filter(Boolean) as string[],
     );
+    // The generator's own reason wins for anyone it left home on purpose.
+    const sittingWhy = new Map((result.sitting ?? []).map((s) => [s.id, s.reason]));
     const benched = available
       .filter((p) => !seatedIds.has(p.id))
       .sort((a, b) => a.matchesPlayed - b.matchesPlayed || a.name.localeCompare(b.name))
       .map((p) => ({
         name: p.name,
-        reason:
-          p.courtLimit === 'singles_only'
+        reason: sittingWhy.get(p.id) ??
+          (p.courtLimit === 'singles_only'
             ? 'plays singles only, and the singles courts were filled'
             : p.courtLimit === 'doubles_only'
               ? 'plays doubles only, and the doubles courts were filled'
@@ -302,7 +354,7 @@ export async function POST(req: Request) {
                 ? `already down for ${p.matchesPlayed} ${p.matchesPlayed === 1 ? 'match' : 'matches'} — sitting so someone behind can play`
                 : p.needsEligibility
                   ? 'available, and still needs matches for playoff eligibility'
-                  : 'available, but there were more players than spots',
+                  : 'available, but there were more players than spots'),
       }));
 
     return NextResponse.json({

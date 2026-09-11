@@ -68,6 +68,23 @@ export type JttLineupInput = {
    * a child who travelled to the match plays.
    */
   captainingStyle?: 'play_to_win' | 'equal_play';
+  /**
+   * The most children the team brings. When more say yes, the generator picks
+   * who sits instead of seating seven on a twelve-slot sheet and sending two
+   * families to Dublin for a single short set (12U, 2026-09-13).
+   *
+   * Who PLAYS, in order: fewest matches so far this season (equal_play; the
+   * strongest under play_to_win), then fewest other dates they can make — a
+   * child who can come to everything loses least by sitting — then whoever
+   * signed up first.
+   */
+  squad?: {
+    max: number;
+    /** Other upcoming dates each child has said yes to. */
+    otherYes?: Record<string, number>;
+    /** When each child joined the roster (ISO) — the last tiebreak. */
+    joinedAt?: Record<string, string>;
+  } | null;
 };
 
 const key = (a: string, b: string) => (a < b ? a + '|' + b : b + '|' + a);
@@ -125,13 +142,42 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
   const rules = input.rules;
 
   const courtsShape = { singles: input.singlesCourts, doubles: input.doublesCourts };
-  const available = [...input.available];
+
+  // ------------------------------------------------------------- who comes
+  const cap = input.squad?.max ?? 0;
+  let available = [...input.available];
+  const sitting: { id: string; reason: string }[] = [];
+  if (cap > 0 && available.length > cap) {
+    const otherYes = input.squad?.otherYes ?? {};
+    const joined = input.squad?.joinedAt ?? {};
+    const order = [...available].sort(
+      (a, b) =>
+        (style === 'equal_play' ? a.matchesPlayed - b.matchesPlayed : byStrength(a, b)) ||
+        (otherYes[a.id] ?? 0) - (otherYes[b.id] ?? 0) ||
+        (joined[a.id] ?? '').localeCompare(joined[b.id] ?? '') ||
+        a.name.localeCompare(b.name),
+    );
+    available = order.slice(0, cap);
+    for (const p of order.slice(cap)) {
+      const m = p.matchesPlayed;
+      const o = otherYes[p.id] ?? 0;
+      sitting.push({
+        id: p.id,
+        reason:
+          style === 'equal_play'
+            ? `sitting — the team brings ${cap} at most. Already down for ${m} ${m === 1 ? 'match' : 'matches'}, and can make ${o} other ${o === 1 ? 'date' : 'dates'}, so sitting this one costs them least.`
+            : `sitting — the team brings ${cap} at most, and this team plays to win, so the strongest ${cap} go.`,
+      });
+    }
+  }
+
   const shape = linesPerPlayer(available.length, courtsShape, rules);
 
   if (!shape.canPlay) {
     return {
       courts: [],
       unassigned: available.map((p) => p.id),
+      sitting,
       warnings: [
         `${available.length} available. A match needs at least ${rules.minToPlay} — below that it cannot be played at all, so this one has to be conceded or rescheduled.`,
       ],
@@ -353,6 +399,15 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
   // Counted off the finished sheet, not predicted: which lines can be covered
   // depends on the round structure, and the 2-court format covers more with
   // three children than the 3-court one does.
+  if (sitting.length) {
+    const names = sitting
+      .map((s) => input.available.find((p) => p.id === s.id)?.name ?? 'someone')
+      .join(', ');
+    warnings.push(
+      `${input.available.length} said yes — bringing ${cap} so nobody drives there for one short set. Sitting: ${names}. To sit someone else instead, mark them Out and Regenerate.`,
+    );
+  }
+
   const empty = courts.filter((c) => !c.player1Id).length;
   if (empty > 0) {
     warnings.push(
@@ -376,7 +431,7 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
     );
   }
 
-  return { courts, unassigned: unassigned.map((p) => p.id), warnings };
+  return { courts, unassigned: unassigned.map((p) => p.id), warnings, sitting };
 }
 
 /** Lines each child is on. Drives the fairness readout on the match sheet. */

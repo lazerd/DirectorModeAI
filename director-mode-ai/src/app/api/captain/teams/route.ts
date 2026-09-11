@@ -154,6 +154,8 @@ export async function PATCH(req: Request) {
     court_format?: number;
     /** How a match is decided: 'courts' won, or 'topdog' points. */
     match_scoring?: string;
+    /** Most players brought to one match; null = league default. */
+    max_players?: number | null;
     source_team_id?: string;
   };
 
@@ -255,6 +257,21 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Unknown match scoring.' }, { status: 400 });
     }
     patch.match_scoring = body.match_scoring;
+  }
+
+  if (body.max_players !== undefined) {
+    if (body.max_players === null) {
+      patch.max_players = null;
+    } else {
+      const n = Number(body.max_players);
+      if (!Number.isInteger(n) || n < 1 || n > 30) {
+        return NextResponse.json(
+          { error: 'Most players to bring must be a whole number between 1 and 30 — or blank for the default.' },
+          { status: 400 },
+        );
+      }
+      patch.max_players = n;
+    }
   }
 
   if (body.eligibility_enabled !== undefined) patch.eligibility_enabled = !!body.eligibility_enabled;

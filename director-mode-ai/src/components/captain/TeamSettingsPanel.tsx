@@ -29,6 +29,8 @@ type Props = {
   matchScoring: string | null;
   /** Adult leagues only — JTT is decided on games. */
   showMatchScoring: boolean;
+  /** JTT: most players brought to one match. Null = the league default (6). */
+  maxPlayers: number | null;
   teamName: string;
   level: string | null;
   levelLabel: string;
@@ -95,6 +97,7 @@ export default function TeamSettingsPanel({
   showCourtFormat,
   matchScoring,
   showMatchScoring,
+  maxPlayers,
   teamName,
   level,
   levelLabel,
@@ -109,6 +112,7 @@ export default function TeamSettingsPanel({
   const [singles, setSingles] = useState(String(singlesCourts));
   const [doubles, setDoubles] = useState(String(doublesCourts));
   const [format, setFormat] = useState(courtFormat == null ? '' : String(courtFormat));
+  const [maxP, setMaxP] = useState(maxPlayers == null ? '' : String(maxPlayers));
   const [name, setName] = useState(teamName);
   const [lvl, setLvl] = useState(level ?? '');
   const [srcId, setSrcId] = useState(sourceTeamId ?? '');
@@ -401,10 +405,31 @@ export default function TeamSettingsPanel({
                 className={field}
               />
             </div>
+            <div>
+              <label htmlFor="max-players" className="block text-xs text-white/50 mb-1">
+                Most players to bring
+              </label>
+              {/* Blank = 6: past that, somebody drives to the match for one short set. */}
+              <input
+                id="max-players"
+                inputMode="numeric"
+                placeholder="6"
+                value={maxP}
+                onChange={(e) => setMaxP(e.target.value)}
+                onBlur={() =>
+                  maxP !== (maxPlayers == null ? '' : String(maxPlayers)) &&
+                  save({ max_players: maxP.trim() ? Number(maxP) : null })
+                }
+                style={INPUT_COLOR}
+                className={field}
+              />
+            </div>
             <p className="text-xs text-white/40 max-w-sm">
               How many courts you put the match on at home. It goes in the note to the opposing
               captain, because it decides how long the afternoon runs — and it is the first thing
-              they write back to ask when the email doesn&rsquo;t say.
+              they write back to ask when the email doesn&rsquo;t say. When more players say yes
+              than you bring, the lineup picks who sits: fewest matches so far plays first, then
+              whoever can make the fewest other dates, then whoever signed up first.
             </p>
           </div>
         </>

@@ -116,6 +116,11 @@ export type LineupResult = {
   courts: CourtAssignment[];
   unassigned: string[];
   warnings: string[];
+  /**
+   * Said yes but left home because the team brings only so many (JTT: past 6
+   * a child drives to the match for one short set). Each with the reason.
+   */
+  sitting?: { id: string; reason: string }[];
 };
 
 // ---------------------------------------------------------------------------
