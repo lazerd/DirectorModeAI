@@ -124,6 +124,7 @@ export default function MatchWorkspace({
   location,
   arrivalNote,
   jttCourtFormat,
+  captainingStyle,
   timeZone,
 }: {
   teamId: string;
@@ -161,10 +162,16 @@ export default function MatchWorkspace({
    * round. Null for every other league — they have no rounds.
    */
   jttCourtFormat: number | null;
+  /**
+   * The team's answer to who should get a seat — 'equal_play' or 'play_to_win'.
+   * It orders the by-hand player pickers the same way the generator picks.
+   */
+  captainingStyle: string | null;
   /** The club's IANA zone. Every time on this page — shown, printed or typed — is club time. */
   timeZone: string;
 }) {
   const router = useRouter();
+  const equalPlay = captainingStyle === 'equal_play';
   const withdrawn = new Map(withdrawals.map((w) => [w.playerId, w]));
   const [courts, setCourts] = useState<Court[]>(initialLineup);
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -1096,7 +1103,38 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
    * impossible to put a singles player on a doubles court by hand. There, only
    * these are out: someone on another line of the SAME round (they would be on
    * two courts at once), a second singles, or a fourth line.
+   *
+   * On top of that, only people who can actually play are offered. This list
+   * used to be the whole roster in roster order, so filling an empty line meant
+   * reading past everyone who had already said no — a captain picking a sub for
+   * Doubles 2 was shown players who were out (Fall B2/B3, 2026-09-11). Someone
+   * who said no, or who has never answered, is not a candidate; if they tell
+   * the captain otherwise, "somebody told you instead of tapping?" above
+   * records the yes and they appear here.
+   *
+   * The order is the captain's own answer to who should get the seat: strongest
+   * first when they play to win, least-used first when they play everyone. Yes
+   * always sorts ahead of maybe.
    */
+  const eligibleForSlot = (p: MatchPlayer, current: string | null) =>
+    p.id === current || p.availability === 'yes' || p.availability === 'maybe';
+
+  const slotOrder = (courtType: 'singles' | 'doubles') => {
+    const strength = byStrength(courtType);
+    return (a: MatchPlayer, b: MatchPlayer) => {
+      // A firm yes before a maybe, whichever way the team is captained.
+      const rank = (p: MatchPlayer) => (p.availability === 'yes' ? 0 : p.availability === 'maybe' ? 1 : 2);
+      if (rank(a) !== rank(b)) return rank(a) - rank(b);
+      if (equalPlay) {
+        const la = lineupsFor(a);
+        const lb = lineupsFor(b);
+        if (la !== lb) return la - lb;
+        if (a.played !== b.played) return a.played - b.played;
+      }
+      return strength(a, b);
+    };
+  };
+
   const optionsFor = (court: Court, slot: 1 | 2) => {
     const current = slot === 1 ? court.player1Id : court.player2Id;
     const others = courts.flatMap((c) =>
@@ -1108,7 +1146,10 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
 
     if (!roundOf || !jttRules) {
       const used = new Set(others.map((x) => x.id));
-      return players.filter((p) => p.id === current || !used.has(p.id));
+      return players
+        .filter((p) => p.id === current || !used.has(p.id))
+        .filter((p) => eligibleForSlot(p, current))
+        .sort(slotOrder(court.courtType));
     }
 
     const round = roundOf.get(court.courtNumber);
@@ -1120,7 +1161,10 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       if (court.courtType === 'singles' && c.courtType === 'singles') out.add(id);
     }
     for (const [id, n] of lines) if (n >= jttRules.maxTotal) out.add(id);
-    return players.filter((p) => p.id === current || !out.has(p.id));
+    return players
+      .filter((p) => p.id === current || !out.has(p.id))
+      .filter((p) => eligibleForSlot(p, current))
+      .sort(slotOrder(court.courtType));
   };
 
   /* ------------------------------------------------------------ equal play */
@@ -1918,6 +1962,13 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           </p>
         )}
 
+        {/* Says why the dropdowns are short — otherwise a missing name reads as a bug. */}
+        <p className="text-xs text-white/35 mt-1">
+          Each dropdown lists only players who said yes or maybe,{' '}
+          {equalPlay ? 'least-used first' : 'strongest first'}. Someone who answered no, or never
+          answered, is not offered — record their answer above and they show up.
+        </p>
+
         <div className="mt-3 space-y-2">
           {displayCourts.map((c, i) => (
             <div key={c.courtNumber}>
@@ -2036,15 +2087,33 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                             className="flex-1 px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-white text-sm focus:border-[#D3FB52]/50 focus:outline-none"
                           >
                             <option value="">— empty —</option>
-                            {optionsFor(c, slot).map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name}
-                                {p.rating != null ? ` (${p.rating})` : ''}
-                                {p.availability === 'yes' ? ' ✓' : p.availability === 'no' ? ' ✗' : ''}
-                                {p.availabilityNote ? ` (${p.availabilityNote})` : ''}
-                                {` — ${loadLabel(p)}`}
-                              </option>
-                            ))}
+                            {/* Only people who said yes or maybe reach this list,
+                                best candidate for the seat first. */}
+                            {(() => {
+                              const opts = optionsFor(c, slot);
+                              if (!opts.length) {
+                                return (
+                                  <option value="" disabled>
+                                    nobody left who said yes or maybe
+                                  </option>
+                                );
+                              }
+                              return opts.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.name}
+                                  {p.rating != null ? ` (${p.rating})` : ''}
+                                  {p.availability === 'yes'
+                                    ? ' ✓'
+                                    : p.availability === 'maybe'
+                                      ? ' ~maybe'
+                                      : p.availability === 'no'
+                                        ? ' ✗'
+                                        : ''}
+                                  {p.availabilityNote ? ` (${p.availabilityNote})` : ''}
+                                  {` — ${loadLabel(p)}`}
+                                </option>
+                              ));
+                            })()}
                           </select>
                           {bailed ? (
                             <span

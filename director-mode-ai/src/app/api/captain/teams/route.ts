@@ -13,7 +13,11 @@ import {
   isValidCourtCount,
   COURT_COUNT_ERROR,
 } from '@/lib/captain/leagues';
-import { matchesNeedingCourtUpdate, type MatchCourts } from '@/lib/captain/courtBackfill';
+import {
+  lockedMatchesNeedingCourtUpdate,
+  matchesNeedingCourtUpdate,
+  type MatchCourts,
+} from '@/lib/captain/courtBackfill';
 
 export async function GET() {
   const supabase = await createClient();
@@ -146,9 +150,8 @@ export async function PATCH(req: Request) {
     default_singles_courts?: number;
     default_doubles_courts?: number;
     /**
-     * Also restamp upcoming matches with the new line counts. Opt-in: the
-     * captain is shown how many would change and asks for it, because a match
-     * already on the schedule is one people may have been emailed about.
+     * Accepted and ignored. Restamping the upcoming schedule used to be opt-in
+     * and is now what saving the lines does, but older clients still send it.
      */
     apply_courts_to_upcoming?: boolean;
     court_format?: number;
@@ -306,10 +309,15 @@ export async function PATCH(req: Request) {
    * therefore changed nothing a captain could see, and lineups kept coming out
    * in the league's default shape.
    *
-   * So: say how many upcoming matches still disagree, and restamp them when
-   * the captain asks. Matches in the past are history and are never touched;
-   * matches with a saved lineup are left for the captain to change one at a
-   * time, since their courts may already have gone out to the players.
+   * Restamping the upcoming schedule used to be an opt-in second click, which
+   * a captain who saved and moved on never took — so an EBWT C team played a
+   * whole schedule stamped 2 singles + 3 doubles while its settings read 0 + 4
+   * (2026-09-11). It now happens on save.
+   *
+   * Matches in the past are history and are never touched; matches with a
+   * saved lineup are left for the captain to change one at a time, since their
+   * courts may already have gone out to the players, and reported back as
+   * `courts_locked` so they are not a silent exception.
    */
   if (newCourts) {
     const courts = newCourts;
@@ -331,8 +339,9 @@ export async function PATCH(req: Request) {
       : { data: [] };
     const locked = ((withLineups.data || []) as { match_id: string }[]).map((r) => r.match_id);
     const stale = matchesNeedingCourtUpdate(rows, locked, courts);
+    const lockedStale = lockedMatchesNeedingCourtUpdate(rows, locked, courts).length;
 
-    if (stale.length && body.apply_courts_to_upcoming) {
+    if (stale.length) {
       const { error: bfErr } = await ctx.db
         .from('captain_matches')
         .update({ singles_courts: courts.singles, doubles_courts: courts.doubles })
@@ -344,15 +353,20 @@ export async function PATCH(req: Request) {
           ok: true,
           courts_applied: 0,
           courts_stale: stale.length,
+          courts_locked: lockedStale,
           warning: `Saved, but the ${stale.length} scheduled ${
             stale.length === 1 ? 'match' : 'matches'
           } could not be updated: ${bfErr.message}`,
         });
       }
-      return NextResponse.json({ ok: true, courts_applied: stale.length, courts_stale: 0 });
     }
 
-    return NextResponse.json({ ok: true, courts_applied: 0, courts_stale: stale.length });
+    return NextResponse.json({
+      ok: true,
+      courts_applied: stale.length,
+      courts_stale: 0,
+      courts_locked: lockedStale,
+    });
   }
 
   return NextResponse.json({ ok: true });

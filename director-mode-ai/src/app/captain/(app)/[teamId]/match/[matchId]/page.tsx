@@ -207,6 +207,7 @@ export default async function MatchPage({
         location={(match.location as string) || null}
         arrivalNote={(match.arrival_note as string) || null}
         jttCourtFormat={jttCourtFormat}
+        captainingStyle={(teamRec.captaining_style as string) ?? null}
         timeZone={timeZone}
       />
     </div>

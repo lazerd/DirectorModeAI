@@ -9,10 +9,14 @@
  * doubles and gets three doubles and two singles, because that is what its
  * matches were stamped with.
  *
- * Rewriting the stamp is the fix, but it cannot be silent and it cannot be
- * total: a match whose lineup is already out to the players is a commitment,
- * not a default. Hence this split — work out what WOULD change, show the
- * captain the number, and only write when they say so.
+ * Rewriting the stamp is the fix, and it happens on save: a captain who types
+ * "0 singles, 4 doubles" is describing how their league plays, not a wish for
+ * future matches only. It used to be an opt-in second click, which is how an
+ * EBWT C team ran a whole schedule stamped 2 + 3 (2026-09-11).
+ *
+ * It cannot be total, though: a match whose lineup is already out to the
+ * players is a commitment, not a default. Hence the split — the matches to
+ * restamp, and the locked ones to report and leave alone.
  */
 
 export type MatchCourts = {
@@ -20,6 +24,23 @@ export type MatchCourts = {
   singles_courts: number;
   doubles_courts: number;
 };
+
+/**
+ * The ones we deliberately will NOT reshape: a lineup is already saved against
+ * them, so their courts may already be out to the players. The caller reports
+ * the count so the captain knows to change those on the match itself.
+ */
+export function lockedMatchesNeedingCourtUpdate(
+  matches: MatchCourts[],
+  lockedMatchIds: Iterable<string>,
+  courts: { singles: number; doubles: number },
+): string[] {
+  const locked = new Set(lockedMatchIds);
+  return (matches || [])
+    .filter((m) => locked.has(m.id))
+    .filter((m) => m.singles_courts !== courts.singles || m.doubles_courts !== courts.doubles)
+    .map((m) => m.id);
+}
 
 /**
  * Which matches a new default would actually reshape.

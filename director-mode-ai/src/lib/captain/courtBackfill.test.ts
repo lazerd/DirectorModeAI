@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchesNeedingCourtUpdate } from './courtBackfill';
+import { lockedMatchesNeedingCourtUpdate, matchesNeedingCourtUpdate } from './courtBackfill';
 
 const m = (id: string, singles: number, doubles: number) => ({
   id,
@@ -46,5 +46,28 @@ describe('matchesNeedingCourtUpdate', () => {
         { singles: 0, doubles: 4 },
       ),
     ).toEqual([]);
+  });
+});
+
+describe('lockedMatchesNeedingCourtUpdate', () => {
+  it('reports the locked matches the restamp had to skip', () => {
+    // 'a' has a lineup saved and the wrong shape — the captain has to be told,
+    // since the save now silently fixes everything else.
+    const matches = [m('a', 2, 3), m('b', 2, 3), m('c', 0, 4)];
+    expect(lockedMatchesNeedingCourtUpdate(matches, ['a', 'c'], { singles: 0, doubles: 4 })).toEqual(
+      ['a'],
+    );
+  });
+
+  it('says nothing about a locked match that is already the right shape', () => {
+    expect(
+      lockedMatchesNeedingCourtUpdate([m('a', 0, 4)], ['a'], { singles: 0, doubles: 4 }),
+    ).toEqual([]);
+  });
+
+  it('is empty when nothing is locked', () => {
+    expect(lockedMatchesNeedingCourtUpdate([m('a', 2, 3)], [], { singles: 0, doubles: 4 })).toEqual(
+      [],
+    );
   });
 });
