@@ -194,11 +194,19 @@ export default function TeamSettingsPanel({
   }
 
   return (
-    <section className="mt-10">
-      <h2 className="text-xl font-display text-white">How you captain</h2>
+    <section id="team-settings" className="mt-10 scroll-mt-6">
+      {/*
+        Named "Team settings" because that is what every instruction we send a
+        captain calls it. It used to be headed "How you captain" only, so a
+        captain told to open team settings had nothing on the page by that name
+        and nothing to click (Megan Sullivan, 2026-09-11).
+      */}
+      <h2 className="text-xl font-display text-white">Team settings</h2>
 
       {msg && <p className="text-sm text-[#D3FB52] mt-3">{msg}</p>}
       {error && <p className="text-sm text-red-300 mt-3">{error}</p>}
+
+      <h3 className="text-white/50 text-sm uppercase tracking-wide mt-6 mb-2">How you captain</h3>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {STYLES.map((s) => {

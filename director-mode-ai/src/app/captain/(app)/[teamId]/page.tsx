@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { CalendarClock } from 'lucide-react';
+import { CalendarClock, Settings } from 'lucide-react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import OpponentDirectory, {
   type OpponentContact,
@@ -242,13 +242,27 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         </p>
       )}
 
-      <Link
-        href={`/captain/${team.id}/timeline`}
-        className="mt-4 inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-2.5 text-sm text-white/80 hover:border-[#D3FB52]/40 hover:text-white transition-colors"
-      >
-        <CalendarClock size={16} className="text-[#D3FB52]" />
-        Season email timeline
-      </Link>
+      {/*
+        The two things we point a captain at by name in an email or a text.
+        Team settings lives far down this one long page, so without this link
+        "open team settings" was an instruction with nothing to click.
+      */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          href={`/captain/${team.id}/timeline`}
+          className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-2.5 text-sm text-white/80 hover:border-[#D3FB52]/40 hover:text-white transition-colors"
+        >
+          <CalendarClock size={16} className="text-[#D3FB52]" />
+          Season email timeline
+        </Link>
+        <a
+          href="#team-settings"
+          className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-2.5 text-sm text-white/80 hover:border-[#D3FB52]/40 hover:text-white transition-colors"
+        >
+          <Settings size={16} className="text-[#D3FB52]" />
+          Team settings
+        </a>
+      </div>
 
       {/*
         The roster leads the page.
