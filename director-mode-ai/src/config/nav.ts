@@ -3,8 +3,9 @@
  *
  * The app is organised into three AUDIENCE SPACES rather than one flat tool list:
  *
- *   1. "Run the club" — the default staff/director space. Five plain-English
- *                       sections (Courts, Programs, Members, Coaching, Pro shop),
+ *   1. "Run the club" — the default staff/director space. Six plain-English
+ *                       sections (Courts, Programs, Members, Coaching, Pro shop,
+ *                       Facilities),
  *                       each with a landing page under /run/*, plus "All tools".
  *   2. "For players"  — the handful of surfaces a member/player actually opens.
  *   3. "For you"      — the director's own career (Benchmarks, Recruiting).
@@ -23,11 +24,12 @@
  * ── THE COUNT ────────────────────────────────────────────────────────────────
  * Four places used to state how many tools ClubMode has and no two agreed: the
  * homepage hero said 9, the toolkit grid rendered 9, the nav listed 18, and the
- * true number was 15. Everything now derives from PRODUCTS / PRODUCT_COUNT below.
+ * true number was 15 (16 since MaintenanceMode, 2026-09-11). Everything now
+ * derives from PRODUCTS / PRODUCT_COUNT below.
  *
  * A "product" is a branded, separately-sellable tool — the thing a director would
  * name if you asked what ClubMode does. `product: true` marks one. Deliberately
- * NOT products, which is why 15 and not 19:
+ * NOT products, which is why 16 and not 20:
  *   - "Members roster" — a page inside the app, not a brand.
  *   - The three "For players" surfaces — member-facing views of products that are
  *     already counted, not separate tools you would sell.
@@ -38,7 +40,7 @@
 import {
   LayoutGrid, CalendarDays, Shuffle, Calendar, Trophy, ClipboardList, Waves,
   Users, Database, Wrench, Clock, GraduationCap, Mountain, BarChart3, Sparkles,
-  Grid3x3, User, CalendarRange, Search, CalendarCheck,
+  Grid3x3, User, CalendarRange, Search, CalendarCheck, HardHat,
 } from 'lucide-react';
 
 export type NavIcon = typeof LayoutGrid;
@@ -295,6 +297,29 @@ export const SECTIONS: Section[] = [
       },
     ],
   },
+  {
+    key: 'facilities',
+    label: 'Facilities',
+    href: '/run/facilities',
+    blurb: 'Keeping the courts, pool and grounds in shape — the crew checklist, work orders and big projects.',
+    icon: HardHat,
+    color: '#f59e0b',
+    matches: ['/run/facilities', '/maintenance'],
+    tools: [
+      {
+        name: 'MaintenanceMode',
+        href: '/maintenance',
+        match: '/maintenance',
+        description: "The maintenance crew's daily checklist, work orders from every department, and long-term projects — with a morning email digest.",
+        pitch: 'Post the daily routine once; the crew checks it off from their phones, sees what was missed yesterday, and starts each morning with an email of the day’s work.',
+        icon: HardHat,
+        color: '#f59e0b',
+        product: true,
+        tag: 'FACILITIES',
+        badge: 'NEW',
+      },
+    ],
+  },
 ];
 
 /* ========================= Space 2 — For players ========================= */
@@ -375,7 +400,7 @@ export const PRODUCTS: Tool[] = [...ALL_CLUB_TOOLS, ...FOR_YOU].filter((t) => t.
 /** How many tools ClubMode has. Never write this number by hand. */
 export const PRODUCT_COUNT = PRODUCTS.length;
 
-/** The sixth "Run the club" nav item — the full directory at /tools. */
+/** The last "Run the club" nav item, after the sections — the full directory at /tools. */
 export const ALL_TOOLS_ITEM = {
   label: 'All tools',
   href: '/tools',

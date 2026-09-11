@@ -71,6 +71,8 @@ export default async function MemberHome() {
 
   // Not a member of any club — nothing to show them here.
   if (!membership) redirect('/');
+  // The maintenance crew's home is their board, not the member clubhouse.
+  if (membership.role === 'maintenance') redirect('/maintenance');
 
   const { data: club } = await admin
     .from('cc_clubs')

@@ -19,11 +19,11 @@ describe('the canonical product list', () => {
     expect(PRODUCT_COUNT).toBe(PRODUCTS.length);
   });
 
-  it('has 15 products — the number the audit landed on', () => {
+  it('has 16 products — the audit landed on 15, MaintenanceMode made 16', () => {
     // If this fails because you genuinely added a tool, update the number AND
     // check the hero counter still reads it from PRODUCT_COUNT rather than a
     // literal. If it fails for any other reason, something drifted.
-    expect(PRODUCT_COUNT).toBe(15);
+    expect(PRODUCT_COUNT).toBe(16);
   });
 
   it('counts only entries explicitly flagged as products', () => {
@@ -104,6 +104,10 @@ describe('activeHref picks the longest matching prefix', () => {
 
   it('lights up Members for the vault, not Programs', () => {
     expect(activeHref('/courtconnect/vault', entries)).toBe('/run/members');
+  });
+
+  it('lights up Facilities for a MaintenanceMode project page', () => {
+    expect(activeHref('/maintenance/projects/abc', entries)).toBe('/run/facilities');
   });
 
   it('returns null when nothing matches', () => {

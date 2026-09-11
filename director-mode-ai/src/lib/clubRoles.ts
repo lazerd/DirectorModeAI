@@ -9,11 +9,27 @@
  *
  * Kept next to the SQL helper's definition (`is_club_team()` / staff checks) so
  * the two do not drift.
+ *
+ * `maintenance` is deliberately NOT staff. The maintenance crew signs in to
+ * MaintenanceMode and nothing else: no member contact details, events, leagues
+ * or lesson notes. It is excluded from STAFF_ROLES here and from the SQL
+ * helpers (`is_club_team`, `is_club_staff`, and — since 2026-09-11 —
+ * `is_club_member`), so adding the role widened access nowhere else.
  */
-export const CLUB_ROLES = ['owner', 'director', 'coach', 'front_desk', 'member'] as const;
+export const CLUB_ROLES = ['owner', 'director', 'coach', 'front_desk', 'maintenance', 'member'] as const;
 export type ClubRole = (typeof CLUB_ROLES)[number];
 
 export const STAFF_ROLES: ClubRole[] = ['owner', 'director', 'coach', 'front_desk'];
+
+/** Everyone who can open MaintenanceMode: all staff, plus the crew. */
+export const MAINTENANCE_ACCESS_ROLES: ClubRole[] = [...STAFF_ROLES, 'maintenance'];
+
+/** Who manages the daily routine, projects and the digest. */
+export const MAINTENANCE_MANAGER_ROLES: ClubRole[] = ['owner', 'director'];
+
+export function isMaintenanceRole(role: string | null | undefined): boolean {
+  return role === 'maintenance';
+}
 
 export function isStaffRole(role: string | null | undefined): boolean {
   return !!role && (STAFF_ROLES as string[]).includes(role);
@@ -31,6 +47,7 @@ export const ROLE_LABEL: Record<string, string> = {
   director: 'Director',
   coach: 'Coach',
   front_desk: 'Front desk',
+  maintenance: 'Maintenance',
   member: 'Member',
 };
 
@@ -58,8 +75,15 @@ const ROLE_RANK: Record<string, number> = {
   director: 1,
   coach: 2,
   front_desk: 3,
-  member: 4,
+  // Works at the club, so it outranks a playing membership elsewhere.
+  maintenance: 4,
+  member: 5,
 };
+
+/** Seniority of a role (lower = more senior). Unknown roles sort last. */
+export function roleRank(role: string | null | undefined): number {
+  return ROLE_RANK[role ?? ''] ?? 9;
+}
 
 export type Membership = { club_id: string; role: string; created_at?: string | null };
 

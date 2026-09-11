@@ -115,7 +115,7 @@ export async function POST(req: Request) {
 
   if (existing) {
     // Already in the club: an invite may promote, never demote.
-    const RANK: Record<string, number> = { owner: 0, director: 1, coach: 2, front_desk: 3, member: 4 };
+    const RANK: Record<string, number> = { owner: 0, director: 1, coach: 2, front_desk: 3, maintenance: 4, member: 5 };
     const better = (RANK[invite.role] ?? 9) < (RANK[existing.role] ?? 9);
     if (better) {
       await db
@@ -170,7 +170,13 @@ export async function POST(req: Request) {
 
   // Land them where their role actually starts.
   const next =
-    invite.role === 'coach' ? '/lessons/open' : invite.role === 'member' ? '/member' : '/';
+    invite.role === 'coach'
+      ? '/lessons/open'
+      : invite.role === 'maintenance'
+        ? '/maintenance'
+        : invite.role === 'member'
+          ? '/member'
+          : '/';
 
   return NextResponse.json({ ok: true, role: invite.role, next });
 }

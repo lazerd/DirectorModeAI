@@ -93,7 +93,7 @@ const getLastName = (fullName: string): string => {
 };
 
 const ROLE_LABEL: Record<string, string> = {
-  owner: 'Owner', director: 'Director', coach: 'Coach', front_desk: 'Front desk', member: 'Member',
+  owner: 'Owner', director: 'Director', coach: 'Coach', front_desk: 'Front desk', maintenance: 'Maintenance', member: 'Member',
 };
 
 export default function PlayerVaultPage() {
@@ -158,7 +158,10 @@ export default function PlayerVaultPage() {
   async function setRole(userId: string, role: string) {
     setSavingRole(userId);
     const prev = members;
-    setMembers((cur) => cur.map((m) => (m.userId === userId ? { ...m, role, isStaff: role !== 'member' } : m)));
+    // Maintenance is not staff: the crew sees only MaintenanceMode.
+    setMembers((cur) =>
+      cur.map((m) => (m.userId === userId ? { ...m, role, isStaff: role !== 'member' && role !== 'maintenance' } : m)),
+    );
     try {
       const res = await fetch('/api/clubs/members', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId, role }) });
       const json = await res.json();
@@ -535,6 +538,7 @@ export default function PlayerVaultPage() {
                             <option value="director">Director — full access</option>
                             <option value="coach">Coach / pro — run events</option>
                             <option value="front_desk">Front desk — run events</option>
+                            <option value="maintenance">Maintenance — MaintenanceMode only</option>
                             <option value="member">Member — player access</option>
                           </select>
                         </span>

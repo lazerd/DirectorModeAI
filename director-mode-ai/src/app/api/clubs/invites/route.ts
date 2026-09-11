@@ -21,7 +21,7 @@ import { randomBytes } from 'crypto';
 export const dynamic = 'force-dynamic';
 
 /** Roles a director may hand out. Nobody invites an owner. */
-const INVITABLE: ClubRole[] = ['director', 'coach', 'front_desk', 'member'];
+const INVITABLE: ClubRole[] = ['director', 'coach', 'front_desk', 'maintenance', 'member'];
 
 /** Who may manage people at a club. */
 const CAN_MANAGE = ['owner', 'director'];
@@ -308,7 +308,13 @@ export async function POST(req: Request) {
       ${
         isStaff
           ? `<p style="font-size:14px;color:#475569;margin:0 0 8px">
-               Once you're in, ${role === 'coach' ? 'set up your lesson booking page so members can book your open times' : 'you will have access to the club tools'}.
+               Once you're in, ${
+                 role === 'coach'
+                   ? 'set up your lesson booking page so members can book your open times'
+                   : role === 'maintenance'
+                     ? "you'll get the day's maintenance checklist by email each morning, and you can tick jobs off from your phone at clubmode.ai/maintenance. Please use your own login — every tick records who did it"
+                     : 'you will have access to the club tools'
+               }.
              </p>`
           : `<p style="font-size:14px;color:#475569;margin:0 0 8px">
                You'll be able to book courts, sign up for events and follow your club.

@@ -38,7 +38,10 @@ export async function defaultDestination(supabase: SupabaseClient, userId: strin
       .from('cc_club_members').select('club_id, role, created_at').eq('user_id', userId);
     const primary = pickPrimaryClub(mems || [], null);
     const mem = (mems || []).find((m) => m.club_id === primary);
-    return mem?.role === 'member' ? '/member' : '/welcome';
+    if (mem?.role === 'member') return '/member';
+    // The maintenance crew's whole app is their board.
+    if (mem?.role === 'maintenance') return '/maintenance';
+    return '/welcome';
   } catch {
     return '/welcome';
   }

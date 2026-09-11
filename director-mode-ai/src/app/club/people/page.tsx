@@ -51,6 +51,7 @@ const ROLE_HELP: Record<string, string> = {
   director: 'Runs the club with you — every tool, and can invite people.',
   coach: 'Teaches. Gets a lesson booking page members can book.',
   front_desk: 'Staff access to courts and bookings, no teaching page.',
+  maintenance: 'Maintenance crew. Sees only MaintenanceMode — the daily checklist, work orders and projects. No member info, events or bookings.',
   member: 'Books courts, signs up for events. No staff access.',
 };
 
@@ -66,6 +67,13 @@ export default function ClubPeoplePage() {
   const [name, setName] = useState('');
   const [role, setRole] = useState('coach');
   const [note, setNote] = useState('');
+
+  // MaintenanceMode's "Invite maintenance staff" button links here with
+  // ?role=maintenance, so the right role is already picked when they arrive.
+  useEffect(() => {
+    const r = new URLSearchParams(window.location.search).get('role');
+    if (r && ['director', 'coach', 'front_desk', 'maintenance', 'member'].includes(r)) setRole(r);
+  }, []);
 
   const load = useCallback(async () => {
     const res = await fetch('/api/clubs/invites', { cache: 'no-store' });

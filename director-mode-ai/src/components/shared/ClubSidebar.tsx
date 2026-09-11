@@ -35,7 +35,7 @@ import {
 } from '@/config/nav';
 import {
   Zap, Home, LayoutGrid, Calendar, GraduationCap,
-  ChevronLeft, ChevronRight, Menu, X,
+  ChevronLeft, ChevronRight, Menu, X, HardHat,
 } from 'lucide-react';
 
 type Item = {
@@ -227,6 +227,15 @@ export default function ClubSidebar() {
               ...(slug ? [{ name: 'Book a Court', href: `/courtsheet/${slug}`, matches: ['/courtsheet'], icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
               { name: 'My Account', href: '/client/dashboard', matches: ['/client/dashboard'], icon: Calendar, color: '#60a5fa' },
               { name: 'Find a Coach', href: '/find-coach', matches: ['/find-coach'], icon: GraduationCap, color: '#a78bfa' },
+            ],
+          }]);
+        } else if (mem && (mem as any).role === 'maintenance') {
+          // The crew sees MaintenanceMode and their account — nothing else.
+          setMemberNav([{
+            heading: null,
+            items: [
+              { name: 'MaintenanceMode', href: '/maintenance', matches: ['/maintenance'], icon: HardHat, color: '#f59e0b' },
+              { name: 'My Account', href: '/client/dashboard', matches: ['/client/dashboard'], icon: Calendar, color: '#60a5fa' },
             ],
           }]);
         }

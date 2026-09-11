@@ -96,6 +96,8 @@ export async function middleware(request: NextRequest) {
     '/courtsheet/staff',
     '/calendar',
     '/member',
+    // MaintenanceMode — staff and the maintenance crew.
+    '/maintenance',
     // CaptainMode subscription page. The rest of /captain is deliberately NOT
     // listed: the player-facing surfaces (/captain/availability|claim|confirm)
     // are tokenized and must work with no login, and a startsWith('/captain')
@@ -142,7 +144,12 @@ export async function middleware(request: NextRequest) {
     '/run', '/tools',
   ];
   const isDirectorPath = DIRECTOR_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
-  if (isDirectorPath && user && (user.email_confirmed_at || user.confirmed_at)) {
+  // The maintenance crew sees ONLY MaintenanceMode. Their member home and the
+  // director setup page are no use to them, so those send them to their board too.
+  const isCrewHomePath = ['/member', '/welcome'].some(
+    (p) => request.nextUrl.pathname === p || request.nextUrl.pathname.startsWith(p + '/'),
+  );
+  if ((isDirectorPath || isCrewHomePath) && user && (user.email_confirmed_at || user.confirmed_at)) {
     const { data: owned } = await supabase
       .from('cc_clubs').select('id').eq('owner_id', user.id).limit(1).maybeSingle();
     if (!owned) {
@@ -150,11 +157,19 @@ export async function middleware(request: NextRequest) {
         .from('cc_club_members').select('role').eq('user_id', user.id)
         .in('role', ['owner', 'director', 'coach', 'front_desk']).limit(1).maybeSingle();
       if (!staff) {
-        const { data: anyMembership } = await supabase
-          .from('cc_club_members').select('club_id').eq('user_id', user.id).limit(1).maybeSingle();
-        // A plain member → send home. A brand-new user with no club at all is
-        // left alone (they become a director on first use).
-        if (anyMembership) {
+        // Their own rows only (the "Read own memberships" policy).
+        const { data: mine } = await supabase
+          .from('cc_club_members').select('role').eq('user_id', user.id);
+        const roles = ((mine as { role: string }[] | null) || []).map((m) => m.role);
+        if (roles.includes('maintenance')) {
+          const url = request.nextUrl.clone();
+          url.pathname = '/maintenance';
+          url.search = '';
+          return NextResponse.redirect(url);
+        }
+        // A plain member on a director tool → send home. A brand-new user with
+        // no club at all is left alone (they become a director on first use).
+        if (isDirectorPath && roles.length) {
           const url = request.nextUrl.clone();
           url.pathname = '/member';
           url.search = '';
