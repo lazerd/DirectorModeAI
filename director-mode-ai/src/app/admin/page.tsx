@@ -163,6 +163,13 @@ export default function AdminPage() {
                 <div className={`w-1.5 h-1.5 rounded-full ${autoRefresh ? 'bg-[#D3FB52] animate-pulse' : 'bg-white/30'}`} />
                 {autoRefresh ? 'Live' : 'Auto'}
               </button>
+              {/* Step into another account to see exactly what they see. */}
+              <a
+                href="/admin/view-as"
+                className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-white/10 text-white/60 hover:text-white hover:border-white/25 transition-colors"
+              >
+                View as…
+              </a>
               {/* Manual refresh */}
               <button
                 onClick={handleRefresh}
