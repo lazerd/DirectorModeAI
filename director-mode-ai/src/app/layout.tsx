@@ -5,6 +5,7 @@ import AssistantWidget from "@/components/assistant/AssistantWidget";
 import ClubSidebar from "@/components/shared/ClubSidebar";
 import TrialBanner from "@/components/billing/TrialBanner";
 import ViewAsBanner from "@/components/shared/ViewAsBanner";
+import LiveEventsBar from "@/components/shared/LiveEventsBar";
 import { Toaster } from "sonner";
 import { APP_URL } from "@/lib/appUrl";
 
@@ -48,6 +49,9 @@ export default function RootLayout({
       <body>
         <AnalyticsTracker />
         <ClubSidebar />
+        {/* What is open for signups or underway right now. Renders nothing
+            when nothing is, and never on a club's own public site. */}
+        <LiveEventsBar />
         {children}
         <TrialBanner />
         {/* Renders nothing unless this browser is borrowing someone's session. */}
