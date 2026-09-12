@@ -78,13 +78,21 @@ export default async function ClubSiteLayout({
       }}
     >
       {bundle.isDraft && (
-        // Staff previewing their own unpublished site. Says so plainly, because
-        // the URL is the real one and is otherwise indistinguishable from live.
+        /*
+         * An unpublished site still renders at its real URL, on purpose: that
+         * is how a club is shown its own site before deciding to go live.
+         *
+         * So the wording has to be exact. It is UNLISTED, not private — this
+         * page is server-rendered with admin access, so anyone holding the link
+         * can read it. Saying "only you can see this" would be a lie told to
+         * the one person relying on it.
+         */
         <div
           style={{ background: '#92400e', color: '#fff' }}
           className="px-4 py-2 text-center text-sm font-medium"
         >
-          Draft — only you can see this. Publish it from Club site settings.
+          Draft — not published, and hidden from Google. Anyone you send the link to can still see
+          it. Publish from Club site.
         </div>
       )}
 
