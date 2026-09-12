@@ -89,7 +89,15 @@ export const programBaseSchema = z
     time_start: hhmm,
     time_end: hhmm,
 
-    price_cents: cents.default(0),
+    /*
+     * Nullable with NO default, deliberately.
+     *
+     * `.default(0)` meant a class created without a price was created as FREE,
+     * and the site said so on the club's own website. Leaving it unset is the
+     * club not having decided yet, which the page renders as "Price on
+     * request" — an honest holding state instead of a wrong number.
+     */
+    price_cents: cents.nullable().optional(),
     member_price_cents: cents.nullable().optional(),
     drop_in_price_cents: cents.nullable().optional(),
     price_note: optionalText(160),

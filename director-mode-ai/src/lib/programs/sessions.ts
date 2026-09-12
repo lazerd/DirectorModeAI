@@ -157,7 +157,16 @@ export function formatTimeRange(timeStart: string, timeEnd: string): string {
 
 /** "$240" / "$35" / "Free" — cents to what a parent reads. */
 export function formatPrice(cents: number | null | undefined): string {
-  if (cents == null || cents <= 0) return 'Free';
+  /*
+   * "Not priced yet" and "free" are different claims, and collapsing them is
+   * how a club ends up advertising Free on a class it charges for. Lafayette's
+   * Pee-Wee class did exactly that on its own website, because price_cents
+   * defaulted to 0 and nobody had typed a number.
+   *
+   * NULL is the club not having said; 0 is the club saying free.
+   */
+  if (cents == null) return 'Price on request';
+  if (cents <= 0) return 'Free';
   return cents % 100 === 0
     ? `$${cents / 100}`
     : `$${(cents / 100).toFixed(2)}`;

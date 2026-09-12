@@ -73,7 +73,9 @@ export default async function ProgramDetailPage({
   // Resolved exactly as the register route resolves it, so the button a parent
   // is promised here is the button they get.
   const offer = paymentOffer({
-    amountCents: program.price_cents,
+    // An unpriced class owes nothing yet — the page says "Price on request"
+    // rather than offering a checkout for a number nobody has set.
+    amountCents: program.price_cents ?? 0,
     clubPayments,
     surface: 'program',
     ownLink: program.external_payment_url,
@@ -235,7 +237,7 @@ export default async function ProgramDetailPage({
               <span className="text-3xl font-bold" style={{ color: theme.primary }}>
                 {formatPrice(program.price_cents)}
               </span>
-              {sessions.count > 0 && program.price_cents > 0 && (
+              {sessions.count > 0 && (program.price_cents ?? 0) > 0 && (
                 <span className="text-sm" style={{ color: tint(theme.ink, 0.55) }}>
                   for {sessions.count} {sessions.count === 1 ? 'class' : 'classes'}
                 </span>
@@ -277,7 +279,7 @@ export default async function ProgramDetailPage({
                   clubSlug={club.slug}
                   programSlug={program.slug}
                   waitlisting={!!waitlisting}
-                  priceLabel={program.price_cents > 0 ? formatPrice(program.price_cents) : ''}
+                  priceLabel={(program.price_cents ?? 0) > 0 ? formatPrice(program.price_cents) : ''}
                   hasPaymentLink={offer.kind === 'link'}
                   accent={theme.primary}
                   onAccent={onPrimary}

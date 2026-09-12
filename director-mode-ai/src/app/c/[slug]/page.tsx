@@ -351,53 +351,76 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
               would put the club in the middle of someone else's business.
             */}
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {site.partner_links.map((p, i) => (
-                <a
-                  key={i}
-                  href={p.href || '#'}
-                  className="block rounded-2xl border p-5 transition-shadow hover:shadow-md"
-                  style={{ borderColor: tint(theme.ink, 0.12), background: theme.cream }}
-                >
-                  {p.sport && (
-                    <div
-                      className="text-[11px] font-bold uppercase tracking-wider"
-                      style={{ color: theme.secondary }}
-                    >
-                      {p.sport}
-                    </div>
-                  )}
-                  <div className="mt-1 font-bold">{p.name}</div>
-                  {p.blurb && (
-                    <p className="mt-1.5 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
-                      {p.blurb}
-                    </p>
-                  )}
-                  {p.href && (
-                    <div className="mt-3 text-sm font-bold" style={{ color: theme.primary }}>
-                      Visit →
-                    </div>
-                  )}
-                </a>
-              ))}
+              {site.partner_links.map((p, i) => {
+                /*
+                 * A card with no URL is a CARD, not a link.
+                 *
+                 * This was `href={p.href || '#'}`, which renders a thing that
+                 * looks clickable, invites the click, and does nothing — the
+                 * single worst state for the feature a club specifically asked
+                 * for ("the website also has links to Carmen pickle, Harriet
+                 * Plummer swim"). Better to name the pro and say nothing than
+                 * to promise a page that isn't there.
+                 */
+                const Card = p.href ? 'a' : 'div';
+                return (
+                  <Card
+                    key={i}
+                    {...(p.href ? { href: p.href } : {})}
+                    className={`block rounded-2xl border p-5${p.href ? ' transition-shadow hover:shadow-md' : ''}`}
+                    style={{ borderColor: tint(theme.ink, 0.12), background: theme.cream }}
+                  >
+                    {p.sport && (
+                      <div
+                        className="text-[11px] font-bold uppercase tracking-wider"
+                        style={{ color: theme.secondary }}
+                      >
+                        {p.sport}
+                      </div>
+                    )}
+                    <div className="mt-1 font-bold">{p.name}</div>
+                    {p.blurb && (
+                      <p className="mt-1.5 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+                        {p.blurb}
+                      </p>
+                    )}
+                    {p.href && (
+                      <div className="mt-3 text-sm font-bold" style={{ color: theme.primary }}>
+                        Visit →
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
             </div>
           </Section>
         </div>
       )}
 
       {/* ------------------------------------------------------ documents */}
-      {site.documents.length > 0 && (
+      {/*
+        Only documents that actually have a file.
+        
+        A download button is a promise of a file, and one with no URL behind it
+        is worse than no button: the member clicks, nothing downloads, and they
+        phone the club for the packet anyway. So a document without a file is
+        not shown, and the whole section disappears when none of them have one.
+      */}
+      {site.documents.filter((d) => !!d.href).length > 0 && (
         <Section title="Forms &amp; documents">
           <div className="flex flex-wrap gap-3">
-            {site.documents.map((d, i) => (
-              <a
-                key={i}
-                href={d.href || '#'}
-                className="rounded-xl border px-4 py-3 text-sm font-semibold"
-                style={{ borderColor: tint(theme.ink, 0.15), background: theme.surface }}
-              >
-                {d.label} ↓
-              </a>
-            ))}
+            {site.documents
+              .filter((d) => !!d.href)
+              .map((d, i) => (
+                <a
+                  key={i}
+                  href={d.href as string}
+                  className="rounded-xl border px-4 py-3 text-sm font-semibold"
+                  style={{ borderColor: tint(theme.ink, 0.15), background: theme.surface }}
+                >
+                  {d.label} ↓
+                </a>
+              ))}
           </div>
         </Section>
       )}

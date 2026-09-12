@@ -94,7 +94,15 @@ export default async function ClubProgramsPage({
         </section>
       ))}
 
-      {site.partner_links.length > 0 && (
+      {/*
+        Only the pros we can actually send someone to.
+        
+        This is a list of OUTBOUND links, so an entry with no URL has nothing
+        to offer here — an arrow that goes nowhere reads as a broken club, not
+        a missing field. The pro still appears on the home page as a card;
+        this strip is only for the ones with somewhere to go.
+      */}
+      {site.partner_links.filter((p) => !!p.href).length > 0 && (
         <section className="mt-14">
           <h2
             className="text-xs font-bold uppercase tracking-[0.16em]"
@@ -103,17 +111,19 @@ export default async function ClubProgramsPage({
             Run by our other pros
           </h2>
           <div className="mt-4 flex flex-wrap gap-3">
-            {site.partner_links.map((p, i) => (
-              <a
-                key={i}
-                href={p.href || '#'}
-                className="rounded-xl border px-4 py-3 text-sm font-semibold"
-                style={{ borderColor: tint(theme.ink, 0.15), background: theme.surface }}
-              >
-                {p.name}
-                {p.sport ? ` · ${p.sport}` : ''} →
-              </a>
-            ))}
+            {site.partner_links
+              .filter((p) => !!p.href)
+              .map((p, i) => (
+                <a
+                  key={i}
+                  href={p.href as string}
+                  className="rounded-xl border px-4 py-3 text-sm font-semibold"
+                  style={{ borderColor: tint(theme.ink, 0.15), background: theme.surface }}
+                >
+                  {p.name}
+                  {p.sport ? ` · ${p.sport}` : ''} →
+                </a>
+              ))}
           </div>
         </section>
       )}

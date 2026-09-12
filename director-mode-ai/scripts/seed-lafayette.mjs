@@ -192,7 +192,11 @@ const PROGRAMS = [
     coach_name: 'Hunter Gallaway',
     description:
       'For new and younger players. Players learn fundamentals, and also play rally contests, mini matches, and learn strategy.',
-    price_cents: 0,
+    // NULL, not 0: nobody has told us what these cost. A class seeded at 0
+    // advertised "Free" on the club's own website — see the price_cents
+    // comment in the schema. The club fills this in, and that edit is the
+    // demo.
+    price_cents: null,
     price_note: 'Ask about pricing',
     capacity: 10,
     registration_mode: 'online',
@@ -212,7 +216,7 @@ const PROGRAMS = [
     coach_name: 'Hunter Gallaway',
     description:
       'The core junior program — stroke work, point play and match tactics, grouped by level. Come once a week or twice.',
-    price_cents: 0,
+    price_cents: null,
     capacity: 16,
     registration_mode: 'online',
     display_order: 20,
@@ -228,7 +232,7 @@ const PROGRAMS = [
     time_end: '10:30',
     coach_name: 'Hunter Gallaway',
     description: 'Live-ball drilling and point play for adults, grouped by level.',
-    price_cents: 0,
+    price_cents: null,
     capacity: 12,
     registration_mode: 'online',
     display_order: 30,
@@ -243,7 +247,7 @@ const PROGRAMS = [
     time_start: '09:00',
     time_end: '10:30',
     description: 'Pickleball instruction and organised play for adults of every level.',
-    price_cents: 0,
+    price_cents: null,
     capacity: 16,
     registration_mode: 'online',
     display_order: 40,
@@ -262,7 +266,7 @@ const PROGRAMS = [
     coach_name: 'Hunter Gallaway',
     description:
       'Full-week summer camps, morning or afternoon, for juniors from first racquet through tournament play.',
-    price_cents: 0,
+    price_cents: null,
     capacity: 24,
     registration_mode: 'online',
     display_order: 50,

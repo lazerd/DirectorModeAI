@@ -92,7 +92,8 @@ export type ClubProgram = {
   exclusions: string[] | null;
   time_start: string;
   time_end: string;
-  price_cents: number;
+  /** NULL means no price has been set; 0 means deliberately free. */
+  price_cents: number | null;
   member_price_cents: number | null;
   drop_in_price_cents: number | null;
   price_note: string | null;

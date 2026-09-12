@@ -131,7 +131,7 @@ export default async function RegisteredPage({
                 resolution the confirmation email uses. */}
             {(() => {
               const offer = paymentOffer({
-                amountCents: registration?.amount_cents ?? program.price_cents,
+                amountCents: registration?.amount_cents ?? program.price_cents ?? 0,
                 clubPayments,
                 surface: 'program',
                 ownLink: program.external_payment_url,

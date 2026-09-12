@@ -203,7 +203,13 @@ describe('formatPrice', () => {
 
   it('calls nothing Free', () => {
     expect(formatPrice(0)).toBe('Free');
-    expect(formatPrice(null)).toBe('Free');
-    expect(formatPrice(undefined)).toBe('Free');
+  });
+
+  it('does not call an unpriced class free', () => {
+    // The distinction that matters: a club which has never entered a price is
+    // not running a free clinic. Lafayette advertised "Free" on a class it
+    // charges for, purely because the column defaulted to 0.
+    expect(formatPrice(null)).toBe('Price on request');
+    expect(formatPrice(undefined)).toBe('Price on request');
   });
 });
