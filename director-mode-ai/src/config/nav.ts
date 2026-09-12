@@ -360,6 +360,16 @@ export const SECTIONS: Section[] = [
         tag: 'COURTS',
       },
       {
+        name: 'Hosting',
+        href: '/run/site/hosting',
+        match: '/run/site/hosting',
+        description: 'Sell a league season to a visiting team with no home courts — packages, requests and approvals.',
+        pitch: 'A team with nowhere to play its home matches is revenue sitting in your quiet weekend hours. Publish a season package, they ask, you check the calendar and approve.',
+        icon: Trophy,
+        color: '#34d399',
+        tag: 'HOSTING',
+      },
+      {
         name: 'Getting paid',
         href: '/run/site/payments',
         match: '/run/site/payments',

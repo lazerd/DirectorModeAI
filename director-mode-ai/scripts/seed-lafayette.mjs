@@ -158,6 +158,9 @@ Book online below, or call the club. Pay at the desk when you arrive.`,
 
   documents: [{ label: 'Member packet', kind: 'pdf' }],
 
+  // A visiting captain has to be able to find the hosting page from anywhere.
+  nav_links: [{ label: 'Host your team', href: '/c/lafayette-tennis-club/host' }],
+
   seo_title: 'Lafayette Tennis Club — Lafayette, CA',
   seo_description:
     'Nine lighted hard courts in Lafayette, CA. Junior and adult tennis and pickleball, the Hunter Gallaway Academy, pool, gym and locker rooms. Memberships from $115/month.',
@@ -438,6 +441,66 @@ async function main() {
   } else {
     console.log('Opening hours already set');
   }
+
+  // ------------------------------------------------------- hosting packages
+  /*
+   * Season packages for a visiting USTA team with no home courts.
+   *
+   * HIS NUMBERS AS GIVEN, including the part I flagged: at 5 matches the
+   * playoff rate lands at or below the season per-match rate ($100 vs $100 on
+   * 3 courts; $135 vs $150 on 5), so a team pays no more — and on 5 courts
+   * less — for a playoff than a regular match. He was shown the arithmetic and
+   * chose to keep it, so it is seeded as stated and the editor flags it every
+   * time he opens the screen.
+   */
+  const HOST_PACKAGES = [
+    {
+      label: '3 courts',
+      courts: 3,
+      matches_included: 5,
+      price_cents: 50000,
+      playoff_price_cents: 10000,
+      blurb: 'For a 3-line league format. Your courts for every home match of the season.',
+      includes: [
+        'All 5 home matches',
+        '3 courts held for your match time',
+        'Lighted courts, so evening matches are fine',
+        'Locker rooms and showers for your players',
+      ],
+      display_order: 0,
+    },
+    {
+      label: '5 courts',
+      courts: 5,
+      matches_included: 5,
+      price_cents: 75000,
+      playoff_price_cents: 13500,
+      blurb: 'For a full 5-line USTA format — three singles and two doubles, or two and three.',
+      includes: [
+        'All 5 home matches',
+        '5 courts held for your match time',
+        'Lighted courts, so evening matches are fine',
+        'Locker rooms and showers for your players',
+      ],
+      display_order: 1,
+    },
+  ];
+  for (const p of HOST_PACKAGES) {
+    const { data: found } = await db
+      .from('club_host_packages')
+      .select('id')
+      .eq('club_id', clubId)
+      .eq('label', p.label)
+      .maybeSingle();
+    if (found) {
+      const { error } = await db.from('club_host_packages').update(p).eq('id', found.id);
+      if (error) throw error;
+    } else {
+      const { error } = await db.from('club_host_packages').insert({ ...p, club_id: clubId });
+      if (error) throw error;
+    }
+  }
+  console.log('Seeded 2 hosting packages ($500 / 3cts, $750 / 5cts)');
 
   // ------------------------------------------------------------------ courts
   // Nine courts, so /c/<slug>/courts counts them from CourtSheet rather than
