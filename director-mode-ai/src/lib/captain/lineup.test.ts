@@ -466,3 +466,169 @@ describe('eligibilityReport', () => {
     expect(rep.every((r) => r.played === 0 && r.short === 2)).toBe(true);
   });
 });
+
+/**
+ * The EBWT C-team case, 2026-09-11: nineteen players all on 2.5, a strength
+ * order the captain had dragged into shape by hand, no partner prefs and no
+ * scores yet. Every candidate pair scored identically, so the pairing came out
+ * in row-id order and the court order — combined rating, every pair summing to
+ * 5.0 — fell through to the alphabet. The captain's two best players landed on
+ * court 4.
+ */
+describe('generateLineup — strength order on a one-rating roster', () => {
+  const flat = () =>
+    [
+      ['s1', 'Zoe', 1],
+      ['s2', 'Yara', 2],
+      ['s3', 'Xena', 3],
+      ['s4', 'Wren', 4],
+      ['s5', 'Vera', 5],
+      ['s6', 'Uma', 6],
+      ['s7', 'Tess', 7],
+      ['s8', 'Sara', 8],
+    ].map(([id, name, order]) =>
+      p(id as string, name as string, 2.5, { sortOrder: order as number }),
+    );
+
+  const courtsOf = (over: Partial<LineupInput> = {}) =>
+    generateLineup(base({ available: flat(), singlesCourts: 0, doublesCourts: 4, ...over })).courts;
+
+  it('seats the top two on court 1 and the bottom two on the last court', () => {
+    const courts = courtsOf();
+    expect([courts[0].player1Id, courts[0].player2Id].sort()).toEqual(['s1', 's2']);
+    expect([courts[3].player1Id, courts[3].player2Id].sort()).toEqual(['s7', 's8']);
+  });
+
+  it('pairs neighbours in the strength order rather than top with bottom', () => {
+    for (const c of courtsOf()) {
+      const a = Number((c.player1Id as string).slice(1));
+      const b = Number((c.player2Id as string).slice(1));
+      expect(Math.abs(a - b)).toBe(1);
+    }
+  });
+
+  it('names the stronger player first on the line', () => {
+    for (const c of courtsOf()) {
+      expect(Number((c.player1Id as string).slice(1))).toBeLessThan(
+        Number((c.player2Id as string).slice(1)),
+      );
+    }
+  });
+
+  it('holds under equal play when everyone is level on matches', () => {
+    const courts = courtsOf({ captainingStyle: 'equal_play' });
+    expect([courts[0].player1Id, courts[0].player2Id].sort()).toEqual(['s1', 's2']);
+  });
+
+  it('is unchanged by the order the roster arrives in', () => {
+    const shuffled = flat().reverse();
+    const courts = generateLineup(
+      base({ available: shuffled, singlesCourts: 0, doublesCourts: 4 }),
+    ).courts;
+    expect([courts[0].player1Id, courts[0].player2Id].sort()).toEqual(['s1', 's2']);
+  });
+
+  it('still lets a mutual partner preference break the pairs up', () => {
+    const courts = generateLineup(
+      base({
+        available: flat(),
+        singlesCourts: 0,
+        doublesCourts: 4,
+        partnerPrefs: [
+          { playerId: 's1', preferredPlayerId: 's8', rank: 1 },
+          { playerId: 's8', preferredPlayerId: 's1', rank: 1 },
+        ],
+      }),
+    ).courts;
+    const together = courts.some(
+      (c) =>
+        [c.player1Id, c.player2Id].includes('s1') && [c.player1Id, c.player2Id].includes('s8'),
+    );
+    expect(together).toBe(true);
+  });
+});
+
+describe('generateLineup — who gets picked when more are available than seats', () => {
+  const ranked = () =>
+    Array.from({ length: 8 }, (_, i) =>
+      p(`r${i + 1}`, `Player ${i + 1}`, 2.5, { sortOrder: i + 1 }),
+    );
+
+  it('play_to_win takes the strongest six', () => {
+    const r = generateLineup(
+      base({ available: ranked(), singlesCourts: 0, doublesCourts: 3 }),
+    );
+    expect(idsOn(r.courts).sort()).toEqual(['r1', 'r2', 'r3', 'r4', 'r5', 'r6']);
+  });
+
+  it('play_to_win puts strength ahead of a partner preference for the last seat', () => {
+    const r = generateLineup(
+      base({
+        available: ranked(),
+        singlesCourts: 0,
+        doublesCourts: 3,
+        partnerPrefs: [
+          { playerId: 'r1', preferredPlayerId: 'r8', rank: 1 },
+          { playerId: 'r8', preferredPlayerId: 'r1', rank: 1 },
+        ],
+      }),
+    );
+    expect(idsOn(r.courts)).not.toContain('r8');
+  });
+
+  it('equal_play still benches on matches played, not on strength', () => {
+    const players = ranked().map((x, i) => ({ ...x, matchesPlayed: i < 2 ? 3 : 0 }));
+    const r = generateLineup(
+      base({ available: players, singlesCourts: 0, doublesCourts: 3, captainingStyle: 'equal_play' }),
+    );
+    // r1 and r2 are the two strongest and the two most used — they sit.
+    expect(idsOn(r.courts)).not.toContain('r1');
+    expect(idsOn(r.courts)).not.toContain('r2');
+  });
+});
+
+describe('generateLineup — what orders the courts', () => {
+  it('a manual strength order beats rating', () => {
+    const players = [
+      p('weak', 'Weak', 3.0, { sortOrder: 1 }),
+      p('weak2', 'Weaker', 3.0, { sortOrder: 2 }),
+      p('strong', 'Strong', 4.5, { sortOrder: 3 }),
+      p('strong2', 'Stronger', 4.5, { sortOrder: 4 }),
+    ];
+    const r = generateLineup(base({ available: players, singlesCourts: 0, doublesCourts: 2 }));
+    expect([r.courts[0].player1Id, r.courts[0].player2Id].sort()).toEqual(['weak', 'weak2']);
+  });
+
+  it('a manual strength order beats WTN too', () => {
+    const players = [
+      p('a', 'Ann', 3.5, { sortOrder: 1, wtn: 20 }),
+      p('b', 'Bea', 3.5, { sortOrder: 2, wtn: 19 }),
+      p('c', 'Cat', 3.5, { sortOrder: 3, wtn: 9 }),
+      p('d', 'Dot', 3.5, { sortOrder: 4, wtn: 8 }),
+    ];
+    const r = generateLineup(base({ available: players, singlesCourts: 0, doublesCourts: 2 }));
+    expect([r.courts[0].player1Id, r.courts[0].player2Id].sort()).toEqual(['a', 'b']);
+  });
+
+  it('falls back to WTN when nobody has been ranked by hand', () => {
+    const players = [
+      p('a', 'Ann', 3.5, { wtn: 20 }),
+      p('b', 'Bea', 3.5, { wtn: 19 }),
+      p('c', 'Cat', 3.5, { wtn: 9 }),
+      p('d', 'Dot', 3.5, { wtn: 8 }),
+    ];
+    const r = generateLineup(base({ available: players, singlesCourts: 0, doublesCourts: 2 }));
+    expect([r.courts[0].player1Id, r.courts[0].player2Id].sort()).toEqual(['c', 'd']);
+  });
+
+  it('falls back to combined rating when there is neither', () => {
+    const players = [
+      p('a', 'Ann', 3.0),
+      p('b', 'Bea', 3.0),
+      p('c', 'Cat', 4.5),
+      p('d', 'Dot', 4.5),
+    ];
+    const r = generateLineup(base({ available: players, singlesCourts: 0, doublesCourts: 2 }));
+    expect([r.courts[0].player1Id, r.courts[0].player2Id].sort()).toEqual(['c', 'd']);
+  });
+});
