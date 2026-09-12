@@ -11,6 +11,7 @@ import {
 import { priceBooking, toHHMM, toMinutes, type RateCard } from '@/lib/courts/pricing';
 import { resyncProgramBlocks, type BlockableProgram } from '@/lib/programs/courtBlocks';
 import { CLUB_TZ } from '@/lib/captain/clubTime';
+import { resolveActiveClub } from '@/lib/clubs/activeClub';
 
 /*
  * Club site pack — conversational control of the club's website, its classes
@@ -884,9 +885,39 @@ What you CANNOT do, and should say plainly if asked:
 
     const db = getSupabaseAdmin();
 
-    // A club they own, else one they are staff at. Same precedence as
-    // requireStaffForClub, so the assistant never reaches a club the hand path
-    // would refuse.
+    /*
+     * The club they have CHOSEN, before the club they happen to own first.
+     *
+     * This used to take the alphabetically-first owned club, which is the
+     * same bug that once silently repointed a working director's tools at a
+     * prospect's club because "Lafayette" sorts before "Sleepy Hollow". The
+     * switcher is the user's explicit answer to "which club am I running" and
+     * the assistant has to honour it, or it edits one club while the screen
+     * shows another.
+     */
+    const { active } = await resolveActiveClub(userId, null);
+    if (active) {
+      const { data } = await db
+        .from('cc_clubs')
+        .select('id, name, slug, timezone')
+        .eq('id', active.id)
+        .maybeSingle();
+      const chosen = data as { id: string; name: string; slug: string; timezone: string } | null;
+      if (chosen) {
+        return {
+          userId,
+          db,
+          clubId: chosen.id,
+          clubName: chosen.name,
+          clubSlug: chosen.slug,
+          timeZone: chosen.timezone || CLUB_TZ,
+        };
+      }
+    }
+
+    // Fallbacks, for a context with no cookie to read: a club they own, else
+    // one they are staff at. Same precedence as requireStaffForClub, so the
+    // assistant never reaches a club the hand path would refuse.
     const { data: owned } = await db
       .from('cc_clubs')
       .select('id, name, slug, timezone')
