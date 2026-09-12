@@ -113,7 +113,26 @@ export async function middleware(request: NextRequest) {
     // First-run setup wizard — needs a signed-in user to attach the club to.
     '/start',
   ];
-  const isProtectedPath = protectedPaths.some(path =>
+  /*
+   * Public pages that live UNDER a protected prefix.
+   *
+   * protectedPaths is a startsWith list, which structurally cannot say
+   * "exactly one segment deep" — so '/calendar' was also catching
+   * /calendar/<clubSlug>, the club's published year calendar. That page is
+   * written to be public and SEO-visible (it is the only club page in the app
+   * with generateMetadata), and anonymous visitors were being bounced to
+   * /login. A club site links to it, so the bug would have landed on a club's
+   * own members. Checked BEFORE the protected test, and narrow on purpose: the
+   * director children /calendar/board, /calendar/ideas and /calendar/import
+   * have two segments or a reserved name, so they stay protected.
+   */
+  const CALENDAR_DIRECTOR_CHILDREN = ['board', 'ideas', 'import'];
+  const publicUnderProtected = (() => {
+    const m = /^\/calendar\/([^/]+)$/.exec(request.nextUrl.pathname);
+    return !!m && !CALENDAR_DIRECTOR_CHILDREN.includes(m[1]);
+  })();
+
+  const isProtectedPath = !publicUnderProtected && protectedPaths.some(path =>
     request.nextUrl.pathname.startsWith(path)
   );
 
@@ -143,7 +162,8 @@ export async function middleware(request: NextRequest) {
     '/stringing', '/club-hub', '/club/members', '/connect/clubs',
     '/run', '/tools',
   ];
-  const isDirectorPath = DIRECTOR_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
+  const isDirectorPath =
+    !publicUnderProtected && DIRECTOR_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));
   // The maintenance crew sees ONLY MaintenanceMode. Their member home and the
   // director setup page are no use to them, so those send them to their board too.
   const isCrewHomePath = ['/member', '/welcome'].some(

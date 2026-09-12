@@ -154,6 +154,9 @@ const PUBLIC_PREFIXES = [
   '/enter',
   '/pathway/p',
   '/pathway/curriculum',
+  // A club's own public website. The visitor is a parent looking for a class;
+  // the director rail on top of it would say the site belongs to us.
+  '/c',
 ];
 
 /**

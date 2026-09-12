@@ -32,7 +32,9 @@ function TrialBannerInner() {
 
   useEffect(() => {
     // Don't show on marketing/auth/pricing pages.
-    if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/pricing') || pathname.startsWith('/join')) return;
+    // '/c' is a club's own public website: a ClubMode upgrade prompt on it
+    // would be our billing message on their homepage.
+    if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/pricing') || pathname.startsWith('/join') || pathname === '/c' || pathname.startsWith('/c/')) return;
     (async () => {
       try {
         const res = await fetch('/api/me/plan');

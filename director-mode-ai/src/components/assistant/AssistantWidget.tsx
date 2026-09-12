@@ -41,6 +41,9 @@ const PUBLIC = [
   '/leagues/confirm-partner', '/quads/match', '/quads/player', '/swim-family',
   '/captain/availability', '/captain/intake', '/captain/claim', '/captain/confirm',
   '/pathway/p', '/pathway/curriculum', '/book', '/join', '/event', '/nps',
+  // Club-owned public websites. "Ask ClubMode" on a club's own homepage tells
+  // their visitors whose software it is, which is not the club's to give away.
+  '/c',
 ];
 const HIDDEN_PATHS = (path: string) =>
   path === '/' || PUBLIC.some((p) => path === p || path.startsWith(p + '/'));

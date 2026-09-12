@@ -225,7 +225,7 @@ export default function ClubSettingsPage() {
   };
 
   const copyUrl = () => {
-    navigator.clipboard.writeText(`${APP_URL}/club/${form.slug}`);
+    navigator.clipboard.writeText(`${APP_URL}/c/${form.slug}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -240,6 +240,26 @@ export default function ClubSettingsPage() {
         {clubId ? 'Edit Club Profile' : 'Create Club Profile'}
       </h1>
       <p className="text-white/50 mb-6">Set up your public club page so players can find you.</p>
+
+      {/*
+        This screen owns the club's IDENTITY — name, slug, contact, address.
+        Everything that makes the public page look like a website (brand, hero,
+        programs, membership, staff) lives in the site editor, which is also
+        where the logo and cover uploads are. Pointing at it here so a director
+        who lands on the old screen is not left thinking this is all there is.
+      */}
+      {clubId && (
+        <div className="card p-4 mb-6 border border-[#D3FB52]/30 bg-[#D3FB52]/[0.06]">
+          <p className="text-white font-medium text-sm">Looking to edit your website?</p>
+          <p className="text-white/60 text-[13.5px] mt-1 leading-relaxed">
+            Your brand, photos, programs, membership tiers, staff and court rates all live in{' '}
+            <Link href="/run/site" className="text-[#D3FB52] underline">
+              Club site
+            </Link>
+            . This page is just the club&apos;s name and contact details.
+          </p>
+        </div>
+      )}
 
       {/* You are probably in the wrong place. */}
       {!clubId && existingMembership && (
@@ -264,7 +284,7 @@ export default function ClubSettingsPage() {
         <div className="card p-4 mb-6 flex items-center justify-between">
           <div>
             <p className="text-white/40 text-xs mb-1">Your public URL</p>
-            <p className="text-[#D3FB52] text-sm font-mono">{APP_HOST}/club/{form.slug}</p>
+            <p className="text-[#D3FB52] text-sm font-mono">{APP_HOST}/c/{form.slug}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={copyUrl} className="btn btn-sm bg-white/10 text-white hover:bg-white/20">
@@ -272,7 +292,7 @@ export default function ClubSettingsPage() {
               {copied ? 'Copied' : 'Copy'}
             </button>
             {clubId && (
-              <Link href={`/club/${form.slug}`} target="_blank" className="btn btn-sm bg-white/10 text-white hover:bg-white/20">
+              <Link href={`/c/${form.slug}`} target="_blank" className="btn btn-sm bg-white/10 text-white hover:bg-white/20">
                 <ExternalLink size={14} /> Preview
               </Link>
             )}

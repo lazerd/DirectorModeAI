@@ -19,11 +19,11 @@ describe('the canonical product list', () => {
     expect(PRODUCT_COUNT).toBe(PRODUCTS.length);
   });
 
-  it('has 16 products — the audit landed on 15, MaintenanceMode made 16', () => {
+  it('has 17 products — the audit landed on 15, MaintenanceMode 16, SiteMode 17', () => {
     // If this fails because you genuinely added a tool, update the number AND
     // check the hero counter still reads it from PRODUCT_COUNT rather than a
     // literal. If it fails for any other reason, something drifted.
-    expect(PRODUCT_COUNT).toBe(16);
+    expect(PRODUCT_COUNT).toBe(17);
   });
 
   it('counts only entries explicitly flagged as products', () => {

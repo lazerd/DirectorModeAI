@@ -29,7 +29,7 @@
  *
  * A "product" is a branded, separately-sellable tool — the thing a director would
  * name if you asked what ClubMode does. `product: true` marks one. Deliberately
- * NOT products, which is why 16 and not 20:
+ * NOT products, which is why the count is lower than the number of entries here:
  *   - "Members roster" — a page inside the app, not a brand.
  *   - The three "For players" surfaces — member-facing views of products that are
  *     already counted, not separate tools you would sell.
@@ -40,7 +40,7 @@
 import {
   LayoutGrid, CalendarDays, Shuffle, Calendar, Trophy, ClipboardList, Waves,
   Users, Database, Wrench, Clock, GraduationCap, Mountain, BarChart3, Sparkles,
-  Grid3x3, User, CalendarRange, Search, CalendarCheck, HardHat,
+  Grid3x3, User, CalendarRange, Search, CalendarCheck, HardHat, Globe,
 } from 'lucide-react';
 
 export type NavIcon = typeof LayoutGrid;
@@ -317,6 +317,47 @@ export const SECTIONS: Section[] = [
         product: true,
         tag: 'FACILITIES',
         badge: 'NEW',
+      },
+    ],
+  },
+  {
+    /*
+     * Its own section rather than a tool buried inside Members or Programs.
+     * A club's public website is the thing a director is buying when they stop
+     * paying someone else to change a date on it — burying it undersells it.
+     * Note the URL is /run/site and NOT /run/programs: that path already
+     * exists as the tournament-format landing, and "Programs" already means
+     * something else in this nav.
+     */
+    key: 'site',
+    label: 'Club site',
+    href: '/run/site',
+    blurb: 'Your own public website, and the classes you sell on it — dates, skip dates and prices you change yourself.',
+    icon: Globe,
+    color: '#34d399',
+    matches: ['/run/site'],
+    tools: [
+      {
+        name: 'SiteMode',
+        href: '/run/site',
+        match: '/run/site',
+        description: "Your club's own public website — brand, programs, membership, staff and rates, all editable by you.",
+        pitch: 'A real website for your club, at your own address, that you change yourself. Add a class, skip a week, raise a price — and every parent who signed up hears about it with one click.',
+        icon: Globe,
+        color: '#34d399',
+        product: true,
+        tag: 'WEBSITE',
+        badge: 'NEW',
+      },
+      {
+        name: 'Classes',
+        href: '/run/site/classes',
+        match: '/run/site/classes',
+        description: 'Every class you run, with its real dates, its skip weeks and its prices — and online sign-up.',
+        pitch: 'Click a date to skip it. Change a price in the field. Your site, your sign-up form and your confirmation emails all follow, and we offer to tell the families.',
+        icon: CalendarCheck,
+        color: '#34d399',
+        tag: 'CLASSES',
       },
     ],
   },
