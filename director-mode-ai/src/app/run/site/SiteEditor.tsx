@@ -22,8 +22,7 @@ type ListKey =
   | 'staff'
   | 'partner_links'
   | 'documents'
-  | 'services'
-  | 'court_rates';
+  | 'services';
 
 type Site = Record<string, unknown> & { status?: 'draft' | 'published' };
 type Club = { id: string; slug: string; name: string; timezone: string };
@@ -59,19 +58,6 @@ const LISTS: Record<
       { key: 'cta_href', label: 'Button link', placeholder: 'https://…' },
     ],
     addLabel: 'Add a tier',
-  },
-  court_rates: {
-    title: 'Court rates',
-    blurb:
-      'Your time-of-day pricing. Published on your site now; online booking prices against these later.',
-    fields: [
-      { key: 'label', label: 'Rate', placeholder: 'Prime time' },
-      { key: 'window', label: 'When', placeholder: 'Weekdays after 4pm & weekends' },
-      { key: 'member_cents', label: 'Members', placeholder: '0', money: true },
-      { key: 'public_cents', label: 'Public', placeholder: '24', money: true },
-      { key: 'note', label: 'Note', placeholder: 'Per hour' },
-    ],
-    addLabel: 'Add a rate',
   },
   staff: {
     title: 'Your team',
@@ -558,7 +544,28 @@ export default function SiteEditor() {
 
       <ListEditor listKey="amenities" />
       <ListEditor listKey="membership_tiers" />
-      <ListEditor listKey="court_rates" />
+
+      {/*
+        Court rates moved out of here to /run/site/courts when online booking
+        landed, because those rows are what a booking is actually PRICED
+        against. Editing a second copy on this screen would have let a director
+        change a number and watch nothing happen — so this points at the real
+        one rather than offering a list that no longer drives anything.
+      */}
+      <section>
+        <h2 className="font-display text-xl text-white">Court rates</h2>
+        <p className="mt-1 text-sm text-white/45">
+          Your rates live with court booking now, because they are the prices a booking is charged
+          at — not just a table on the page.
+        </p>
+        <Link
+          href="/run/site/courts"
+          className="mt-3 inline-block rounded-lg border border-white/15 px-4 py-2 text-sm font-medium text-white/70 hover:text-white"
+        >
+          Court rates &amp; booking →
+        </Link>
+      </section>
+
       <ListEditor listKey="services" />
       <ListEditor listKey="staff" />
       <ListEditor listKey="partner_links" />
