@@ -13,11 +13,16 @@
  *     site claims the homepage as its canonical.
  */
 
+import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getClubSite } from '@/lib/clubSite/server';
+import { getSiteVisitor } from '@/lib/clubSite/visitor';
 import { readableOn } from '@/lib/clubSite/theme';
+import { getRateCards } from '@/lib/courts/server';
+import { bookingEnabled } from '@/lib/courts/pricing';
+import MemberBar from '@/components/clubSite/MemberBar';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,9 +67,35 @@ export default async function ClubSiteLayout({
 
   const { club, site, theme } = bundle;
   const onPrimary = readableOn(theme.primary);
+
+  /*
+   * Who is looking, and what this club charges them.
+   *
+   * Both are needed in the HEADER rather than only on the booking page,
+   * because a member who cannot see a way to sign in is a member paying the
+   * public rate on a page that says members play free.
+   */
+  const [visitor, rateCards] = await Promise.all([
+    getSiteVisitor(club.id),
+    getRateCards(club.id),
+  ]);
+  const membersFree = rateCards.some((c) => c.applies_to === 'member' && c.price_cents === 0);
+
   const nav = [
     { label: 'Programs', href: `/c/${club.slug}/programs` },
     { label: 'Courts', href: `/c/${club.slug}/courts` },
+    /*
+     * The club's REAL court sheet — the grid the club already runs, not a
+     * second one built for the website. It is the answer to "what is actually
+     * on court right now", so it belongs in the nav and not buried at the
+     * bottom of a page.
+     *
+     * Only shown once the club has rates, because a club not taking bookings
+     * online has nothing here for a visitor to act on.
+     */
+    ...(bookingEnabled(rateCards)
+      ? [{ label: 'Court sheet', href: `/courtsheet/${club.slug}` }]
+      : []),
     ...site.nav_links.map((l) => ({ label: l.label, href: l.href })),
   ];
 
@@ -121,6 +152,18 @@ export default async function ClubSiteLayout({
                 {club.phone}
               </a>
             )}
+            {/* Suspense because MemberBar reads the query string to build its
+                return path, and that suspends during prerender. */}
+            <Suspense fallback={null}>
+              <MemberBar
+                clubSlug={club.slug}
+                signedIn={visitor.signedIn}
+                firstName={visitor.firstName}
+                isMember={visitor.audience === 'member'}
+                membersFree={membersFree}
+                onPrimary={onPrimary}
+              />
+            </Suspense>
           </nav>
         </div>
       </header>

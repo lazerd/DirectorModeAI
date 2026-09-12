@@ -34,6 +34,7 @@ export default function PaymentSettings() {
   const [payments, setPayments] = useState<Payments | null>(null);
   const [providers, setProviders] = useState({ square: false, stripe: false });
   const [outstanding, setOutstanding] = useState({ programs_cents: 0, courts_cents: 0 });
+  const [selling, setSelling] = useState({ courts_unpaid: false, classes_unpaid: false });
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -45,6 +46,7 @@ export default function PaymentSettings() {
       payments?: Payments | null;
       providers?: { square: boolean; stripe: boolean };
       outstanding?: { programs_cents: number; courts_cents: number };
+      selling?: { courts_unpaid: boolean; classes_unpaid: boolean };
       error?: string;
     };
     if (!res.ok) setError(j.error || 'Could not load your payment settings.');
@@ -62,6 +64,7 @@ export default function PaymentSettings() {
       );
       if (j.providers) setProviders(j.providers);
       if (j.outstanding) setOutstanding(j.outstanding);
+      if (j.selling) setSelling(j.selling);
     }
     setLoading(false);
   }, []);
@@ -101,8 +104,36 @@ export default function PaymentSettings() {
   const hasLink = !!payments.payment_link;
   const owed = outstanding.programs_cents + outstanding.courts_cents;
 
+  /*
+   * The gap that is invisible from both ends.
+   *
+   * A club sets a $24 public court rate, never pastes a link, and every
+   * confirmation quietly reads "settle up at the desk" — so the club believes
+   * it is selling court time online while actually taking unpaid
+   * reservations. The customer is not misled; the CLUB is. Said before
+   * anything else on the page, because no other setting here matters until it
+   * is fixed.
+   */
+  const unpaid: string[] = [];
+  if (selling.courts_unpaid) unpaid.push('court time');
+  if (selling.classes_unpaid) unpaid.push('classes');
+
   return (
     <div className="space-y-8">
+      {/* ------------------------------------------- selling with no checkout */}
+      {unpaid.length > 0 && (
+        <div className="rounded-2xl border border-red-400/40 bg-red-400/[0.08] p-4">
+          <div className="font-semibold text-red-200">
+            You are charging for {unpaid.join(' and ')} with no way to take the money
+          </div>
+          <div className="mt-1 text-sm text-red-100/75">
+            Every booking and sign-up currently says <em>settle up at the desk</em>, so people
+            reserve without paying. Paste your Square, PayPal or Venmo link below and they each get
+            a <strong>Pay now</strong> button instead — on the confirmation page and in the email.
+          </div>
+        </div>
+      )}
+
       {/* -------------------------------------------------------- what's owed */}
       {owed > 0 && (
         <div className="rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4">

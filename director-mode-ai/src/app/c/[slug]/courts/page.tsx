@@ -252,16 +252,20 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
               </a>
             )}
             {/*
-              The open-signup board. Only worth pointing at when the club is
-              actually posting drop-in times — otherwise it is an empty page
-              that reads as broken.
+              The club's REAL court sheet — the grid the club already runs.
+              
+              Named for what it is. "See open court time" read as a separate
+              drop-in noticeboard, so nobody followed it to find out what was
+              actually on court. These bookings write into the same
+              `reservations` table the sheet draws from, so it is the fuller
+              view of this same page's data, not a second system.
             */}
             <Link
               href={`/courtsheet/${club.slug}`}
               className="rounded-xl border px-5 py-3 text-sm font-semibold"
               style={{ borderColor: tint(theme.ink, 0.2) }}
             >
-              See open court time
+              See the court sheet
             </Link>
           </div>
         </div>

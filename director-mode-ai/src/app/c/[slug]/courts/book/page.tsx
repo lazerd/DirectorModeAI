@@ -43,8 +43,14 @@ export default async function BookCourtPage({ params }: { params: Promise<{ slug
       >
         Book a court
       </h1>
+      {/*
+        "No account needed" on its own was the wrong half of the truth. It is
+        right for a guest, and it talked a MEMBER out of signing in — which is
+        the only way to be charged the member rate.
+      */}
       <p className="mt-2 text-base" style={{ color: tint(theme.ink, 0.65) }}>
-        Pick a time and it&apos;s yours. No account needed.
+        Pick a time and it&apos;s yours. Guests can book without an account; members sign in for
+        member rates.
       </p>
 
       <div className="mt-8">

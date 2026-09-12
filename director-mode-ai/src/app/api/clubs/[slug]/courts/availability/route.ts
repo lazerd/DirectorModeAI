@@ -116,6 +116,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     audience,
     /** Their real standing, so the page knows whether to offer the toggle. */
     ownAudience,
+    /**
+     * Whether there is a session at all — which is NOT the same question as
+     * whether they are a member.
+     *
+     * A signed-out visitor shown the public rate should be offered a sign-in,
+     * because they may well be a member who never logged in. A signed-in
+     * non-member should not: they have already proved they are not on the
+     * club's books, and offering them a sign-in link they have used is the
+     * page telling them to do the thing they just did.
+     */
+    signedIn: !!user,
     date,
     minutes,
     durations,

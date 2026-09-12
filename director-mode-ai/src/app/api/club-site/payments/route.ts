@@ -85,12 +85,46 @@ export async function GET() {
   const sum = (rows: { amount_cents: number | null }[] | null) =>
     (rows ?? []).reduce((n, r) => n + (r.amount_cents || 0), 0);
 
+  /*
+   * Is the club charging for things it has no way to collect?
+   *
+   * This is the gap that is invisible from either end. A club sets a $24
+   * public court rate, never pastes a payment link, and every booking
+   * confirmation quietly reads "settle up at the desk" — so the club believes
+   * it is selling court time online and is in fact taking unpaid
+   * reservations. Nothing on any screen said so.
+   */
+  const link = (data as { payment_link?: string | null } | null)?.payment_link || '';
+  const haveCheckout = isPaymentLink(link.trim());
+
+  const [{ data: paidRates }, { count: paidClasses }] = await Promise.all([
+    ctx.db
+      .from('court_rate_cards')
+      .select('price_cents')
+      .eq('club_id', ctx.club.id)
+      .eq('active', true)
+      .gt('price_cents', 0)
+      .limit(1),
+    ctx.db
+      .from('club_programs')
+      .select('id', { count: 'exact', head: true })
+      .eq('club_id', ctx.club.id)
+      .eq('status', 'published')
+      .gt('price_cents', 0),
+  ]);
+
   return NextResponse.json({
     payments: data ?? null,
     providers: providerAvailability(),
     outstanding: {
       programs_cents: sum(progRows as { amount_cents: number | null }[] | null),
       courts_cents: sum(courtRows as { amount_cents: number | null }[] | null),
+    },
+    selling: {
+      /** Charging for court time with nowhere to send people to pay. */
+      courts_unpaid: !haveCheckout && ((paidRates as unknown[] | null)?.length ?? 0) > 0,
+      /** Same, for published classes with a price on them. */
+      classes_unpaid: !haveCheckout && (paidClasses ?? 0) > 0,
     },
     club: { slug: ctx.club.slug, name: ctx.club.name },
   });

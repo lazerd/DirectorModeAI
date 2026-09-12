@@ -22,6 +22,8 @@ type Availability = {
   audience?: 'member' | 'public';
   /** Their real standing, which decides whether the price toggle appears. */
   ownAudience?: 'member' | 'public';
+  /** Whether there is a session — NOT whether they are a member. */
+  signedIn?: boolean;
   otherAudience?: { audience: 'member' | 'public'; cents: number } | null;
   date?: string;
   minutes?: number;
@@ -326,6 +328,31 @@ export default function BookCourt({
                   // real rate data rather than marketing copy.
                   <span style={{ color: theme.muted }}> — members play free</span>
                 )}
+                {/*
+                  The correction that matters most on this page.
+
+                  Members play free, and a member who arrives signed out is
+                  shown the public rate by a page that has just told them
+                  members play free. Without this line their options are to
+                  overpay or to phone the club — which is the thing online
+                  booking was supposed to replace.
+
+                  Offered ONLY when signed out. A signed-in non-member has
+                  already proved they are not on the club's books, and telling
+                  them to sign in is the page asking them to redo what they
+                  just did.
+                */}
+                {data.signedIn === false && (
+                  <div className="mt-1.5">
+                    <a
+                      href={`/login?next=${encodeURIComponent(`/c/${clubSlug}/courts/book`)}`}
+                      className="text-sm font-semibold underline"
+                      style={{ color: theme.primary }}
+                    >
+                      Already a member? Sign in for member rates
+                    </a>
+                  </div>
+                )}
               </>
             )}
           </div>
@@ -495,6 +522,24 @@ export default function BookCourt({
                 </div>
               </div>
             ))}
+
+            {/*
+              Through to the club's REAL court sheet.
+
+              This list answers "is something free at 6pm"; the sheet answers
+              "what is actually on court", which is a different question and
+              one the club already runs a grid for. Building a second grid here
+              would be a parallel reservation system — these bookings write
+              into the same `reservations` table the sheet draws, so the sheet
+              is simply the fuller view of the same thing.
+            */}
+            <a
+              href={`/courtsheet/${clubSlug}`}
+              className="inline-block text-sm font-semibold underline"
+              style={{ color: theme.primary }}
+            >
+              See the club&apos;s full court sheet →
+            </a>
           </>
         )}
       </div>
