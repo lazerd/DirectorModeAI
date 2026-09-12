@@ -8,22 +8,29 @@
  * seventeen tools owned it and then finding it in a list. The thing people are
  * signing up to today should be one click from wherever you are.
  *
+ * It covers every format a club actually runs — mixers, socials, tournaments,
+ * quads, team battles, leagues, JTT and classes taking sign-ups — because a bar
+ * that only knew about one table would send a director back to guessing which
+ * tool owns the thing they are looking for, which is the problem.
+ *
  * Renders NOTHING when nothing is live, which is most of the time — a bar that
  * is always there stops being read. And it deliberately shows at most a few:
- * the server has already thrown out events still flagged running months after
- * they happened, because a list of ten where one matters is a list nobody
- * checks twice.
+ * the server has already thrown out the events and leagues still flagged
+ * running months after they finished, because a list of fifteen where two
+ * matter is a list nobody checks twice.
  */
 
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 
-type LiveEvent = {
+type LiveItem = {
   id: string;
   name: string;
+  kind: 'event' | 'league' | 'class';
   phase: 'live' | 'signup';
-  days_away: number | null;
-  date: string | null;
+  daysAway: number | null;
+  /** "Tournament" / "Mixer" / "League" / "Class" — the director's own word. */
+  label: string;
   manage_href: string;
   public_href: string | null;
 };
@@ -63,12 +70,12 @@ const HIDDEN = [
 ];
 
 /** "in 3 weeks" / "tomorrow" / "today" — how a person says it. */
-function when(e: LiveEvent): string {
-  if (e.phase === 'live') return 'underway';
-  const d = e.days_away;
+function when(e: LiveItem): string {
+  if (e.phase === 'live') return e.kind === 'league' ? 'in progress' : 'underway';
+  const d = e.daysAway;
   if (d === null) return 'open for signups';
-  if (d === 0) return 'today';
-  if (d === 1) return 'tomorrow';
+  if (d === 0) return 'starts today';
+  if (d === 1) return 'starts tomorrow';
   if (d < 14) return `in ${d} days`;
   const weeks = Math.round(d / 7);
   return `in ${weeks} ${weeks === 1 ? 'week' : 'weeks'}`;
@@ -76,7 +83,7 @@ function when(e: LiveEvent): string {
 
 export default function LiveEventsBar() {
   const pathname = usePathname() || '/';
-  const [events, setEvents] = useState<LiveEvent[]>([]);
+  const [items, setItems] = useState<LiveItem[]>([]);
   const [dismissed, setDismissed] = useState<string[]>([]);
 
   const hidden =
@@ -86,8 +93,8 @@ export default function LiveEventsBar() {
   const load = useCallback(async () => {
     try {
       const res = await fetch('/api/me/live-events');
-      const j = (await res.json()) as { events?: LiveEvent[] };
-      setEvents(j.events ?? []);
+      const j = (await res.json()) as { items?: LiveItem[] };
+      setItems(j.items ?? []);
     } catch {
       /* no bar on any error — every tool still works */
     }
@@ -99,7 +106,7 @@ export default function LiveEventsBar() {
   }, [hidden, load]);
 
   useEffect(() => {
-    // Per-session, per-event. Dismissing is for "yes, I know about that one
+    // Per-session, per-item. Dismissing is for "yes, I know about that one
     // today" — it must not hide a live event forever.
     try {
       const raw = sessionStorage.getItem('cm-live-dismissed');
@@ -119,7 +126,7 @@ export default function LiveEventsBar() {
     }
   }
 
-  const shown = events.filter((e) => !dismissed.includes(e.id));
+  const shown = items.filter((e) => !dismissed.includes(e.id));
   if (hidden || shown.length === 0) return null;
 
   return (
@@ -138,7 +145,12 @@ export default function LiveEventsBar() {
               {e.phase === 'live' && (
                 <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[#D3FB52]" />
               )}
-              <span className="max-w-[15rem] truncate font-medium">{e.name}</span>
+              {/* Which of the seventeen tools this belongs to, said in a word —
+                  so a row reads as a league and not as a mystery. */}
+              <span className="shrink-0 rounded bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/55">
+                {e.label}
+              </span>
+              <span className="max-w-[14rem] truncate font-medium">{e.name}</span>
               <span className="shrink-0 text-xs text-white/45">{when(e)}</span>
             </a>
             {/* The link a director actually wants to hand out. */}
