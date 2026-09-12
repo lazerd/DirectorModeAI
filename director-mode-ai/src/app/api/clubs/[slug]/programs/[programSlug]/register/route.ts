@@ -24,6 +24,7 @@ import {
   type ProgramEmailContext,
 } from '@/lib/programs/emails';
 import { CreditLimitError } from '@/lib/billing';
+import { getClubPayments, paymentOffer } from '@/lib/courts/payments';
 
 export const dynamic = 'force-dynamic';
 
@@ -277,6 +278,20 @@ export async function POST(
       .maybeSingle();
     const theme = resolveTheme(siteRow as Record<string, unknown> | null);
 
+    /*
+     * A class with its own checkout keeps it; otherwise it inherits the club's
+     * default. Without this a club with five classes was pasting the same
+     * Square link five times, and a club that takes cards every day still told
+     * parents it would "be in touch about payment".
+     */
+    const clubPayments = await getClubPayments(club.id);
+    const offer = paymentOffer({
+      amountCents: registration.amount_cents ?? 0,
+      clubPayments,
+      surface: 'program',
+      ownLink: program.external_payment_url as string | null,
+    });
+
     const emailCtx: ProgramEmailContext = {
       ownerId: club.owner_id,
       clubName: club.name,
@@ -285,7 +300,12 @@ export async function POST(
       clubPhone: club.phone,
       timeZone: club.timezone || 'America/Los_Angeles',
       accent: theme.primary,
-      program: program as never,
+      // The resolved link, not the raw class field — so a club default reaches
+      // the confirmation email too.
+      program: {
+        ...(program as Record<string, unknown>),
+        external_payment_url: offer.kind === 'link' ? offer.url : null,
+      } as never,
       registration,
     };
 
@@ -313,6 +333,10 @@ export async function POST(
       registration_id: registration.id,
       status,
       sessions: sessions.count,
+      payment:
+        offer.kind === 'link'
+          ? { kind: 'link', url: offer.url, label: offer.label, note: offer.note }
+          : { kind: offer.kind },
       emailed,
       ...(emailNote ? { warning: emailNote } : {}),
     });

@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getClubProgram, getClubSite } from '@/lib/clubSite/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getClubPayments, paymentOffer } from '@/lib/courts/payments';
 import { readableOn, tint } from '@/lib/clubSite/theme';
 import {
   daysLabel,
@@ -59,6 +60,7 @@ export default async function RegisteredPage({
 
   const sessions = programSessions(program, club.timezone);
   const onPrimary = readableOn(theme.primary);
+  const clubPayments = await getClubPayments(club.id);
   const waitlisted = registration?.status === 'waitlist';
   const owes =
     registration?.payment_status === 'pending' && (registration.amount_cents ?? 0) > 0 && !waitlisted;
@@ -125,24 +127,37 @@ export default async function RegisteredPage({
             <div className="font-bold">
               {formatPrice(registration?.amount_cents ?? program.price_cents)} due
             </div>
-            {program.external_payment_url ? (
-              <>
-                <p className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
-                  Your spot is held. Pay now to lock it in.
-                </p>
-                <a
-                  href={program.external_payment_url}
-                  className="mt-3 inline-block rounded-xl px-5 py-3 text-sm font-bold"
-                  style={{ background: theme.primary, color: onPrimary }}
-                >
-                  Pay now →
-                </a>
-              </>
-            ) : (
-              <p className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
-                Your spot is held — {club.name} will be in touch about payment.
-              </p>
-            )}
+            {/* The class's own link, else the club's default — the same
+                resolution the confirmation email uses. */}
+            {(() => {
+              const offer = paymentOffer({
+                amountCents: registration?.amount_cents ?? program.price_cents,
+                clubPayments,
+                surface: 'program',
+                ownLink: program.external_payment_url,
+              });
+              if (offer.kind !== 'link') {
+                return (
+                  <p className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+                    Your spot is held — {club.name} will be in touch about payment.
+                  </p>
+                );
+              }
+              return (
+                <>
+                  <p className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+                    {offer.note || 'Your spot is held. Pay now to lock it in.'}
+                  </p>
+                  <a
+                    href={offer.url}
+                    className="mt-3 inline-block rounded-xl px-5 py-3 text-sm font-bold"
+                    style={{ background: theme.primary, color: onPrimary }}
+                  >
+                    {offer.label} →
+                  </a>
+                </>
+              );
+            })()}
           </div>
         )}
 

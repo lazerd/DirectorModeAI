@@ -360,6 +360,16 @@ export const SECTIONS: Section[] = [
         tag: 'COURTS',
       },
       {
+        name: 'Getting paid',
+        href: '/run/site/payments',
+        match: '/run/site/payments',
+        description: 'Your own checkout link, used by class sign-ups and court bookings alike, plus what is still owed.',
+        pitch: 'Paste the checkout you already use once and every sign-up and court booking gets a Pay now button. The money goes straight to you.',
+        icon: Wrench,
+        color: '#34d399',
+        tag: 'PAYMENTS',
+      },
+      {
         name: 'Classes',
         href: '/run/site/classes',
         match: '/run/site/classes',

@@ -10,6 +10,7 @@ import { sendBilledEmail, type SafeSendResult } from '@/lib/email';
 import { APP_URL } from '@/lib/appUrl';
 import { formatPrice, formatSessionDate } from '@/lib/programs/sessions';
 import { toHHMM, toMinutes, type PriceSegment } from './pricing';
+import { paymentSentence, type PaymentOffer } from './payments';
 
 const esc = (s: string) =>
   (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -55,6 +56,12 @@ export type CourtBookingEmail = {
     segments: PriceSegment[];
     audience: 'member' | 'public';
   };
+  /**
+   * How the club wants to be paid, resolved ONCE by the caller and shared with
+   * the response — so the page and the inbox cannot tell the same person two
+   * different things about paying.
+   */
+  offer: PaymentOffer;
 };
 
 export async function sendCourtBookingEmail(ctx: CourtBookingEmail): Promise<SafeSendResult> {
@@ -92,7 +99,10 @@ export async function sendCourtBookingEmail(ctx: CourtBookingEmail): Promise<Saf
     <table style="border-collapse:collapse;margin:14px 0 4px;background:#f6f8fb;border:1px solid #e5e7eb;border-radius:10px;padding:8px">${rows}</table>
     ${
       b.amountCents > 0
-        ? `<p style="margin-top:14px">Please settle up at the desk when you arrive.</p>`
+        ? ctx.offer.kind === 'link'
+          ? `<p style="margin-top:14px">${esc(paymentSentence(ctx.offer, 'court'))}</p>
+             <p style="margin:16px 0"><a href="${ctx.offer.url}" style="display:inline-block;background:${ctx.accent};color:#fff;font-weight:700;text-decoration:none;padding:13px 24px;border-radius:9px;font-size:16px">${esc(ctx.offer.label)}</a></p>`
+          : `<p style="margin-top:14px">${esc(paymentSentence(ctx.offer, 'court'))}</p>`
         : ''
     }
     <p style="margin:18px 0 6px">Plans change — <a href="${cancelUrl}" style="color:${ctx.accent};font-weight:700">cancel this booking</a> and the court goes back to whoever wants it.</p>

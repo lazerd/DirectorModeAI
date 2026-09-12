@@ -35,6 +35,7 @@ import {
   toInstant,
 } from '@/lib/courts/server';
 import { sendCourtBookingEmail } from '@/lib/courts/emails';
+import { getClubPayments, paymentOffer } from '@/lib/courts/payments';
 import { resolveTheme } from '@/lib/clubSite/theme';
 
 export const dynamic = 'force-dynamic';
@@ -278,11 +279,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
 
     // --------------------------------------------------------------- email
     const courtName = slot.courts.find((c) => c.id === courtId)?.name ?? 'Court';
-    const { data: siteRow } = await db
-      .from('club_site')
-      .select('color_primary, color_secondary, color_ink, color_cream, color_surface, font_choice')
-      .eq('club_id', club.id)
-      .maybeSingle();
+    const [{ data: siteRow }, clubPayments] = await Promise.all([
+      db
+        .from('club_site')
+        .select('color_primary, color_secondary, color_ink, color_cream, color_surface, font_choice')
+        .eq('club_id', club.id)
+        .maybeSingle(),
+      getClubPayments(club.id),
+    ]);
+
+    // One resolution, used by the response AND the email, so the page and the
+    // inbox cannot tell the same person two different things about paying.
+    const offer = paymentOffer({
+      amountCents: saved.amount_cents,
+      clubPayments,
+      surface: 'court',
+    });
 
     let emailed = false;
     let warning: string | null = null;
@@ -308,6 +320,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
           segments: price.segments,
           audience,
         },
+        offer,
       });
       emailed = !!result?.sent;
     } catch {
@@ -327,6 +340,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       minutes,
       amount_cents: saved.amount_cents,
       rate_applied: audience,
+      payment:
+        offer.kind === 'link'
+          ? { kind: 'link', url: offer.url, label: offer.label, note: offer.note }
+          : { kind: offer.kind },
       emailed,
       ...(warning ? { warning } : {}),
     });

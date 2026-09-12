@@ -24,6 +24,7 @@ import {
   formatTimeRange,
   programSessions,
 } from '@/lib/programs/sessions';
+import { getClubPayments, paymentOffer } from '@/lib/courts/payments';
 import RegisterForm from './RegisterForm';
 
 export const dynamic = 'force-dynamic';
@@ -65,7 +66,18 @@ export default async function ProgramDetailPage({
   if (!program || (program.status !== 'published' && !bundle.isDraft)) notFound();
 
   const sessions = programSessions(program, club.timezone);
-  const availability = await programAvailability(program);
+  const [availability, clubPayments] = await Promise.all([
+    programAvailability(program),
+    getClubPayments(club.id),
+  ]);
+  // Resolved exactly as the register route resolves it, so the button a parent
+  // is promised here is the button they get.
+  const offer = paymentOffer({
+    amountCents: program.price_cents,
+    clubPayments,
+    surface: 'program',
+    ownLink: program.external_payment_url,
+  });
   const window = registrationWindow(program);
   const onPrimary = readableOn(theme.primary);
 
@@ -266,7 +278,7 @@ export default async function ProgramDetailPage({
                   programSlug={program.slug}
                   waitlisting={!!waitlisting}
                   priceLabel={program.price_cents > 0 ? formatPrice(program.price_cents) : ''}
-                  hasPaymentLink={!!program.external_payment_url}
+                  hasPaymentLink={offer.kind === 'link'}
                   accent={theme.primary}
                   onAccent={onPrimary}
                   ink={theme.ink}

@@ -40,6 +40,10 @@ type Booked = {
   cancel_token: string;
   emailed: boolean;
   warning?: string;
+  /** Resolved server-side, so this screen and the email agree. */
+  payment?:
+    | { kind: 'link'; url: string; label: string; note: string | null }
+    | { kind: 'free' | 'in_person' };
 };
 
 const money = (cents: number) =>
@@ -178,11 +182,33 @@ export default function BookCourt({
         </p>
         <p className="mt-1 font-semibold" style={{ color: theme.primary }}>
           {booked.amount_cents > 0
-            ? `${money(booked.amount_cents)} — settle up at the desk`
+            ? money(booked.amount_cents)
             : booked.rate_applied === 'member'
               ? 'Free — member court time'
               : 'Free'}
         </p>
+
+        {/* The club's own checkout, where it has one. Wording comes from the
+            server so this button and the confirmation email never disagree. */}
+        {booked.payment?.kind === 'link' && (
+          <>
+            <p className="mt-2 text-sm" style={{ color: theme.muted }}>
+              {booked.payment.note || 'Your court is held — pay now to lock it in.'}
+            </p>
+            <a
+              href={booked.payment.url}
+              className="mt-3 inline-block rounded-xl px-5 py-3 text-sm font-bold"
+              style={{ background: theme.primary, color: theme.onPrimary }}
+            >
+              {booked.payment.label} →
+            </a>
+          </>
+        )}
+        {booked.payment?.kind === 'in_person' && booked.amount_cents > 0 && (
+          <p className="mt-2 text-sm" style={{ color: theme.muted }}>
+            Settle up at the desk when you arrive.
+          </p>
+        )}
         {booked.emailed ? (
           <p className="mt-3 text-sm" style={{ color: theme.muted }}>
             A confirmation is on its way, with a link to cancel if your plans change.
@@ -422,9 +448,9 @@ export default function BookCourt({
                 : 'Book it'}
           </button>
           <p className="mt-2 text-xs" style={{ color: theme.muted }}>
-            {picked.cents > 0
-              ? 'Settle up at the desk when you arrive. We email you a cancellation link.'
-              : 'We email you a confirmation with a link to cancel.'}
+            {/* How to pay depends on whether the club has a checkout, which the
+                server decides — so before booking this only promises the email. */}
+            We email you a confirmation with a link to cancel.
           </p>
         </form>
       )}
