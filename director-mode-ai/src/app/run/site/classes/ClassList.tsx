@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import SessionGrid from '@/components/clubSite/SessionGrid';
 import NotifyPanel, { type PendingChange } from '@/components/clubSite/NotifyPanel';
+import PromotePanel from '@/components/clubSite/PromotePanel';
 import {
   daysLabel,
   formatPrice,
@@ -242,6 +243,16 @@ export default function ClassList() {
           <p className="mt-2 text-sm text-white/50">
             Add one and it appears on your website with its real dates and a sign-up form.
           </p>
+        </div>
+      )}
+
+      {/*
+        The other email a club sends every season. Sits above the classes
+        because it is a season-level job, not a per-class one.
+      */}
+      {programs.length > 0 && (
+        <div className="mt-6">
+          <PromotePanel timeZone={club?.timezone || 'America/Los_Angeles'} />
         </div>
       )}
 
