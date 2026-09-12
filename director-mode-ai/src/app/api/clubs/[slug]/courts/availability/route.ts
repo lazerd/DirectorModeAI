@@ -17,7 +17,7 @@ import {
   windowsForDay,
   withinAdvanceWindow,
 } from '@/lib/courts/availability';
-import { bookingEnabled, bookingRules, durationOptions } from '@/lib/courts/pricing';
+import { bookingEnabled, bookingRules, durationOptions, priceBooking } from '@/lib/courts/pricing';
 import {
   clubDayOfWeek,
   clubNow,
@@ -52,11 +52,24 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const audience = await memberAudience(club.id, user?.id ?? null);
+  const ownAudience = await memberAudience(club.id, user?.id ?? null);
+
+  const url = new URL(req.url);
+  /*
+   * A member — which includes the owner — can price the page as the PUBLIC
+   * sees it.
+   *
+   * Without this, a director checking their own booking page sees "Free" on
+   * every slot, because that is their own member rate, and cannot see the
+   * thing they are selling. Display only: the book route derives the audience
+   * from the session on its own, so flipping this changes what is shown and
+   * never what is charged.
+   */
+  const asPublic = url.searchParams.get('as') === 'public';
+  const audience = asPublic ? 'public' : ownAudience;
   const rules = bookingRules(rateCards, audience);
 
   const now = clubNow(club.timezone);
-  const url = new URL(req.url);
   const date = (url.searchParams.get('date') || now.ymd).slice(0, 10);
   const requested = parseInt(url.searchParams.get('minutes') || '', 10);
   const durations = durationOptions(rules);
@@ -101,11 +114,32 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   return NextResponse.json({
     enabled: true,
     audience,
+    /** Their real standing, so the page knows whether to offer the toggle. */
+    ownAudience,
     date,
     minutes,
     durations,
     dates: bookableDates(now.ymd, rules.advanceDays),
     advanceDays: rules.advanceDays,
+    /**
+     * The other audience's price for this length, so the page can say
+     * "members play free" to a visitor without a second round trip. Null when
+     * the club has no rate for them.
+     */
+    otherAudience: (() => {
+      const other = audience === 'member' ? 'public' : 'member';
+      const otherCards = rateCards.filter((c) => c.applies_to === other);
+      if (otherCards.length === 0) return null;
+      const sample = result.slots[0];
+      if (!sample) return null;
+      const p = priceBooking(rateCards, {
+        audience: other,
+        dayOfWeek,
+        startTime: sample.time,
+        minutes,
+      });
+      return p.ok ? { audience: other, cents: p.cents } : null;
+    })(),
     // Courts are returned per slot; the page shows a count, not a picker, and
     // the booking route assigns one. A visitor does not care which court.
     slots: result.slots.map((s) => ({

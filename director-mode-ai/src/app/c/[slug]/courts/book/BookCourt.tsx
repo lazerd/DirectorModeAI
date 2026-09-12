@@ -20,6 +20,9 @@ type Availability = {
   enabled: boolean;
   reason?: string;
   audience?: 'member' | 'public';
+  /** Their real standing, which decides whether the price toggle appears. */
+  ownAudience?: 'member' | 'public';
+  otherAudience?: { audience: 'member' | 'public'; cents: number } | null;
   date?: string;
   minutes?: number;
   durations?: number[];
@@ -56,6 +59,40 @@ const pretty = (hhmm: string) => {
   return m ? `${hour}:${String(m).padStart(2, '0')}${suffix}` : `${hour}${suffix}`;
 };
 
+/**
+ * Morning / afternoon / evening, with the price said once per group.
+ *
+ * `mixed` is true when a group's slots are not all the same price — which is
+ * exactly when a per-button price earns its space, and only then.
+ */
+function groupSlots(slots: Slot[]) {
+  const buckets: { label: string; from: number; to: number; slots: Slot[] }[] = [
+    { label: 'Morning', from: 0, to: 12, slots: [] },
+    { label: 'Afternoon', from: 12, to: 17, slots: [] },
+    { label: 'Evening', from: 17, to: 24, slots: [] },
+  ];
+  for (const s of slots) {
+    const hour = parseInt(s.time.slice(0, 2), 10);
+    (buckets.find((b) => hour >= b.from && hour < b.to) ?? buckets[2]).slots.push(s);
+  }
+  return buckets
+    .filter((b) => b.slots.length > 0)
+    .map((b) => {
+      const prices = [...new Set(b.slots.map((s) => s.cents))];
+      const mixed = prices.length > 1;
+      return {
+        label: b.label,
+        slots: b.slots,
+        mixed,
+        priceLabel: mixed
+          ? `${money(Math.min(...prices))}–${money(Math.max(...prices))} / hr`
+          : prices[0] <= 0
+            ? 'Free'
+            : `${money(prices[0])} / hr`,
+      };
+    });
+}
+
 const dayLabel = (ymd: string, timeZone: string, today: string) => {
   if (ymd === today) return 'Today';
   const d = new Date(`${ymd}T12:00:00Z`);
@@ -85,6 +122,8 @@ export default function BookCourt({
   const [data, setData] = useState<Availability | null>(null);
   const [date, setDate] = useState<string | null>(null);
   const [minutes, setMinutes] = useState<number | null>(null);
+  /** A member viewing public prices — a director checking their own shop. */
+  const [asPublic, setAsPublic] = useState(false);
   const [picked, setPicked] = useState<Slot | null>(null);
   const [form, setForm] = useState({ name: '', email: '', phone: '', notes: '' });
   const [loading, setLoading] = useState(true);
@@ -93,13 +132,14 @@ export default function BookCourt({
   const [booked, setBooked] = useState<Booked | null>(null);
 
   const load = useCallback(
-    async (d: string | null, m: number | null) => {
+    async (d: string | null, m: number | null, viewAsPublic = asPublic) => {
       setLoading(true);
       setError(null);
       try {
         const qs = new URLSearchParams();
         if (d) qs.set('date', d);
         if (m) qs.set('minutes', String(m));
+        if (viewAsPublic) qs.set('as', 'public');
         const res = await fetch(
           `/api/clubs/${encodeURIComponent(clubSlug)}/courts/availability?${qs}`,
           { cache: 'no-store' },
@@ -114,7 +154,7 @@ export default function BookCourt({
         setLoading(false);
       }
     },
-    [clubSlug],
+    [clubSlug, asPublic],
   );
 
   useEffect(() => {
@@ -270,18 +310,61 @@ export default function BookCourt({
       {/* ------------------------------------------------------- audience */}
       {data?.audience && (
         <div
-          className="rounded-xl border px-4 py-3 text-sm"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm"
           style={{ borderColor: theme.border, background: theme.surface }}
         >
-          {data.audience === 'member' ? (
-            <>
-              <strong>Member rates.</strong> You can book up to {data.advanceDays} days ahead.
-            </>
-          ) : (
-            <>
-              <strong>Public rates.</strong> You can book up to {data.advanceDays} days ahead — club
-              members book further out and pay less.
-            </>
+          <div>
+            {data.audience === 'member' ? (
+              <>
+                <strong>Member rates</strong> · book {data.advanceDays} days ahead
+              </>
+            ) : (
+              <>
+                <strong>Public rates</strong> · book {data.advanceDays} days ahead
+                {data.otherAudience?.audience === 'member' && data.otherAudience.cents === 0 && (
+                  // A membership pitch on the club's own booking page, from
+                  // real rate data rather than marketing copy.
+                  <span style={{ color: theme.muted }}> — members play free</span>
+                )}
+              </>
+            )}
+          </div>
+
+          {/*
+            A member can price the page as the public sees it.
+            
+            Without this a director checking their own booking page sees Free
+            on every slot, because that is their own member rate, and cannot
+            see the thing they are selling. Display only — the server decides
+            what is actually charged from the session.
+          */}
+          {data.ownAudience === 'member' && (
+            <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ background: theme.border }}>
+              {(
+                [
+                  [false, 'Members'],
+                  [true, 'Public'],
+                ] as const
+              ).map(([wantPublic, text]) => (
+                <button
+                  key={text}
+                  type="button"
+                  onClick={() => {
+                    setAsPublic(wantPublic);
+                    setPicked(null);
+                    load(date, minutes, wantPublic);
+                  }}
+                  className="rounded-md px-2.5 py-1 text-xs font-semibold transition-colors"
+                  style={
+                    asPublic === wantPublic
+                      ? { background: theme.surface, color: theme.ink }
+                      : { color: theme.muted }
+                  }
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -289,7 +372,12 @@ export default function BookCourt({
       {/* ----------------------------------------------------------- day */}
       <div>
         <label style={label}>Day</label>
-        <div className="flex flex-wrap gap-2">
+        {/*
+          One scrolling row, not a wrapping grid. Eight day chips wrapped onto
+          three rows on a phone and pushed the times — the thing people came
+          for — below the fold.
+        */}
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {(data?.dates ?? []).map((d) => (
             <button
               key={d}
@@ -298,7 +386,7 @@ export default function BookCourt({
                 setPicked(null);
                 load(d, minutes);
               }}
-              className="rounded-xl border px-3 py-2 text-sm font-medium"
+              className="shrink-0 rounded-xl border px-3 py-2 text-sm font-medium"
               style={
                 d === date
                   ? { borderColor: theme.primary, background: theme.primary, color: theme.onPrimary }
@@ -315,7 +403,7 @@ export default function BookCourt({
       {(data?.durations?.length ?? 0) > 1 && (
         <div>
           <label style={label}>How long</label>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex gap-2">
             {(data?.durations ?? []).map((m) => (
               <button
                 key={m}
@@ -340,7 +428,6 @@ export default function BookCourt({
 
       {/* ----------------------------------------------------------- slots */}
       <div>
-        <label style={label}>Start time</label>
         {loading ? (
           <p className="text-sm" style={{ color: theme.muted }}>
             Checking the courts…
@@ -350,30 +437,65 @@ export default function BookCourt({
             {data?.note || 'Nothing available.'}
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-            {(data?.slots ?? []).map((s) => {
-              const on = picked?.time === s.time;
-              return (
-                <button
-                  key={s.time}
-                  type="button"
-                  onClick={() => setPicked(s)}
-                  className="rounded-xl border px-3 py-2.5 text-left"
-                  style={
-                    on
-                      ? { borderColor: theme.primary, background: theme.primary, color: theme.onPrimary }
-                      : { borderColor: theme.border, background: theme.surface }
-                  }
-                >
-                  <div className="text-sm font-bold">{pretty(s.time)}</div>
-                  <div className="text-xs" style={{ opacity: on ? 0.85 : 0.6 }}>
-                    {money(s.cents)}
-                    {s.courtsFree > 1 ? ` · ${s.courtsFree} courts` : ' · 1 left'}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+          <>
+            {/*
+              Grouped by part of the day, and the price stated ONCE per group
+              rather than on every button.
+              
+              The first version printed the same two facts — the price and the
+              court count — on all twenty-nine buttons, so the page was a wall
+              of "Free · 9 courts" and the only thing that varied, the time,
+              was the hardest thing to read. Repeating identical information is
+              what made it feel like a form rather than a shop.
+            */}
+            {groupSlots(data?.slots ?? []).map((group) => (
+              <div key={group.label} className="mb-5">
+                <div className="mb-2 flex items-baseline justify-between gap-3">
+                  <span style={label}>{group.label}</span>
+                  <span className="text-sm font-semibold" style={{ color: theme.primary }}>
+                    {group.priceLabel}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+                  {group.slots.map((s) => {
+                    const on = picked?.time === s.time;
+                    // Only worth saying when it is actually scarce. "9 courts"
+                    // on every button is noise; "2 left" is information.
+                    const scarce = s.courtsFree <= 2;
+                    return (
+                      <button
+                        key={s.time}
+                        type="button"
+                        onClick={() => setPicked(s)}
+                        className="rounded-xl border px-2 py-2.5 text-center transition-colors"
+                        style={
+                          on
+                            ? { borderColor: theme.primary, background: theme.primary, color: theme.onPrimary }
+                            : { borderColor: theme.border, background: theme.surface }
+                        }
+                      >
+                        <div className="text-sm font-bold leading-tight">{pretty(s.time)}</div>
+                        {/* Per-button price only where the group is mixed. */}
+                        {group.mixed && (
+                          <div className="text-[11px]" style={{ opacity: on ? 0.85 : 0.6 }}>
+                            {money(s.cents)}
+                          </div>
+                        )}
+                        {scarce && (
+                          <div
+                            className="text-[11px] font-semibold"
+                            style={{ color: on ? theme.onPrimary : '#b45309', opacity: on ? 0.9 : 1 }}
+                          >
+                            {s.courtsFree} left
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </>
         )}
       </div>
 
