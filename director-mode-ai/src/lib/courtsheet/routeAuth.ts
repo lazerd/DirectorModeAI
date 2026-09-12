@@ -13,6 +13,7 @@ import { hasFeature } from '@/lib/billing';
 import type { Club } from './types';
 import { newClubRow, uniqueJoinCode } from '@/lib/clubs/newClub';
 import { pickPrimaryClub, type Membership } from '@/lib/clubRoles';
+import { resolveActiveClub } from '@/lib/clubs/activeClub';
 
 export type StaffRole = 'owner' | 'director' | 'coach' | 'front_desk';
 
@@ -57,15 +58,48 @@ export async function requireStaffForClub(
   // poking at a director URL spawns a phantom club under their name.
   let role: StaffRole | 'member' = 'member';
 
-  // 1. A club they own.
-  let { data: club } = await db
-    .from('cc_clubs')
-    .select(CLUB_COLS)
-    .eq('owner_id', user.id)
-    .order('name', { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (club) role = 'owner';
+  /*
+   * 0. THEIR EXPLICIT CHOICE, if they have made one and can still reach it.
+   *
+   * Before this, step 1 below took "the alphabetically first club you own",
+   * which is right for the overwhelming case of exactly one and silently wrong
+   * the instant there are two. Standing up a prospect's club under a working
+   * director's account repointed every one of that director's own tools at
+   * somebody else's club, with nothing on screen saying so. Whoever is
+   * running two clubs picks, and the pick is validated against what they may
+   * actually reach — a stale or edited cookie falls back and never grants.
+   */
+  const { active } = await resolveActiveClub(user.id, user.email);
+  let club: Club | null = null;
+  if (active) {
+    const { data: chosen } = await db
+      .from('cc_clubs')
+      .select(CLUB_COLS)
+      .eq('id', active.id)
+      .maybeSingle();
+    if (chosen) {
+      club = chosen as Club;
+      // A platform operator is not staff at a club they are helping with, but
+      // they need write access to set one up, so they act as owner there.
+      role = active.via === 'staff' ? (active.role as StaffRole) : 'owner';
+    }
+  }
+
+  // 1. A club they own. Kept as the fallback for the case where the choice
+  //    could not be resolved at all.
+  if (!club) {
+    const { data: owned } = await db
+      .from('cc_clubs')
+      .select(CLUB_COLS)
+      .eq('owner_id', user.id)
+      .order('name', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (owned) {
+      club = owned as Club;
+      role = 'owner';
+    }
+  }
 
   // 2. Else a club where they're STAFF (director / coach / front desk) — this
   //    is what makes "one subscription, whole team" reach CourtSheet & calendar.

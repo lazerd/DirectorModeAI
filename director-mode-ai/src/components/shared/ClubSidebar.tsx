@@ -30,6 +30,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { pickPrimaryClub } from '@/lib/clubRoles';
+import ClubSwitcher from './ClubSwitcher';
 import {
   SECTIONS, FOR_PLAYERS, FOR_YOU, ALL_TOOLS_ITEM, activeHref, type NavIcon,
 } from '@/config/nav';
@@ -498,6 +499,14 @@ export default function ClubSidebar() {
         </div>
 
         {/* Spaces */}
+        {/*
+          Which club these tools are pointed at. Renders nothing for anyone who
+          can reach only one, which is almost everybody — and appears the moment
+          somebody can reach two, because the tools silently switching under
+          them is exactly how a working club got hijacked.
+        */}
+        <ClubSwitcher collapsed={!showLabels} />
+
         <nav className="flex-1 overflow-y-auto py-3 px-2.5">
           {groups.map((group, gi) => (
             <div key={group.heading ?? `g${gi}`} className={gi > 0 ? 'mt-4 pt-4 border-t border-white/[0.07]' : ''}>
