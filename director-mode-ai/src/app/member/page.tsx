@@ -5,8 +5,10 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { pickPrimaryClub } from '@/lib/clubRoles';
 import { attachByEmail } from '@/lib/clubAutoJoin';
 import { TOURNAMENT_FORMATS } from '@/lib/eventCategory';
+import { resolveClubTimeZone } from '@/lib/captain/clubTime';
 import {
   CalendarDays, LayoutGrid, GraduationCap, User, ArrowRight, Trophy, Ticket, MapPin,
+  ClipboardList,
 } from 'lucide-react';
 
 // The member's front door.
@@ -109,6 +111,60 @@ export default async function MemberHome() {
 
   const upcoming = (events ?? []) as any[];
 
+  /*
+   * Teams this member captains.
+   *
+   * A captain is a club member, so this is her front door too — and it used to
+   * have nothing on it about the team she runs. She was told to use CaptainMode
+   * and had no way to reach it from any screen she landed on (Megan Sullivan,
+   * 2026-09-11). Admin read: the ids are filtered to her own user id, and the
+   * captain tables are not readable through a member's session.
+   */
+  const { data: staffRows } = await admin
+    .from('captain_team_staff')
+    .select('team_id')
+    .eq('user_id', user.id);
+  const staffIds = ((staffRows as { team_id: string }[] | null) || []).map((r) => r.team_id);
+  const captainFilter = staffIds.length
+    ? `captain_user_id.eq.${user.id},id.in.(${staffIds.join(',')})`
+    : `captain_user_id.eq.${user.id}`;
+  const { data: myTeams } = await admin
+    .from('captain_teams')
+    .select('id, name, level')
+    .or(captainFilter)
+    .eq('archived', false)
+    .order('created_at', { ascending: false });
+  const teams = (myTeams as { id: string; name: string; level: string | null }[] | null) || [];
+
+  /*
+   * The club's zone. dayLabel() below reads the date out of the ISO string,
+   * which is UTC — and Vercel runs UTC, so an evening match lands on the wrong
+   * day. Match times get formatted in club time instead.
+   */
+  const timeZone = teams.length ? await resolveClubTimeZone(admin, club.id) : 'UTC';
+  const matchDay = (iso: string) =>
+    new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone,
+    }).format(new Date(iso));
+
+  // Each team's next match, so the card is worth tapping rather than just a link.
+  const nextByTeam = new Map<string, { match_at: string; opponent: string | null }>();
+  if (teams.length) {
+    const { data: next } = await admin
+      .from('captain_matches')
+      .select('team_id, match_at, opponent')
+      .in('team_id', teams.map((t) => t.id))
+      .eq('status', 'scheduled')
+      .gte('match_at', new Date().toISOString())
+      .order('match_at');
+    for (const m of (next as { team_id: string; match_at: string; opponent: string | null }[] | null) || []) {
+      if (!nextByTeam.has(m.team_id)) nextByTeam.set(m.team_id, m);
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* hero */}
@@ -138,6 +194,41 @@ export default async function MemberHome() {
           <Action href="/find-coach" icon={User} label="Find a coach" tone="#ea580c" />
           <Action href="/client/dashboard" icon={Trophy} label="My progress" tone="#ca8a04" />
         </div>
+
+        {/* The teams she runs. First thing on the page when she has any. */}
+        {teams.length > 0 && (
+          <section>
+            <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
+              <ClipboardList className="w-5 h-5 text-cyan-600" />
+              {teams.length === 1 ? 'Your team' : 'Your teams'}
+            </h2>
+            <div className="space-y-2">
+              {teams.map((t) => {
+                const next = nextByTeam.get(t.id);
+                return (
+                  <Link
+                    key={t.id}
+                    href={`/captain/${t.id}`}
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 hover:border-cyan-400 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-900">{t.name}</div>
+                      <div className="text-sm text-slate-500">
+                        {t.level ? `${t.level} · ` : ''}
+                        {next
+                          ? `next: ${matchDay(next.match_at)} vs ${next.opponent || 'TBD'}`
+                          : 'no matches scheduled'}
+                      </div>
+                    </div>
+                    <span className="shrink-0 text-sm font-medium text-cyan-700">
+                      Open CaptainMode →
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* what's on */}
         <section>

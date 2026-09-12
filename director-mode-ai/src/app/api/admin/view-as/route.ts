@@ -63,8 +63,18 @@ async function adoptSession(accessToken: string, refreshToken: string) {
  */
 export async function GET() {
   const state = await readViewAs();
-  if (!state) return NextResponse.json({ viewing: false });
-  return NextResponse.json({ viewing: true, label: state.targetLabel });
+  if (state) return NextResponse.json({ viewing: true, label: state.targetLabel, allowed: false });
+
+  // Also answers "may I use this at all", so the nav rail can show the entry
+  // point to the one account that has it and to nobody else.
+  const supabase = await createSsrClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  return NextResponse.json({
+    viewing: false,
+    allowed: isPlatformOwnerEmail(user?.email),
+  });
 }
 
 export async function POST(req: Request) {

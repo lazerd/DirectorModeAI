@@ -35,7 +35,7 @@ import {
 } from '@/config/nav';
 import {
   Zap, Home, LayoutGrid, Calendar, GraduationCap,
-  ChevronLeft, ChevronRight, Menu, X, HardHat,
+  ChevronLeft, ChevronRight, Menu, X, HardHat, Eye, ClipboardList,
 } from 'lucide-react';
 
 type Item = {
@@ -198,6 +198,30 @@ export default function ClubSidebar() {
   // When the signed-in user is a club MEMBER (not a director/owner), show a
   // member-appropriate nav instead of the full director toolset. null = show all.
   const [memberNav, setMemberNav] = useState<Group[] | null>(null);
+  /*
+   * Platform-owner only, and asked for rather than assumed: the answer depends
+   * on PLATFORM_OWNER_EMAILS, which is server-side on purpose. Without a rail
+   * entry the page existed at a URL nobody could find from inside the app.
+   */
+  const [canViewAs, setCanViewAs] = useState(false);
+  /*
+   * The teams this person captains.
+   *
+   * A captain is usually a club MEMBER, and the member nav is four items —
+   * My Club, Book a Court, My Account, Find a Coach — none of which is
+   * CaptainMode. So a captain signing in landed on the marketing home with no
+   * link to the product she had been told to use, and the only way in was a
+   * URL somebody texted her (Megan Sullivan, 2026-09-11). Her teams belong in
+   * her nav.
+   */
+  const [captainTeams, setCaptainTeams] = useState<{ id: string; name: string }[]>([]);
+
+  useEffect(() => {
+    fetch('/api/admin/view-as')
+      .then((r) => r.json())
+      .then((j: { allowed?: boolean }) => setCanViewAs(!!j?.allowed))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -243,9 +267,68 @@ export default function ClubSidebar() {
     })();
   }, []);
 
+  // Own teams plus co-captained ones, the same pair of reads listCaptainTeams
+  // does on the server. RLS scopes both to this user.
+  useEffect(() => {
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const { data: staff } = await supabase
+          .from('captain_team_staff')
+          .select('team_id')
+          .eq('user_id', user.id);
+        const staffIds = ((staff as { team_id: string }[] | null) || []).map((r) => r.team_id);
+        const filter = staffIds.length
+          ? `captain_user_id.eq.${user.id},id.in.(${staffIds.join(',')})`
+          : `captain_user_id.eq.${user.id}`;
+        const { data: teams } = await supabase
+          .from('captain_teams')
+          .select('id, name')
+          .or(filter)
+          .eq('archived', false)
+          .order('created_at', { ascending: false });
+        setCaptainTeams((teams as { id: string; name: string }[] | null) || []);
+      } catch { /* no captain item on any error */ }
+    })();
+  }, []);
+
   const isMember = memberNav !== null;
-  const groups = memberNav ?? PRIMARY_GROUPS;
-  const footerItems = isMember ? [] : FOOTER_ITEMS;
+  /*
+   * Straight to the one team when there is only one — the /captain index is a
+   * list of one and a second click for nothing.
+   */
+  const captainItem: Item | null = captainTeams.length
+    ? {
+        name: 'CaptainMode',
+        href: captainTeams.length === 1 ? `/captain/${captainTeams[0].id}` : '/captain',
+        matches: ['/captain'],
+        icon: ClipboardList,
+        color: '#D3FB52',
+      }
+    : null;
+
+  const VIEW_AS_ITEM: Item = {
+    name: 'View as…',
+    href: '/admin/view-as',
+    matches: ['/admin/view-as'],
+    icon: Eye,
+    color: '#fbbf24',
+  };
+  // Shown even on the member nav: the whole point is to reach it from whatever
+  // screen the owner happens to be on.
+  const footerItems = [...(isMember ? [] : FOOTER_ITEMS), ...(canViewAs ? [VIEW_AS_ITEM] : [])];
+
+  /*
+   * CaptainMode leads the member nav when this person captains something. The
+   * full director nav already carries it under Programs, so only the member
+   * nav needs the injection.
+   */
+  const groups: Group[] =
+    memberNav && captainItem
+      ? memberNav.map((g, i) => (i === 0 ? { ...g, items: [captainItem, ...g.items] } : g))
+      : (memberNav ?? PRIMARY_GROUPS);
   const active = activeHref(pathname, [...groups.flatMap((g) => g.items), ...footerItems]);
 
   // Restore the pinned/collapsed preference before first paint of the rail.
