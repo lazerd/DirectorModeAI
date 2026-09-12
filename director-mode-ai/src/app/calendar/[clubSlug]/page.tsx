@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { PUBLIC_ITEM_COLUMNS } from '@/lib/calendar/server';
 import { catalogEntry } from '@/lib/calendar/catalog';
+import ClubChrome, { getClubChrome } from '@/components/clubSite/ClubChrome';
 import PublicCalendarView from './PublicCalendarView';
 
 // The member-facing published calendar.
@@ -72,12 +73,19 @@ export default async function PublicCalendarPage(
     blurb: i.description ?? catalogEntry(i.catalog_key)?.description ?? null,
   }));
 
+  // The club's own colours where they have a site — a calendar reached from a
+  // club's website should not arrive wearing ours. Null leaves ClubMode's look
+  // untouched for every club that has never set a palette.
+  const chrome = await getClubChrome((data.club as { id: string }).id);
+
   return (
-    <PublicCalendarView
-      club={data.club as any}
-      year={year}
-      published={!!data.plan}
-      items={items}
-    />
+    <ClubChrome chrome={chrome}>
+      <PublicCalendarView
+        club={data.club as any}
+        year={year}
+        published={!!data.plan}
+        items={items}
+      />
+    </ClubChrome>
   );
 }

@@ -74,13 +74,13 @@ export default function PublicClient({ club, initialCourts }: Props) {
   }, [initialCourts]);
 
   return (
-    <div className="min-h-screen bg-[#001820] text-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+    <div className="min-h-screen bg-[var(--cm-ground,#001820)] text-white" style={{ fontFamily: "var(--cm-font, 'Inter', system-ui, sans-serif)" }}>
       {/* Hero */}
       <div className="relative overflow-hidden border-b border-white/[0.06]">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#D3FB52]/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute top-0 left-1/4 w-96 h-96 bg-[var(--cm-accent,#D3FB52)]/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 relative">
-          <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#D3FB52] mb-2">
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--cm-accent,#D3FB52)] mb-2">
             <LayoutGrid size={12} />
             CourtSheet
           </div>
@@ -222,7 +222,7 @@ function PublicSignupCard({
             Full
           </div>
         ) : (
-          <div className="rounded-full px-3 py-1.5 text-[11px] uppercase tracking-widest font-semibold bg-[#D3FB52] text-[#001820] flex items-center gap-1">
+          <div className="rounded-full px-3 py-1.5 text-[11px] uppercase tracking-widest font-semibold bg-[var(--cm-accent,#D3FB52)] text-[var(--cm-on-accent,#001820)] flex items-center gap-1">
             Join <ChevronRight size={11} />
           </div>
         )}
@@ -286,8 +286,8 @@ function PublicSignupSheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-[#001820] border border-white/10 p-5 sm:p-6 space-y-4 shadow-2xl">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#D3FB52]">
+      <div className="relative w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-[var(--cm-ground,#001820)] border border-white/10 p-5 sm:p-6 space-y-4 shadow-2xl">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--cm-accent,#D3FB52)]">
           <Users size={11} />
           Sign up
         </div>
@@ -304,21 +304,21 @@ function PublicSignupSheet({
             placeholder="Your name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#D3FB52]/60"
+            className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[var(--cm-accent,#D3FB52)]/60"
           />
           <input
             type="email"
             placeholder="Email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#D3FB52]/60"
+            className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[var(--cm-accent,#D3FB52)]/60"
           />
           <input
             type="text"
             placeholder="Note (optional)"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#D3FB52]/60"
+            className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[var(--cm-accent,#D3FB52)]/60"
           />
           {/*
             SMS CONSENT — carrier-mandated wording. Do not shorten this.
@@ -335,7 +335,7 @@ function PublicSignupSheet({
               type="checkbox"
               checked={smsOptIn}
               onChange={(e) => setSmsOptIn(e.target.checked)}
-              className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[#D3FB52]"
+              className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[var(--cm-accent,#D3FB52)]"
             />
             <span className="text-sm text-white/80">
               Text me a confirmation.
@@ -359,7 +359,7 @@ function PublicSignupSheet({
               placeholder="+1 555 123 4567"
               value={smsPhone}
               onChange={(e) => setSmsPhone(e.target.value)}
-              className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[#D3FB52]/60"
+              className="w-full bg-white/[0.04] border border-white/10 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none focus:border-[var(--cm-accent,#D3FB52)]/60"
             />
           )}
         </div>
@@ -375,7 +375,7 @@ function PublicSignupSheet({
             type="button"
             onClick={submit}
             disabled={!name.trim() || !email.trim() || submitting}
-            className="flex-1 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+            className="flex-1 py-2.5 rounded-xl bg-[var(--cm-accent,#D3FB52)] text-[var(--cm-on-accent,#001820)] text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <Check size={14} />
             {submitting ? 'Signing up…' : 'Join'}

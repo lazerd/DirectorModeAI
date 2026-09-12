@@ -60,7 +60,11 @@ export default function PublicCalendarView({
   }
 
   return (
-    <div className="min-h-screen" style={{ background: '#001820', color: '#e6f0f3' }}>
+    <div className="min-h-screen" style={{
+        background: 'var(--cm-ground, #001820)',
+        color: 'var(--cm-text, #e6f0f3)',
+        fontFamily: 'var(--cm-font, inherit)',
+      }}>
       <header className="border-b" style={{ borderColor: '#0d3d4d' }}>
         <div className="max-w-3xl mx-auto px-5 py-8 text-center">
           {club.logo_url && (
@@ -74,7 +78,7 @@ export default function PublicCalendarView({
             <div className="mt-5 flex flex-wrap gap-2 justify-center">
               <button onClick={subscribe}
                       className="px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2"
-                      style={{ background: '#D3FB52', color: '#001820' }}>
+                      style={{ background: 'var(--cm-accent, #D3FB52)', color: 'var(--cm-on-accent, #001820)' }}>
                 {copied ? <Check className="w-4 h-4" /> : <CalendarPlus className="w-4 h-4" />}
                 {copied ? 'Link copied — paste it into your calendar app' : 'Add to my calendar'}
               </button>
@@ -109,7 +113,7 @@ export default function PublicCalendarView({
                       const isOpen = open === i.id;
                       return (
                         <div key={i.id} className="rounded-xl border overflow-hidden"
-                             style={{ background: '#002838', borderColor: '#0d3d4d' }}>
+                             style={{ background: 'var(--cm-panel, #002838)', borderColor: 'var(--cm-border, #0d3d4d)' }}>
                           <button onClick={() => setOpen(isOpen ? null : i.id)}
                                   className="w-full text-left p-4 flex items-start gap-4">
                             <div className="text-center shrink-0 w-12">
