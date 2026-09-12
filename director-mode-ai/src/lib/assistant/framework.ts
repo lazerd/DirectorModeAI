@@ -89,6 +89,18 @@ export function bindPack<Ctx>(pack: DomainPack<Ctx>, ctx: Ctx): BoundPack {
       if (!t) return { ok: false, error: `Unknown tool ${name}` };
       if (t.destructive && input?.confirm !== true) {
         const preview = t.preview ? await t.preview(input, ctx) : { ok: true as const };
+        /*
+         * A FAILED preview is not something to confirm.
+         *
+         * This used to spread the preview and then force `ok: true`, which
+         * overwrote a preview's own `ok: false` — so "there is no class with
+         * that id" came back to the model as a successful preview awaiting
+         * approval. The model would offer it for confirmation, the director
+         * would say yes, and the run would then fail for a reason nobody had
+         * been shown. Preserve the refusal, and only ask for confirmation of
+         * something that can actually happen.
+         */
+        if (preview.ok === false) return preview;
         return { ...preview, ok: true, needsConfirm: true };
       }
       return t.run(input, ctx);
