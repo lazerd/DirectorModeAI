@@ -97,8 +97,15 @@ export default function PublicClient({ club, initialCourts }: Props) {
 
       {/* Open signups feed */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-3">
+        {/*
+          "today" was wrong as soon as the date picker moved off today, and
+          "No open signups" read like the page had failed. This board shows
+          only what the club has POSTED as open — see the empty state below.
+        */}
         <h2 className="text-sm font-semibold uppercase tracking-widest text-white/60 mb-3">
-          {openSignups.length === 0 ? 'No open signups today' : `${openSignups.length} open`}
+          {openSignups.length === 0
+            ? 'Nothing open on this day'
+            : `${openSignups.length} open to join`}
         </h2>
 
         {loading ? (
@@ -109,8 +116,17 @@ export default function PublicClient({ club, initialCourts }: Props) {
           </div>
         ) : openSignups.length === 0 ? (
           <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
-            <p className="text-white/50 text-sm">
-              Nothing posted for this date. Check back, or pick another day.
+            {/*
+              Say what this page IS. A member arriving from a tile that used to
+              read "Book a court" assumed an empty board meant the booking was
+              broken, when the club simply has not posted anything.
+            */}
+            <p className="text-white/70 text-sm font-medium">
+              {club.name} hasn&apos;t posted any open court time for this day.
+            </p>
+            <p className="text-white/40 text-sm mt-2">
+              Drop-in play, clinics and open court times show up here when the club opens them for
+              signups. Try another day, or ask the front desk to post one.
             </p>
           </div>
         ) : (

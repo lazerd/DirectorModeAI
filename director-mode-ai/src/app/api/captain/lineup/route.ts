@@ -301,14 +301,23 @@ export async function POST(req: Request) {
       summary.push('Singles went first, to the strongest available players who are not marked doubles-only.');
     }
     summary.push(
-      'Doubles pairs were then scored on partner preference, complementary return sides (a deuce player with an ad player), and how past pairings have actually done.',
+      'Doubles pairs were then scored on partner preference, complementary return sides (a deuce player with an ad player), and how past pairings have actually done. Where nothing separated two options, teammates next to each other in the strength order were paired, so court 1 is your top two rather than one strong player carrying one weak one.',
     );
     // Which number actually decided court 1 — the thing a captain gets asked
     // about most, and the whole reason for importing WTNs.
     const doublesPool = available.filter((p) => p.courtLimit !== 'singles_only');
     const wtnOfPlayer = (p: (typeof available)[number]) => p.wtnDoubles ?? p.wtn ?? null;
     const withWtn = doublesPool.filter((p) => wtnOfPlayer(p) != null).length;
-    if (doublesPool.length > 0 && withWtn === doublesPool.length) {
+    const ranked = doublesPool.filter((p) => typeof p.sortOrder === 'number').length;
+    if (ranked > 0) {
+      summary.push(
+        `Courts are ordered by the strength order you set on the team page, strongest pair on court 1${
+          ranked < doublesPool.length
+            ? ` (${doublesPool.length - ranked} of ${doublesPool.length} are not in it and sort below by rating)`
+            : ''
+        }. Your order beats both rating and WTN — drag the list on the team page to change it.`,
+      );
+    } else if (doublesPool.length > 0 && withWtn === doublesPool.length) {
       summary.push(
         'Courts are ordered by each pair’s average WTN, lowest average on court 1 — objective, not a judgement call. Each court shows the average it was ranked on.',
       );
@@ -317,6 +326,15 @@ export async function POST(req: Request) {
       if (withWtn > 0) {
         summary.push(
           `Court order fell back to rating because ${doublesPool.length - withWtn} of ${doublesPool.length} available players have no WTN. Paste the rest in on the team page and courts get ordered by average WTN instead.`,
+        );
+      } else if (
+        doublesPool.length > 1 &&
+        new Set(doublesPool.map((p) => p.rating ?? 0)).size === 1
+      ) {
+        // The all-2.5 roster: rating cannot order anything, and saying so is
+        // better than a court order that looks arbitrary and unexplained.
+        summary.push(
+          'Every available player shares the same rating, so rating cannot tell the courts apart. Set a strength order on the team page (or paste WTNs) and court 1 becomes your genuine top pair.',
         );
       }
     }

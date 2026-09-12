@@ -61,6 +61,18 @@ export type Player = {
    * pool on matches played and must be seated. Not something a caller sets.
    */
   mustPlay?: boolean;
+  /**
+   * Set internally by generateLineup: 0-based position in the available pool
+   * once byStrength has ordered it, so a single comparable number carries the
+   * captain's manual order, then WTN, then rating. Not something a caller sets.
+   */
+  strengthRank?: number;
+  /**
+   * Set internally by generateLineup: the already-weighted selection bonus for
+   * that rank, which is large under play_to_win and a tiebreak under
+   * equal_play. Not something a caller sets.
+   */
+  strengthBonus?: number;
 };
 
 export type PartnerPref = {
@@ -144,6 +156,29 @@ const W_NUDGE = 5;
  * 2-match spread; see season.test.ts.
  */
 const W_MUST_PLAY = 10_000;
+/**
+ * Picking the strongest side, under play_to_win only. Deliberately above
+ * W_PREF_MUTUAL: "strongest available side every week, fairness is only a
+ * tiebreaker" is what the captain asked for, so a favourite partnership must
+ * not keep a stronger teammate off the sheet. Under equal_play the tier gate
+ * decides who plays and this drops to W_STRENGTH_TIE.
+ */
+const W_STRENGTH_PICK = 300;
+/**
+ * Under equal_play, who plays is already settled by the fairness tier, so
+ * strength only separates players the tier left tied. Small enough to sit
+ * under every other signal — without it a tie is broken by row id, which is
+ * why an all-2.5 roster produced a court order that looked random.
+ */
+const W_STRENGTH_TIE = 3;
+/**
+ * Keeps a pair close together in the strength order, so court 1 is the top two
+ * and court 4 the bottom two rather than a strong player carrying a weak one.
+ * Capped below W_FAIRNESS (8 a match) and W_NUDGE (5) so it can only ever
+ * break a tie — never move a player who is owed a match.
+ */
+const W_STRENGTH_GAP = 0.5;
+const MAX_STRENGTH_GAP_PENALTY = 4;
 
 /**
  * How many matches together before a partnership's record is taken at face
@@ -210,6 +245,7 @@ export function prefScore(prefs: PartnerPref[], a: string, b: string): number {
 function playerBonus(p: Player): number {
   return (
     (p.mustPlay ? W_MUST_PLAY : 0) +
+    (p.strengthBonus ?? 0) +
     (p.needsEligibility ? W_ELIGIBILITY : 0) +
     W_FAIRNESS * -p.matchesPlayed +
     W_NUDGE * (p.preferenceNudge ?? 0)
@@ -280,6 +316,14 @@ export function pairScore(
   let s = prefScore(prefs, a.id, b.id);
   s += chemistryScore(history, a.id, b.id);
   if (a.returnSide && b.returnSide && a.returnSide !== b.returnSide) s += W_RETURN_SIDE;
+  if (typeof a.strengthRank === 'number' && typeof b.strengthRank === 'number') {
+    // Neighbours in the strength order pair up; a 1-and-8 pairing is the last
+    // resort. Capped so this never outranks fairness or a stated preference.
+    s -= Math.min(
+      MAX_STRENGTH_GAP_PENALTY,
+      W_STRENGTH_GAP * Math.abs(a.strengthRank - b.strengthRank),
+    );
+  }
   s += playerBonus(a) + playerBonus(b);
   return s;
 }
@@ -422,6 +466,45 @@ function equalPlayPool(available: Player[], needed: number): { pool: Player[]; n
   return { pool, note };
 }
 
+/**
+ * Strength comparison with NO name tiebreak, in the same precedence the court
+ * order uses: the captain's manual rank, then WTN, then rating.
+ *
+ * The missing tiebreak is the point. Three players on the same 3.5 with no
+ * manual order are genuinely equally strong, and if the alphabet quietly
+ * separated them, strength would start outvoting fairness on a difference that
+ * does not exist. Returns 0 for players nothing can tell apart.
+ */
+function strengthCompare(a: Player, b: Player): number {
+  const ra = typeof a.sortOrder === 'number' ? a.sortOrder : null;
+  const rb = typeof b.sortOrder === 'number' ? b.sortOrder : null;
+  if (ra !== null || rb !== null) {
+    if (ra === null) return 1;
+    if (rb === null) return -1;
+    return ra - rb; // 1 = strongest
+  }
+  const wa = wtnOf(a);
+  const wb = wtnOf(b);
+  if (wa !== null && wb !== null && wa !== wb) return wa - wb; // lower WTN is stronger
+  return ratingOf(b) - ratingOf(a);
+}
+
+/**
+ * Dense strength ranks over a pool, 0 = strongest. Players nothing separates
+ * share a rank, so they carry the same weight and whatever comes next —
+ * fairness, eligibility, a stated preference — decides between them.
+ */
+export function strengthRanks(pool: Player[]): Map<string, number> {
+  const sorted = [...pool].sort((a, b) => strengthCompare(a, b) || a.name.localeCompare(b.name));
+  const ranks = new Map<string, number>();
+  let rank = 0;
+  sorted.forEach((p, i) => {
+    if (i > 0 && strengthCompare(sorted[i - 1], p) !== 0) rank = i;
+    ranks.set(p.id, rank);
+  });
+  return ranks;
+}
+
 export function generateLineup(input: LineupInput): LineupResult {
   const warnings: string[] = [];
   const prefs = input.partnerPrefs ?? [];
@@ -430,12 +513,41 @@ export function generateLineup(input: LineupInput): LineupResult {
 
   const needed = input.singlesCourts + input.doublesCourts * 2;
 
+  const style = input.captainingStyle ?? 'play_to_win';
+
   let available = [...input.available];
-  if ((input.captainingStyle ?? 'play_to_win') === 'equal_play') {
+  if (style === 'equal_play') {
     const { pool, note } = equalPlayPool(available, needed);
     available = pool;
     if (note) warnings.push(note);
   }
+
+  /**
+   * Stamp every player with their place in the strength order, 0 = strongest.
+   *
+   * Without this the optimiser has nothing to say about strength at all: on a
+   * roster where everyone shares a rating and nobody has filled in the
+   * pre-season questions, every candidate pair scores exactly the same and the
+   * lineup falls out in database-id order — which is what a captain sees as
+   * "it put my two best players on court 4".
+   *
+   * One number, so the comparison stays transitive: byStrength already folds in
+   * the captain's manual order first, then WTN, then rating, then name.
+   */
+  const rankById = strengthRanks(available);
+  const span = Math.max(1, Math.max(0, ...rankById.values()));
+  available = available.map((p) => {
+    const rank = rankById.get(p.id) as number;
+    return {
+      ...p,
+      strengthRank: rank,
+      // play_to_win means the strongest side plays, so this outbids partner
+      // preference. equal_play has already chosen who plays, so it only breaks
+      // ties the fairness tier left behind.
+      strengthBonus:
+        (style === 'play_to_win' ? W_STRENGTH_PICK : W_STRENGTH_TIE) * (1 - rank / span),
+    };
+  });
 
   if (available.length < needed) {
     warnings.push(
@@ -510,19 +622,36 @@ export function generateLineup(input: LineupInput): LineupResult {
    * ordering that fell out would be meaningless while looking authoritative.
    * All-or-nothing keeps the comparison transitive and the reason explainable.
    */
-  const wtnComplete = pairs.length > 0 && pairs.every((pr) => pr.every((p) => wtnOf(p) !== null));
-  const sortedPairs = wtnComplete
-    ? // Lower average WTN is the stronger pair, so it takes the lower court.
-      [...pairs].sort(
-        (x, y) =>
-          (wtnOf(x[0])! + wtnOf(x[1])!) / 2 - (wtnOf(y[0])! + wtnOf(y[1])!) / 2 ||
-          x[0].name.localeCompare(y[0].name),
-      )
-    : [...pairs].sort(
-        (x, y) =>
-          ratingOf(y[0]) + ratingOf(y[1]) - (ratingOf(x[0]) + ratingOf(x[1])) ||
-          x[0].name.localeCompare(y[0].name),
-      );
+  /**
+   * A captain who dragged the roster into an order meant it, so that wins over
+   * both WTN and rating — the same precedence byStrength and the singles
+   * courts above already use. Ordering on combined rating alone put a 2.5-only
+   * roster's courts in alphabetical order, because every pair summed to 5.0.
+   */
+  const manualOrder = pairs.some((pr) => pr.some((p) => typeof p.sortOrder === 'number'));
+  const wtnComplete =
+    !manualOrder && pairs.length > 0 && pairs.every((pr) => pr.every((p) => wtnOf(p) !== null));
+  const rankSum = (pr: [Player, Player]) =>
+    (pr[0].strengthRank ?? 0) + (pr[1].strengthRank ?? 0);
+  const sortedPairs = manualOrder
+    ? // Lowest combined place in the strength order is the strongest pair.
+      [...pairs].sort((x, y) => rankSum(x) - rankSum(y) || x[0].name.localeCompare(y[0].name))
+    : wtnComplete
+      ? // Lower average WTN is the stronger pair, so it takes the lower court.
+        [...pairs].sort(
+          (x, y) =>
+            (wtnOf(x[0])! + wtnOf(x[1])!) / 2 - (wtnOf(y[0])! + wtnOf(y[1])!) / 2 ||
+            x[0].name.localeCompare(y[0].name),
+        )
+      : [...pairs].sort(
+          (x, y) =>
+            ratingOf(y[0]) + ratingOf(y[1]) - (ratingOf(x[0]) + ratingOf(x[1])) ||
+            // Same combined rating — a whole roster on one NTRP number is the
+            // normal case, not the edge case. Fall back to the strength order
+            // rather than the name.
+            rankSum(x) - rankSum(y) ||
+            x[0].name.localeCompare(y[0].name),
+        );
 
   // Honour "never court 1": if the strongest pair contains such a player and
   // there is another doubles court to move them to, swap it down.
@@ -541,7 +670,9 @@ export function generateLineup(input: LineupInput): LineupResult {
   }
 
   sortedPairs.forEach((pr, i) => {
-    const [a, b] = pr;
+    // Stronger player named first on the line, so the sheet reads the way a
+    // captain says it out loud.
+    const [a, b] = [...pr].sort(byStrength);
     const notes: string[] = [];
     if (wtnComplete) {
       notes.push(`avg WTN ${(((wtnOf(a)! + wtnOf(b)!) / 2)).toFixed(1)}`);

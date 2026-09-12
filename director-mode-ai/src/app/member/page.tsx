@@ -189,7 +189,9 @@ export default async function MemberHome() {
       <main className="max-w-3xl mx-auto px-5 py-8 space-y-8">
         {/* quick actions */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Action href={`/courtsheet/${club.slug}`} icon={LayoutGrid} label="Book a court" tone="#0891b2" />
+          {/* Not "Book a court": the page joins open court time the club has
+              posted. There is no member self-booking to send them to. */}
+          <Action href={`/courtsheet/${club.slug}`} icon={LayoutGrid} label="Open court time" tone="#0891b2" />
           <Action href="/client/dashboard" icon={GraduationCap} label="My lessons" tone="#7c3aed" />
           <Action href="/find-coach" icon={User} label="Find a coach" tone="#ea580c" />
           <Action href="/client/dashboard" icon={Trophy} label="My progress" tone="#ca8a04" />

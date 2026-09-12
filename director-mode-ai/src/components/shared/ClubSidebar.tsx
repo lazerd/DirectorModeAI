@@ -248,7 +248,9 @@ export default function ClubSidebar() {
             heading: null,
             items: [
               { name: 'My Club', href: '/member', matches: ['/member'], icon: Home, color: '#22d3ee' },
-              ...(slug ? [{ name: 'Book a Court', href: `/courtsheet/${slug}`, matches: ['/courtsheet'], icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
+              ...(slug ? [// Named for what the page does. ClubMode has no member self-booking, so
+            // "Book a Court" sent members to an empty board and read as broken.
+            { name: 'Open Court Time', href: `/courtsheet/${slug}`, matches: ['/courtsheet'], icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
               { name: 'My Account', href: '/client/dashboard', matches: ['/client/dashboard'], icon: Calendar, color: '#60a5fa' },
               { name: 'Find a Coach', href: '/find-coach', matches: ['/find-coach'], icon: GraduationCap, color: '#a78bfa' },
             ],

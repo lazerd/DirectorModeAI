@@ -268,6 +268,16 @@ export default function PathwayDashboard() {
             >
               <Printer size={15} /> Coach packet
             </Link>
+            {/*
+              The blank standard, one PDF per ball color — the coach packet
+              above is the roster version and only covers the kids enrolled now.
+            */}
+            <Link
+              href="/pathway/curriculum#print"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white/10 text-sm font-semibold hover:bg-white/15"
+            >
+              <Printer size={15} /> String test PDFs
+            </Link>
             <div className="relative">
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input

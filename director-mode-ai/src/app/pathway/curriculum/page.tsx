@@ -10,6 +10,7 @@
  */
 
 import { useState } from 'react';
+import { Download } from 'lucide-react';
 import {
   LEVELS,
   HOUSE_RULES,
@@ -44,7 +45,7 @@ export default function PathwayCurriculumPage() {
         </header>
 
         {/* house rules up front — parents ask these first */}
-        <div className="mb-10 rounded-2xl bg-white border border-gray-200 p-5">
+        <div id="print" className="mb-10 scroll-mt-6 rounded-2xl bg-white border border-gray-200 p-5">
           <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-gray-400 mb-3">
             How Test Day works
           </p>
@@ -56,6 +57,35 @@ export default function PathwayCurriculumPage() {
               </li>
             ))}
           </ul>
+        </div>
+
+        {/*
+          The printable version, one PDF per ball color.
+          A coach on a court has a clipboard, not a browser — the whole standard
+          for a color has to leave the site as a sheet of paper with a tick box
+          on every test.
+        */}
+        <div className="mb-10 rounded-2xl bg-white border border-gray-200 p-5">
+          <p className="text-[11px] font-bold tracking-[0.2em] uppercase text-gray-400 mb-1">
+            Print the tests
+          </p>
+          <p className="text-sm text-gray-600 mb-4">
+            Every test for a ball color on one sheet — what it measures, how to run it, what passes,
+            and a box to tick as each one is cleared. One PDF per color.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {LEVELS.filter((l) => !l.invitational).map((lvl) => (
+              <a
+                key={lvl.key}
+                href={`/api/pathway/tests/${lvl.key}`}
+                className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: lvl.colorDark }}
+              >
+                <Download size={15} />
+                {lvl.name}
+              </a>
+            ))}
+          </div>
         </div>
 
         <div className="space-y-10">
