@@ -350,6 +350,16 @@ export const SECTIONS: Section[] = [
         badge: 'NEW',
       },
       {
+        name: 'Court booking',
+        href: '/run/site/courts',
+        match: '/run/site/courts',
+        description: 'What an hour costs by time of day, who books how far ahead, and every booking that comes in.',
+        pitch: 'Set your rates once — free to members, peak and off-peak to the public — and your website starts taking court bookings. A booking that crosses two rates is charged per part.',
+        icon: Clock,
+        color: '#34d399',
+        tag: 'COURTS',
+      },
+      {
         name: 'Classes',
         href: '/run/site/classes',
         match: '/run/site/classes',

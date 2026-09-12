@@ -1,10 +1,11 @@
 /**
- * Court time — hours, rates and how booking actually works here.
+ * Court time — hours, rates, and booking.
  *
- * Deliberately honest about the thing ClubMode cannot do yet. A club's rates
- * and its member/public advance-booking rules are PUBLISHED here; there is no
- * self-booking engine behind them. Saying "book online" and then handing
- * someone a phone number is worse than a page that tells them to call.
+ * A club that has set up rate cards gets a real Book a court button here, and
+ * the rates shown are the ones a booking is priced against. A club that has
+ * not still gets its published price list and a phone number, because
+ * offering "book online" and then handing someone a phone number is worse than
+ * a page that tells them to call.
  */
 
 import Link from 'next/link';
@@ -12,8 +13,10 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getClubSite } from '@/lib/clubSite/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { getRateCards } from '@/lib/courts/server';
+import { bookingEnabled, bookingRules, type RateCard } from '@/lib/courts/pricing';
 import { readableOn, tint } from '@/lib/clubSite/theme';
-import { formatPrice } from '@/lib/programs/sessions';
+import { daysLabel, formatPrice } from '@/lib/programs/sessions';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +63,18 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
     ?.operating_hours) || {};
   const hasHours = Object.keys(hours).length > 0;
 
+  /*
+   * Rates come from court_rate_cards when the club has set them up, because
+   * those are the numbers a booking is actually priced against. The jsonb list
+   * on club_site is the fallback for a club that typed its rates in before
+   * online booking existed — two sources, but never two ANSWERS: whichever one
+   * drives the booking is the one shown.
+   */
+  const rateCards: RateCard[] = await getRateCards(club.id);
+  const canBook = bookingEnabled(rateCards);
+  const memberRules = bookingRules(rateCards, 'member');
+  const publicRules = bookingRules(rateCards, 'public');
+
   const pretty = (t: string) => {
     const [h, m] = t.split(':').map((s) => parseInt(s, 10));
     const suffix = h >= 12 ? 'pm' : 'am';
@@ -84,7 +99,47 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
       )}
 
       <div className="mt-8 grid gap-8 lg:grid-cols-2">
-        {site.court_rates.length > 0 && (
+        {canBook ? (
+          <section>
+            <h2 className="text-xl font-bold" style={{ fontFamily: theme.headingFamily }}>
+              Rates
+            </h2>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[420px] text-sm">
+                <thead>
+                  <tr style={{ color: tint(theme.ink, 0.55) }} className="text-left">
+                    <th className="py-2 pr-4 font-semibold">Rate</th>
+                    <th className="py-2 pr-4 font-semibold">When</th>
+                    <th className="py-2 font-semibold">Per hour</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rateCards.map((r) => (
+                    <tr key={r.id} style={{ borderTop: `1px solid ${tint(theme.ink, 0.1)}` }}>
+                      <td className="py-3 pr-4">
+                        <div className="font-semibold">{r.label}</div>
+                        <div className="text-xs" style={{ color: tint(theme.ink, 0.55) }}>
+                          {r.applies_to === 'member' ? 'Members' : 'Public'}
+                        </div>
+                      </td>
+                      <td className="py-3 pr-4" style={{ color: tint(theme.ink, 0.7) }}>
+                        {daysLabel(r.days_of_week)}
+                        <div className="text-xs" style={{ color: tint(theme.ink, 0.5) }}>
+                          {r.time_start.slice(0, 5)}–{r.time_end.slice(0, 5)}
+                        </div>
+                      </td>
+                      <td className="py-3 font-medium">{formatPrice(r.price_cents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-xs" style={{ color: tint(theme.ink, 0.5) }}>
+              Members book up to {memberRules.advanceDays} days ahead; the public up to{' '}
+              {publicRules.advanceDays}.
+            </p>
+          </section>
+        ) : site.court_rates.length > 0 ? (
           <section>
             <h2 className="text-xl font-bold" style={{ fontFamily: theme.headingFamily }}>
               Rates
@@ -122,7 +177,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
               </table>
             </div>
           </section>
-        )}
+        ) : null}
 
         {hasHours && (
           <section>
@@ -170,11 +225,28 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
             </p>
           )}
           <div className="mt-5 flex flex-wrap gap-3">
+            {canBook && (
+              <Link
+                href={`/c/${club.slug}/courts/book`}
+                className="rounded-xl px-5 py-3 text-sm font-bold"
+                style={{ background: theme.primary, color: onPrimary }}
+              >
+                Book a court →
+              </Link>
+            )}
             {club.phone && (
               <a
                 href={`tel:${club.phone.replace(/[^0-9+]/g, '')}`}
-                className="rounded-xl px-5 py-3 text-sm font-bold"
-                style={{ background: theme.primary, color: onPrimary }}
+                className={
+                  canBook
+                    ? 'rounded-xl border px-5 py-3 text-sm font-semibold'
+                    : 'rounded-xl px-5 py-3 text-sm font-bold'
+                }
+                style={
+                  canBook
+                    ? { borderColor: tint(theme.ink, 0.2) }
+                    : { background: theme.primary, color: onPrimary }
+                }
               >
                 Call {club.phone}
               </a>

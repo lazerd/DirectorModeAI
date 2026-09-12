@@ -88,7 +88,7 @@ Members play for free and book a week ahead. The public is welcome too. Beyond t
 
 The public books up to 3 days in advance at $24 per hour.
 
-Call the club to reserve — online court booking is coming.`,
+Book online below, or call the club. Pay at the desk when you arrive.`,
 
   amenities: [
     { label: '9 lighted hard courts', detail: 'Play does not stop at sunset' },
@@ -366,6 +366,78 @@ async function main() {
     }
   }
   console.log(`Seeded ${PROGRAMS.length} classes (drafts)`);
+
+  // -------------------------------------------------------------- rates
+  /*
+   * His real rule, as two rate cards: free to members booking a week out,
+   * $24/hr to the public booking three days out. Two rows is what switches
+   * online court booking on for the club.
+   */
+  const RATES = [
+    {
+      label: 'Members',
+      applies_to: 'member',
+      price_cents: 0,
+      advance_days: 7,
+      time_start: '06:00',
+      time_end: '22:00',
+      min_minutes: 60,
+      max_minutes: 120,
+      display_order: 0,
+      note: 'Free court time for members',
+    },
+    {
+      label: 'Public',
+      applies_to: 'public',
+      price_cents: 2400,
+      advance_days: 3,
+      time_start: '06:00',
+      time_end: '22:00',
+      min_minutes: 60,
+      max_minutes: 120,
+      display_order: 1,
+      note: 'Per hour',
+    },
+  ];
+  for (const r of RATES) {
+    const { data: found } = await db
+      .from('court_rate_cards')
+      .select('id')
+      .eq('club_id', clubId)
+      .eq('label', r.label)
+      .eq('applies_to', r.applies_to)
+      .maybeSingle();
+    if (found) {
+      const { error } = await db.from('court_rate_cards').update(r).eq('id', found.id);
+      if (error) throw error;
+    } else {
+      const { error } = await db.from('court_rate_cards').insert({ ...r, club_id: clubId });
+      if (error) throw error;
+    }
+  }
+  console.log('Seeded 2 court rates (members free / public $24)');
+
+  /*
+   * Opening hours, so the booking page has a day to lay out. Without these
+   * availableSlots falls back to 7am-10pm and says nothing about the club.
+   */
+  const { data: clubHours } = await db
+    .from('cc_clubs')
+    .select('operating_hours')
+    .eq('id', clubId)
+    .maybeSingle();
+  if (!clubHours?.operating_hours || Object.keys(clubHours.operating_hours).length === 0) {
+    const week = {};
+    for (let dow = 0; dow < 7; dow += 1) {
+      // Weekends open an hour later; lights mean everyone closes at 10.
+      week[String(dow)] = [{ open: dow === 0 || dow === 6 ? '07:00' : '06:00', close: '22:00' }];
+    }
+    const { error } = await db.from('cc_clubs').update({ operating_hours: week }).eq('id', clubId);
+    if (error) console.warn(`Hours not seeded: ${error.message}`);
+    else console.log('Seeded opening hours (6am-10pm, 7am weekends)');
+  } else {
+    console.log('Opening hours already set');
+  }
 
   // ------------------------------------------------------------------ courts
   // Nine courts, so /c/<slug>/courts counts them from CourtSheet rather than
