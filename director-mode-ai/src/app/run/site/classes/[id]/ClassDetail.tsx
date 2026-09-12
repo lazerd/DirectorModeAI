@@ -53,6 +53,9 @@ type Program = Record<string, unknown> & {
   registration_mode: 'online' | 'email' | 'closed';
   waitlist_enabled: boolean;
   status: string;
+  court_count: number | null;
+  blocks_courts: boolean;
+  courts_blocked_at: string | null;
 };
 
 export default function ClassDetail({ id }: { id: string }) {
@@ -63,6 +66,8 @@ export default function ClassDetail({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [courtMsg, setCourtMsg] = useState<string | null>(null);
+  const [courtCount, setCourtCount] = useState('');
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/club-site/programs/${id}`);
@@ -76,6 +81,7 @@ export default function ClassDetail({ id }: { id: string }) {
     else {
       setProgram(j.program ?? null);
       setRegistrations(j.registrations ?? []);
+      if (j.program?.court_count != null) setCourtCount(String(j.program.court_count));
       if (j.timezone) setTimeZone(j.timezone);
     }
     setLoading(false);
@@ -431,6 +437,119 @@ export default function ClassDetail({ id }: { id: string }) {
             onToggle={(exclusions) => patch({ exclusions })}
           />
         </div>
+      </section>
+
+      {/* ---------------------------------------------------- hold the courts */}
+      <section>
+        <h2 className="font-display text-xl text-white">Courts</h2>
+        <p className="mt-1 text-sm text-white/50">
+          Hold this class&apos;s courts on the court sheet and nobody can book over it — not
+          through your booking page, not through the desk. Change a skip date later and the court
+          is handed back automatically.
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-end gap-4">
+          <div>
+            <label className={label} htmlFor="court_count">
+              Courts it uses
+            </label>
+            <input
+              id="court_count"
+              inputMode="numeric"
+              placeholder="e.g. 3"
+              value={courtCount}
+              onChange={(e) => setCourtCount(e.target.value)}
+              style={{ color: '#ffffff' }}
+              className={`${field} w-24`}
+            />
+          </div>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true);
+              setCourtMsg(null);
+              setError(null);
+              try {
+                const n = parseInt(courtCount.trim(), 10);
+                if (!Number.isFinite(n) || n <= 0) {
+                  setError('How many courts does this class use?');
+                  return;
+                }
+                const res = await fetch(`/api/club-site/programs/${id}/block-courts`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ court_count: n }),
+                });
+                const j = (await res.json().catch(() => ({}))) as {
+                  error?: string;
+                  message?: string;
+                };
+                if (!res.ok) setError(j.error || 'Could not hold the courts.');
+                else {
+                  setCourtMsg(j.message || 'Courts held.');
+                  await load();
+                }
+              } finally {
+                setBusy(false);
+              }
+            }}
+            className="rounded-lg bg-[#D3FB52] px-4 py-2 text-sm font-semibold text-[#001820] disabled:opacity-50"
+          >
+            {program.blocks_courts ? 'Re-hold the courts' : 'Hold the courts'}
+          </button>
+          {program.blocks_courts && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={async () => {
+                if (!window.confirm('Release these courts? They become bookable by anyone.')) return;
+                setBusy(true);
+                setCourtMsg(null);
+                try {
+                  const res = await fetch(`/api/club-site/programs/${id}/block-courts`, {
+                    method: 'DELETE',
+                  });
+                  const j = (await res.json().catch(() => ({}))) as {
+                    error?: string;
+                    message?: string;
+                  };
+                  if (!res.ok) setError(j.error || 'Could not release them.');
+                  else {
+                    setCourtMsg(j.message || 'Released.');
+                    await load();
+                  }
+                } finally {
+                  setBusy(false);
+                }
+              }}
+              className="text-sm font-medium text-white/50 hover:text-white disabled:opacity-50"
+            >
+              Release them
+            </button>
+          )}
+        </div>
+
+        {courtMsg && <p className="mt-3 text-sm text-[#D3FB52]">{courtMsg}</p>}
+
+        <p className="mt-3 text-sm text-white/45">
+          {program.blocks_courts ? (
+            <>
+              Holding {program.court_count} {program.court_count === 1 ? 'court' : 'courts'} on every
+              date.{' '}
+              <a
+                href="/courtsheet/staff"
+                target="_blank"
+                rel="noreferrer"
+                className="text-white/70 hover:underline"
+              >
+                See it on the court sheet ↗
+              </a>
+            </>
+          ) : (
+            'Not holding any courts — this class is invisible to the court sheet, so its times can be booked by somebody else.'
+          )}
+        </p>
       </section>
 
       {/* --------------------------------------------------------- payment */}

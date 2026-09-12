@@ -13,6 +13,11 @@ import { NextResponse } from 'next/server';
 import { requireStaffForClub } from '@/lib/courtsheet/routeAuth';
 import { programPatchSchema } from '@/lib/programs/schema';
 import { programSessions } from '@/lib/programs/sessions';
+import {
+  clearProgramBlocks,
+  resyncProgramBlocks,
+  type BlockableProgram,
+} from '@/lib/programs/courtBlocks';
 
 export const dynamic = 'force-dynamic';
 
@@ -115,6 +120,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const wasSessions = programSessions(before as never, tz);
   const nowSessions = programSessions(after as never, tz);
 
+  /*
+   * A skip date has to do BOTH things: drop off the public page and hand the
+   * court back. That pairing is the whole point — a director who removes
+   * Thanksgiving week and finds the courts still held has not been saved any
+   * work. Only touches the sheet when the schedule actually moved, so editing
+   * a price does not rebuild a term of reservations.
+   */
+  const scheduleMoved = ['exclusions', 'range_start', 'range_end', 'days_of_week', 'time_start', 'time_end'].some(
+    (k) => k in patch,
+  );
+  const blocks = scheduleMoved
+    ? await resyncProgramBlocks(ctx.db, after as unknown as BlockableProgram, {
+        timeZone: tz,
+        createdBy: ctx.user.id,
+      })
+    : null;
+
   // Who this change lands on. The editor puts this number on the Notify
   // button, so a date change is never silently invisible to the families.
   const { count: affected } = await ctx.db
@@ -140,6 +162,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       session_count_now: nowSessions.count,
     },
     affected_registrations: affected ?? 0,
+    /** Non-null only when the schedule moved AND the class holds courts. */
+    courts: blocks,
   });
 }
 
@@ -157,20 +181,33 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     .eq('program_id', id)
     .neq('status', 'cancelled');
 
+  /*
+   * Release the courts either way.
+   *
+   * reservations.source_id is a loosely-typed uuid with no foreign key, so
+   * nothing in the database would clean these up — an archived or deleted
+   * class would go on holding court 1 every Tuesday forever, with no screen
+   * able to explain why the court was unbookable.
+   */
+  const released = await clearProgramBlocks(ctx.db, id);
+
   // A class with families in it is archived, never deleted. Deleting would
   // cascade their registrations away, and those rows are the club's record of
   // who has ever played there.
   if ((count ?? 0) > 0) {
     const { error } = await ctx.db
       .from('club_programs')
-      .update({ status: 'archived' })
+      .update({ status: 'archived', blocks_courts: false, courts_blocked_at: null })
       .eq('id', id)
       .eq('club_id', ctx.club.id);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({
       ok: true,
       archived: true,
-      message: `Archived instead of deleted — ${count} ${count === 1 ? 'family is' : 'families are'} signed up, and their registrations are your record.`,
+      released,
+      message: `Archived instead of deleted — ${count} ${count === 1 ? 'family is' : 'families are'} signed up, and their registrations are your record.${
+        released ? ` ${released} court slots released.` : ''
+      }`,
     });
   }
 
@@ -180,5 +217,5 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
     .eq('id', id)
     .eq('club_id', ctx.club.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, deleted: true });
+  return NextResponse.json({ ok: true, deleted: true, released });
 }
