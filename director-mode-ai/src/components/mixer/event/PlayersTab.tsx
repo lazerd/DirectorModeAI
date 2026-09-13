@@ -30,15 +30,22 @@ interface EventPlayer {
   strength_order: number;
   player_name: string;
   player_gender?: string;
+  /**
+   * Checked in and standing on a court. `event_players.active` already
+   * existed and defaulted true; nothing read it, so a no-show still got put
+   * into a match and three other people stood waiting for them.
+   */
+  active: boolean;
 }
 
 interface SortablePlayerProps {
   player: EventPlayer;
+  onToggle: (id: string, next: boolean) => void;
   onRemove: (id: string) => void;
   onEdit: (player: EventPlayer) => void;
 }
 
-function SortablePlayer({ player, onRemove, onEdit }: SortablePlayerProps) {
+function SortablePlayer({ player, onToggle, onRemove, onEdit }: SortablePlayerProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: player.id });
 
   const style = {
@@ -51,7 +58,13 @@ function SortablePlayer({ player, onRemove, onEdit }: SortablePlayerProps) {
     <div
       ref={setNodeRef}
       style={style}
-      className="flex items-center gap-2 sm:gap-4 p-4 sm:p-6 bg-card border-2 rounded-2xl hover:shadow-lg hover:border-primary/50 transition-all"
+      className={`flex items-center gap-2 sm:gap-4 p-4 sm:p-6 bg-card border-2 rounded-2xl transition-all ${
+        player.active
+          ? 'hover:shadow-lg hover:border-primary/50'
+          : // Absent players stay visible but recede — they arrive late and
+            // need to be found again in one tap.
+            'opacity-45 border-dashed'
+      }`}
     >
       <button
         type="button"
@@ -61,8 +74,36 @@ function SortablePlayer({ player, onRemove, onEdit }: SortablePlayerProps) {
       >
         <GripVertical className="h-5 w-5 sm:h-6 sm:w-6 text-muted-foreground" />
       </button>
+
+      {/*
+        Check-in, as ONE tap on a big target.
+        
+        This is used standing on a court with a phone in one hand while people
+        say hello, so it is a single toggle sized for a thumb — not a menu, not
+        a checkbox, and not a confirm dialog.
+      */}
+      <button
+        type="button"
+        onClick={() => onToggle(player.id, !player.active)}
+        aria-pressed={player.active}
+        title={player.active ? 'Here — tap to mark absent' : 'Absent — tap to check in'}
+        className={`flex-shrink-0 rounded-xl px-3 py-2 text-xs font-bold uppercase tracking-wide sm:px-4 sm:text-sm ${
+          player.active
+            ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+            : 'bg-muted text-muted-foreground hover:bg-muted/70'
+        }`}
+      >
+        {player.active ? 'Here' : 'Out'}
+      </button>
+
       <div className="flex-1 min-w-0">
-        <p className="text-base sm:text-lg font-semibold truncate">{player.player_name}</p>
+        <p
+          className={`text-base sm:text-lg font-semibold truncate ${
+            player.active ? '' : 'line-through decoration-1'
+          }`}
+        >
+          {player.player_name}
+        </p>
         {player.player_gender && (
           <p className="text-xs text-muted-foreground capitalize">{player.player_gender}</p>
         )}
@@ -99,6 +140,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
   const { toast } = useToast();
   
   const [players, setPlayers] = useState<EventPlayer[]>([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState("");
   const [newPlayerGender, setNewPlayerGender] = useState<string>("male");
   const [loading, setLoading] = useState(true);
@@ -152,6 +194,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
         id,
         player_id,
         strength_order,
+        active,
         players (name, gender)
       `)
       .eq("event_id", event.id)
@@ -170,6 +213,10 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
         strength_order: ep.strength_order,
         player_name: ep.players?.name || "Unknown",
         player_gender: ep.players?.gender,
+        // Older rows predate check-in and are null; a registered player with
+        // no explicit answer is treated as here, which is what the column's
+        // own default says.
+        active: ep.active !== false,
       }));
       setPlayers(formattedPlayers);
     }
@@ -267,6 +314,63 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
     fetchPlayers();
   };
 
+  /**
+   * Check someone in or out.
+   *
+   * Optimistic: the tap lands while a player is standing there saying hello,
+   * so the button must change colour now and reconcile after. On failure it
+   * goes back and says so — silently keeping a wrong state would put a no-show
+   * into a match.
+   */
+  const handleToggleActive = async (rowId: string, next: boolean) => {
+    setPlayers((prev) => prev.map((p) => (p.id === rowId ? { ...p, active: next } : p)));
+
+    const { error } = await supabase
+      .from("event_players")
+      .update({ active: next })
+      .eq("id", rowId);
+
+    if (error) {
+      setPlayers((prev) => prev.map((p) => (p.id === rowId ? { ...p, active: !next } : p)));
+      toast({
+        variant: "destructive",
+        title: "Could not save check-in",
+        description: error.message,
+      });
+    }
+  };
+
+  /**
+   * Check everyone in, or everyone out.
+   *
+   * One statement rather than a loop of updates: seventeen sequential requests
+   * from a phone on club wifi is a visibly slow button, and a half-finished
+   * loop leaves the roster in a state nobody chose.
+   */
+  const handleSetAllActive = async (next: boolean) => {
+    setBulkBusy(true);
+    const before = players;
+    setPlayers((prev) => prev.map((p) => ({ ...p, active: next })));
+
+    const { error } = await supabase
+      .from("event_players")
+      .update({ active: next })
+      .eq("event_id", event.id);
+
+    if (error) {
+      setPlayers(before);
+      toast({
+        variant: "destructive",
+        title: "Could not update check-in",
+        description: error.message,
+      });
+    }
+    setBulkBusy(false);
+  };
+
+  /** Everyone here to play — the only people a round may be built from. */
+  const presentPlayers = players.filter((p) => p.active);
+
   const handleGenerateRound1 = async () => {
     if (!matchFormat) {
       toast({
@@ -278,11 +382,16 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
     }
 
     const minPlayers = matchFormat === 'singles' ? 2 : 4;
-    if (players.length < minPlayers) {
+    // Counted on who is HERE, not who registered. Nineteen signed up and
+    // fourteen turned up is the normal case for a social.
+    if (presentPlayers.length < minPlayers) {
       toast({
         variant: "destructive",
-        title: "Not enough players",
-        description: `Need at least ${minPlayers} players for ${matchFormat}.`,
+        title: "Not enough players checked in",
+        description:
+          players.length >= minPlayers
+            ? `${presentPlayers.length} of ${players.length} are checked in. Need ${minPlayers} for ${matchFormat}.`
+            : `Need at least ${minPlayers} players for ${matchFormat}.`,
       });
       return;
     }
@@ -301,6 +410,9 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
         players(name, gender)
       `)
       .eq("event_id", event.id)
+      // The whole point of check-in. Without this a no-show is put into a
+      // match and three other people stand on a court waiting for them.
+      .eq("active", true)
       .order("strength_order");
 
     if (playersError || !eventPlayers) {
@@ -437,7 +549,10 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
   };
 
   const minPlayersRequired = matchFormat === 'singles' ? 2 : 4;
-  const canGenerateRound = hasFormat && players.length >= minPlayersRequired && !hasRounds;
+  // Gated on who is HERE. A round cannot be built from people who have not
+  // turned up, so the button must not offer to.
+  const canGenerateRound =
+    hasFormat && presentPlayers.length >= minPlayersRequired && !hasRounds;
 
   if (showFormatSelector) {
     return (
@@ -486,6 +601,49 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
           Import from PlayerVault
         </Button>
 
+        {/*
+          Start from either end, in one tap.
+          
+          Two clubs run this two opposite ways. Most socials have most people
+          turn up, so everyone starts checked in and you tap the no-shows out.
+          But a director who wants a real arrival desk wants the opposite:
+          everyone out, check them in at the gate. Defaulting to one and making
+          the other twenty taps would be picking a side, so this picks neither.
+        */}
+        {!loading && players.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border bg-muted/40 px-3 py-2">
+            <p className="text-sm font-semibold">
+              <span className="text-emerald-600">{presentPlayers.length} here</span>
+              {presentPlayers.length < players.length && (
+                <span className="text-muted-foreground">
+                  {' '}
+                  · {players.length - presentPlayers.length} out
+                </span>
+              )}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={bulkBusy || presentPlayers.length === players.length}
+                onClick={() => handleSetAllActive(true)}
+              >
+                Mark all here
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={bulkBusy || presentPlayers.length === 0}
+                onClick={() => handleSetAllActive(false)}
+              >
+                Mark all out
+              </Button>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div className="space-y-2">
             {[1, 2, 3].map((i) => (
@@ -508,6 +666,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
                     <div className="flex-1">
                       <SortablePlayer 
                         player={player} 
+                        onToggle={handleToggleActive}
                         onRemove={handleRemovePlayer}
                         onEdit={setEditingPlayer}
                       />
@@ -539,16 +698,33 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
 
         {/* Generate Round 1 Button - Big and prominent! */}
         {canGenerateRound && (
-          <Button 
-            type="button"
-            onClick={handleGenerateRound1}
-            disabled={generating}
-            size="lg" 
-            className="w-full h-16 text-xl bg-green-600 hover:bg-green-700"
-          >
-            <Play className="h-6 w-6 mr-3" />
-            {generating ? "Generating..." : "Generate Round 1"}
-          </Button>
+          <>
+            {/*
+              Says WHO the round will be built from, before it is built.
+              
+              The count on the button is the whole reassurance: a director about
+              to press this needs to know it is fourteen of nineteen and not all
+              nineteen, without counting green badges up the screen.
+            */}
+            <Button 
+              type="button"
+              onClick={handleGenerateRound1}
+              disabled={generating || presentPlayers.length === 0}
+              size="lg" 
+              className="w-full h-16 text-xl bg-green-600 hover:bg-green-700"
+            >
+              <Play className="h-6 w-6 mr-3" />
+              {generating
+                ? "Generating..."
+                : `Generate Round 1 — ${presentPlayers.length} checked in`}
+            </Button>
+            {presentPlayers.length < players.length && (
+              <p className="text-center text-sm text-muted-foreground">
+                {players.length - presentPlayers.length} marked out and will be left out of the
+                round. Tap their <span className="font-semibold">Out</span> badge to add them back.
+              </p>
+            )}
+          </>
         )}
 
         {/* Already has rounds */}
