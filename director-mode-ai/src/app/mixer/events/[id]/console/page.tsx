@@ -19,6 +19,7 @@ import Link from 'next/link';
 import { ArrowLeft, Loader2, Megaphone, RefreshCw, Tv, Volume2, VolumeX } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { formatTimeDisplay, resolveCourtList } from '@/lib/quads';
+import { displayTheme, themeVars } from '@/lib/events/displayTheme';
 
 type Event = {
   id: string;
@@ -26,6 +27,10 @@ type Event = {
   match_format: string;
   num_courts: number;
   court_names: string[] | null;
+  /** Named palette for the TV — see lib/events/displayTheme. */
+  display_theme: string | null;
+  /** The club's own choice of mark for this event, if it set one. */
+  logo_url: string | null;
 };
 
 type Entry = {
@@ -155,7 +160,7 @@ export default function LiveConsolePage() {
     const supabase = createClient();
     const { data: ev } = await supabase
       .from('events')
-      .select('id, name, match_format, num_courts, court_names')
+      .select('id, name, match_format, num_courts, court_names, display_theme, logo_url')
       .eq('id', id)
       .maybeSingle();
     setEvent(ev as Event);
@@ -310,6 +315,9 @@ export default function LiveConsolePage() {
     queueSpeak([`Players, listen up. ${lines.length} courts ready.`, ...lines]);
   };
 
+  // Resolved from the EVENT, so one social's look never leaks into another's.
+  const theme = displayTheme(event?.display_theme);
+
   const announceCourt = (court: string, match: Match | undefined) => {
     if (!speechSupported || !match) return;
     const a = spokenTeam(entryFor(match.player1_id));
@@ -318,7 +326,14 @@ export default function LiveConsolePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#001820] text-white p-4 sm:p-6 lg:p-8">
+    <div
+      className="min-h-screen p-4 sm:p-6 lg:p-8"
+      style={{
+        ...themeVars(theme),
+        background: 'var(--ev-ground)',
+        color: 'var(--ev-text)',
+      }}
+    >
       <header className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <Link
@@ -327,11 +342,26 @@ export default function LiveConsolePage() {
           >
             <ArrowLeft size={20} />
           </Link>
+          {/* The club's own mark, where the club set one. Never ours, and
+              never a third party's baked into this file. */}
+          {event.logo_url && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={event.logo_url} alt="" className="h-12 w-auto object-contain sm:h-16" />
+          )}
           <div>
-            <div className="text-xs text-white/40 uppercase tracking-wide flex items-center gap-1">
-              <Tv size={12} /> Live Console
+            <div
+              className="text-xs uppercase tracking-[0.18em] font-semibold flex items-center gap-1.5"
+              style={{ color: 'var(--ev-accent)' }}
+            >
+              {theme.kicker ? (
+                <>{theme.kicker}</>
+              ) : (
+                <>
+                  <Tv size={12} /> Live Console
+                </>
+              )}
             </div>
-            <h1 className="text-2xl font-bold">{event.name}</h1>
+            <h1 className="text-3xl font-bold sm:text-4xl">{event.name}</h1>
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -425,14 +455,27 @@ export default function LiveConsolePage() {
         {courtState.map(({ court, current, next }) => (
           <div
             key={court}
-            className={`rounded-2xl p-5 border-2 ${
+            className="rounded-2xl p-5 border-2"
+            style={
               current
-                ? 'bg-emerald-500/10 border-emerald-400/50'
-                : 'bg-white/5 border-white/10'
-            }`}
+                ? {
+                    // The live court has to be the thing you spot from the far
+                    // side of the room, so it gets the theme's own live colour
+                    // rather than a generic green.
+                    background: 'color-mix(in srgb, var(--ev-live) 14%, transparent)',
+                    borderColor: 'var(--ev-live)',
+                  }
+                : { background: 'var(--ev-panel)', borderColor: 'var(--ev-line)' }
+            }
           >
             <div className="flex items-center justify-between mb-3 gap-2">
-              <div className="text-3xl font-bold">{court}</div>
+              {/* Bigger than it was: this is read at ten feet, not arm's length. */}
+              <div
+                className="text-4xl font-black leading-none"
+                style={{ color: current ? 'var(--ev-live)' : 'var(--ev-accent)' }}
+              >
+                {court}
+              </div>
               <div className="flex items-center gap-2">
                 {speechSupported && (current || next) && (
                   <button
@@ -445,9 +488,15 @@ export default function LiveConsolePage() {
                   </button>
                 )}
                 <div
-                  className={`text-xs uppercase tracking-widest font-bold px-2 py-0.5 rounded-full ${
-                    current ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-white/50'
-                  }`}
+                  className="text-xs uppercase tracking-widest font-bold px-2 py-0.5 rounded-full"
+                  style={
+                    current
+                      ? {
+                          background: 'color-mix(in srgb, var(--ev-live) 22%, transparent)',
+                          color: 'var(--ev-live)',
+                        }
+                      : { background: 'var(--ev-panel)', color: 'var(--ev-muted)' }
+                  }
                 >
                   {current ? '● Live' : 'Open'}
                 </div>
