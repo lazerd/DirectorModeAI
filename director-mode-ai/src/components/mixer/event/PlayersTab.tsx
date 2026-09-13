@@ -549,10 +549,19 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
   };
 
   const minPlayersRequired = matchFormat === 'singles' ? 2 : 4;
-  // Gated on who is HERE. A round cannot be built from people who have not
-  // turned up, so the button must not offer to.
-  const canGenerateRound =
-    hasFormat && presentPlayers.length >= minPlayersRequired && !hasRounds;
+  /*
+   * Whether to SHOW the button, and separately whether it can be pressed.
+   *
+   * These were one condition, which was a bad bug: marking players out took
+   * the count below the minimum and the button silently VANISHED. From the
+   * director's side the feature had broken — he had checked one person in,
+   * Generate Round 1 was gone, and nothing on screen said why.
+   *
+   * A control that cannot act right now must stay visible and say what is
+   * missing. Only an event that already has rounds hides it.
+   */
+  const showGenerateRound = hasFormat && !hasRounds;
+  const enoughCheckedIn = presentPlayers.length >= minPlayersRequired;
 
   if (showFormatSelector) {
     return (
@@ -697,7 +706,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
         )}
 
         {/* Generate Round 1 Button - Big and prominent! */}
-        {canGenerateRound && (
+        {showGenerateRound && (
           <>
             {/*
               Says WHO the round will be built from, before it is built.
@@ -709,21 +718,32 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
             <Button 
               type="button"
               onClick={handleGenerateRound1}
-              disabled={generating || presentPlayers.length === 0}
+              disabled={generating || !enoughCheckedIn}
               size="lg" 
               className="w-full h-16 text-xl bg-green-600 hover:bg-green-700"
             >
               <Play className="h-6 w-6 mr-3" />
               {generating
                 ? "Generating..."
-                : `Generate Round 1 — ${presentPlayers.length} checked in`}
+                : enoughCheckedIn
+                  ? `Generate Round 1 — ${presentPlayers.length} checked in`
+                  : `Check in ${minPlayersRequired - presentPlayers.length} more to start`}
             </Button>
-            {presentPlayers.length < players.length && (
+            {!enoughCheckedIn ? (
+              // Says what is missing, on the screen, rather than removing the
+              // control and leaving the director to guess.
+              <p className="text-center text-sm text-muted-foreground">
+                {presentPlayers.length} of {players.length} checked in.{' '}
+                {matchFormat === 'singles' ? 'Singles' : 'Doubles'} needs at least{' '}
+                {minPlayersRequired}. Tap <span className="font-semibold">Out</span> to check
+                someone in, or <span className="font-semibold">Mark all here</span> above.
+              </p>
+            ) : presentPlayers.length < players.length ? (
               <p className="text-center text-sm text-muted-foreground">
                 {players.length - presentPlayers.length} marked out and will be left out of the
                 round. Tap their <span className="font-semibold">Out</span> badge to add them back.
               </p>
-            )}
+            ) : null}
           </>
         )}
 
