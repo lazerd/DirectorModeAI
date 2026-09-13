@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, GripVertical, X, Pencil, Play, Database } from "lucide-react";
+import { Plus, GripVertical, X, Pencil, Play, Database, Check } from "lucide-react";
 import VaultPicker from "@/components/shared/VaultPicker";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
@@ -76,24 +76,32 @@ function SortablePlayer({ player, onToggle, onRemove, onEdit }: SortablePlayerPr
       </button>
 
       {/*
-        Check-in, as ONE tap on a big target.
+        Check-in, as a CHECKBOX.
         
-        This is used standing on a court with a phone in one hand while people
-        say hello, so it is a single toggle sized for a thumb — not a menu, not
-        a checkbox, and not a confirm dialog.
+        It was a badge reading HERE or OUT, which was ambiguous in the worst
+        way: a word describing the current state, on the control that changes
+        it. A director read HERE as "tap this to check them in" and tapped it
+        on everyone who had arrived — marking all of them absent. He got down
+        to one checked-in player before working out it was inverted.
+        
+        A checkbox cannot be misread. Ticked means here; tapping a ticked box
+        unticks it, which everybody already knows. Sized for a thumb, because
+        this is used standing on court with people saying hello.
       */}
       <button
         type="button"
+        role="checkbox"
+        aria-checked={player.active}
+        aria-label={`${player.player_name} is here`}
         onClick={() => onToggle(player.id, !player.active)}
-        aria-pressed={player.active}
         title={player.active ? 'Here — tap to mark absent' : 'Absent — tap to check in'}
-        className={`flex-shrink-0 rounded-xl px-3 py-2 text-xs font-bold uppercase tracking-wide sm:px-4 sm:text-sm ${
+        className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border-2 transition-colors ${
           player.active
-            ? 'bg-emerald-500 text-white hover:bg-emerald-600'
-            : 'bg-muted text-muted-foreground hover:bg-muted/70'
+            ? 'border-emerald-500 bg-emerald-500 text-white hover:bg-emerald-600'
+            : 'border-muted-foreground/30 bg-transparent text-transparent hover:border-muted-foreground/60'
         }`}
       >
-        {player.active ? 'Here' : 'Out'}
+        <Check className="h-6 w-6" strokeWidth={3} />
       </button>
 
       <div className="flex-1 min-w-0">
@@ -735,13 +743,13 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
               <p className="text-center text-sm text-muted-foreground">
                 {presentPlayers.length} of {players.length} checked in.{' '}
                 {matchFormat === 'singles' ? 'Singles' : 'Doubles'} needs at least{' '}
-                {minPlayersRequired}. Tap <span className="font-semibold">Out</span> to check
-                someone in, or <span className="font-semibold">Mark all here</span> above.
+                {minPlayersRequired}. Tick someone&apos;s box to check them in, or{' '}
+                <span className="font-semibold">Mark all here</span> above.
               </p>
             ) : presentPlayers.length < players.length ? (
               <p className="text-center text-sm text-muted-foreground">
-                {players.length - presentPlayers.length} marked out and will be left out of the
-                round. Tap their <span className="font-semibold">Out</span> badge to add them back.
+                {players.length - presentPlayers.length} unticked and will be left out of the
+                round. Tick their box to add them back.
               </p>
             ) : null}
           </>
