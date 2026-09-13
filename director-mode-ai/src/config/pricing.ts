@@ -52,6 +52,39 @@ export const TEXT_OVERAGE_CENTS = 2;
 /** Notice period before an overage rate changes. */
 export const RATE_CHANGE_NOTICE_DAYS = 30;
 
+/* --------------------------- Custom club site -------------------------- */
+/**
+ * SITE SERVICE — Pro, plus a club website we build and keep updated.
+ *
+ * A SERVICE tier, and the only one. Pro is software: the club does its own
+ * edits and the marginal cost of another customer is nothing. This tier
+ * includes human work, so it is priced against a floor rather than against
+ * effort — a Claude Code subscription plus California's $800 minimum franchise
+ * tax is roughly $3,200 a year of fixed cost before anyone is paid. At $25 that
+ * takes eleven clubs to clear; at $75 it takes four. That is the whole reason
+ * for the number, and it is why it must not be discounted for being easy to
+ * deliver: near-zero cost of delivery is the margin, not a discount owed.
+ *
+ * What the club is actually buying is a site that costs $2,000-5,000 built
+ * anywhere else, plus never thinking about skip dates again.
+ *
+ * DELIBERATELY NOT SELF-SERVE. There is no LemonSqueezy variant and there must
+ * not be a buy button: the tier contains a commitment of someone's time, so it
+ * is agreed in a conversation. See the note at the top of this file — a price
+ * here with no product behind it is how the page and the invoice disagree.
+ *
+ * The cap is real and is not advertised. Four batches a year at ten clubs is
+ * forty sittings, which is fine; at forty clubs it is a job. By then the
+ * in-app assistant should be doing the edits and this becomes a legacy line.
+ */
+export const SITE_SERVICE_PRICE_USD = 75;
+/** What it lists at once founding pricing ends. */
+export const SITE_SERVICE_LIST_USD = 99;
+/** Months of commitment, in place of a setup fee for the initial build. */
+export const SITE_SERVICE_MIN_MONTHS = 12;
+/** Not published. The point at which this stops being offered to new clubs. */
+export const SITE_SERVICE_CLUB_LIMIT = 10;
+
 /**
  * There is no annual plan. It was removed when Pro moved to $49 — the discount
  * was doing nothing except complicating the page and creating a second SKU to

@@ -6,10 +6,12 @@ import {
   ArrowRight,
   MessageSquare,
   Check,
+  Globe,
 } from 'lucide-react';
 import {
   PRO_PRICE_USD, FOUNDING_PRICE_USD, FOUNDING_LOCK_MONTHS, RATE_CHANGE_NOTICE_DAYS,
   CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD, CAPTAIN_MAX_TEAMS,
+  SITE_SERVICE_PRICE_USD, SITE_SERVICE_LIST_USD, SITE_SERVICE_MIN_MONTHS,
 } from '@/config/pricing';
 import { PRODUCT_COUNT } from '@/config/nav';
 
@@ -109,6 +111,83 @@ export default function PricingPage() {
             Carrier registration is in progress; email, events, CourtSheet and AI work today.
             Email is included — it never meters.
           </p>
+        </div>
+      </section>
+
+      {/* Custom club site — the one SERVICE tier.
+          
+          No buy button, on purpose. Everything else on this page is software
+          that costs nothing to hand to one more club; this includes someone's
+          time, so it is agreed in a conversation. There is no LemonSqueezy
+          variant behind it, and a price with no product behind it is exactly
+          how the page and the invoice end up disagreeing.
+          
+          The two prices are shown separately rather than as one $75, so a club
+          can see the founding discount they would lose — and so the add-on
+          reads as cancellable. A club that realises it can click its own skip
+          dates should drop to Pro and stay, not leave. */}
+      <section className="max-w-4xl mx-auto px-6 pt-8">
+        <div className="rounded-2xl border border-yellow-300/25 bg-yellow-300/[0.04] p-7">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2 text-yellow-300">
+                <Globe size={18} />
+                <h2 className="font-display text-xl">Your own club website, kept up to date</h2>
+              </div>
+              <p className="mt-2 text-white/60 text-sm max-w-xl">
+                We build your club its own public site — your colours, your logo, your programs,
+                your court pricing — and keep it current. You can still change anything yourself,
+                any day. Most clubs stop asking us by the second season.
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="font-display text-3xl whitespace-nowrap">
+                ${SITE_SERVICE_PRICE_USD}
+                <span className="text-sm font-normal text-white/40"> / month</span>
+              </p>
+              <p className="mt-0.5 text-xs text-white/35">list ${SITE_SERVICE_LIST_USD}</p>
+            </div>
+          </div>
+
+          {/* The split, so the discount is visible rather than absorbed. */}
+          <div className="mt-5 rounded-xl border border-white/10 bg-[#001820] p-4 text-sm">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-white/70">ClubMode Pro</span>
+              <span className="text-white/70">
+                ${FOUNDING_PRICE_USD}/mo{' '}
+                <span className="text-white/35">founding — list ${PRO_PRICE_USD}</span>
+              </span>
+            </div>
+            <div className="mt-1.5 flex items-baseline justify-between gap-3">
+              <span className="text-white/70">Custom site + updates</span>
+              <span className="text-white/70">
+                ${SITE_SERVICE_PRICE_USD - FOUNDING_PRICE_USD}/mo
+              </span>
+            </div>
+            <div className="mt-2.5 flex items-baseline justify-between gap-3 border-t border-white/10 pt-2.5 font-semibold">
+              <span>Together</span>
+              <span>${SITE_SERVICE_PRICE_USD}/mo</span>
+            </div>
+          </div>
+
+          <ul className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-6">
+            <Bullet gold>Everything in ClubMode Pro</Bullet>
+            <Bullet gold>Your branding on every page members see</Bullet>
+            <Bullet gold>We set up your classes, prices and skip dates</Bullet>
+            <Bullet gold>Send changes any time — we batch them weekly</Bullet>
+            <Bullet gold>Online class registration and court booking</Bullet>
+            <Bullet gold>No setup fee &middot; {SITE_SERVICE_MIN_MONTHS}-month minimum</Bullet>
+          </ul>
+
+          <p className="mt-5 text-white/45 text-xs">
+            Sold by conversation, not by card — it includes our time, so we talk first.
+          </p>
+          <Link
+            href="mailto:hello@clubmode.ai?subject=Custom%20club%20website"
+            className="mt-2 inline-flex items-center gap-2 rounded-xl border border-yellow-300/40 px-5 py-2.5 text-sm font-semibold text-yellow-300 hover:bg-yellow-300/10"
+          >
+            Talk to us about a site <ArrowRight size={15} />
+          </Link>
         </div>
       </section>
 
