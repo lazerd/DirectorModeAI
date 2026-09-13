@@ -2,19 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import QRCode from "qrcode";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { QrCode, Copy, Download, ExternalLink, Share2 } from "lucide-react";
+import { QrCode, Copy, Download, ExternalLink, Share2, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { shareMixerEvent } from "@/lib/share";
 
 interface EventCodeQRProps {
+  /** Needed for the poster, which is built server-side from the event record. */
+  eventId: string;
   eventCode: string;
   eventName: string;
 }
 
-const EventCodeQR = ({ eventCode, eventName }: EventCodeQRProps) => {
+const EventCodeQR = ({ eventId, eventCode, eventName }: EventCodeQRProps) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
   const [publicUrl, setPublicUrl] = useState("");
+  const [posterBusy, setPosterBusy] = useState(false);
 
   useEffect(() => {
     // Use the current origin so this works in dev, staging, and prod — the
@@ -56,6 +59,45 @@ const EventCodeQR = ({ eventCode, eventName }: EventCodeQRProps) => {
       title: "Link copied!",
       description: "Public event link copied to clipboard",
     });
+  };
+
+  /**
+   * The printable poster.
+   *
+   * Built on the server rather than in the browser: it is a real PDF at US
+   * Letter with the event's theme, its date in CLUB time and the club's own
+   * mark, none of which this component knows. A canvas-to-PNG "poster" would
+   * print at screen resolution and blur.
+   */
+  const handleDownloadPoster = async () => {
+    setPosterBusy(true);
+    try {
+      const res = await fetch(`/api/events/${eventId}/poster`);
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error || "Could not build the poster.");
+      }
+      const blob = await res.blob();
+      const href = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = `${eventName.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-poster.pdf`;
+      link.href = href;
+      link.click();
+      // Revoked on the next tick — Safari cancels the download if it goes now.
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
+      toast({
+        title: "Poster downloaded",
+        description: "Letter size, ready to print and pin up.",
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Poster failed",
+        description: err instanceof Error ? err.message : "Something went wrong.",
+      });
+    } finally {
+      setPosterBusy(false);
+    }
   };
 
   const handleDownloadQR = () => {
@@ -131,10 +173,19 @@ const EventCodeQR = ({ eventCode, eventName }: EventCodeQRProps) => {
             <div className="bg-white p-4 rounded-lg border-2 border-border">
               <canvas ref={canvasRef} />
             </div>
+            {/*
+              Poster first, because that is what gets pinned up. The bare PNG
+              stays because it is the thing you paste into a newsletter or a
+              group text, where a PDF is useless.
+            */}
+            <Button onClick={handleDownloadPoster} disabled={posterBusy} className="w-full">
+              <Printer className="h-4 w-4 mr-2" />
+              {posterBusy ? "Building poster…" : "Download printable poster"}
+            </Button>
             <div className="flex gap-2 w-full">
               <Button variant="outline" onClick={handleDownloadQR} className="flex-1">
                 <Download className="h-4 w-4 mr-2" />
-                Download QR
+                QR image only
               </Button>
               <Button variant="outline" onClick={handleOpenPublicView} className="flex-1">
                 <ExternalLink className="h-4 w-4 mr-2" />

@@ -340,7 +340,7 @@ export default function EventDashboard() {
           </TabsList>
 
           <TabsContent value="share" className="space-y-4">
-            <EventCodeQR eventCode={event.event_code} eventName={event.name} />
+            <EventCodeQR eventId={event.id} eventCode={event.event_code} eventName={event.name} />
           </TabsContent>
 
           {isTeamBattle ? (
