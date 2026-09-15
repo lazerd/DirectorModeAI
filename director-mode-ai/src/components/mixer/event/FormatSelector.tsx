@@ -73,13 +73,6 @@ const FormatSelector = ({ eventId, playerCount, courtCount, onFormatSelected, on
         icon: "🔄",
       },
       {
-        id: "wild-card",
-        name: "Wild Card: rotating partners",
-        description: "New partner and new opponents every round, drawn for you. Sit-outs rotate. Most games wins.",
-        playersPerCourt: 4,
-        icon: "🃏",
-      },
-      {
         id: "maximize-courts",
         name: "Maximize Courts",
         description: "Fills all courts optimally with mixed singles/doubles. Handles odd numbers with BY system.",

@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { Trophy, TrendingUp, TrendingDown } from "lucide-react";
-import { computeWildCardStandings } from "@/lib/wildCard";
 
 interface Standing {
   player_id: string;
@@ -20,8 +19,6 @@ interface Standing {
 
 interface StandingsTabProps {
   eventId: string;
-  /** 'wild-card' ranks individuals by games won (partners rotate). */
-  matchFormat?: string | null;
 }
 
 interface TeamInfo {
@@ -30,8 +27,7 @@ interface TeamInfo {
   color: string;
 }
 
-const StandingsTab = ({ eventId, matchFormat }: StandingsTabProps) => {
-  const isWildCard = matchFormat === 'wild-card';
+const StandingsTab = ({ eventId }: StandingsTabProps) => {
   const { toast } = useToast();
   const [standings, setStandings] = useState<Standing[]>([]);
   const [teams, setTeams] = useState<TeamInfo[]>([]);
@@ -148,30 +144,6 @@ const StandingsTab = ({ eventId, matchFormat }: StandingsTabProps) => {
     setTeams((teamData as TeamInfo[]) || []);
     setTeamScores(scores);
     setTeamGames(games);
-
-    if (!error && isWildCard) {
-      // Partners rotate, so a Wild Card crowns a person: most games won, then
-      // rounds won. Computed from the match rows, same as the printed sheet.
-      const table = computeWildCardStandings(
-        (data || []).map((ep: any) => ({ id: ep.player_id, name: ep.players?.name || 'Player' })),
-        (matchData as any[]) || [],
-      );
-      setStandings(
-        table.map((row) => ({
-          player_id: row.id,
-          player_name: row.name,
-          wins: row.wins,
-          losses: row.losses,
-          games_won: row.gamesWon,
-          games_lost: row.gamesLost,
-          games_differential: row.gamesWon - row.gamesLost,
-          win_percentage: row.played > 0 ? (row.wins / row.played) * 100 : 0,
-          display_rank: row.rank,
-        })),
-      );
-      setLoading(false);
-      return;
-    }
 
     if (error) {
       toast({
@@ -343,11 +315,7 @@ const StandingsTab = ({ eventId, matchFormat }: StandingsTabProps) => {
           <Trophy className="h-5 w-5 text-primary" />
           {isTeamBattle ? 'Individual Standings' : 'Final Standings'}
         </CardTitle>
-        <CardDescription style={{ color: '#374151' }}>
-          {isWildCard
-            ? 'Partners rotate, so players are ranked on their own: most games won, then most rounds won.'
-            : 'Complete rankings for all players'}
-        </CardDescription>
+        <CardDescription style={{ color: '#374151' }}>Complete rankings for all players</CardDescription>
       </CardHeader>
       <CardContent>
         {standings.length === 0 ? (
@@ -399,15 +367,9 @@ const StandingsTab = ({ eventId, matchFormat }: StandingsTabProps) => {
 
                   {/* Stats */}
                   <div className="flex-shrink-0 text-right">
-                    {isWildCard ? (
-                      <p className="font-bold text-lg sm:text-xl" style={{ color: '#2563eb' }}>
-                        {standing.games_won} games
-                      </p>
-                    ) : (
                     <p className="font-bold text-lg sm:text-xl" style={{ color: '#2563eb' }}>
                       {standing.win_percentage.toFixed(0)}%
                     </p>
-                    )}
                     <p className="text-xs sm:text-sm" style={{ color: '#4b5563' }}>
                       {standing.games_won}-{standing.games_lost} games
                     </p>

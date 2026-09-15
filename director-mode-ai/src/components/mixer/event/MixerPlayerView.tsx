@@ -1,38 +1,46 @@
 'use client';
 
 /**
- * WildCardPlayerView — what a player sees on their phone at a Wild Card.
+ * MixerPlayerView — what a player sees on their phone at a rotating-partner
+ * mixer (doubles, mixed doubles, maximize-courts).
  *
- * Pick your name once and the page answers the only question anyone at the
- * net has: "Round 2: Court 4, you + Carol vs Bill + Ann." Everything is 18px
- * or larger; the audience is reading this on a phone, outdoors, without their
- * glasses. All courts and the standings sit below for anyone who wants them.
+ * Pick your name once (or open a ?me=<player id> link) and the page answers
+ * the only question anyone at the net has: "Round 2: Court 4, you + Carol vs
+ * Bill + Ann." Everything is 18px or larger — people read this on a phone,
+ * outdoors, often without their glasses. All courts and the standings sit
+ * below for anyone who wants them.
  *
- * Data comes from /api/wildcard/[eventCode] (service-role read — `matches`
+ * Data comes from /api/event-board/[eventCode] (service-role read — `matches`
  * isn't readable anonymously) and refreshes every 20 seconds.
  */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
 import { Loader2, Printer, RefreshCw } from 'lucide-react';
-import type { WildCardBoard, BoardPerson } from '@/lib/wildCardBoard';
-import { WILD_CARD_LABEL } from '@/lib/wildCard';
+import type { EventBoard, BoardPerson } from '@/lib/eventBoard';
 import { formatTimeDisplay } from '@/lib/quads';
+import PublicRoundTimer from '@/components/mixer/event/PublicRoundTimer';
 
 const REFRESH_MS = 20_000;
 
-export default function WildCardPlayerView({ eventCode }: { eventCode: string }) {
-  const [board, setBoard] = useState<WildCardBoard | null>(null);
+const FORMAT_LABELS: Record<string, string> = {
+  doubles: 'Doubles mixer',
+  'mixed-doubles': 'Mixed doubles mixer',
+  'maximize-courts': 'Mixer',
+};
+
+export default function MixerPlayerView({ eventCode }: { eventCode: string }) {
+  const [board, setBoard] = useState<EventBoard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [me, setMe] = useState<string>('');
   const [view, setView] = useState<'mine' | 'all' | 'standings'>('mine');
-  const storageKey = `wc:me:${eventCode.toUpperCase()}`;
+  const storageKey = `mixer:me:${eventCode.toUpperCase()}`;
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/wildcard/${encodeURIComponent(eventCode)}`, { cache: 'no-store' });
+      const res = await fetch(`/api/event-board/${encodeURIComponent(eventCode)}`, { cache: 'no-store' });
       if (!res.ok) {
-        setError("We couldn't load this Wild Card. Check the code with your organizer.");
+        setError("We couldn't load this event. Check the code with your organizer.");
         return;
       }
       setBoard(await res.json());
@@ -128,7 +136,7 @@ export default function WildCardPlayerView({ eventCode }: { eventCode: string })
     <div className="min-h-screen bg-white text-gray-900 text-lg">
       <header className="border-b-2 border-gray-900 bg-white">
         <div className="mx-auto max-w-2xl px-4 py-5">
-          <p className="text-base font-semibold uppercase tracking-wide text-gray-600">{WILD_CARD_LABEL}</p>
+          <p className="text-base font-semibold uppercase tracking-wide text-gray-600">{FORMAT_LABELS[event.match_format] ?? 'Mixer'}</p>
           <h1 className="text-3xl font-black leading-tight">{event.name}</h1>
           <p className="mt-1 text-lg text-gray-700">
             {event.event_date ? format(new Date(event.event_date + 'T00:00:00'), 'EEEE, MMMM d') : ''}
@@ -139,6 +147,18 @@ export default function WildCardPlayerView({ eventCode }: { eventCode: string })
       </header>
 
       <main className="mx-auto max-w-2xl space-y-6 px-4 py-6">
+        {(() => {
+          // Timed rounds: the same countdown the old public page showed.
+          const live = board.rounds.find((r) => r.status === 'in_progress' && r.start_time);
+          return live && event.scoring_format === 'timed' && event.round_length_minutes ? (
+            <PublicRoundTimer
+              startTime={live.start_time!}
+              pausedAt={live.timer_paused_at}
+              durationMinutes={event.round_length_minutes}
+              roundNumber={live.round_number}
+            />
+          ) : null;
+        })()}
         <div>
           <label htmlFor="wc-me" className="mb-2 block text-xl font-bold">
             Find your name
@@ -217,6 +237,7 @@ export default function WildCardPlayerView({ eventCode }: { eventCode: string })
                       <>
                         <p className="mt-2 text-2xl leading-snug">
                           <span className="font-bold">You{partner.length ? ` + ${joinNames(partner)}` : ''}</span>
+                          {!partner.length && opponents.length === 1 && <span className="text-gray-600"> (singles)</span>}
                           <span className="text-gray-600"> vs </span>
                           <span className="font-bold">{joinNames(opponents)}</span>
                         </p>
@@ -281,7 +302,7 @@ export default function WildCardPlayerView({ eventCode }: { eventCode: string })
             <p className="rounded-xl bg-gray-100 p-5 text-xl">No scores yet. Standings appear once the first round is scored.</p>
           ) : (
             <div className="space-y-2">
-              <p className="text-lg text-gray-700">Most games won, then most rounds won.</p>
+              <p className="text-lg text-gray-700">Ranked on your own: win percentage, then game difference.</p>
               {board.standings.map((s) => (
                 <div
                   key={s.id}
@@ -290,9 +311,9 @@ export default function WildCardPlayerView({ eventCode }: { eventCode: string })
                   <span className="w-14 text-center text-xl font-black">{s.rank}</span>
                   <span className="flex-1 text-xl font-bold">{s.name}</span>
                   <span className="text-right text-lg">
-                    <span className="font-black">{s.gamesWon}</span> games
+                    <span className="font-black">{s.wins}–{s.losses}</span>
                     <br />
-                    <span className="text-gray-600">{s.wins} won · {s.played} played</span>
+                    <span className="text-gray-600">{s.gamesWon}–{s.gamesLost} games</span>
                   </span>
                 </div>
               ))}

@@ -15,7 +15,6 @@ const FORMAT_LABELS: Record<string, string> = {
   'round-robin': 'Team Round Robin',
   'maximize-courts': 'Maximize Courts Mixer',
   'team-battle': 'Team Battle',
-  'wild-card': 'Wild Card: rotating partners',
 };
 
 const VALID = new Set(Object.keys(FORMAT_LABELS));
@@ -86,7 +85,9 @@ export default async function PublicEventLandingPage({
   const spotsLeft = spotsTotal !== null ? Math.max(0, spotsTotal - (confirmedCount ?? 0)) : null;
 
   // Separate spots for men and women, when the director set them.
-  const genderCapped = e.max_men != null || e.max_women != null;
+  // Separate men's/women's spots are a mixed doubles option; with them, players
+  // sign up individually (partners rotate), so the partner field goes away.
+  const genderCapped = e.match_format === 'mixed-doubles' && (e.max_men != null || e.max_women != null);
   const genderSpots = genderCapped
     ? await Promise.all(
         ([
@@ -201,10 +202,10 @@ export default async function PublicEventLandingPage({
               feeCents={e.entry_fee_cents ?? 0}
               ageMax={e.age_max}
               genderRestriction={e.gender_restriction}
-              isDoubles={isDoubles}
+              isDoubles={isDoubles && !genderCapped}
               isMixedDoubles={isMixedDoubles}
               isTeamBattle={isTeamBattle}
-              genderRequired={genderCapped || (e.match_format === 'wild-card' && e.wild_card_mode !== 'open')}
+              genderRequired={genderCapped}
             />
           </div>
         )}

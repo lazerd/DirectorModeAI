@@ -44,7 +44,6 @@ const FORMAT_OPTIONS = [
   { id: 'king-of-court', name: 'King of the Court', good_for: 'small groups, continuous play' },
   { id: 'round-robin', name: 'Team Round Robin', good_for: 'fixed teams, league night' },
   { id: 'maximize-courts', name: 'Maximize Courts', good_for: 'awkward player counts' },
-  { id: 'wild-card', name: 'Wild Card: rotating partners', good_for: 'social tournaments with an individual winner, new partner every round, mixed or open' },
   { id: 'single-elimination-singles', name: 'Singles Tournament', good_for: 'competitive 1v1 brackets' },
   { id: 'single-elimination-doubles', name: 'Doubles Tournament', good_for: 'competitive 2v2 brackets' },
   { id: 'team-battle', name: 'Team Battle', good_for: 'two named teams competing' },
