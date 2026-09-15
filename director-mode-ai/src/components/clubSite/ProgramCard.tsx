@@ -124,7 +124,7 @@ export default function ProgramCard({
       </dl>
 
       <div className="mt-4 text-sm font-semibold" style={{ color: theme.primary }}>
-        See dates &amp; sign up →
+        {program.registration_mode === 'online' ? 'See dates & sign up →' : 'See dates →'}
       </div>
     </Link>
   );

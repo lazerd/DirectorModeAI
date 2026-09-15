@@ -13,6 +13,8 @@ import { getClubSite } from '@/lib/clubSite/server';
 import { readableOn, tint } from '@/lib/clubSite/theme';
 import ProgramCard from '@/components/clubSite/ProgramCard';
 import { formatPrice } from '@/lib/programs/sessions';
+import { getRateCards } from '@/lib/courts/server';
+import { bookingEnabled } from '@/lib/courts/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +28,9 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
   const where = [club.city, club.state].filter(Boolean).join(', ');
   const heroImage = site.hero_image_url || club.cover_image_url;
   const featured = programs.slice(0, 4);
+  // A first-come club (Rossmoor: courts open to every resident) has nothing to
+  // book, and a link promising booking sends people looking for a form.
+  const canBook = bookingEnabled(await getRateCards(club.id));
 
   const Section = ({
     title,
@@ -247,7 +252,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
             className="mt-5 inline-block text-sm font-bold"
             style={{ color: theme.primary }}
           >
-            Court hours &amp; booking →
+            {canBook ? 'Court hours & booking →' : 'Court hours & rules →'}
           </Link>
         </Section>
       )}
