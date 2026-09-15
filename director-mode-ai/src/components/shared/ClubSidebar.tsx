@@ -30,6 +30,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { pickPrimaryClub } from '@/lib/clubRoles';
+import { isClubPublicPath } from '@/lib/clubSite/publicPaths';
 import ClubSwitcher from './ClubSwitcher';
 import {
   SECTIONS, FOR_PLAYERS, FOR_YOU, ALL_TOOLS_ITEM, activeHref, type NavIcon,
@@ -185,7 +186,8 @@ export default function ClubSidebar() {
     prefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
   const isPublic =
     (signedIn !== true && (pathname === '/' || underAny(GUEST_ONLY_PREFIXES))) ||
-    underAny(PUBLIC_PREFIXES);
+    underAny(PUBLIC_PREFIXES) ||
+    isClubPublicPath(pathname);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hovering, setHovering] = useState(false); // hover-to-peek when collapsed

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sparkles, X, Send, Loader2 } from 'lucide-react';
+import { isClubPublicPath } from '@/lib/clubSite/publicPaths';
 
 /**
  * Floating ClubMode Assistant — a chat bubble + panel mounted once in the root
@@ -46,7 +47,7 @@ const PUBLIC = [
   '/c',
 ];
 const HIDDEN_PATHS = (path: string) =>
-  path === '/' || PUBLIC.some((p) => path === p || path.startsWith(p + '/'));
+  path === '/' || isClubPublicPath(path) || PUBLIC.some((p) => path === p || path.startsWith(p + '/'));
 
 export default function AssistantWidget() {
   const pathname = usePathname();

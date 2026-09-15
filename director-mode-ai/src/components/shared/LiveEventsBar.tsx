@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
+import { isClubPublicPath } from '@/lib/clubSite/publicPaths';
 
 type LiveItem = {
   id: string;
@@ -88,6 +89,7 @@ export default function LiveEventsBar() {
 
   const hidden =
     pathname === '/' ||
+    isClubPublicPath(pathname) ||
     HIDDEN.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   const load = useCallback(async () => {
