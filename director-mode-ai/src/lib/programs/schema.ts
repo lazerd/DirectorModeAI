@@ -106,7 +106,7 @@ export const programBaseSchema = z
     waitlist_enabled: z.boolean().default(true),
     registration_opens_at: z.string().datetime({ offset: true }).nullable().optional(),
     registration_closes_at: z.string().datetime({ offset: true }).nullable().optional(),
-    registration_mode: z.enum(['online', 'email', 'closed']).default('online'),
+    registration_mode: z.enum(['online', 'email', 'closed', 'drop_in']).default('online'),
 
     external_payment_url: paymentLink,
 

@@ -101,7 +101,7 @@ export type ClubProgram = {
   waitlist_enabled: boolean;
   registration_opens_at: string | null;
   registration_closes_at: string | null;
-  registration_mode: 'online' | 'email' | 'closed';
+  registration_mode: 'online' | 'email' | 'closed' | 'drop_in';
   external_payment_url: string | null;
   description: string | null;
   coach_name: string | null;
@@ -273,7 +273,8 @@ export async function programAvailability(
 export function registrationWindow(
   program: Pick<ClubProgram, 'registration_mode' | 'registration_opens_at' | 'registration_closes_at'>,
   now: Date = new Date(),
-): { open: boolean; reason: 'ok' | 'closed' | 'not_yet' | 'ended' | 'email_only' } {
+): { open: boolean; reason: 'ok' | 'closed' | 'not_yet' | 'ended' | 'email_only' | 'drop_in' } {
+  if (program.registration_mode === 'drop_in') return { open: false, reason: 'drop_in' };
   if (program.registration_mode === 'closed') return { open: false, reason: 'closed' };
   if (program.registration_mode === 'email') return { open: false, reason: 'email_only' };
   if (program.registration_opens_at && new Date(program.registration_opens_at) > now) {

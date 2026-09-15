@@ -50,7 +50,7 @@ type Program = Record<string, unknown> & {
   days_of_week: number[] | null;
   exclusions: string[] | null;
   external_payment_url: string | null;
-  registration_mode: 'online' | 'email' | 'closed';
+  registration_mode: 'online' | 'email' | 'closed' | 'drop_in';
   waitlist_enabled: boolean;
   status: string;
   court_count: number | null;
@@ -424,6 +424,7 @@ export default function ClassDetail({ id }: { id: string }) {
             >
               <option value="online">Online, on my site</option>
               <option value="email">By email only</option>
+              <option value="drop_in">No sign-up — just come</option>
               <option value="closed">Closed</option>
             </select>
           </div>

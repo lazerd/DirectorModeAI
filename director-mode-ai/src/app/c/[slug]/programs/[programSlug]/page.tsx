@@ -88,6 +88,7 @@ export default async function ProgramDetailPage({
 
   const closedNote: Record<string, string> = {
     closed: 'Registration for this class is closed.',
+    drop_in: 'No sign-up needed — just come.',
     email_only: club.email
       ? `Registration for this one runs by email — write to ${club.email}.`
       : 'Registration for this one runs by email.',
