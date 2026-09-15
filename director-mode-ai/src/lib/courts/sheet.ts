@@ -26,7 +26,13 @@ export type SheetCell = {
   centsPerHour: number | null;
 };
 
-export type SheetRow = { time: string; startMinute: number; cells: SheetCell[] };
+export type SheetRow = {
+  time: string;
+  startMinute: number;
+  /** This half hour has already ended (today only). The page folds these away. */
+  past: boolean;
+  cells: SheetCell[];
+};
 
 export type SheetGrid = {
   courts: { id: string; name: string }[];
@@ -78,6 +84,7 @@ export function sheetGrid(opts: {
       rows.push({
         time: toHHMM(start),
         startMinute: start,
+        past,
         cells: courts.map((court) => {
           if (court.status === 'maintenance') return { state: 'maintenance', centsPerHour: null };
           // Half-open, matching no_double_booking's '[)'.

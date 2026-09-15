@@ -233,7 +233,23 @@ export default function PublicClient({ club, initialCourts, hasSite }: Props) {
 }
 
 function SheetTable({ sheet, bookHref }: { sheet: SheetResponse; bookHref: (time: string) => string | null }) {
+  // Today opens at NOW. At noon, six hours of finished morning is the whole
+  // first screen and the open courts are below the fold.
+  const [showEarlier, setShowEarlier] = useState(false);
+  useEffect(() => setShowEarlier(false), [sheet.date]);
+  const pastCount = sheet.rows.filter((r) => r.past).length;
+  const rows = showEarlier ? sheet.rows : sheet.rows.filter((r) => !r.past);
   return (
+    <>
+    {pastCount > 0 && (
+      <button
+        type="button"
+        onClick={() => setShowEarlier((v) => !v)}
+        className="mb-2 text-xs text-white/50 underline hover:text-white/80"
+      >
+        {showEarlier ? 'Hide earlier today' : 'Show earlier today'}
+      </button>
+    )}
     // Scrolls sideways INSIDE the card on a phone; the time column stays put.
     <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-auto max-h-[70vh]">
       <table className="border-separate border-spacing-0 text-xs w-full">
@@ -251,7 +267,7 @@ function SheetTable({ sheet, bookHref }: { sheet: SheetResponse; bookHref: (time
           </tr>
         </thead>
         <tbody>
-          {sheet.rows.map((row) => {
+          {rows.map((row) => {
             const t = clock(row.time);
             const href = bookHref(row.time);
             return (
@@ -272,6 +288,7 @@ function SheetTable({ sheet, bookHref }: { sheet: SheetResponse; bookHref: (time
         </tbody>
       </table>
     </div>
+    </>
   );
 }
 

@@ -69,6 +69,7 @@ describe('sheetGrid', () => {
   it('greys out finished half hours today but keeps the one in progress', () => {
     const g = sheetGrid({ ...base, nowMinute: toMinutes('08:45') });
     expect(g.rows.map((r) => r.cells[0].state)).toEqual(['past', 'open', 'open', 'open']);
+    expect(g.rows.map((r) => r.past)).toEqual([true, false, false, false]);
   });
 
   it('assumes 7am–10pm when the club set no hours', () => {
