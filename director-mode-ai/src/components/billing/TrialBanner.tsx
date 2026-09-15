@@ -34,7 +34,7 @@ function TrialBannerInner() {
     // Don't show on marketing/auth/pricing pages.
     // '/c' is a club's own public website: a ClubMode upgrade prompt on it
     // would be our billing message on their homepage.
-    if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/pricing') || pathname.startsWith('/join') || pathname === '/c' || pathname.startsWith('/c/')) return;
+    if (pathname === '/' || pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/pricing') || pathname.startsWith('/join') || pathname === '/c' || pathname.startsWith('/c/') || pathname.startsWith('/q/') || pathname.startsWith('/checkin/')) return;
     (async () => {
       try {
         const res = await fetch('/api/me/plan');

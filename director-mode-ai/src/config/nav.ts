@@ -40,7 +40,7 @@
 import {
   LayoutGrid, CalendarDays, Shuffle, Calendar, Trophy, ClipboardList, Waves,
   Users, Database, Wrench, Clock, GraduationCap, Mountain, BarChart3, Sparkles,
-  Grid3x3, User, CalendarRange, Search, CalendarCheck, HardHat, Globe, Handshake,
+  Grid3x3, User, CalendarRange, Search, CalendarCheck, HardHat, Globe, Handshake, QrCode,
 } from 'lucide-react';
 
 export type NavIcon = typeof LayoutGrid;
@@ -89,7 +89,7 @@ export const SECTIONS: Section[] = [
     blurb: 'Who is on which court today, and what the year ahead looks like.',
     icon: LayoutGrid,
     color: '#22d3ee',
-    matches: ['/run/courts', '/courtsheet', '/calendar'],
+    matches: ['/run/courts', '/courtsheet', '/calendar', '/run/checkin'],
     tools: [
       {
         name: 'CourtSheet',
@@ -112,6 +112,19 @@ export const SECTIONS: Section[] = [
         color: '#c084fc',
         product: true,
         tag: 'PLANNING',
+      },
+      {
+        // Not (yet) a counted product — see "THE COUNT". Flipping `product`
+        // on means updating the count test in nav.test.ts.
+        name: 'QR check-in',
+        href: '/run/checkin',
+        match: '/run/checkin',
+        description: 'QR signs on the courts and the pool gate replace the paper register — walk-on timers, a live wait list, and who used what.',
+        pitch: 'Print a QR for every court. Players scan to start their time, join the wait list when it is busy, and get told when a court is theirs. The pool gate works the same way, guests and all.',
+        icon: QrCode,
+        color: '#22d3ee',
+        tag: 'WALK-ON',
+        badge: 'NEW',
       },
     ],
   },

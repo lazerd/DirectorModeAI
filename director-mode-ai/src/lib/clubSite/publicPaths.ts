@@ -17,8 +17,16 @@ const CLUB_SLUG_ROUTES: Record<string, string[]> = {
   '/calendar': ['board', 'ideas', 'import'],
 };
 
+/**
+ * QR check-in: the phone pages behind a printed court sign (/q/...) and the
+ * kiosk board (/checkin/[slug]/board). A player at the fence, or a TV in the
+ * clubhouse, has no use for the director rail or our assistant.
+ */
+const CHECKIN_PREFIXES = ['/q/', '/checkin/'];
+
 export function isClubPublicPath(pathname: string): boolean {
   if (pathname === '/c' || pathname.startsWith('/c/')) return true;
+  if (CHECKIN_PREFIXES.some((p) => pathname.startsWith(p))) return true;
   for (const [prefix, ownRoutes] of Object.entries(CLUB_SLUG_ROUTES)) {
     if (!pathname.startsWith(prefix + '/')) continue;
     const segment = pathname.slice(prefix.length + 1).split('/')[0];
