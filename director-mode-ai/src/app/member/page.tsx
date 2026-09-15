@@ -138,7 +138,37 @@ export default async function MemberHome() {
     .or(captainFilter)
     .eq('archived', false)
     .order('created_at', { ascending: false });
-  const teams = (myTeams as { id: string; name: string; level: string | null }[] | null) || [];
+  type TeamCard = { id: string; name: string; level: string | null; href: string; cta: string };
+  const teams: TeamCard[] = ((myTeams as { id: string; name: string; level: string | null }[] | null) || []).map(
+    (t) => ({ ...t, href: `/captain/${t.id}`, cta: 'Open CaptainMode →' }),
+  );
+
+  /*
+   * Teams this member PLAYS on. Rosters are keyed by email, not user id — a
+   * captain types the roster long before anyone signs up. A player gets their
+   * own availability page (the same one the captain's email links to), never
+   * the captain's workspace.
+   */
+  if (user.email) {
+    const { data: rosterRows } = await admin
+      .from('captain_players')
+      .select('player_token, team:captain_teams!inner(id, name, level, archived)')
+      // Case-insensitive exact match: escape LIKE wildcards, since `_` is legal
+      // in an address and would otherwise match someone else's roster row.
+      .ilike('email', user.email.replace(/[\\%_]/g, '\\$&'))
+      .eq('active', true);
+    for (const r of (rosterRows as any[] | null) || []) {
+      const t = r.team;
+      if (!t || t.archived || !r.player_token || teams.some((x) => x.id === t.id)) continue;
+      teams.push({
+        id: t.id,
+        name: t.name,
+        level: t.level,
+        href: `/captain/availability/${r.player_token}`,
+        cta: 'My availability →',
+      });
+    }
+  }
 
   /*
    * The club's zone. dayLabel() below reads the date out of the ISO string,
@@ -208,7 +238,7 @@ export default async function MemberHome() {
           <Action href="/client/dashboard" icon={Trophy} label="My progress" tone="#ca8a04" />
         </div>
 
-        {/* The teams she runs. First thing on the page when she has any. */}
+        {/* The teams she runs or plays on. First thing on the page when she has any. */}
         {teams.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold flex items-center gap-2 mb-3">
@@ -221,7 +251,7 @@ export default async function MemberHome() {
                 return (
                   <Link
                     key={t.id}
-                    href={`/captain/${t.id}`}
+                    href={t.href}
                     className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 hover:border-cyan-400 transition-colors"
                   >
                     <div className="min-w-0">
@@ -234,7 +264,7 @@ export default async function MemberHome() {
                       </div>
                     </div>
                     <span className="shrink-0 text-sm font-medium text-cyan-700">
-                      Open CaptainMode →
+                      {t.cta}
                     </span>
                   </Link>
                 );
