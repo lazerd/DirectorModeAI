@@ -15,6 +15,7 @@ const FORMAT_LABELS: Record<string, string> = {
   'round-robin': 'Team Round Robin',
   'maximize-courts': 'Maximize Courts Mixer',
   'team-battle': 'Team Battle',
+  'wild-card': 'Wild Card: rotating partners',
 };
 
 const VALID = new Set(Object.keys(FORMAT_LABELS));
@@ -84,6 +85,27 @@ export default async function PublicEventLandingPage({
   const spotsTotal = e.max_players ?? null;
   const spotsLeft = spotsTotal !== null ? Math.max(0, spotsTotal - (confirmedCount ?? 0)) : null;
 
+  // Separate spots for men and women, when the director set them.
+  const genderCapped = e.max_men != null || e.max_women != null;
+  const genderSpots = genderCapped
+    ? await Promise.all(
+        ([
+          ['male', 'men', e.max_men],
+          ['female', 'women', e.max_women],
+        ] as const)
+          .filter(([, , cap]) => cap != null)
+          .map(async ([g, label, cap]) => {
+            const { count } = await supabase
+              .from('tournament_entries')
+              .select('*', { count: 'exact', head: true })
+              .eq('event_id', e.id)
+              .eq('position', 'in_draw')
+              .eq('gender', g);
+            return { label, cap: cap as number, left: Math.max(0, (cap as number) - (count ?? 0)) };
+          })
+      )
+    : [];
+
   return (
     <div className="min-h-screen bg-[#001820] text-white">
       <header className="border-b border-white/10">
@@ -132,13 +154,30 @@ export default async function PublicEventLandingPage({
             <div className="font-semibold">
               {e.entry_fee_cents > 0 ? `$${(e.entry_fee_cents / 100).toFixed(0)}` : 'Free'}
             </div>
-            {spotsLeft !== null && (
-              <div className="text-sm text-white/60">
-                {spotsLeft} of {spotsTotal} spots left
-              </div>
+            {genderCapped ? (
+              genderSpots.map((s) => (
+                <div key={s.label} className="text-sm text-white/60">
+                  {s.left === 0 ? `${s.label}: full (waitlist)` : `${s.left} of ${s.cap} ${s.label}'s spots left`}
+                </div>
+              ))
+            ) : (
+              spotsLeft !== null && (
+                <div className="text-sm text-white/60">
+                  {spotsLeft} of {spotsTotal} spots left
+                </div>
+              )
             )}
           </div>
         </div>
+
+        {genderCapped && (
+          <div className="bg-white/5 rounded-lg p-3 text-sm text-white/80">
+            {[e.max_men != null ? `${e.max_men} men` : null, e.max_women != null ? `${e.max_women} women` : null]
+              .filter(Boolean)
+              .join(', ')}
+            , first come, first served. Once a side is full, new signups join its waitlist.
+          </div>
+        )}
 
         {(waitlistCount ?? 0) > 0 && (
           <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-sm text-amber-200">
@@ -165,6 +204,7 @@ export default async function PublicEventLandingPage({
               isDoubles={isDoubles}
               isMixedDoubles={isMixedDoubles}
               isTeamBattle={isTeamBattle}
+              genderRequired={genderCapped || (e.match_format === 'wild-card' && e.wild_card_mode !== 'open')}
             />
           </div>
         )}

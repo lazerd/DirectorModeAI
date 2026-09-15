@@ -184,6 +184,7 @@ export default function EventDashboard() {
       'single-elimination-singles': '🏆 Singles Tournament',
       'single-elimination-doubles': '🏅 Doubles Tournament',
       'team-battle': '⚔️ Team Battle',
+      'wild-card': '🃏 Wild Card: rotating partners',
     };
     return displays[format] || format;
   };
@@ -364,7 +365,7 @@ export default function EventDashboard() {
           )}
 
           <TabsContent value="standings" className="space-y-4">
-            <StandingsTab eventId={event.id} />
+            <StandingsTab eventId={event.id} matchFormat={event.match_format} />
           </TabsContent>
 
           <TabsContent value="summary" className="space-y-4">

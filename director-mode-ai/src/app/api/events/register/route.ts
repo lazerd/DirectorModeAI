@@ -84,6 +84,7 @@ const MIXER_FORMATS = new Set([
   'round-robin',
   'maximize-courts',
   'team-battle',
+  'wild-card',
 ]);
 
 export async function POST(request: Request) {
@@ -125,7 +126,7 @@ export async function POST(request: Request) {
     const { data: ev, error: evErr } = await admin
       .from('events')
       .select(
-        'id, name, slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, event_date, match_format'
+        'id, name, slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, event_date, match_format, max_men, max_women'
       )
       .eq('slug', slug)
       .maybeSingle();
@@ -170,6 +171,16 @@ export async function POST(request: Request) {
           );
         }
       }
+    }
+
+    // Per-gender caps ("12 men, 12 women"). Needs to know which list a player
+    // joins, so gender becomes required once either cap is set.
+    const genderCapped = e.max_men != null || e.max_women != null;
+    if (genderCapped && gender !== 'male' && gender !== 'female') {
+      return NextResponse.json(
+        { error: 'Please choose Male or Female — this event holds separate spots for men and women.' },
+        { status: 400 }
+      );
     }
 
     const isDoubles = e.match_format === 'doubles' || e.match_format === 'mixed-doubles';
@@ -224,6 +235,17 @@ export async function POST(request: Request) {
           .in('position', ['in_draw'])
           .neq('id', (entry as any).id);
         if ((count ?? 0) >= e.max_players) position = 'waitlist';
+      }
+      const genderCap = gender === 'male' ? e.max_men : gender === 'female' ? e.max_women : null;
+      if (position === 'in_draw' && genderCap != null) {
+        const { count } = await admin
+          .from('tournament_entries')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', e.id)
+          .eq('position', 'in_draw')
+          .eq('gender', gender)
+          .neq('id', (entry as any).id);
+        if ((count ?? 0) >= genderCap) position = 'waitlist';
       }
       await admin
         .from('tournament_entries')

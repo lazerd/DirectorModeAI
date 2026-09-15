@@ -12,6 +12,7 @@ import { Loader2, Calendar, Clock, Trophy, TrendingUp, TrendingDown, AlertCircle
 import { format } from "date-fns";
 import PublicRoundTimer from "@/components/mixer/event/PublicRoundTimer";
 import PublicScoreDialog from "@/components/mixer/event/PublicScoreDialog";
+import WildCardPlayerView from "@/components/mixer/event/WildCardPlayerView";
 
 interface Event {
   id: string;
@@ -21,6 +22,7 @@ interface Event {
   scoring_format: string;
   num_courts: number;
   round_length_minutes: number | null;
+  match_format?: string | null;
 }
 
 interface Standing {
@@ -307,6 +309,12 @@ export default function PublicEvent() {
         </div>
       </div>
     );
+  }
+
+  // A Wild Card is read person-first ("where am I, who with"), in large type,
+  // from a board the server assembles. None of the generic tabs apply.
+  if (event.match_format === "wild-card") {
+    return <WildCardPlayerView eventCode={eventCode} />;
   }
 
   return (

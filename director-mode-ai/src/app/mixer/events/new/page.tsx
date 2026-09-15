@@ -77,11 +77,22 @@ function CreateEventForm() {
       'single-elimination-singles': 'Singles Tournament',
       'single-elimination-doubles': 'Doubles Tournament',
       'team-battle': 'Team Battle',
+      'wild-card': 'Wild Card: rotating partners',
     };
     return names[format] || format;
   };
 
   const isTeamBattle = formData.match_format === 'team-battle';
+  const isWildCard = formData.match_format === 'wild-card';
+
+  // Wild Card: partner rule + how many rounds the schedule builds. Signup can
+  // be capped per gender ("12 men, 12 women, first come first served").
+  const [wildCard, setWildCard] = useState({
+    mode: 'mixed' as 'mixed' | 'open',
+    rounds: 3,
+    max_men: 12,
+    max_women: 12,
+  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,11 +139,15 @@ function CreateEventForm() {
             : publicCfg.age_max === ''
               ? null
               : parseInt(String(publicCfg.age_max), 10) || null;
+        const genderCapped = isWildCard && wildCard.mode === 'mixed';
         publicFields = {
           slug,
           public_registration: true,
           entry_fee_cents: Math.round(publicCfg.entry_fee_dollars * 100),
-          max_players: publicCfg.max_players || null,
+          max_players: genderCapped
+            ? wildCard.max_men + wildCard.max_women
+            : publicCfg.max_players || null,
+          ...(genderCapped ? { max_men: wildCard.max_men, max_women: wildCard.max_women } : {}),
           age_max: ageNum,
           gender_restriction: publicCfg.gender_restriction,
           registration_opens_at: new Date().toISOString(),
@@ -148,6 +163,7 @@ function CreateEventForm() {
         .insert({
           ...formData,
           ...publicFields,
+          ...(isWildCard ? { wild_card_mode: wildCard.mode, wild_card_rounds: wildCard.rounds } : {}),
           user_id: user.id,
           event_code: eventCode,
         })
@@ -347,6 +363,48 @@ function CreateEventForm() {
               </div>
             )}
 
+            {isWildCard && (
+              <div className="p-4 bg-amber-50 rounded-xl border-2 border-amber-200 space-y-4">
+                <div>
+                  <p className="text-sm font-medium mb-2">Partners</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {([
+                      ['mixed', 'Mixed', 'One man + one woman per team'],
+                      ['open', 'Open', 'Anyone can partner anyone'],
+                    ] as const).map(([value, label, hint]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setWildCard({ ...wildCard, mode: value })}
+                        className={`p-3 rounded-lg border-2 text-left ${
+                          wildCard.mode === value ? 'border-amber-500 bg-white' : 'border-gray-200 bg-white/60'
+                        }`}
+                      >
+                        <div className="font-semibold">{label}</div>
+                        <div className="text-xs text-gray-600">{hint}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Rounds</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={12}
+                    value={wildCard.rounds}
+                    onChange={(e) =>
+                      setWildCard({ ...wildCard, rounds: Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 1)) })
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  />
+                  <p className="text-xs text-gray-600 mt-1">
+                    New partner and new opponents every round. You can re-shuffle or change this on the day.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium mb-1">Number of Courts</label>
               <input
@@ -467,6 +525,38 @@ function CreateEventForm() {
                     0 = free. Collect any fee at check-in for now.
                   </p>
                 </div>
+                {isWildCard && wildCard.mode === 'mixed' ? (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Spots</label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={64}
+                        value={wildCard.max_men}
+                        onChange={(e) =>
+                          setWildCard({ ...wildCard, max_men: Math.max(0, parseInt(e.target.value || '0', 10)) })
+                        }
+                        className="w-20 px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                        aria-label="Men"
+                      />
+                      <span className="text-sm">men</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={64}
+                        value={wildCard.max_women}
+                        onChange={(e) =>
+                          setWildCard({ ...wildCard, max_women: Math.max(0, parseInt(e.target.value || '0', 10)) })
+                        }
+                        className="w-20 px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900"
+                        aria-label="Women"
+                      />
+                      <span className="text-sm">women</span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">First come, first served. Extras → waitlist.</p>
+                  </div>
+                ) : (
                 <div>
                   <label className="block text-sm font-medium mb-1">Max Players (cap)</label>
                   <input
@@ -484,6 +574,7 @@ function CreateEventForm() {
                   />
                   <p className="text-xs text-gray-500 mt-1">Extras → waitlist.</p>
                 </div>
+                )}
               </div>
 
               <div className="grid sm:grid-cols-2 gap-4">
