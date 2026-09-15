@@ -38,12 +38,13 @@ export async function GET(request: NextRequest) {
       jobsByStatus[j.status] = (jobsByStatus[j.status] || 0) + 1;
     });
 
-    // CourtConnect
-    const { data: ccEventsData } = await supabase.from('cc_events').select('id, created_by');
-    const ccEventUsers = new Set(ccEventsData?.map((e) => e.created_by).filter(Boolean));
-    const { count: ccPlayers } = await supabase.from('cc_players').select('*', { count: 'exact', head: true });
-    const { count: ccRsvps } = await supabase.from('cc_event_players').select('*', { count: 'exact', head: true });
-    const { count: ccInvitations } = await supabase.from('cc_invitations').select('*', { count: 'exact', head: true });
+    // CourtConnect — the per-club partner finder (pf_* tables). The retired
+    // shared-games prototype's cc_events rows are kept but no longer counted.
+    const { data: ccGamesData } = await supabase.from('pf_games').select('id, posted_by, club_id, status');
+    const ccPosters = new Set(ccGamesData?.map((g) => g.posted_by).filter(Boolean));
+    const ccClubs = new Set(ccGamesData?.map((g) => g.club_id).filter(Boolean));
+    const { count: ccJoins } = await supabase.from('pf_game_players').select('*', { count: 'exact', head: true });
+    const { count: ccEmailed } = await supabase.from('pf_links').select('*', { count: 'exact', head: true }).not('emailed_at', 'is', null);
 
     // PlayerVault
     const { data: vaultData } = await supabase.from('cc_vault_players').select('id, user_id');
@@ -93,13 +94,14 @@ export async function GET(request: NextRequest) {
         name: 'CourtConnect',
         color: '#34d399',
         icon: 'Users',
-        userCount: ccEventUsers.size,
-        totalRecords: ccEventsData?.length || 0,
+        userCount: ccPosters.size,
+        totalRecords: ccGamesData?.length || 0,
         details: {
-          events: ccEventsData?.length || 0,
-          players: ccPlayers || 0,
-          rsvps: ccRsvps || 0,
-          invitations: ccInvitations || 0,
+          games: ccGamesData?.length || 0,
+          filled: ccGamesData?.filter((g) => g.status === 'full').length || 0,
+          clubs: ccClubs.size,
+          joins: ccJoins || 0,
+          invitesEmailed: ccEmailed || 0,
         },
       },
       {

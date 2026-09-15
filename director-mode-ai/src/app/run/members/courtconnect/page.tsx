@@ -9,14 +9,15 @@ import { clubRoster, loadClub, GAME_COLS, type Game } from '@/lib/partnerFinder/
 import { FORMAT_LABEL, gameTitle, isFormat, ratingLabel, shortName } from '@/lib/partnerFinder/format';
 
 /**
- * Partner Finder — the director's view.
+ * CourtConnect — the director's view. (Built as "Partner Finder"; the old
+ * /run/members/partner-finder URL redirects here, see next.config.mjs.)
  *
  * A few findings first (is it working, who is it missing), then every game at
  * the club. Staff only: resolveActiveClub lists owned, staff (is_club_team
  * roles) and platform clubs, and returns nothing for a plain member.
  */
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'Partner Finder — ClubMode AI' };
+export const metadata: Metadata = { title: 'CourtConnect — ClubMode AI' };
 
 const WINDOW_DAYS = 90;
 
@@ -44,12 +45,12 @@ const STATUS_STYLE: Record<string, string> = {
   expired: 'bg-amber-400/15 text-amber-300',
 };
 
-export default async function PartnerFinderDirectorPage() {
+export default async function CourtConnectDirectorPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect('/login?redirect=/run/members/partner-finder');
+  if (!user) redirect('/login?redirect=/run/members/courtconnect');
 
   const { active } = await resolveActiveClub(user.id, user.email);
   if (!active) redirect('/member');
@@ -149,11 +150,19 @@ export default async function PartnerFinderDirectorPage() {
             <Handshake size={24} className="text-[#34d399]" />
           </span>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Partner Finder</h1>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">CourtConnect</h1>
             <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-white/50">
               {club.name} members post games that need players; members at the right level get an email and join in
-              one tap. Members find it under &ldquo;Find a game&rdquo; in their clubhouse and on your club site.
+              one tap. Members find CourtConnect in their clubhouse, on the court sheet and on your club site.
             </p>
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium">
+              <Link href={`/c/${club.slug}/play`} className="inline-flex items-center gap-1.5 text-[#D3FB52]">
+                Open the member board <ArrowRight size={14} />
+              </Link>
+              <span className="text-white/40">
+                Member link: <span className="text-white/70">/c/{club.slug}/play</span>
+              </span>
+            </div>
           </div>
         </div>
 

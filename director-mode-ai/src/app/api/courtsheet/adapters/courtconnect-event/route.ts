@@ -1,32 +1,13 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import {
-  syncCourtConnectEvent,
-  cancelCourtConnectEvent,
-} from '@/lib/courtsheet/adapters/courtconnect';
-import { ADAPTERS_ENABLED } from '@/lib/courtsheet/adapters/common';
 
-export const dynamic = 'force-dynamic';
+/*
+ * Retired with the old shared CourtConnect games (cc_events): it put one of
+ * those events on the court sheet. Existing reservations with source
+ * 'courtconnect' are left alone, and lib/courtsheet/adapters/courtconnect.ts
+ * is kept so they can still be cancelled by source if ever needed.
+ */
+const gone = () =>
+  NextResponse.json({ error: 'This CourtConnect feature has been retired.' }, { status: 410 });
 
-export async function POST(req: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  const body = await req.json().catch(() => ({}));
-  const event_id = body?.event_id as string | undefined;
-  const op = (body?.op as 'sync' | 'cancel' | undefined) ?? 'sync';
-  if (!event_id) return NextResponse.json({ error: 'Missing event_id' }, { status: 400 });
-
-  if (!ADAPTERS_ENABLED) {
-    return NextResponse.json({ adapter: 'disabled', reason: 'ENABLE_COURTSHEET_WRITES is off' });
-  }
-
-  const result =
-    op === 'cancel'
-      ? await cancelCourtConnectEvent(event_id)
-      : await syncCourtConnectEvent(event_id);
-  return NextResponse.json({ result });
-}
+export const POST = gone;
+export const GET = gone;

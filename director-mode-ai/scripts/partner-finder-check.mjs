@@ -1,5 +1,5 @@
 /**
- * The Partner Finder check.
+ * The CourtConnect check (Partner Finder internals: pf_* tables, /api/play).
  *
  * Runs against PROD through the same RPCs the app calls, on two throwaway
  * clubs and throwaway accounts, and deletes all of it in `finally`:
@@ -113,7 +113,7 @@ async function cleanup() {
 }
 
 try {
-  console.log(`run ${RUN}\n`);
+  console.log(`CourtConnect check - run ${RUN}\n`);
 
   // ---- setup ------------------------------------------------------------
   await makeUser('ownerA', 'Olive Owner');

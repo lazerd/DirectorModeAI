@@ -19,7 +19,7 @@ import {
 import LinkClient from './LinkClient';
 
 /**
- * The page behind every Partner Finder email button. No login: the token in
+ * The page behind every CourtConnect email button. No login: the token in
  * the URL names one game and one person.
  *
  * Opening it never changes anything. The "I'm in" tap is a button on this
@@ -27,7 +27,7 @@ import LinkClient from './LinkClient';
  * on somebody's behalf.
  */
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'Find a Game', robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: 'CourtConnect', robots: { index: false, follow: false } };
 
 function Shell({ title, body }: { title: string; body: string }) {
   return (
@@ -43,7 +43,7 @@ function Shell({ title, body }: { title: string; body: string }) {
 export default async function GameLinkPage({ params }: { params: { token: string } }) {
   const db = getSupabaseAdmin();
   const link = await linkByToken(db, params.token);
-  if (!link) return <Shell title="Link not recognized" body="This link may be mistyped. Open the club's game board to see what's on." />;
+  if (!link) return <Shell title="Link not recognized" body="This link may be mistyped. Open CourtConnect in your club's app to see what's on." />;
 
   const [game, club] = await Promise.all([loadGame(db, link.game_id), loadClub(db, link.club_id)]);
   if (!game || !club) return <Shell title="Game not found" body="This game is no longer on the board." />;

@@ -4,14 +4,14 @@ import StopClient from './StopClient';
 
 /**
  * "Stop emails about games that need players" — the link at the bottom of
- * every Partner Finder invite. One click turns it off.
+ * every CourtConnect invite. One click turns it off.
  *
  * The switch happens from the page's own script rather than on the GET, so a
  * mail scanner that opens every link in an inbox does not silently stop a
  * member's emails.
  */
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'Game emails', robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: 'CourtConnect emails', robots: { index: false, follow: false } };
 
 export default async function StopPage({ params }: { params: { token: string } }) {
   const ok = /^[a-f0-9]{32,64}$/.test(params.token || '');
@@ -28,7 +28,7 @@ export default async function StopPage({ params }: { params: { token: string } }
       <main className="min-h-screen bg-slate-50 px-5 py-12 text-slate-900">
         <div className="mx-auto max-w-xl">
           <h1 className="text-3xl font-bold">Link not recognized</h1>
-          <p className="mt-3 text-lg text-slate-600">You can change game emails any time from Find a Game in your club&rsquo;s app.</p>
+          <p className="mt-3 text-lg text-slate-600">You can change game emails any time from CourtConnect in your club&rsquo;s app.</p>
         </div>
       </main>
     );

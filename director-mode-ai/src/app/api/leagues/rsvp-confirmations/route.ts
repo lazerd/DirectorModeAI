@@ -1,8 +1,9 @@
 /**
  * Manual trigger for the JTT match-RSVP confirmation emails.
  *   GET /api/leagues/rsvp-confirmations  (Authorization: Bearer <CRON_SECRET>)
- * The automated daily run is piggybacked on /api/courtconnect/event-reminders;
- * this endpoint lets the director (or a test) fire it on demand.
+ * It is also the automated daily run: vercel.json calls it at 18:00 UTC, the
+ * slot it used to share with the retired /api/courtconnect/event-reminders.
+ * The director (or a test) can still fire it on demand.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { sendDueRsvpConfirmations } from '@/lib/jttRsvpConfirmations';

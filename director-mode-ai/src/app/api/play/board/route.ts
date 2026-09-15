@@ -1,5 +1,5 @@
 /**
- * GET /api/play/board?club=<id> — the signed-in member's "Find a Game" board:
+ * GET /api/play/board?club=<id> — the signed-in member's CourtConnect board:
  * open games at their club, games they posted, games they're in, and their
  * own level and email preference.
  */

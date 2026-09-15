@@ -57,6 +57,8 @@ interface Props {
   hasSite: boolean;
   /** Shown inside the club's own website (`?embed=1`). */
   embedded?: boolean;
+  /** CourtConnect games at this club that still need players. */
+  openGameCount?: number;
 }
 
 const money = (cents: number) =>
@@ -69,7 +71,7 @@ function clock(hhmm: string): { label: string; onHour: boolean } {
   return { label: m === 0 ? `${h12}${h < 12 ? 'am' : 'pm'}` : `${h12}:${String(m).padStart(2, '0')}`, onHour: m === 0 };
 }
 
-export default function PublicClient({ club, initialCourts, hasSite, embedded = false }: Props) {
+export default function PublicClient({ club, initialCourts, hasSite, embedded = false, openGameCount = 0 }: Props) {
   const todayISO = useMemo(() => {
     return new Intl.DateTimeFormat('en-CA', { timeZone: club.timezone }).format(new Date());
   }, [club.timezone]);
@@ -199,7 +201,12 @@ export default function PublicClient({ club, initialCourts, hasSite, embedded = 
             Not inside a club's own website: it is a ClubMode product that needs
             a sign-in the frame cannot hold, cross-sold on somebody else's page. */}
         {!embedded && (
-          <CourtConnectCard audience={sheet?.audience ?? 'public'} signedIn={!!sheet?.signedIn} />
+          <CourtConnectCard
+            audience={sheet?.audience ?? 'public'}
+            clubId={club.id}
+            clubSlug={club.slug}
+            openGameCount={openGameCount}
+          />
         )}
 
         {/* Open signups feed */}
@@ -340,8 +347,25 @@ function Legend() {
   );
 }
 
-function CourtConnectCard({ audience, signedIn }: { audience: 'member' | 'public'; signedIn: boolean }) {
-  const href = signedIn ? '/courtconnect/home' : `/login?next=${encodeURIComponent('/courtconnect/home')}`;
+/**
+ * CourtConnect, this club's partner finder. A member of THIS club goes straight
+ * to their board, pinned to this club. Anyone else gets the club's CourtConnect
+ * page, which lists the open games without names and offers member sign-in.
+ */
+function CourtConnectCard({
+  audience,
+  clubId,
+  clubSlug,
+  openGameCount,
+}: {
+  audience: 'member' | 'public';
+  clubId: string;
+  clubSlug: string;
+  openGameCount: number;
+}) {
+  const href = audience === 'member' ? `/member/games?club=${encodeURIComponent(clubId)}` : `/c/${clubSlug}/play`;
+  const count =
+    openGameCount > 0 ? `${openGameCount} ${openGameCount === 1 ? 'game needs' : 'games need'} players. ` : '';
   return (
     <Link
       href={href}
@@ -353,9 +377,10 @@ function CourtConnectCard({ audience, signedIn }: { audience: 'member' | 'public
       <div className="flex-1 min-w-0">
         <div className="font-semibold">Need a game? Find one on CourtConnect</div>
         <div className="text-sm text-white/60 mt-0.5">
+          {count}
           {audience === 'member'
             ? 'Post a time, and players at your level get the invite and join.'
-            : 'Members post a time, and players at their level get the invite and join. Sign in to start one.'}
+            : 'Members post a time, and players at their level get the invite and join. Members sign in to start one.'}
         </div>
       </div>
       <ChevronRight size={18} className="shrink-0 text-white/40" />

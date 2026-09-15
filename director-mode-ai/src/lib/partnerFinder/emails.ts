@@ -1,5 +1,6 @@
 /**
- * Partner Finder emails.
+ * CourtConnect emails. (Partner Finder = CourtConnect: the product was built
+ * under that name, which is why this lives in lib/partnerFinder.)
  *
  * Written for a 55+ club: big type, one obvious button, plain words. Every
  * link is a secret per-person link, so nobody has to remember a password to
@@ -64,13 +65,15 @@ function headline(g: Game, tz: string): string {
   return `${shortDay(g.starts_at, tz).split(' ')[0]} ${clockLabel(g.starts_at, tz)} ${formatWord(g)}`;
 }
 
+/** Every message says where it came from, so "CourtConnect" means something the next time. */
 function shell(club: Club, title: string, body: string, footer = ''): string {
+  const foot = footer || `Sent by CourtConnect for ${esc(club.name)}.`;
   return `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px 20px;color:${INK}">
-    <p style="font-size:15px;color:${MUTED};margin:0 0 6px">${esc(club.name)}</p>
+    <p style="font-size:15px;color:${MUTED};margin:0 0 6px">${esc(club.name)} &middot; CourtConnect</p>
     <h1 style="font-size:26px;line-height:1.25;margin:0 0 18px">${title}</h1>
     ${body}
-    ${footer ? `<p style="font-size:14px;line-height:1.5;color:${MUTED};margin-top:28px">${footer}</p>` : ''}
+    <p style="font-size:14px;line-height:1.5;color:${MUTED};margin-top:28px">${foot}</p>
   </div>`;
 }
 
@@ -130,7 +133,7 @@ export function inviteEmail(
     <p style="margin:24px 0 10px">${button(linkUrl(opts.token), "I'm in")}</p>
     <p style="font-size:16px;color:${MUTED};margin:0">First to tap gets the spot. No password needed.</p>`;
   const footer = opts.stopToken
-    ? `You get these because you're a member of ${esc(club.name)}. <a href="${stopUrl(opts.stopToken)}" style="color:${MUTED}">Stop emails about games that need players</a>.`
+    ? `You're getting this from CourtConnect because you're a member of ${esc(club.name)}. <a href="${stopUrl(opts.stopToken)}" style="color:${MUTED}">Stop emails about games that need players</a>.`
     : '';
   return {
     to: opts.to,
@@ -189,7 +192,7 @@ export function spotOpenedEmail(
 ): GameMessage {
   const title = `${opts.leaver} can't make your ${headline(g, club.timezone)}`;
   const body = `
-    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Your game is open again and ${needsLabel(opts.spotsLeft)}. It's back on the club's game board, and anyone who taps "I'm in" on the earlier email can still take the spot.</p>
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Your game is open again and ${needsLabel(opts.spotsLeft)}. It's back on CourtConnect, and anyone who taps "I'm in" on the earlier email can still take the spot.</p>
     ${details(g, club)}
     <p style="margin:20px 0 0">${button(linkUrl(opts.token), 'See your game', INK)}</p>`;
   return {

@@ -200,7 +200,7 @@ export default async function MemberHome() {
   }
 
   /*
-   * Games looking for players (Partner Finder). The clubhouse shows the next
+   * Games looking for players (CourtConnect). The clubhouse shows the next
    * few; the full board, posting and "I'm in" live at /member/games.
    */
   const openGames = (await publicOpenGames(admin, club.id)).slice(0, 3);
@@ -233,7 +233,7 @@ export default async function MemberHome() {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {/* The sheet shows every court, booked or open, at the member's rate. */}
           <Action href={`/courtsheet/${club.slug}`} icon={LayoutGrid} label="Court sheet" tone="#0891b2" />
-          <Action href="/member/games" icon={Handshake} label="Find a game" tone="#059669" />
+          <Action href="/member/games" icon={Handshake} label="CourtConnect" tone="#059669" />
           <Action href="/client/dashboard" icon={GraduationCap} label="My lessons" tone="#7c3aed" />
           <Action href="/find-coach" icon={User} label="Find a coach" tone="#ea580c" />
           <Action href="/client/dashboard" icon={Trophy} label="My progress" tone="#ca8a04" />
@@ -274,12 +274,15 @@ export default async function MemberHome() {
           </section>
         )}
 
-        {/* Games looking for players */}
+        {/* CourtConnect — games looking for players */}
         <section>
           <div className="flex items-baseline justify-between gap-3 mb-3">
-            <h2 className="text-xl font-semibold flex items-center gap-2">
-              <Handshake className="w-6 h-6 text-emerald-600" /> Games looking for players
-            </h2>
+            <div>
+              <h2 className="text-xl font-semibold flex items-center gap-2">
+                <Handshake className="w-6 h-6 text-emerald-600" /> CourtConnect
+              </h2>
+              <p className="text-base text-slate-600">Games looking for players at your club</p>
+            </div>
             <Link href="/member/games" className="text-base text-emerald-700 hover:underline">
               See all →
             </Link>
@@ -304,7 +307,7 @@ export default async function MemberHome() {
                 href="/member/games"
                 className="inline-flex min-h-[48px] items-center rounded-xl border-2 border-emerald-700 px-4 text-lg font-semibold text-emerald-800 hover:bg-emerald-50"
               >
-                Post a game
+                Post a game on CourtConnect
               </Link>
             </div>
           </div>

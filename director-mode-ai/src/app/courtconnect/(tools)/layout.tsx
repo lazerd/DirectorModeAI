@@ -1,10 +1,20 @@
 import Link from 'next/link';
-import { Users, Home, CalendarPlus, UserCircle, Globe, Zap, Database, BarChart3, Building2, Bell } from 'lucide-react';
+import { Users, Zap, Database, Building2, Handshake } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import CourtConnectMobileNav from '@/components/courtconnect/CourtConnectMobileNav';
 
-export default async function CourtConnectLayout({
+/**
+ * The director tools that still live under /courtconnect: PlayerVault and the
+ * club profile. Their URLs are linked all over the app, so they stay put.
+ *
+ * The rest of the old /courtconnect prototype (shared event board, players,
+ * notifications, analytics) is retired — CourtConnect is now the per-club
+ * partner finder, and /courtconnect itself routes to it (see ../page.tsx).
+ * A route group, so /courtconnect does not render inside this sidebar.
+ *
+ * Members never reach these pages: middleware sends them home.
+ */
+export default async function CourtConnectToolsLayout({
   children,
 }: {
   children: React.ReactNode;
@@ -13,7 +23,7 @@ export default async function CourtConnectLayout({
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login?redirect=/courtconnect/home');
+    redirect('/login?redirect=/courtconnect/vault');
   }
 
   const { data: profile } = await supabase
@@ -28,13 +38,13 @@ export default async function CourtConnectLayout({
       <aside className="hidden md:flex md:w-64 md:flex-col md:fixed md:inset-y-0 bg-[#002838] border-r border-white/[0.06]">
         {/* Logo */}
         <div className="p-5 border-b border-white/[0.06]">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-              <Users size={18} className="text-emerald-400" />
+          <Link href="/courtconnect/vault" className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-teal-500/20 flex items-center justify-center">
+              <Database size={18} className="text-teal-300" />
             </div>
             <div>
-              <span className="font-display text-lg block leading-tight text-white">CourtConnect</span>
-              <span className="text-xs text-white/40">Player Matching</span>
+              <span className="font-display text-lg block leading-tight text-white">PlayerVault</span>
+              <span className="text-xs text-white/40">Club roster</span>
             </div>
           </Link>
         </div>
@@ -49,7 +59,7 @@ export default async function CourtConnectLayout({
             </div>
             <div className="flex-1 min-w-0">
               <div className="font-medium truncate text-sm text-white">
-                {profile?.full_name || 'Player'}
+                {profile?.full_name || 'Director'}
               </div>
               <div className="text-xs text-white/40 truncate">{user.email}</div>
             </div>
@@ -59,32 +69,17 @@ export default async function CourtConnectLayout({
         {/* Navigation */}
         <nav className="flex-1 p-3">
           <ul className="space-y-1">
-            <NavItem href="/courtconnect/home" icon={Home}>
-              Dashboard
-            </NavItem>
-            <NavItem href="/courtconnect/events" icon={Globe}>
-              Event Board
-            </NavItem>
-            <NavItem href="/courtconnect/events/new" icon={CalendarPlus}>
-              Create Event
-            </NavItem>
-            <NavItem href="/courtconnect/players" icon={Users}>
-              Players
-            </NavItem>
             <NavItem href="/courtconnect/vault" icon={Database}>
               PlayerVault
             </NavItem>
-            <NavItem href="/courtconnect/dashboard" icon={BarChart3}>
-              Analytics
+            <NavItem href="/courtconnect/vault/import" icon={Users}>
+              Import players
             </NavItem>
             <NavItem href="/courtconnect/club" icon={Building2}>
               Club Profile
             </NavItem>
-            <NavItem href="/courtconnect/notifications" icon={Bell}>
-              Notifications
-            </NavItem>
-            <NavItem href="/courtconnect/profile" icon={UserCircle}>
-              My Profile
+            <NavItem href="/run/members/courtconnect" icon={Handshake}>
+              CourtConnect
             </NavItem>
           </ul>
         </nav>
@@ -101,13 +96,7 @@ export default async function CourtConnectLayout({
         </div>
       </aside>
 
-      {/* Mobile Header */}
-      <CourtConnectMobileNav
-        userName={profile?.full_name || 'Player'}
-        userInitial={profile?.full_name?.charAt(0) || user.email?.charAt(0)?.toUpperCase() || 'P'}
-      />
-
-      {/* Main Content */}
+      {/* Main Content. pt-16 below md: ClubSidebar's floating menu button sits top-left on phones. */}
       <main className="md:ml-64 pt-16 md:pt-0 flex-1 min-h-screen">
         {children}
       </main>

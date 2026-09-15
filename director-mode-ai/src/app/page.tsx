@@ -626,7 +626,7 @@ export default function HomePage() {
                 { href: "/client/dashboard", icon: Calendar, name: "My Lessons", sub: "Book & manage", color: "text-blue-400", bg: "bg-blue-400/10 hover:bg-blue-400/20" },
                 { href: "/client/dashboard?tab=stringing", icon: Wrench, name: "My Stringing", sub: "Order status", color: "text-pink-400", bg: "bg-pink-400/10 hover:bg-pink-400/20" },
                 { href: "/client/dashboard?tab=events", icon: Trophy, name: "Events", sub: "Mixers & leagues", color: "text-orange-400", bg: "bg-orange-400/10 hover:bg-orange-400/20" },
-                { href: "/courtconnect/events", icon: Users, name: "Find Players", sub: "Match & play", color: "text-emerald-400", bg: "bg-emerald-400/10 hover:bg-emerald-400/20" },
+                { href: "/courtconnect", icon: Users, name: "CourtConnect", sub: "Games at your level", color: "text-emerald-400", bg: "bg-emerald-400/10 hover:bg-emerald-400/20" },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
@@ -663,7 +663,7 @@ export default function HomePage() {
                 { href: "/mixer/home", icon: Shuffle, name: "MixerMode", color: "bg-orange-500 hover:bg-orange-600" },
                 { onClick: goToLessons, icon: Clock, name: "Lessons", color: "bg-blue-500 hover:bg-blue-600" },
                 { href: "/stringing/jobs", icon: Wrench, name: "Stringing", color: "bg-pink-500 hover:bg-pink-600" },
-                { href: "/courtconnect/home", icon: Users, name: "CourtConnect", color: "bg-emerald-500 hover:bg-emerald-600" },
+                { href: "/run/members/courtconnect", icon: Users, name: "CourtConnect", color: "bg-emerald-500 hover:bg-emerald-600" },
                 { href: "/courtconnect/vault", icon: Database, name: "PlayerVault", color: "bg-teal-500 hover:bg-teal-600" },
                 { href: "/swim", icon: Waves, name: "SwimMode", color: "bg-sky-500 hover:bg-sky-600" },
                 { href: "/lessons/recap", icon: GraduationCap, name: "Coach Mode", color: "bg-violet-500 hover:bg-violet-600" },

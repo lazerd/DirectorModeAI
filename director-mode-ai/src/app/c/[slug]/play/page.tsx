@@ -1,5 +1,5 @@
 /**
- * Find a Game, on the club's own site.
+ * CourtConnect, on the club's own site.
  *
  * Members get the real board. Everyone else sees that games exist and what
  * they are — "Tue 9:00am doubles · needs 1 · 3.0–3.5" — and nothing that
@@ -31,7 +31,7 @@ export async function generateMetadata({
   const bundle = await getClubSite(slug);
   if (!bundle) return { title: 'Not found' };
   return {
-    title: `Find a game — ${bundle.club.name}`,
+    title: `CourtConnect — ${bundle.club.name}`,
     description: `Members of ${bundle.club.name} post games that need players, and join them in one tap.`,
     alternates: { canonical: `/c/${bundle.club.slug}/play` },
   };
@@ -62,9 +62,10 @@ export default async function ClubPlayPage({ params }: { params: Promise<{ slug:
     return (
       <div className="mx-auto max-w-3xl px-5 py-12">
         <h1 className="text-4xl font-bold" style={{ fontFamily: theme.headingFamily }}>
-          Find a game
+          CourtConnect
         </h1>
-        <p className="mb-8 mt-3 text-xl" style={{ color: tint(theme.ink, 0.7) }}>
+        <p className="mt-2 text-xl font-semibold">Find a game with members at your level</p>
+        <p className="mb-8 mt-2 text-xl" style={{ color: tint(theme.ink, 0.7) }}>
           Need a player? Post your game and we&rsquo;ll email members at your level. Want a game? Tap &ldquo;I&rsquo;m in.&rdquo;
         </p>
         <GamesBoard clubId={club.id} />
@@ -78,10 +79,10 @@ export default async function ClubPlayPage({ params }: { params: Promise<{ slug:
   return (
     <div className="mx-auto max-w-3xl px-5 py-12 text-lg">
       <h1 className="text-4xl font-bold" style={{ fontFamily: theme.headingFamily }}>
-        Find a game
+        CourtConnect
       </h1>
       <p className="mt-3 text-xl" style={{ color: tint(theme.ink, 0.7) }}>
-        Members post games that need players, and join them in one tap.
+        Members of {club.name} post games that need players, and members at the right level join in one tap.
       </p>
 
       <div

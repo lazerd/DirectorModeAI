@@ -5,6 +5,7 @@ import ClubChrome, { getClubChrome } from '@/components/clubSite/ClubChrome';
 import PublicClient from './PublicClient';
 import EmbedRuntime from '@/components/clubSite/EmbedRuntime';
 import { isEmbedParam } from '@/lib/clubSite/embed';
+import { publicOpenGames } from '@/lib/partnerFinder/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +22,7 @@ export default async function PublicCourtSheetPage({ params, searchParams }: Pag
   if (!club) notFound();
 
   const db = getSupabaseAdmin();
-  const [{ data: courts }, chrome, { data: site }] = await Promise.all([
+  const [{ data: courts }, chrome, { data: site }, openGames] = await Promise.all([
     db
       .from('courts')
       .select('*')
@@ -40,6 +41,9 @@ export default async function PublicCourtSheetPage({ params, searchParams }: Pag
     // Open cells link to the club site's booking page, which only exists
     // for a club with a site.
     db.from('club_site').select('club_id').eq('club_id', club.id).maybeSingle(),
+    // For the CourtConnect card: how many games need players. A count only —
+    // nothing that identifies a member.
+    publicOpenGames(db, club.id).catch(() => []),
   ]);
 
   return (
@@ -49,6 +53,7 @@ export default async function PublicCourtSheetPage({ params, searchParams }: Pag
         club={club as any}
         initialCourts={(courts ?? []) as any}
         hasSite={!!site}
+        openGameCount={openGames.filter((g) => g.spots_left > 0).length}
         embedded={embedded}
       />
     </ClubChrome>

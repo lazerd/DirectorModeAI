@@ -40,7 +40,7 @@
 import {
   LayoutGrid, CalendarDays, Shuffle, Calendar, Trophy, ClipboardList, Waves,
   Users, Database, Wrench, Clock, GraduationCap, Mountain, BarChart3, Sparkles,
-  Grid3x3, User, CalendarRange, Search, CalendarCheck, HardHat, Globe, Handshake, QrCode,
+  Grid3x3, User, Search, CalendarCheck, HardHat, Globe, Handshake, QrCode,
 } from 'lucide-react';
 
 export type NavIcon = typeof LayoutGrid;
@@ -226,24 +226,15 @@ export const SECTIONS: Section[] = [
       },
       {
         /*
-         * Matching members into games at their level is Partner Finder's job
-         * (below). CourtConnect never did it — no rating match, no club scope —
-         * so it no longer claims to.
+         * One partner finder per club. It was built as "Partner Finder" (hence
+         * lib/partnerFinder and the pf_* tables) and replaced the May
+         * CourtConnect prototype, whose shared, unscoped event board is retired.
+         * Members reach it from their clubhouse, the court sheet, the club site
+         * and /courtconnect.
          */
         name: 'CourtConnect',
-        href: '/courtconnect/home',
-        match: '/courtconnect/home',
-        description: 'Player-run events and RSVPs with automatic waitlists. For matching members into games at their level, use Partner Finder.',
-        pitch: 'Let players create their own events and manage RSVPs with automatic waitlists.',
-        icon: Users,
-        color: '#34d399',
-        product: true,
-        tag: 'PLAYERS',
-      },
-      {
-        name: 'Partner Finder',
-        href: '/run/members/partner-finder',
-        match: '/run/members/partner-finder',
+        href: '/run/members/courtconnect',
+        match: '/run/members/courtconnect',
         description: 'Members post "need 1 for doubles"; members at the right level get an email and join in one tap.',
         pitch: 'A member needs a fourth. Members at the right level get an email, the first to tap "I\'m in" gets the spot, and the whole group gets a confirmation. No login, no group texts.',
         icon: Handshake,
@@ -438,11 +429,12 @@ export const FOR_PLAYERS: Tool[] = [
     color: '#60a5fa',
   },
   {
-    name: 'Events',
-    href: '/courtconnect/events',
-    match: '/courtconnect/events',
-    description: 'What is on at the club, and how to get into it.',
-    icon: CalendarRange,
+    // The member side of CourtConnect (the old shared events board is retired).
+    name: 'CourtConnect',
+    href: '/member/games',
+    match: '/member/games',
+    description: 'Games with members at your level. Join one, or post one that needs players.',
+    icon: Handshake,
     color: '#34d399',
   },
   {

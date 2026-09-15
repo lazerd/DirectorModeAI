@@ -1,5 +1,5 @@
 /**
- * Partner Finder — the words and times, in one place.
+ * CourtConnect — the words and times, in one place.
  *
  * Pure functions only, so the board, the emails, the club site and the
  * director page all say "Tue 9:00am doubles · needs 1 · 3.0–3.5" the same way.
