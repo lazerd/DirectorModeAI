@@ -32,6 +32,7 @@ export const TOURNAMENT_FORMATS = new Set<string>([
 export const MIXER_FORMATS = new Set<string>([
   'singles', 'doubles', 'mixed-doubles',
   'king-of-court', 'round-robin', 'maximize-courts', 'team-battle',
+  'wild-card',
 ]);
 
 export type EventLite = {

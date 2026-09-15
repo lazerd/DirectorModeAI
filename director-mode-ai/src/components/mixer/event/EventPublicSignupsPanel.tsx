@@ -36,6 +36,8 @@ type EventLite = {
   public_registration: boolean | null;
   entry_fee_cents: number | null;
   max_players: number | null;
+  max_men: number | null;
+  max_women: number | null;
 };
 
 type Entry = {
@@ -44,6 +46,7 @@ type Entry = {
   player_email: string | null;
   parent_email: string | null;
   partner_name: string | null;
+  gender: string | null;
   ntrp: number | null;
   utr: number | null;
   position: 'pending_payment' | 'in_draw' | 'waitlist' | 'withdrawn';
@@ -74,7 +77,7 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
     const supabase = createClient();
     const { data: ev } = await supabase
       .from('events')
-      .select('id, name, slug, match_format, public_registration, entry_fee_cents, max_players')
+      .select('id, name, slug, match_format, public_registration, entry_fee_cents, max_players, max_men, max_women')
       .eq('id', eventId)
       .maybeSingle();
     setEvent(ev as EventLite);
@@ -82,7 +85,7 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
     const { data: e } = await supabase
       .from('tournament_entries')
       .select(
-        'id, player_name, player_email, parent_email, partner_name, ntrp, utr, position, payment_status, notes, imported_at'
+        'id, player_name, player_email, parent_email, partner_name, gender, ntrp, utr, position, payment_status, notes, imported_at'
       )
       .eq('event_id', eventId)
       .order('registered_at', { ascending: true });
@@ -185,6 +188,8 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
   const inDraw = entries.filter((x) => x.position === 'in_draw').length;
   const waitlist = entries.filter((x) => x.position === 'waitlist').length;
   const pending = entries.filter((x) => x.position === 'pending_payment').length;
+  const genderCapped = event.max_men != null || event.max_women != null;
+  const confirmedOf = (g: string) => entries.filter((x) => x.position === 'in_draw' && x.gender === g).length;
 
   return (
     <div className="bg-white border-2 border-emerald-200 rounded-xl p-4 mb-6 space-y-3">
@@ -194,6 +199,12 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
           <h2 className="font-semibold text-gray-900">Public Signups</h2>
           <span className="text-sm text-gray-600">
             · {inDraw} confirmed · {waitlist} waitlist · {pending} pending pmt
+            {genderCapped && (
+              <>
+                {event.max_men != null && ` · ${confirmedOf('male')}/${event.max_men} men`}
+                {event.max_women != null && ` · ${confirmedOf('female')}/${event.max_women} women`}
+              </>
+            )}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -270,6 +281,7 @@ export default function EventPublicSignupsPanel({ eventId }: { eventId: string }
                     <td className="px-3 py-1.5">
                       <div className="font-medium text-gray-900">{entry.player_name}</div>
                       <div className="text-xs text-gray-500">
+                        {genderCapped && entry.gender && `${entry.gender === 'male' ? 'M' : entry.gender === 'female' ? 'W' : entry.gender} · `}
                         {entry.player_email || entry.parent_email || '—'}
                         {entry.partner_name && ` · w/ ${entry.partner_name}`}
                         {entry.notes && ` · ${entry.notes}`}

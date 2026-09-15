@@ -11,6 +11,8 @@ type Props = {
   isDoubles: boolean;
   isMixedDoubles: boolean;
   isTeamBattle: boolean;
+  /** Separate men's/women's spots or mixed partners — must pick Male or Female. */
+  genderRequired?: boolean;
 };
 
 export default function RegisterForm({
@@ -21,6 +23,7 @@ export default function RegisterForm({
   isDoubles,
   isMixedDoubles,
   isTeamBattle,
+  genderRequired = false,
 }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -97,19 +100,19 @@ export default function RegisterForm({
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1">
-            Gender {isMixedDoubles && '*'}
+            Gender {(isMixedDoubles || genderRequired) && '*'}
           </label>
           <select
             value={form.gender}
             onChange={(e) => setForm({ ...form, gender: e.target.value })}
             className="w-full px-3 py-2 border rounded-lg text-gray-900"
             disabled={genderRestriction === 'boys' || genderRestriction === 'girls'}
-            required={isMixedDoubles || genderRestriction === 'boys' || genderRestriction === 'girls'}
+            required={isMixedDoubles || genderRequired || genderRestriction === 'boys' || genderRestriction === 'girls'}
           >
             <option value="">— select —</option>
             <option value="male">Male</option>
             <option value="female">Female</option>
-            <option value="nonbinary">Non-binary</option>
+            {!genderRequired && <option value="nonbinary">Non-binary</option>}
           </select>
         </div>
 
