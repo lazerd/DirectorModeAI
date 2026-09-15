@@ -1,5 +1,6 @@
 /**
- * Partner Finder — reads and writes.
+ * CourtConnect — reads and writes. (Partner Finder = CourtConnect: it was built
+ * under that name, hence lib/partnerFinder and the pf_* tables.)
  *
  * Everything here takes the ADMIN client and does its own club check, because
  * almost every question it answers is about somebody else's row: who is in

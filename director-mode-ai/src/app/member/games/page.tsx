@@ -7,11 +7,12 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolvePlayingClub } from '@/lib/partnerFinder/server';
 import GamesBoard from '@/components/partnerFinder/GamesBoard';
 
-// Find a Game — post a game that needs players, or join one. The member-side
-// face of Partner Finder. Middleware already requires a signed-in account here.
+// CourtConnect, the member board — post a game that needs players, or join one.
+// (Built as "Partner Finder", hence lib/partnerFinder.) Middleware already
+// requires a signed-in account here.
 
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'Find a Game' };
+export const metadata: Metadata = { title: 'CourtConnect' };
 
 export default async function MemberGamesPage({ searchParams }: { searchParams: { club?: string } }) {
   const supabase = await createClient();
@@ -32,8 +33,9 @@ export default async function MemberGamesPage({ searchParams }: { searchParams: 
           <Link href="/member" className="inline-flex min-h-[44px] items-center gap-2 text-lg text-emerald-50 hover:underline">
             <ArrowLeft className="h-5 w-5" /> {club.name}
           </Link>
-          <h1 className="mt-2 text-4xl font-bold">Find a Game</h1>
-          <p className="mt-2 text-xl text-emerald-50">
+          <h1 className="mt-2 text-4xl font-bold">CourtConnect</h1>
+          <p className="mt-2 text-xl font-semibold text-white">Find a game with members at your level</p>
+          <p className="mt-1 text-lg text-emerald-50">
             Need a player? Post your game and we&rsquo;ll email members at your level. Want a game? Tap &ldquo;I&rsquo;m in.&rdquo;
           </p>
         </div>

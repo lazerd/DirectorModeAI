@@ -1,5 +1,5 @@
 /**
- * Partner Finder — who hears about what.
+ * CourtConnect — who hears about what.
  *
  *   post        → matching members get "a game needs players"
  *   join        → the poster hears; when that fills it, everyone gets the group
@@ -52,8 +52,8 @@ async function deliver(club: Club, messages: GameMessage[]): Promise<number> {
   } catch (err) {
     // A club over its email allowance still gets its game posted; it just
     // doesn't get the blast. Anything else is logged, never thrown at a member.
-    if (err instanceof CreditLimitError) console.warn('[partner-finder] club over email limit');
-    else console.error('[partner-finder] send failed', err);
+    if (err instanceof CreditLimitError) console.warn('[courtconnect] club over email limit');
+    else console.error('[courtconnect] send failed', err);
     return 0;
   }
 }
@@ -71,7 +71,7 @@ async function spotsLeft(db: Db, game: Game): Promise<number> {
 export async function inviteMembers(db: Db, game: Game, club: Club): Promise<number> {
   const { data, error } = await db.rpc('pf_game_recipients', { p_game: game.id, p_limit: MAX_RECIPIENTS });
   if (error) {
-    console.error('[partner-finder] recipients', error.message);
+    console.error('[courtconnect] recipients', error.message);
     return 0;
   }
   const recipients = (data as { user_id: string; email: string; full_name: string | null; stop_token: string | null }[]) ?? [];

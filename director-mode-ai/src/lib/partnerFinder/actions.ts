@@ -1,5 +1,5 @@
 /**
- * Partner Finder — join, leave, cancel.
+ * CourtConnect — join, leave, cancel.
  *
  * Shared by the signed-in board (/api/play/games/[id]) and the no-login
  * link pages (/api/play/link/[token]), so a tap from an email and a tap on

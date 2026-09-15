@@ -58,7 +58,7 @@ export default function CustomersPage() {
       return;
     }
 
-    // Optionally mirror into the PlayerVault so CourtConnect sees them too.
+    // Optionally mirror into the PlayerVault so the rest of ClubMode sees them too.
     if (alsoAddToVault) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -223,7 +223,7 @@ export default function CustomersPage() {
                 className="w-4 h-4 accent-purple-600"
               />
               Also add to PlayerVault
-              <span className="text-gray-600">(makes them available across CourtConnect and other modes)</span>
+              <span className="text-gray-600">(makes them available across PlayerVault and other modes)</span>
             </label>
 
             <div className="flex gap-3 mt-4">

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Users, Trash2, ArrowRightCircle, FileUp, Trophy, Crown, GraduationCap, User as UserIcon, Mail, Copy, Check, Loader2 } from 'lucide-react';
+import { Plus, Search, Users, Trash2, FileUp, Trophy, Crown, GraduationCap, User as UserIcon, Mail, Copy, Check, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 
@@ -107,9 +107,7 @@ export default function PlayerVaultPage() {
   const [accessFilter, setAccessFilter] = useState('');
   const [sortKey, setSortKey] = useState<SortKey>('name_asc');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [importing, setImporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; skipped: number } | null>(null);
   const [savingRole, setSavingRole] = useState<string | null>(null);
   const [inviting, setInviting] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -260,26 +258,12 @@ export default function PlayerVaultPage() {
       }
     });
 
-  // Only real roster rows are selectable for bulk import/delete.
+  // Only real roster rows are selectable for bulk delete. (The old "Import to
+  // CourtConnect" bulk action is gone: CourtConnect now reads PlayerVault
+  // ratings directly, so there is nothing to copy across.)
   const selectableIds = filtered.filter((r) => !r._memberOnly).map((r) => r.id);
   const toggleSelect = (id: string) => setSelectedIds((prev) => (prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]));
   const toggleSelectAll = () => setSelectedIds(selectedIds.length === selectableIds.length ? [] : selectableIds);
-
-  const handleBulkImport = async () => {
-    if (selectedIds.length === 0) return;
-    setImporting(true);
-    setImportResult(null);
-    try {
-      const res = await fetch('/api/courtconnect/vault-import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vaultPlayerIds: selectedIds }) });
-      const data = await res.json();
-      setImportResult({ success: data.imported || 0, skipped: data.skipped || 0 });
-      setSelectedIds([]);
-      fetchPlayers();
-    } catch (err) {
-      setImportResult({ success: 0, skipped: 0 });
-    }
-    setImporting(false);
-  };
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
@@ -408,15 +392,6 @@ export default function PlayerVaultPage() {
         <div className="card p-3 mb-4 flex items-center gap-3 bg-courtconnect-light border-courtconnect/20">
           <span className="text-sm font-medium">{selectedIds.length} selected</span>
           <button
-            onClick={handleBulkImport}
-            className="btn btn-courtconnect btn-sm"
-            disabled={importing}
-          >
-            {importing ? <div className="spinner" /> : (
-              <><ArrowRightCircle size={14} /> Import to CourtConnect</>
-            )}
-          </button>
-          <button
             onClick={handleBulkDelete}
             className="btn btn-destructive btn-sm"
             disabled={deleting}
@@ -426,16 +401,6 @@ export default function PlayerVaultPage() {
           <button onClick={() => setSelectedIds([])} className="btn btn-ghost btn-sm ml-auto">
             Clear
           </button>
-        </div>
-      )}
-
-      {/* Import result */}
-      {importResult && (
-        <div className="alert alert-success mb-4">
-          <p className="text-sm">
-            Imported {importResult.success} player{importResult.success !== 1 ? 's' : ''} to CourtConnect.
-            {importResult.skipped > 0 && ` ${importResult.skipped} already connected.`}
-          </p>
         </div>
       )}
 
@@ -505,7 +470,6 @@ export default function PlayerVaultPage() {
                           {player.full_name}
                         </Link>
                       )}
-                      {player.cc_player_id && <span className="badge badge-success text-[10px]" title="Connected to CourtConnect">CC</span>}
                     </div>
                   </td>
                   <td className="text-gray-500 text-sm">{player.email || '—'}</td>

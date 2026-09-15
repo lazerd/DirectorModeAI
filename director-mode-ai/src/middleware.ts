@@ -248,6 +248,9 @@ export async function middleware(request: NextRequest) {
     '/tools',
     // First-run setup wizard — needs a signed-in user to attach the club to.
     '/start',
+    // PlayerVault and the club profile (director tools under /courtconnect).
+    '/courtconnect/vault',
+    '/courtconnect/club',
   ];
   /*
    * Public pages that live UNDER a protected prefix.
@@ -297,6 +300,9 @@ export async function middleware(request: NextRequest) {
     '/calendar', '/mixer', '/courtsheet/staff', '/lessons/dashboard',
     '/stringing', '/club-hub', '/club/members', '/connect/clubs',
     '/run', '/tools',
+    // PlayerVault and the club profile. NOT all of /courtconnect: the bare
+    // /courtconnect is how a member reaches their CourtConnect board.
+    '/courtconnect/vault', '/courtconnect/club',
   ];
   const isDirectorPath =
     !publicUnderProtected && DIRECTOR_PATHS.some((p) => request.nextUrl.pathname.startsWith(p));

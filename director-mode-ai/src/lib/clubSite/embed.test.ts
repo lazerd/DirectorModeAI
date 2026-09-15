@@ -89,7 +89,7 @@ describe('embedLinkAction', () => {
 
   it('sends sign-in and app pages out of the frame', () => {
     expect(embedLinkAction('/login?next=%2Fc%2Fsome-club', PAGE)).toEqual({ kind: 'new-window' });
-    expect(embedLinkAction('/courtconnect/home', PAGE)).toEqual({ kind: 'new-window' });
+    expect(embedLinkAction('/courtconnect', PAGE)).toEqual({ kind: 'new-window' });
     expect(embedLinkAction('/terms', PAGE)).toEqual({ kind: 'new-window' });
   });
 

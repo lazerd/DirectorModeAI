@@ -19,11 +19,18 @@ describe('the canonical product list', () => {
     expect(PRODUCT_COUNT).toBe(PRODUCTS.length);
   });
 
-  it('has 18 products — the audit landed on 15, MaintenanceMode 16, SiteMode 17, Partner Finder 18', () => {
+  it('has 17 products — the audit landed on 15, MaintenanceMode 16, SiteMode 17 (Partner Finder merged into CourtConnect)', () => {
     // If this fails because you genuinely added a tool, update the number AND
     // check the hero counter still reads it from PRODUCT_COUNT rather than a
     // literal. If it fails for any other reason, something drifted.
-    expect(PRODUCT_COUNT).toBe(18);
+    expect(PRODUCT_COUNT).toBe(17);
+  });
+
+  it('has exactly one CourtConnect, pointing at the per-club director view', () => {
+    const cc = PRODUCTS.filter((t) => t.name === 'CourtConnect');
+    expect(cc).toHaveLength(1);
+    expect(cc[0].href).toBe('/run/members/courtconnect');
+    expect(PRODUCTS.map((t) => t.name)).not.toContain('Partner Finder');
   });
 
   it('counts only entries explicitly flagged as products', () => {
@@ -110,8 +117,8 @@ describe('activeHref picks the longest matching prefix', () => {
     expect(activeHref('/maintenance/projects/abc', entries)).toBe('/run/facilities');
   });
 
-  it('lights up Members for Partner Finder', () => {
-    expect(activeHref('/run/members/partner-finder', entries)).toBe('/run/members');
+  it('lights up Members for CourtConnect', () => {
+    expect(activeHref('/run/members/courtconnect', entries)).toBe('/run/members');
   });
 
   it('returns null when nothing matches', () => {

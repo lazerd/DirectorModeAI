@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Find a Game — the member's board.
+ * CourtConnect — the member's board.
  *
  * One page, top to bottom, no tabs: post a game, your games, games you're in,
  * games looking for players, then your settings. Tabs hide things, and this is

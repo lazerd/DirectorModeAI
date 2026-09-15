@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Partner Finder — the few pieces the board and the emailed-link page share.
+ * CourtConnect — the few pieces the board and the emailed-link page share.
  *
  * Light, large and plain on purpose: the first club using this is a 55+
  * community. Body text is 18px, every button is at least 56px tall, and every

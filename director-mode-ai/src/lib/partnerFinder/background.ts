@@ -14,7 +14,7 @@
 type RequestContext = { get?: () => { waitUntil?: (p: Promise<unknown>) => void } | undefined };
 
 export function background(label: string, work: () => Promise<unknown>): void {
-  const p = work().catch((err) => console.error(`[partner-finder] ${label} failed`, err));
+  const p = work().catch((err) => console.error(`[courtconnect] ${label} failed`, err));
   // '@vercel/request-context' is what @vercel/functions reads; '@next/request-context'
   // is the one Next's own server reads (base-server.js). Either keeps the function alive.
   const g = globalThis as Record<symbol, RequestContext | undefined>;
