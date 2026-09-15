@@ -8,15 +8,16 @@
  * never `new Date('2026-09-22T09:00')`, which on Vercel means 9am UTC.
  *
  * The membership check, the daily limit and the insert are one Postgres call
- * (pf_post_game). The emails go out after, and can take a while at a big club,
- * hence maxDuration.
+ * (pf_post_game). The emails go out after the response, and can take a while at
+ * a big club, hence maxDuration.
  */
 import { NextResponse } from 'next/server';
 import { zonedWallTimeToIso } from '@/lib/captain/clubTime';
 import { isCtxError, requireMember } from '@/lib/partnerFinder/actions';
 import { inviteMembers } from '@/lib/partnerFinder/notify';
 import { loadGame, saveSelfRating } from '@/lib/partnerFinder/server';
-import { DAILY_POST_LIMIT, MAX_SPOTS, NTRP_LEVELS, isFormat } from '@/lib/partnerFinder/format';
+import { DAILY_POST_LIMIT, MAX_RECIPIENTS, MAX_SPOTS, NTRP_LEVELS, isFormat } from '@/lib/partnerFinder/format';
+import { background } from '@/lib/partnerFinder/background';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -96,7 +97,14 @@ export async function POST(req: Request) {
     );
   }
 
+  /*
+   * Answer the poster now; email after. Paced sends to 50 members take ~25s,
+   * and a poster staring at "Posting…" that long taps again. The count is who
+   * WILL be emailed, read with the same function the send uses.
+   */
   const game = await loadGame(db, r.game_id!);
-  const notified = game ? await inviteMembers(db, game, club) : 0;
-  return NextResponse.json({ ok: true, game_id: r.game_id, notified });
+  const { data: recipients } = await db.rpc('pf_game_recipients', { p_game: r.game_id, p_limit: MAX_RECIPIENTS });
+  const notifying = ((recipients as unknown[] | null) ?? []).length;
+  if (game && notifying > 0) background('invite emails', () => inviteMembers(db, game, club));
+  return NextResponse.json({ ok: true, game_id: r.game_id, notified: notifying });
 }

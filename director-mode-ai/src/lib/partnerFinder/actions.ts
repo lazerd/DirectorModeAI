@@ -4,8 +4,10 @@
  * Shared by the signed-in board (/api/play/games/[id]) and the no-login
  * link pages (/api/play/link/[token]), so a tap from an email and a tap on
  * the board can never behave differently. The deciding write is always one of
- * the Postgres functions; the emails go out after it has committed.
+ * the Postgres functions; the emails go out after the response, once it has
+ * committed (see background.ts).
  */
+import { background } from './background';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -65,7 +67,7 @@ export async function joinGame(
   const r = data as { result: string; now_full?: boolean };
   if (r.result !== 'joined') return { ok: r.result === 'already_in', result: r.result, message: say(r.result) };
 
-  await afterJoin(db, gameId, userId, !!r.now_full);
+  background('join emails', () => afterJoin(db, gameId, userId, !!r.now_full));
   return { ok: true, result: 'joined', message: say(r.now_full ? 'joined_full' : 'joined') };
 }
 
@@ -74,7 +76,7 @@ export async function leaveGame(db: Db, gameId: string, userId: string): Promise
   if (error) return { ok: false, result: 'error', message: say('error') };
   const r = data as { result: string };
   if (r.result !== 'left') return { ok: false, result: r.result, message: say(r.result) };
-  await afterLeave(db, gameId, userId);
+  background('leave email', () => afterLeave(db, gameId, userId));
   return { ok: true, result: 'left', message: say('left') };
 }
 
@@ -83,7 +85,7 @@ export async function cancelGame(db: Db, gameId: string, userId: string): Promis
   if (error) return { ok: false, result: 'error', message: say('error') };
   const r = data as { result: string };
   if (r.result !== 'cancelled') return { ok: false, result: r.result, message: say(r.result) };
-  await afterCancel(db, gameId);
+  background('cancel emails', () => afterCancel(db, gameId));
   return { ok: true, result: 'game_cancelled', message: say('game_cancelled') };
 }
 
