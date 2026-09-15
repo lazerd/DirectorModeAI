@@ -53,10 +53,17 @@ export default function EmbedRuntime() {
 
     /* ------------------------------------------------------------ height */
     let last = 0;
-    let frame = 0;
-    const post = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
+    let timer = 0;
+    /*
+     * Debounced with a timer, NOT requestAnimationFrame: browsers stop running
+     * animation frames in a cross-origin iframe that is scrolled out of view,
+     * so a frame lower down the club's page would never report its height —
+     * and would sit at its starting size until someone scrolled to it.
+     */
+    const post = (force?: unknown) => {
+      if (force === true) last = 0;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
         const body = document.body;
         const rect = body.getBoundingClientRect();
         const cs = getComputedStyle(body);
@@ -69,12 +76,24 @@ export default function EmbedRuntime() {
         // is the point of an embed), and the message carries a number, not
         // anything a stranger could use.
         window.parent?.postMessage({ type: MESSAGE_TYPE, height, href: location.href }, '*');
-      });
+      }, 30);
     };
-    const ro = new ResizeObserver(post);
+    const ro = new ResizeObserver(() => post());
     ro.observe(document.body);
-    window.addEventListener('load', post);
+    const onLoad = () => post(true);
+    window.addEventListener('load', onLoad);
     post();
+    /*
+     * The host page's /embed.js is often still loading when the first height
+     * goes out, and a message nobody was listening for is simply lost. So the
+     * script asks ('clubmode:ping') once it is ready, and this answers.
+     */
+    const onPing = (e: MessageEvent) => {
+      if (e.source === window.parent && (e.data as { type?: string })?.type === 'clubmode:ping') post(true);
+    };
+    window.addEventListener('message', onPing);
+    // And in case the ping came before this page had hydrated to answer it.
+    const retries = [1000, 3000].map((ms) => window.setTimeout(() => post(true), ms));
 
     /* ------------------------------------------------------------- links */
     const decorate = (a: HTMLAnchorElement) => {
@@ -116,9 +135,11 @@ export default function EmbedRuntime() {
     return () => {
       ro.disconnect();
       mo.disconnect();
-      window.removeEventListener('load', post);
+      window.removeEventListener('load', onLoad);
+      window.removeEventListener('message', onPing);
       window.removeEventListener('click', onClick, true);
-      cancelAnimationFrame(frame);
+      retries.forEach((t) => window.clearTimeout(t));
+      window.clearTimeout(timer);
       style.remove();
       root.removeAttribute('data-clubmode-embed');
     };

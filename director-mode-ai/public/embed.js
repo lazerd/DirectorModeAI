@@ -63,11 +63,25 @@
    * form), the visitor may be scrolled far below the top of it. Bring the top
    * of the frame back into view, the way a normal page load would.
    */
+  // Ask a frame for its height. Its first report may have gone out before
+  // this script existed to hear it.
+  function ping(frame) {
+    try {
+      // '*' because until the frame loads, its window is a blank page of
+      // THIS site's origin; the message is only a request, it carries nothing.
+      frame.contentWindow && frame.contentWindow.postMessage({ type: 'clubmode:ping' }, '*');
+    } catch (e) {
+      /* a frame mid-navigation; its load event pings again */
+    }
+  }
+
   function watch(frame) {
     if (frame.__clubmodeWatched) return;
     frame.__clubmodeWatched = true;
     var loads = 0;
+    ping(frame);
     frame.addEventListener('load', function () {
+      ping(frame);
       loads += 1;
       if (loads < 2) return;
       var top = frame.getBoundingClientRect().top;

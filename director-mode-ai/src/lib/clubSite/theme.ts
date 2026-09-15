@@ -162,6 +162,8 @@ export function largeTextCss(textSize: TextSize | null | undefined): string {
     'button,select,input:not([type=checkbox]):not([type=radio]):not([type=hidden]),[role=button]{min-height:44px}',
     'a.inline-block,a.block,a[class*="rounded"]{min-height:44px}',
     'a.inline-block{padding-top:.5rem;padding-bottom:.5rem}',
+    // A button-shaped link that grew to 44px keeps its label centred in it.
+    'a.rounded-lg:not(.block),a.rounded-xl:not(.block){display:inline-flex;align-items:center;justify-content:center}',
     '[class*="text-white/30"],[class*="text-white/40"],[class*="text-white/50"],[class*="text-white/60"]{color:rgba(255,255,255,.85)!important}',
     '.opacity-40,.opacity-50,.opacity-60{opacity:.85!important}',
   ].join('\n');
