@@ -199,7 +199,7 @@ export default async function DemoTourPage({ params, searchParams }: Props) {
             )}
             {hasStaff && (
               <a
-                href={enter('director')}
+                href={enter('director', captain.highlight ? '/captain' : undefined)}
                 className="flex min-h-[72px] items-center justify-center rounded-2xl border-[3px] px-6 py-4 text-center text-xl font-bold sm:text-2xl"
                 style={{ borderColor: theme.primary, color: theme.ink, background: theme.surface }}
               >

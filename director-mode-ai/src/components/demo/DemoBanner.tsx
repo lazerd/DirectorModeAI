@@ -104,29 +104,40 @@ export default function DemoBanner() {
       className="fixed inset-x-0 bottom-0 z-[9998] border-t-2 border-sky-300 bg-[#0c2d48] text-white shadow-[0_-4px_16px_rgba(0,0,0,0.25)] print:hidden"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)', fontFamily: "'Inter', system-ui, sans-serif" }}
     >
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 py-2.5">
-        <p className="text-[15px] leading-snug sm:text-base">
-          You&apos;re exploring the {state.label ? `${state.label} ` : ''}demo as <strong>{who}</strong>
+      {/* One row on a phone: the full sentence and button labels cost a fifth
+          of the screen, on every page, for a reminder people read once. */}
+      <div className="mx-auto flex max-w-5xl items-center justify-between gap-x-3 px-3 py-1.5 sm:flex-wrap sm:gap-y-2 sm:px-4 sm:py-2.5">
+        <p className="min-w-0 truncate text-[14px] leading-snug sm:text-base">
+          <span className="sm:hidden">
+            Demo · <strong>{who}</strong>
+          </span>
+          <span className="hidden sm:inline">
+            You&apos;re exploring the {state.label ? `${state.label} ` : ''}demo as <strong>{who}</strong>
+          </span>
         </p>
-        <div className="flex flex-wrap items-center gap-2 text-[15px] font-semibold">
-          <a href={tour} className="rounded-lg px-3 py-2 underline-offset-2 hover:underline">
-            Back to the tour
+        <div className="flex shrink-0 items-center gap-1.5 text-[14px] font-semibold sm:gap-2 sm:text-[15px]">
+          <a href={tour} className="rounded-lg px-2.5 py-2.5 underline-offset-2 hover:underline sm:px-3 sm:py-2">
+            <span className="sm:hidden">Tour</span>
+            <span className="hidden sm:inline">Back to the tour</span>
           </a>
           {state.hasOther && (
             <a
               href={`${tour}/enter?as=${other}`}
-              className="rounded-lg border border-white/40 px-3 py-2 hover:bg-white/10"
+              className="rounded-lg border border-white/40 px-2.5 py-2 hover:bg-white/10 sm:px-3"
             >
-              Switch to {other === 'director' ? state.directorLabel : 'member'}
+              <span className="sm:hidden">Switch</span>
+              <span className="hidden sm:inline">
+                Switch to {other === 'director' ? state.directorLabel : 'member'}
+              </span>
             </a>
           )}
           <button
             type="button"
             onClick={leave}
             disabled={leaving}
-            className="rounded-lg bg-sky-300 px-3 py-2 text-[#0c2d48] hover:bg-sky-200 disabled:opacity-60"
+            className="rounded-lg bg-sky-300 px-2.5 py-2 text-[#0c2d48] hover:bg-sky-200 disabled:opacity-60 sm:px-3"
           >
-            {leaving ? 'Leaving…' : 'Leave demo'}
+            {leaving ? 'Leaving…' : <><span className="sm:hidden">Leave</span><span className="hidden sm:inline">Leave demo</span></>}
           </button>
         </div>
       </div>

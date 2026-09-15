@@ -118,12 +118,48 @@ function run(script) {
   if (r.status !== 0) throw new Error(`${script} exited ${r.status}`);
 }
 
+/**
+ * A CourtConnect board with nothing on it demos nothing: the member lands on
+ * "No games need players right now". Lee (the second demo member) posts two
+ * open games so Pat can tap "I'm in" on the first visit. Inserted directly —
+ * posting through the app would email the club, and this is a reset, not a
+ * visitor. Times are 9:00 and 10:00 club time, built with the zone's real
+ * offset on that date (PDT/PST), never a naive date string.
+ */
+async function seedOpenGames() {
+  const { data: club } = await db.from('cc_clubs').select('id, timezone').eq('slug', SLUG).maybeSingle();
+  const { data: list } = await db.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const lee = (list?.users ?? []).find((u) => u.email === 'rossmoor-member2@clubmode.ai');
+  if (!club || !lee) return console.log('· open games skipped (club or Lee missing)');
+  const tz = club.timezone || 'America/Los_Angeles';
+
+  const clubTime = (daysAhead, hhmm) => {
+    const day = new Date(Date.now() + daysAhead * 864e5);
+    const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(day);
+    const off = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' })
+      .formatToParts(new Date(`${ymd}T12:00:00Z`))
+      .find((p) => p.type === 'timeZoneName').value.replace('GMT', '') || '+00:00';
+    return new Date(`${ymd}T${hhmm}:00${off}`).toISOString();
+  };
+
+  const games = [
+    { starts_at: clubTime(1, '09:00'), format: 'doubles', spots_needed: 1, rating_min: 3.0, rating_max: 3.5, include_unrated: false, note: 'Friendly doubles at Buckeye. I bring the balls.' },
+    { starts_at: clubTime(2, '10:00'), format: 'mixed', spots_needed: 2, rating_min: null, rating_max: null, include_unrated: true, note: 'Mixed doubles, all levels welcome.' },
+  ];
+  for (const g of games) {
+    const { error } = await db.from('pf_games').insert({ ...g, club_id: club.id, posted_by: lee.id, duration_min: 90, status: 'open' });
+    if (error) throw new Error(`open game: ${error.message}`);
+  }
+  console.log(`· posted ${games.length} open CourtConnect games as Lee`);
+}
+
 async function main() {
   console.log(`\n[${stamp()}] Resetting the Rossmoor demo`);
   await clearVisitorActivity();
   run('seed-rossmoor.mjs');
   run('seed-rossmoor-demo.mjs');
   run('seed-rossmoor-mixer.mjs');
+  await seedOpenGames();
   console.log(`\n[${stamp()}] Rossmoor demo reset complete`);
 }
 

@@ -53,7 +53,7 @@ describe('sanitizeDemoNext', () => {
 
   it('falls back to the role home', () => {
     expect(demoLanding('member', '//evil.com')).toBe('/member');
-    expect(demoLanding('director', null)).toBe('/run/tools');
+    expect(demoLanding('director', null)).toBe('/courtsheet/staff');
     expect(demoLanding('director', '/captain')).toBe('/captain');
   });
 
