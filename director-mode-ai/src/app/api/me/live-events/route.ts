@@ -107,11 +107,13 @@ export async function GET() {
 
   // Club-linked, plus the club owner's own — older rows predate club_id being
   // set, and a director should not lose sight of their own event because of it.
+  // Only the club-less ones, though: an owner of two clubs would otherwise see
+  // (and show members) the other club's events under this one.
   const eventFilter = ownerId
-    ? `club_id.eq.${active.id},user_id.eq.${ownerId}`
+    ? `club_id.eq.${active.id},and(club_id.is.null,user_id.eq.${ownerId})`
     : `club_id.eq.${active.id}`;
   const leagueFilter = ownerId
-    ? `club_id.eq.${active.id},director_id.eq.${ownerId}`
+    ? `club_id.eq.${active.id},and(club_id.is.null,director_id.eq.${ownerId})`
     : `club_id.eq.${active.id}`;
 
   const [{ data: eventRows }, { data: leagueRows }, { data: classRows }] = await Promise.all([

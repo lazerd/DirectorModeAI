@@ -86,14 +86,16 @@ export default async function MemberHome() {
   const { data: profile } = await admin.from('profiles').select('full_name').eq('id', user.id).maybeSingle();
   const firstName = (profile?.full_name || '').trim().split(/\s+/)[0] || null;
 
-  // What's on — upcoming public events at the club. Scoped by club_id OR the
-  // owner's user_id, since older events predate the club_id column.
+  // What's on — upcoming public events at the club. Scoped by club_id, plus the
+  // owner's events that predate the club_id column. Only club-less ones: an
+  // owner of two clubs (Darrin: Sleepy Hollow + Rossmoor) otherwise shows each
+  // club's members the other club's events.
   const today = new Date();
   const from = new Date(today.getTime() - 2 * 864e5).toISOString().slice(0, 10);
   const { data: events } = await admin
     .from('events')
     .select('id, name, event_date, start_time, event_code, slug, match_format, public_status, entry_fee_cents')
-    .or(`club_id.eq.${club.id},user_id.eq.${club.owner_id}`)
+    .or(`club_id.eq.${club.id},and(club_id.is.null,user_id.eq.${club.owner_id})`)
     .in('public_status', ['open', 'running', 'completed'])
     .gte('event_date', from)
     .order('event_date', { ascending: true })
