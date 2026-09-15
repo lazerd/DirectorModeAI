@@ -37,7 +37,12 @@ describe('livePhase', () => {
   it('keeps a running event today and either side of it', () => {
     expect(livePhase({ public_status: 'running', daysAway: 0 })).toBe('live');
     expect(livePhase({ public_status: 'running', daysAway: 1 })).toBe('live');
-    expect(livePhase({ public_status: 'running', daysAway: -2 })).toBe('live');
+    expect(livePhase({ public_status: 'running', daysAway: -1 })).toBe('live');
+  });
+
+  it('drops a running event two days after its date', () => {
+    // US Open Social, Sun 9/13, still "Happening now" on Tue 9/15.
+    expect(livePhase({ public_status: 'running', daysAway: -2 })).toBeNull();
   });
 
   it('drops a running event two months stale', () => {

@@ -247,7 +247,7 @@ export default function MaintenanceClient({
       {board && tab === 'today' && (
         <button
           onClick={() => setReporting('problem')}
-          className="fixed bottom-24 right-4 z-40 inline-flex min-h-[52px] items-center gap-2 rounded-full px-5 text-[15px] font-semibold text-[#1a1200] shadow-lg md:bottom-8"
+          className="fixed bottom-24 right-4 z-40 inline-flex min-h-[52px] items-center gap-2 rounded-full px-5 text-[15px] font-semibold text-[#1a1200] shadow-lg md:bottom-24"
           style={{ background: ACCENT }}
         >
           <Plus size={18} /> Report a problem

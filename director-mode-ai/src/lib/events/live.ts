@@ -11,8 +11,14 @@
  * two versions that disagree.
  */
 
-/** How long after its date an event may still claim to be underway. */
-export const RUNNING_GRACE_DAYS = 2;
+/**
+ * How long after its date an event may still claim to be underway. One day
+ * covers a weekend tournament dated by its first day; a Sunday social still
+ * showing "Happening now" on Tuesday is what two days produced.
+ */
+export const RUNNING_GRACE_DAYS = 1;
+/** Leagues carry a real end date; a day or two of slack covers moved finals. */
+export const LEAGUE_GRACE_DAYS = 2;
 /** How far ahead a running event may be dated and still count as underway. */
 export const RUNNING_LOOKAHEAD_DAYS = 1;
 
@@ -89,7 +95,7 @@ export type LeagueCandidate = {
 
 export function leaguePhase(l: LeagueCandidate): LivePhase | null {
   // Over is over, whatever the status column still says.
-  if (l.endsIn !== null && l.endsIn < -RUNNING_GRACE_DAYS) return null;
+  if (l.endsIn !== null && l.endsIn < -LEAGUE_GRACE_DAYS) return null;
 
   // Under way: it has started and has not finished.
   if (l.startsIn !== null && l.startsIn <= 0) return 'live';
