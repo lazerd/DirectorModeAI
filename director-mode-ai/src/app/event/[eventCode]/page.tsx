@@ -12,7 +12,8 @@ import { Loader2, Calendar, Clock, Trophy, TrendingUp, TrendingDown, AlertCircle
 import { format } from "date-fns";
 import PublicRoundTimer from "@/components/mixer/event/PublicRoundTimer";
 import PublicScoreDialog from "@/components/mixer/event/PublicScoreDialog";
-import WildCardPlayerView from "@/components/mixer/event/WildCardPlayerView";
+import MixerPlayerView from "@/components/mixer/event/MixerPlayerView";
+import { isRotatingPartnerFormat } from "@/lib/mixerBoard";
 
 interface Event {
   id: string;
@@ -311,10 +312,12 @@ export default function PublicEvent() {
     );
   }
 
-  // A Wild Card is read person-first ("where am I, who with"), in large type,
-  // from a board the server assembles. None of the generic tabs apply.
-  if (event.match_format === "wild-card") {
-    return <WildCardPlayerView eventCode={eventCode} />;
+  // Rotating-partner mixers are read person-first ("where am I, who with"), in
+  // large type, from a board the server assembles. The tabs below read
+  // `matches` with the anon key, which has no grant, so for a player who isn't
+  // signed in they showed no courts at all.
+  if (isRotatingPartnerFormat(event.match_format)) {
+    return <MixerPlayerView eventCode={eventCode} />;
   }
 
   return (

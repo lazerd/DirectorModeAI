@@ -770,8 +770,8 @@ async function main() {
   console.log(`  ${base}/courtsheet/${SLUG}`);
   console.log(`  ${base}/calendar/${SLUG}?year=2026`);
   console.log(`  ${base}/member`);
-  // The reset above removed the October Wild Card too (same owner + club).
-  console.log('\nWild Card demo: run node scripts/seed-rossmoor-wildcard.mjs to put it back.');
+  // The reset above removed the October "Wild Card" mixer too (same owner + club).
+  console.log('\nOctober Wild Card mixer: run node scripts/seed-rossmoor-mixer.mjs to put it back.');
 
   console.log('\nLogins:');
   for (const [key, acct] of Object.entries(ACCOUNTS)) {

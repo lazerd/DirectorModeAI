@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Plus, Check, RotateCcw, ChevronLeft, ChevronRight, Shuffle, Edit, Users, Trash2 } from "lucide-react";
+import { Play, Plus, Check, RotateCcw, ChevronLeft, ChevronRight, Shuffle, Edit, Users, Trash2, Printer, Smartphone } from "lucide-react";
+import { isRotatingPartnerFormat } from "@/lib/mixerBoard";
 import RoundTimer from "@/components/mixer/event/RoundTimer";
 import MatchScoreDialog from "@/components/mixer/event/MatchScoreDialog";
 import TournamentMatchScoreDialog from "@/components/mixer/event/TournamentMatchScoreDialog";
@@ -14,7 +15,6 @@ import ManualMatchEditor from "@/components/mixer/event/ManualMatchEditor";
 import ManagePlayersDialog from "@/components/mixer/event/ManagePlayersDialog";
 import { RoundGenerator, type GenerationMode } from "@/lib/advancedMatchGeneration";
 import { resolveCourtList } from "@/lib/quads";
-import WildCardPanel from "@/components/mixer/event/WildCardPanel";
 
 interface Event {
   id: string;
@@ -76,9 +76,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
   const [showManagePlayers, setShowManagePlayers] = useState(false);
 
   const isTeamBattle = event.match_format === 'team-battle';
-  // Wild Card builds the whole schedule at once from its own panel; the
-  // one-round-at-a-time generate/shuffle controls don't apply to it.
-  const isWildCard = event.match_format === 'wild-card';
 
   // The actual court numbers in use, in court order. Uses the event's custom
   // court_names (e.g. ["2","3","4","5"]) when set, else 1..num_courts.
@@ -320,10 +317,12 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     if (existingRoundIds.length > 0) {
       const { data } = await supabase
         .from("matches")
-        .select("player1_id, player2_id, player3_id, player4_id")
+        .select("round_id, player1_id, player2_id, player3_id, player4_id")
         .in("round_id", existingRoundIds);
 
-      historicalMatches = data || [];
+      // round_number lets the generator see who sat out the latest round.
+      const numberOf = new Map((existingRounds || []).map(r => [r.id, r.round_number] as const));
+      historicalMatches = (data || []).map((m: any) => ({ ...m, round_number: numberOf.get(m.round_id) }));
     }
 
     // Pick generation mode:
@@ -527,7 +526,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     // Seed history from ALL other rounds (not this one — we're regenerating it)
     const { data: otherRounds } = await supabase
       .from("rounds")
-      .select("id")
+      .select("id, round_number")
       .eq("event_id", event.id)
       .neq("id", roundId);
 
@@ -537,10 +536,11 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     if (otherRoundIds.length > 0) {
       const { data } = await supabase
         .from("matches")
-        .select("player1_id, player2_id, player3_id, player4_id")
+        .select("round_id, player1_id, player2_id, player3_id, player4_id")
         .in("round_id", otherRoundIds);
 
-      historicalMatches = data || [];
+      const numberOf = new Map((otherRounds || []).map(r => [r.id, r.round_number] as const));
+      historicalMatches = (data || []).map((m: any) => ({ ...m, round_number: numberOf.get(m.round_id) }));
     }
 
     await supabase.from("matches").delete().eq("round_id", roundId);
@@ -557,7 +557,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
     }
 
     if (historicalMatches.length > 0) {
-      generator.seedMatchHistory(historicalMatches);
+      generator.seedMatchHistory(historicalMatches, { beforeRound: currentRoundNumber });
     }
 
     const pairings = generator.generateMultipleRounds(1)[0];
@@ -850,9 +850,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
   return (
     <div className="space-y-6">
-      {isWildCard && (
-        <WildCardPanel event={event} roundCount={rounds.length} onChanged={() => fetchRounds()} />
-      )}
       <Card className="bg-white border-2">
         <CardHeader>
           <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -861,6 +858,24 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
               <CardDescription className="text-gray-500">Generate and manage rounds</CardDescription>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Rotating-partner mixers: the club-board sheets and the
+                  players' own "where am I, who with" page. */}
+              {rounds.length > 0 && event.event_code && isRotatingPartnerFormat(event.match_format) && (
+                <>
+                  <a href={`/event/${event.event_code}/print`} target="_blank" rel="noreferrer">
+                    <Button variant="outline" size="sm" className="bg-white" style={{ color: "#111827" }}>
+                      <Printer className="h-4 w-4 mr-1" />
+                      Print round sheets
+                    </Button>
+                  </a>
+                  <a href={`/event/${event.event_code}`} target="_blank" rel="noreferrer">
+                    <Button variant="outline" size="sm" className="bg-white" style={{ color: "#111827" }}>
+                      <Smartphone className="h-4 w-4 mr-1" />
+                      Players&apos; view
+                    </Button>
+                  </a>
+                </>
+              )}
               <Button variant="outline" size="sm" onClick={() => setShowManagePlayers(true)} className="bg-white" style={{ color: "#111827" }}>
                 <Users className="h-4 w-4 mr-1" />
                 Manage Players
@@ -882,10 +897,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
         <CardContent className="space-y-4">
           {rounds.length === 0 ? (
             <div className="text-center py-8 space-y-4">
-              <p className="text-gray-500 mb-4">
-                {isWildCard ? "No rounds yet. Build the schedule above." : "No rounds created yet"}
-              </p>
-              {!isWildCard && (
+              <p className="text-gray-500 mb-4">No rounds created yet</p>
               <div className="flex gap-3 justify-center">
                 <Button onClick={generateRound} disabled={generating} size="lg">
                   <Plus className="h-4 w-4 mr-2" />
@@ -901,7 +913,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                   Generate Multiple
                 </Button>
               </div>
-              )}
             </div>
           ) : (
             <>
@@ -988,7 +999,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                           <Edit className="h-5 w-5 mr-2" />
                           Manual Edit
                         </Button>
-                        {!isWildCard && (
                         <Button
                           onClick={() => currentRound && regenerateRound(currentRound.id)}
                           variant="outline"
@@ -1000,7 +1010,6 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                           <Shuffle className="h-5 w-5 mr-2" />
                           Shuffle Pairings
                         </Button>
-                        )}
                         <Button onClick={startRound} size="lg">
                           <Play className="h-5 w-5 mr-2" />
                           {event.scoring_format === "timed" ? "Start Round & Timer" : "Start Round"}
@@ -1034,7 +1043,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
                         </Button>
                       </>
                     )}
-                    {!isWildCard && (currentRound?.status === "completed" || currentRound?.status === "in_progress") && currentRound.round_number === rounds.length && (
+                    {(currentRound?.status === "completed" || currentRound?.status === "in_progress") && currentRound.round_number === rounds.length && (
                       <>
                         <Button onClick={generateRound} disabled={generating} size="lg">
                           <Plus className="h-5 w-5 mr-2" />
@@ -1147,7 +1156,7 @@ const RoundsTab = ({ event }: RoundsTabProps) => {
 
                     {byeMatches.length > 0 && (
                       <div className="mt-6">
-                        <h3 className="text-base sm:text-lg font-semibold mb-3" style={{ color: "#111827" }}>{isWildCard ? "Sitting out" : "On BYE"}</h3>
+                        <h3 className="text-base sm:text-lg font-semibold mb-3" style={{ color: "#111827" }}>On BYE</h3>
                         <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
                           {byeMatches.map((match) => (
                             <Card key={match.id} className="border-2 border-gray-200 bg-white">

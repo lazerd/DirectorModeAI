@@ -1,41 +1,57 @@
 /**
- * seed-rossmoor-wildcard.mjs — a live Wild Card for the Rossmoor pitch.
+ * seed-rossmoor-mixer.mjs — Rossmoor's monthly "Wild Card", as a mixed doubles
+ * mixer, for the pitch.
  *
  * Rossmoor runs a monthly Saturday "Wild Card": 12 men + 12 women, first come
  * first served, and a spreadsheet that draws partners, courts and rotations.
- * This stages October's as if signup had already filled:
+ * In ClubMode that is simply a mixed doubles mixer with separate men's and
+ * women's spots. This stages October's as if signup had already filled:
  *
- *   - "Rossmoor Wild Card, October", Sat Oct 3 2026 9:00am, Buckeye courts,
- *     6 courts, mixed, 3 rounds, 6-game rounds
+ *   - "Rossmoor Wild Card, October" (match_format mixed-doubles), Sat Oct 3
+ *     2026 9:00am, Buckeye courts, 6 courts, 3 rounds of 6 games
  *   - public signup at /events/rossmoor-wild-card-october-2026 with 12 men /
- *     12 women caps, both full (so a new signup shows the waitlist)
+ *     12 women spots, both full (so a new signup shows the waitlist)
  *   - 24 players drawn from the demo director's invented PlayerVault residents,
- *     all 3 rounds built by the real generator, round 1 scored
+ *     all 3 rounds drawn by MixerMode's mixed doubles generator, round 1 scored
  *
- *   node scripts/seed-rossmoor-wildcard.mjs
+ *   node scripts/seed-rossmoor-mixer.mjs
  *
  * Run seed-rossmoor-demo.mjs first (it creates the director and the vault).
  * That script wipes every event the demo director owns, this one included, so
  * run this again after it.
  *
  * IDEMPOTENT. Deletes and rebuilds ONLY this event (found by its slug, owned by
- * the demo director at Rossmoor) and the `players` rows this script tagged. The
- * event code is kept across runs so printed links keep working.
+ * the demo director at Rossmoor) and the `players` rows this script tagged.
+ * The event id, event code and player ids are kept, so shared links survive.
  *
  * NO EMAIL. Signup rows carry no email address, so nothing ("Email scoring
  * links", confirmations) can mail an @example.com inbox and bounce.
  *
- * Uses the app's own generator (src/lib/wildCard.ts, loaded via Node's type
- * stripping) so the seeded sheet is exactly what the Build button makes.
+ * Draws with the app's own RoundGenerator (src/lib/advancedMatchGeneration.ts)
+ * so the seeded sheet is exactly what "Generate Multiple" makes. That file uses
+ * TypeScript parameter properties, which need Node's type TRANSFORM, so the
+ * script re-runs itself with --experimental-transform-types (Node 22.7+).
  */
 
-import { createClient } from '@supabase/supabase-js';
-import { readFileSync } from 'fs';
-import { randomBytes } from 'crypto';
-import { generateWildCard, wildCardRoundToRows, wildCardStats } from '../src/lib/wildCard.ts';
+import { spawnSync } from 'child_process';
+
+if (!process.execArgv.includes('--experimental-transform-types')) {
+  const r = spawnSync(
+    process.execPath,
+    ['--experimental-transform-types', '--no-warnings', ...process.argv.slice(1)],
+    { stdio: 'inherit' },
+  );
+  process.exit(r.status ?? 1);
+}
+
+const { createClient } = await import('@supabase/supabase-js');
+const { readFileSync } = await import('fs');
+const { randomBytes } = await import('crypto');
+const { RoundGenerator } = await import('../src/lib/advancedMatchGeneration.ts');
 
 const CLUB_SLUG = 'rossmoor-tennis-club';
 const DIRECTOR_EMAIL = 'rossmoor-demo@clubmode.ai';
+// Slug and player tag predate the rename; kept so existing links and rows match.
 const EVENT_SLUG = 'rossmoor-wild-card-october-2026';
 const PLAYER_TAG = 'seed:rossmoor-wildcard';
 const PREFERRED_CODE = 'WLDCRD';
@@ -79,6 +95,26 @@ async function findUser(email) {
   return null;
 }
 
+/** Repeat partners / opponents across the drawn rounds, for the run log. */
+function scheduleStats(rounds) {
+  const partners = new Map();
+  const opponents = new Map();
+  const key = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  for (const round of rounds) {
+    for (const p of round) {
+      if (!p.player2_id) continue;
+      const a = [p.player1_id, p.player3_id].filter(Boolean);
+      const b = [p.player2_id, p.player4_id].filter(Boolean);
+      if (a.length === 2) bump(partners, key(a[0], a[1]));
+      if (b.length === 2) bump(partners, key(b[0], b[1]));
+      for (const x of a) for (const y of b) bump(opponents, key(x, y));
+    }
+  }
+  const repeats = (m) => [...m.values()].reduce((s, n) => s + Math.max(0, n - 1), 0);
+  return { repeatPartners: repeats(partners), repeatOpponents: repeats(opponents) };
+}
+
 const code6 = () =>
   Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[randomBytes(1)[0] % 32]).join('');
 
@@ -88,7 +124,7 @@ async function main() {
   const director = await findUser(DIRECTOR_EMAIL);
   if (!director) throw new Error(`No ${DIRECTOR_EMAIL} — run seed-rossmoor-demo.mjs first.`);
   const directorId = director.id;
-  console.log(`\nSeeding the Wild Card for ${club.name}\n`);
+  console.log(`\nSeeding the Wild Card mixer for ${club.name}\n`);
 
   // ------------------------------------------------------------------ reset
   const { data: old } = await db
@@ -119,7 +155,7 @@ async function main() {
     db.from('players').delete().eq('user_id', directorId).eq('rating_notes', PLAYER_TAG),
     'reset players',
   );
-  console.log(`· wiped ${old?.length ?? 0} prior Wild Card event(s) and their players`);
+  console.log(`· wiped ${old?.length ?? 0} prior Wild Card mixer event(s) and their players`);
 
   // ----------------------------------------------------------------- people
   const vault = await must(
@@ -162,14 +198,11 @@ async function main() {
         slug: EVENT_SLUG,
         venue: 'Buckeye courts',
         num_courts: COURTS,
-        match_format: 'wild-card',
-        wild_card_mode: 'mixed',
-        wild_card_rounds: ROUNDS,
-        wild_card_seed: SEED,
+        match_format: 'mixed-doubles',
         scoring_format: 'fixed_games',
         target_games: 6,
         format_notes:
-          'Monthly Wild Card. New partner and new opponents every round, drawn for you. Three 6-game rounds; most games won takes it. Coffee and pastries at the Buckeye courts after.',
+          'Monthly Wild Card. Mixed doubles with a new partner and new opponents every round, drawn for you. Three 6-game rounds. Coffee and pastries at the Buckeye courts after.',
         public_registration: true,
         public_status: 'open',
         entry_fee_cents: 0,
@@ -227,14 +260,17 @@ async function main() {
   console.log(`· Event ${event.event_code}: 12 men + 12 women signed up and checked in`);
 
   // ----------------------------------------------------------------- rounds
-  const schedule = generateWildCard({
-    players: players.map((p) => ({ id: p.id, gender: p.gender })),
-    courts: COURTS,
-    rounds: ROUNDS,
-    mode: 'mixed',
-    seed: SEED,
-  });
-  const stats = wildCardStats(schedule);
+  // Same call RoundsTab makes for "Generate Multiple", seeded so re-runs match.
+  // Players go in by name so the draw doesn't depend on fresh uuids.
+  const byName = [...players].sort((a, b) => a.name.localeCompare(b.name));
+  const generator = new RoundGenerator(
+    byName.map((p) => ({ player_id: p.id, name: p.name, gender: p.gender })),
+    COURTS,
+    'mixed-doubles',
+  );
+  generator.setSeed(SEED);
+  const schedule = generator.generateMultipleRounds(ROUNDS);
+  const stats = scheduleStats(schedule);
 
   const standings = new Map(players.map((p) => [p.id, { wins: 0, losses: 0, games_won: 0, games_lost: 0 }]));
   for (let r = 0; r < schedule.length; r += 1) {
@@ -253,8 +289,11 @@ async function main() {
         .single(),
       `round ${r + 1}`,
     );
-    const rows = wildCardRoundToRows(schedule[r], (slot) => slot + 1).map((row, i) => {
-      const base = { ...row, round_id: round.id };
+    // Courts first (numbered 1..n in draw order), then sit-out rows — the same
+    // shape RoundsTab writes.
+    const ordered = [...schedule[r].filter((p) => p.player2_id), ...schedule[r].filter((p) => !p.player2_id)];
+    const rows = ordered.map((row, i) => {
+      const base = { ...row, court_number: i + 1, round_id: round.id };
       if (!scored || !row.player2_id) return base;
       const [s1, s2] = ROUND1_SCORES[i % ROUND1_SCORES.length];
       const tie = s1 === s2;

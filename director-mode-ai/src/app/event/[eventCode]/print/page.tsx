@@ -1,10 +1,11 @@
 /**
- * /event/[eventCode]/print — Wild Card court sheets for the club board.
+ * /event/[eventCode]/print — court sheets for the club board, for the
+ * rotating-partner mixers (doubles, mixed doubles, maximize-courts).
  *
  * Built for the people reading it: large type, black on white, one page per
  * round (Court → Team vs Team, who's sitting out, a blank for the score), then
  * a master sheet where each player finds their own name and reads across
- * every round. `?sheet=rounds|master|standings` prints just one of them.
+ * every round, then standings. `?sheet=rounds|master|standings` prints one.
  *
  * Public like the event page itself (the code is what players are given).
  * Server-rendered so the director can print straight from any browser.
@@ -12,9 +13,8 @@
 
 import { notFound } from 'next/navigation';
 import { format } from 'date-fns';
-import { loadWildCardBoard, type BoardCourt, type BoardPerson, type WildCardBoard } from '@/lib/wildCardBoard';
+import { loadEventBoard, FORMAT_NAMES, type BoardCourt, type BoardPerson, type EventBoard } from '@/lib/eventBoard';
 import { formatTimeDisplay } from '@/lib/quads';
-import { WILD_CARD_LABEL } from '@/lib/wildCard';
 import PrintButton from './PrintButton';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,7 @@ type Sheet = 'all' | 'rounds' | 'master' | 'standings';
 
 const names = (team: BoardPerson[]) => team.map((p) => p.name).join(' & ');
 
-export default async function WildCardPrintPage({
+export default async function EventPrintPage({
   params,
   searchParams,
 }: {
@@ -32,7 +32,7 @@ export default async function WildCardPrintPage({
 }) {
   const { eventCode } = await params;
   const { sheet: sheetParam } = await searchParams;
-  const board = await loadWildCardBoard(eventCode);
+  const board = await loadEventBoard(eventCode);
   if (!board) return notFound();
 
   const sheet: Sheet = (['rounds', 'master', 'standings'] as const).includes(sheetParam as any)
@@ -68,7 +68,7 @@ export default async function WildCardPrintPage({
       {board.rounds.length === 0 && (
         <section className="wc-page">
           <Header board={board} title="No rounds yet" dateLine={dateLine} />
-          <p className="wc-big">The director hasn&apos;t built the schedule yet.</p>
+          <p className="wc-big">The director hasn&apos;t drawn the courts yet.</p>
         </section>
       )}
 
@@ -113,9 +113,10 @@ export default async function WildCardPrintPage({
                 <tr>
                   <th>#</th>
                   <th className="wc-left">Player</th>
-                  <th>Games won</th>
-                  <th>Rounds won</th>
-                  <th>Played</th>
+                  <th>Won</th>
+                  <th>Lost</th>
+                  <th>Games</th>
+                  <th>+/−</th>
                 </tr>
               </thead>
               <tbody>
@@ -123,29 +124,29 @@ export default async function WildCardPrintPage({
                   <tr key={s.id}>
                     <td>{s.rank}</td>
                     <td className="wc-left wc-name">{s.name}</td>
-                    <td className="wc-strong">{s.gamesWon}</td>
-                    <td>{s.wins}</td>
-                    <td>{s.played}</td>
+                    <td className="wc-strong">{s.wins}</td>
+                    <td>{s.losses}</td>
+                    <td>{s.gamesWon}–{s.gamesLost}</td>
+                    <td>{s.gamesWon - s.gamesLost > 0 ? '+' : ''}{s.gamesWon - s.gamesLost}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
-          <p className="wc-note">Partners rotate, so the Wild Card crowns an individual: most games won, then most rounds won.</p>
+          <p className="wc-note">Partners rotate, so players are ranked on their own: win percentage, then game difference, then fewest games lost.</p>
         </section>
       )}
     </div>
   );
 }
 
-function Header({ board, title, dateLine }: { board: WildCardBoard; title: string; dateLine: string }) {
+function Header({ board, title, dateLine }: { board: EventBoard; title: string; dateLine: string }) {
   return (
     <header className="wc-header">
       <div className="wc-event">{board.event.name}</div>
       <h1>{title}</h1>
       <div className="wc-sub">
-        {WILD_CARD_LABEL}
-        {board.event.mode === 'mixed' ? ' · mixed' : ''}
+        {FORMAT_NAMES[board.event.match_format] ?? 'Mixer'}
         {dateLine ? ` · ${dateLine}` : ''}
       </div>
     </header>
@@ -173,7 +174,7 @@ function CourtRow({ court }: { court: BoardCourt }) {
 }
 
 /** Every player down the side, every round across: "Ct 4 · with Carol · vs Bill & Ann". */
-function MasterSheet({ board, dateLine }: { board: WildCardBoard; dateLine: string }) {
+function MasterSheet({ board, dateLine }: { board: EventBoard; dateLine: string }) {
   type Cell = { court?: number; partner?: string; opponents?: string; sitting?: boolean };
   const grid = new Map<string, Cell[]>(board.players.map((p) => [p.id, []]));
   board.rounds.forEach((round, r) => {
@@ -226,7 +227,7 @@ function MasterSheet({ board, dateLine }: { board: WildCardBoard; dateLine: stri
                   return (
                     <td key={r.round_number} className="wc-left">
                       <div className="wc-cell-court">Court {cell.court}</div>
-                      <div>with {cell.partner}</div>
+                      <div>{cell.partner ? `with ${cell.partner}` : 'Singles'}</div>
                       <div className="wc-cell-vs">vs {cell.opponents}</div>
                     </td>
                   );

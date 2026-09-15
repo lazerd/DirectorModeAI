@@ -92,7 +92,6 @@ export default function MixerHomePage() {
       'maximize-courts': '⚡ Optimize',
       'king-of-court': '👑 King',
       'round-robin': '🔄 Round Robin',
-      'wild-card': '🃏 Wild Card',
       'single-elimination': '🏆 Tournament',
     };
     return labels[fmt || ''] || fmt || '';

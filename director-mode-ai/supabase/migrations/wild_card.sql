@@ -1,6 +1,12 @@
 -- ============================================
 -- Wild Card (rotating partners) + signup caps by gender
 -- ============================================
+-- RETIRED 2026-09-15: 'wild-card' is no longer a match_format — the existing
+-- mixed-doubles mixer now rotates partners itself (advancedMatchGeneration).
+-- No rows use it. wild_card_* columns are left in place, unused, rather than
+-- dropped. max_men / max_women live on as mixed doubles' separate spots.
+-- This file stays as the record of what was applied to prod.
+-- ============================================
 -- events.match_format = 'wild-card' is a mixer: rotating random partners over
 -- a set number of rounds, individual winner. Rounds/matches use the existing
 -- rounds + matches tables; these columns hold the schedule settings.

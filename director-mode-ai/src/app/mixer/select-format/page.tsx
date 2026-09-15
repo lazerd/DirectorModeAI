@@ -111,13 +111,6 @@ export default function SelectFormatPage() {
       icon: '🔄',
     },
     {
-      id: 'wild-card',
-      name: 'Wild Card: rotating partners',
-      description:
-        'A new partner and new opponents every round, with courts and sit-outs drawn for you. Mixed or open. Printable round sheets, and players see their court on their phone. Most games wins.',
-      icon: '🃏',
-    },
-    {
       id: 'maximize-courts',
       name: 'Maximize Courts',
       description: 'Fills all courts optimally with mixed singles/doubles.',

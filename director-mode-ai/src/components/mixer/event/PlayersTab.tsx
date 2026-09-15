@@ -404,12 +404,6 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
       return;
     }
 
-    // A Wild Card builds every round at once from the Rounds tab panel.
-    if (matchFormat === 'wild-card') {
-      onSwitchToRounds?.();
-      return;
-    }
-
     setGenerating(true);
 
     // Fetch full player data
@@ -740,9 +734,7 @@ export default function PlayersTab({ event, onFormatUpdated, onSwitchToRounds }:
               {generating
                 ? "Generating..."
                 : enoughCheckedIn
-                  ? matchFormat === 'wild-card'
-                    ? `Build the Wild Card schedule — ${presentPlayers.length} checked in`
-                    : `Generate Round 1 — ${presentPlayers.length} checked in`
+                  ? `Generate Round 1 — ${presentPlayers.length} checked in`
                   : `Check in ${minPlayersRequired - presentPlayers.length} more to start`}
             </Button>
             {!enoughCheckedIn ? (

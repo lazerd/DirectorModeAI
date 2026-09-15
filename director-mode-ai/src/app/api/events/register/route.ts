@@ -84,7 +84,6 @@ const MIXER_FORMATS = new Set([
   'round-robin',
   'maximize-courts',
   'team-battle',
-  'wild-card',
 ]);
 
 export async function POST(request: Request) {
@@ -173,9 +172,11 @@ export async function POST(request: Request) {
       }
     }
 
-    // Per-gender caps ("12 men, 12 women"). Needs to know which list a player
-    // joins, so gender becomes required once either cap is set.
-    const genderCapped = e.max_men != null || e.max_women != null;
+    // Per-gender spots ("12 men, 12 women") — mixed doubles only. Needs to know
+    // which list a player joins, so gender is required; and players sign up as
+    // themselves (partners rotate), so no partner is asked for.
+    const genderCapped =
+      e.match_format === 'mixed-doubles' && (e.max_men != null || e.max_women != null);
     if (genderCapped && gender !== 'male' && gender !== 'female') {
       return NextResponse.json(
         { error: 'Please choose Male or Female — this event holds separate spots for men and women.' },
@@ -183,7 +184,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const isDoubles = e.match_format === 'doubles' || e.match_format === 'mixed-doubles';
+    const isDoubles =
+      !genderCapped && (e.match_format === 'doubles' || e.match_format === 'mixed-doubles');
     if (isDoubles && !partner_name) {
       return NextResponse.json(
         { error: 'Doubles event — partner name is required.' },
@@ -236,7 +238,9 @@ export async function POST(request: Request) {
           .neq('id', (entry as any).id);
         if ((count ?? 0) >= e.max_players) position = 'waitlist';
       }
-      const genderCap = gender === 'male' ? e.max_men : gender === 'female' ? e.max_women : null;
+      const genderCap = !genderCapped
+        ? null
+        : gender === 'male' ? e.max_men : gender === 'female' ? e.max_women : null;
       if (position === 'in_draw' && genderCap != null) {
         const { count } = await admin
           .from('tournament_entries')

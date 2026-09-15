@@ -1,19 +1,20 @@
 /**
- * Server-side loader for a Wild Card's public board: the round-by-round court
- * sheet, sit-outs and individual standings, keyed by the event code players
- * already have.
+ * Server-side loader for a rotating-partner mixer's public board: round-by-
+ * round courts, sit-outs and individual standings, keyed by the event code
+ * players already have.
  *
  * Reads through the service-role client on purpose. `matches` has no anon
- * grant (RLS lockdown), so a player's phone can't read the schedule directly.
- * This returns only what the printed sheet on the club board would show —
- * first-name-and-last-name, courts, scores — and only for wild-card events,
- * so it doesn't widen what any other format exposes.
+ * grant (RLS lockdown), so a player's phone can't read the schedule directly —
+ * which also left the "Courts & Matches" tab on /event/[code] empty for anyone
+ * not signed in. This returns only what the printed sheet on the club board
+ * would show — names, courts, scores — and only for the formats in
+ * lib/mixerBoard, so it doesn't widen what any other format exposes.
  *
  * Server only: imports the admin client.
  */
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { computeWildCardStandings, type WildCardStanding, type WildCardMode } from '@/lib/wildCard';
+import { computeIndividualStandings, isRotatingPartnerFormat, type IndividualStanding } from '@/lib/mixerBoard';
 
 export interface BoardPerson {
   id: string;
@@ -32,42 +33,50 @@ export interface BoardCourt {
 export interface BoardRound {
   round_number: number;
   status: string;
+  start_time: string | null;
+  timer_paused_at: string | null;
   courts: BoardCourt[];
   sitOuts: BoardPerson[];
 }
 
-export interface WildCardBoard {
+export interface EventBoard {
   event: {
     name: string;
     event_code: string;
     event_date: string;
     start_time: string | null;
     venue: string | null;
-    mode: WildCardMode;
+    match_format: string;
     scoring_format: string;
-    target_games: number | null;
+    round_length_minutes: number | null;
   };
   players: BoardPerson[];
   rounds: BoardRound[];
-  standings: WildCardStanding[];
+  standings: IndividualStanding[];
   anyScores: boolean;
 }
 
-export async function loadWildCardBoard(eventCode: string): Promise<WildCardBoard | null> {
+export const FORMAT_NAMES: Record<string, string> = {
+  doubles: 'Doubles mixer',
+  'mixed-doubles': 'Mixed doubles mixer',
+  'maximize-courts': 'Mixer',
+};
+
+export async function loadEventBoard(eventCode: string): Promise<EventBoard | null> {
   const admin = getSupabaseAdmin();
   const { data: ev } = await admin
     .from('events')
-    .select('id, name, event_code, event_date, start_time, venue, match_format, wild_card_mode, scoring_format, target_games')
+    .select('id, name, event_code, event_date, start_time, venue, match_format, scoring_format, round_length_minutes')
     .eq('event_code', eventCode.toUpperCase())
     .maybeSingle();
-  if (!ev || (ev as any).match_format !== 'wild-card') return null;
+  if (!ev || !isRotatingPartnerFormat((ev as any).match_format)) return null;
   const e = ev as any;
 
   const [{ data: eps }, { data: rounds }] = await Promise.all([
     admin.from('event_players').select('player_id, players(name)').eq('event_id', e.id),
     admin
       .from('rounds')
-      .select('id, round_number, status')
+      .select('id, round_number, status, start_time, timer_paused_at')
       .eq('event_id', e.id)
       .order('round_number', { ascending: true }),
   ]);
@@ -110,10 +119,15 @@ export async function loadWildCardBoard(eventCode: string): Promise<WildCardBoar
       });
     }
     sitOuts.sort((a, b) => a.name.localeCompare(b.name));
-    return { round_number: r.round_number, status: r.status, courts, sitOuts };
+    return {
+      round_number: r.round_number,
+      status: r.status,
+      start_time: r.start_time ?? null,
+      timer_paused_at: r.timer_paused_at ?? null,
+      courts,
+      sitOuts,
+    };
   });
-
-  const standings = computeWildCardStandings(players, allMatches);
 
   return {
     event: {
@@ -122,13 +136,13 @@ export async function loadWildCardBoard(eventCode: string): Promise<WildCardBoar
       event_date: e.event_date,
       start_time: e.start_time,
       venue: e.venue ?? null,
-      mode: e.wild_card_mode === 'open' ? 'open' : 'mixed',
+      match_format: e.match_format,
       scoring_format: e.scoring_format,
-      target_games: e.target_games,
+      round_length_minutes: e.round_length_minutes ?? null,
     },
     players,
     rounds: boardRounds,
-    standings,
+    standings: computeIndividualStandings(players, allMatches),
     anyScores: boardRounds.some((r) => r.courts.some((c) => c.scored)),
   };
 }

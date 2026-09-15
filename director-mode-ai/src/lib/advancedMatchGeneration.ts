@@ -28,6 +28,55 @@ interface MatchHistory {
   timesPlayed: number;
   byeCount: number;
   singlesPlayed: number;
+  /** Mixed doubles: rounds spent on an overflow (same-gender) court. */
+  openCourts: number;
+}
+
+/** A stored match row, as seeded back in. A row with only player1 is a bye. */
+export interface HistoricalMatch {
+  player1_id: string | null;
+  player2_id: string | null;
+  player3_id: string | null;
+  player4_id: string | null;
+  /** Lets the generator tell which byes were in the round just before. */
+  round_number?: number;
+}
+
+// Mixed doubles search weights. A repeat partner outweighs any number of
+// opponent repeats one swap could fix; overflow-court rotation is the lightest.
+const MIXED_PARTNER_REPEAT = 1000;
+const MIXED_OPPONENT_REPEAT = 10;
+const MIXED_OPEN_COURT_AGAIN = 3;
+const MIXED_RESTARTS = 8;
+const MIXED_ITERATIONS_PER_SLOT = 250;
+
+/** Small seedable PRNG (mulberry32), so a seeded generator repeats exactly. */
+function seededRandom(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/**
+ * How a mixed doubles round fills the courts. Courts are capacity, not a
+ * quota: as many mixed courts (2 men + 2 women) as the smaller side allows,
+ * then overflow players — usually the bigger side — fill same-gender "open"
+ * courts before anyone sits.
+ */
+export function planMixedDoublesCourts(
+  men: number,
+  women: number,
+  courts: number,
+): { mixedCourts: number; openCourts: number; sitOuts: number } {
+  const cap = Math.max(0, Math.floor(courts));
+  const mixedCourts = Math.min(cap, Math.floor(men / 2), Math.floor(women / 2));
+  const openCourts = Math.min(cap - mixedCourts, Math.floor((men + women - mixedCourts * 4) / 4));
+  return { mixedCourts, openCourts, sitOuts: men + women - (mixedCourts + openCourts) * 4 };
 }
 
 interface TeamBattleConfig {
@@ -38,10 +87,10 @@ interface TeamBattleConfig {
 }
 
 // Fisher-Yates shuffle
-function shuffle<T>(arr: T[]): T[] {
+function shuffle<T>(arr: T[], rand: () => number = Math.random): T[] {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(rand() * (i + 1));
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
@@ -52,6 +101,10 @@ export class RoundGenerator {
   private teamBattleConfig: TeamBattleConfig | null = null;
   private randomize: boolean = false;
   private mode: GenerationMode = 'multi-random';
+  /** Mixed doubles draws from this; setSeed makes it repeatable. */
+  private rng: () => number = Math.random;
+  /** Who sat out the round just before the one being generated. */
+  private lastByes: Set<string> = new Set();
 
   constructor(private players: Player[], private numCourts: number, private format: string) {
     players.forEach(p => {
@@ -62,8 +115,14 @@ export class RoundGenerator {
         timesPlayed: 0,
         byeCount: 0,
         singlesPlayed: 0,
+        openCourts: 0,
       });
     });
+  }
+
+  /** Repeatable draws for mixed doubles (tests, seeded demo data). */
+  public setSeed(seed: number): void {
+    this.rng = seededRandom(seed);
   }
 
   public setRandomize(randomize: boolean): void {
@@ -92,12 +151,16 @@ export class RoundGenerator {
     return history ? history.opponents.has(p2) : false;
   }
 
-  public seedMatchHistory(historicalMatches: Array<{
-    player1_id: string | null;
-    player2_id: string | null;
-    player3_id: string | null;
-    player4_id: string | null;
-  }>): void {
+  /**
+   * Replay stored rounds. Bye rows (player1 only) count toward each player's
+   * byeCount — they used to be skipped, so a generated batch forgot who had
+   * already sat out and could sit the same people again. When rows carry
+   * round_number, the byes of the latest round before `beforeRound` are
+   * remembered so nobody sits two rounds running.
+   */
+  public seedMatchHistory(historicalMatches: HistoricalMatch[], opts: { beforeRound?: number } = {}): void {
+    const before = opts.beforeRound ?? Infinity;
+    let latest = -Infinity;
     historicalMatches.forEach(match => {
       if (match.player1_id && match.player2_id) {
         this.recordMatch(
@@ -106,8 +169,19 @@ export class RoundGenerator {
           match.player3_id,
           match.player4_id
         );
+      } else if (match.player1_id && !match.player3_id && !match.player4_id) {
+        const h = this.getHistory(match.player1_id);
+        if (h) h.byeCount++;
+      }
+      if (match.round_number != null && match.round_number < before) {
+        latest = Math.max(latest, match.round_number);
       }
     });
+    this.lastByes = new Set(
+      historicalMatches
+        .filter(m => m.round_number === latest && m.player1_id && !m.player2_id && !m.player3_id && !m.player4_id)
+        .map(m => m.player1_id!),
+    );
   }
 
   private recordMatch(p1: string, p2: string, p3: string | null, p4: string | null): void {
@@ -261,7 +335,10 @@ export class RoundGenerator {
     for (let round = 0; round < numRounds; round++) {
       const pairings = this.generateRound(round + 1);
       allRounds.push(pairings);
-      
+      this.lastByes = new Set(
+        pairings.filter(p => p.player1_id && !p.player2_id && !p.player3_id && !p.player4_id).map(p => p.player1_id!),
+      );
+
       pairings.forEach(pair => {
         if (pair.player1_id && pair.player2_id) {
           this.recordMatch(
@@ -985,28 +1062,150 @@ export class RoundGenerator {
     return pairings;
   }
 
-  private generateMixedDoublesRound(roundNumber: number): Pairing[] {
-    let males = this.players.filter(p => p.gender === 'male');
-    let females = this.players.filter(p => p.gender === 'female');
-    
-    if (this.randomize) {
-      males = shuffle(males);
-      females = shuffle(females);
+  // MIXED DOUBLES: every team on a mixed court is one man + one woman, with a
+  // new partner and new opponents each round.
+  //
+  // This used to pair men and women in list order with no memory, so the same
+  // couples met round after round, and anyone past min(men, women) was dropped
+  // from the round without even a bye row. Now, in priority order:
+  //   1. no repeat partners, 2. few repeat opponents,
+  //   3. sit-outs rotate: fewest byes sit first, never two rounds running.
+  // Courts are capacity: overflow players (14 men, 10 women) play a
+  // same-gender open court before anyone sits, and that spot rotates too.
+  //
+  // Whole-round local search: seats are A1, A2, B1, B2 per court (A1/B1 men's
+  // seats, A2/B2 women's on a mixed court). Swaps keep that shape, so every
+  // candidate is legal; restarts escape local minima.
+  private generateMixedDoublesRound(_roundNumber: number): Pairing[] {
+    const rand = this.rng;
+    const men: Player[] = [];
+    const women: Player[] = [];
+    const unknown: Player[] = [];
+    for (const p of this.players) {
+      if (p.gender === 'male') men.push(p);
+      else if (p.gender === 'female') women.push(p);
+      else unknown.push(p);
+    }
+    // A player with no gender recorded fills whichever side is short.
+    for (const p of unknown) (women.length < men.length ? women : men).push(p);
+    const roleOf = new Map<string, 0 | 1>();
+    men.forEach(p => roleOf.set(p.player_id, 0));
+    women.forEach(p => roleOf.set(p.player_id, 1));
+
+    const plan = planMixedDoublesCourts(men.length, women.length, this.numCourts);
+    const K = plan.mixedCourts;
+    const E = plan.openCourts;
+
+    // Who sits: fewest byes, then whoever did NOT sit last round, then chance.
+    // A side can only give up players the mixed courts don't need.
+    const order = shuffle(this.players, rand).sort((a, b) => {
+      const byeDiff = (this.getHistory(a.player_id)?.byeCount ?? 0) - (this.getHistory(b.player_id)?.byeCount ?? 0);
+      if (byeDiff !== 0) return byeDiff;
+      return Number(this.lastByes.has(a.player_id)) - Number(this.lastByes.has(b.player_id));
+    });
+    const canSit = [men.length - 2 * K, women.length - 2 * K];
+    const sitting = new Set<string>();
+    for (const p of order) {
+      if (sitting.size >= plan.sitOuts) break;
+      const role = roleOf.get(p.player_id)!;
+      if (canSit[role] <= 0) continue;
+      sitting.add(p.player_id);
+      canSit[role]--;
     }
 
+    const slots = 4 * (K + E);
+    const slotRole = new Int8Array(slots).fill(-1); // -1 = any
+    for (let c = 0; c < K; c++) {
+      slotRole[4 * c] = 0; slotRole[4 * c + 2] = 0;
+      slotRole[4 * c + 1] = 1; slotRole[4 * c + 3] = 1;
+    }
+
+    const courtCost = (seat: Player[], c: number): number => {
+      const [a1, a2, b1, b2] = [seat[4 * c], seat[4 * c + 1], seat[4 * c + 2], seat[4 * c + 3]].map(p => p.player_id);
+      let cost = 0;
+      if (this.hasPlayedWith(a1, a2)) cost += MIXED_PARTNER_REPEAT;
+      if (this.hasPlayedWith(b1, b2)) cost += MIXED_PARTNER_REPEAT;
+      for (const x of [a1, a2]) for (const y of [b1, b2]) {
+        if (this.hasPlayedAgainst(x, y)) cost += MIXED_OPPONENT_REPEAT;
+      }
+      if (c >= K) {
+        for (const id of [a1, a2, b1, b2]) cost += MIXED_OPEN_COURT_AGAIN * (this.getHistory(id)?.openCourts ?? 0);
+      }
+      return cost;
+    };
+
+    const playingMen = men.filter(p => !sitting.has(p.player_id));
+    const playingWomen = women.filter(p => !sitting.has(p.player_id));
+    let best: Player[] | null = null;
+    let bestCost = Infinity;
+
+    for (let restart = 0; restart < MIXED_RESTARTS && slots > 0; restart++) {
+      const seat: Player[] = new Array(slots);
+      const m = shuffle(playingMen, rand);
+      const w = shuffle(playingWomen, rand);
+      for (let c = 0; c < K; c++) {
+        seat[4 * c] = m.pop()!; seat[4 * c + 2] = m.pop()!;
+        seat[4 * c + 1] = w.pop()!; seat[4 * c + 3] = w.pop()!;
+      }
+      const rest = shuffle([...m, ...w], rand);
+      for (let s = 4 * K; s < slots; s++) seat[s] = rest.pop()!;
+
+      const costs = Array.from({ length: K + E }, (_, c) => courtCost(seat, c));
+      let total = costs.reduce((x, y) => x + y, 0);
+
+      const iterations = MIXED_ITERATIONS_PER_SLOT * slots;
+      for (let it = 0; it < iterations && total > 0; it++) {
+        const i = Math.floor(rand() * slots);
+        const j = Math.floor(rand() * slots);
+        if (i === j || (i >> 1) === (j >> 1)) continue; // same team: nothing changes
+        if (slotRole[i] !== -1 && roleOf.get(seat[j].player_id) !== slotRole[i]) continue;
+        if (slotRole[j] !== -1 && roleOf.get(seat[i].player_id) !== slotRole[j]) continue;
+        const ci = i >> 2;
+        const cj = j >> 2;
+        const before = ci === cj ? costs[ci] : costs[ci] + costs[cj];
+        [seat[i], seat[j]] = [seat[j], seat[i]];
+        const ni = courtCost(seat, ci);
+        const nj = ci === cj ? ni : courtCost(seat, cj);
+        const after = ci === cj ? ni : ni + nj;
+        // Sideways moves are accepted too — they walk the plateaus.
+        if (after <= before) {
+          costs[ci] = ni;
+          costs[cj] = nj;
+          total += after - before;
+        } else {
+          [seat[i], seat[j]] = [seat[j], seat[i]];
+        }
+      }
+
+      if (total < bestCost) {
+        bestCost = total;
+        best = seat;
+        if (total === 0) break;
+      }
+    }
+
+    // Court order shuffled too, so the same group isn't always on court 1.
     const pairings: Pairing[] = [];
-    const maxPairs = Math.min(males.length, females.length, this.numCourts * 2);
-    
-    for (let i = 0; i < Math.floor(maxPairs / 2); i++) {
-      const idx = i * 2;
+    for (const c of shuffle(Array.from({ length: K + E }, (_, i) => i), rand)) {
+      const [a1, a2, b1, b2] = [best![4 * c], best![4 * c + 1], best![4 * c + 2], best![4 * c + 3]];
       pairings.push({
-        player1_id: males[idx]?.player_id || null,
-        player2_id: females[idx]?.player_id || null,
-        player3_id: males[idx + 1]?.player_id || null,
-        player4_id: females[idx + 1]?.player_id || null,
+        player1_id: a1.player_id,
+        player3_id: a2.player_id,
+        player2_id: b1.player_id,
+        player4_id: b2.player_id,
       });
+      if (c >= K) {
+        for (const p of [a1, a2, b1, b2]) {
+          const h = this.getHistory(p.player_id);
+          if (h) h.openCourts++;
+        }
+      }
     }
-
+    for (const p of order.filter(p => sitting.has(p.player_id))) {
+      pairings.push({ player1_id: p.player_id, player2_id: null, player3_id: null, player4_id: null });
+      const h = this.getHistory(p.player_id);
+      if (h) h.byeCount++;
+    }
     return pairings;
   }
 }
