@@ -19,11 +19,11 @@ describe('the canonical product list', () => {
     expect(PRODUCT_COUNT).toBe(PRODUCTS.length);
   });
 
-  it('has 17 products — the audit landed on 15, MaintenanceMode 16, SiteMode 17', () => {
+  it('has 18 products — the audit landed on 15, MaintenanceMode 16, SiteMode 17, Partner Finder 18', () => {
     // If this fails because you genuinely added a tool, update the number AND
     // check the hero counter still reads it from PRODUCT_COUNT rather than a
     // literal. If it fails for any other reason, something drifted.
-    expect(PRODUCT_COUNT).toBe(17);
+    expect(PRODUCT_COUNT).toBe(18);
   });
 
   it('counts only entries explicitly flagged as products', () => {
@@ -108,6 +108,10 @@ describe('activeHref picks the longest matching prefix', () => {
 
   it('lights up Facilities for a MaintenanceMode project page', () => {
     expect(activeHref('/maintenance/projects/abc', entries)).toBe('/run/facilities');
+  });
+
+  it('lights up Members for Partner Finder', () => {
+    expect(activeHref('/run/members/partner-finder', entries)).toBe('/run/members');
   });
 
   it('returns null when nothing matches', () => {

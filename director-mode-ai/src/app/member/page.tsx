@@ -5,7 +5,9 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { pickPrimaryClub } from '@/lib/clubRoles';
 import { attachByEmail } from '@/lib/clubAutoJoin';
 import { TOURNAMENT_FORMATS } from '@/lib/eventCategory';
-import { resolveClubTimeZone } from '@/lib/captain/clubTime';
+import { resolveClubTimeZone, normalizeTimeZone } from '@/lib/captain/clubTime';
+import { publicOpenGames } from '@/lib/partnerFinder/server';
+import { publicLine } from '@/lib/partnerFinder/format';
 import {
   CalendarDays, LayoutGrid, GraduationCap, User, ArrowRight, Trophy, Ticket, MapPin,
   ClipboardList, Handshake,
@@ -78,7 +80,7 @@ export default async function MemberHome() {
 
   const { data: club } = await admin
     .from('cc_clubs')
-    .select('id, name, slug, owner_id, logo_url, city, state')
+    .select('id, name, slug, owner_id, logo_url, city, state, timezone')
     .eq('id', membership.club_id)
     .maybeSingle();
   if (!club) redirect('/');
@@ -167,6 +169,13 @@ export default async function MemberHome() {
     }
   }
 
+  /*
+   * Games looking for players (Partner Finder). The clubhouse shows the next
+   * few; the full board, posting and "I'm in" live at /member/games.
+   */
+  const openGames = (await publicOpenGames(admin, club.id)).slice(0, 3);
+  const clubTz = normalizeTimeZone(club.timezone);
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* hero */}
@@ -193,7 +202,7 @@ export default async function MemberHome() {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {/* The sheet shows every court, booked or open, at the member's rate. */}
           <Action href={`/courtsheet/${club.slug}`} icon={LayoutGrid} label="Court sheet" tone="#0891b2" />
-          <Action href="/courtconnect/home" icon={Handshake} label="Find a game" tone="#059669" />
+          <Action href="/member/games" icon={Handshake} label="Find a game" tone="#059669" />
           <Action href="/client/dashboard" icon={GraduationCap} label="My lessons" tone="#7c3aed" />
           <Action href="/find-coach" icon={User} label="Find a coach" tone="#ea580c" />
           <Action href="/client/dashboard" icon={Trophy} label="My progress" tone="#ca8a04" />
@@ -233,6 +242,36 @@ export default async function MemberHome() {
             </div>
           </section>
         )}
+
+        {/* Games looking for players */}
+        <section>
+          <div className="flex items-baseline justify-between gap-3 mb-3">
+            <h2 className="text-xl font-semibold flex items-center gap-2">
+              <Handshake className="w-6 h-6 text-emerald-600" /> Games looking for players
+            </h2>
+            <Link href="/member/games" className="text-base text-emerald-700 hover:underline">
+              See all →
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {openGames.map((g) => (
+              <Link
+                key={g.id}
+                href="/member/games"
+                className="flex min-h-[56px] items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-lg hover:border-emerald-400 transition-colors"
+              >
+                <span className="font-semibold">{publicLine(g, g.spots_left, clubTz)}</span>
+                <span className="shrink-0 font-semibold text-emerald-700">See game →</span>
+              </Link>
+            ))}
+            <Link
+              href="/member/games"
+              className="flex min-h-[60px] items-center justify-center rounded-2xl bg-emerald-700 px-5 text-center text-xl font-bold text-white hover:bg-emerald-800"
+            >
+              {openGames.length ? 'Post a game that needs players' : 'No games need players yet. Post one'}
+            </Link>
+          </div>
+        </section>
 
         {/* what's on */}
         <section>

@@ -153,6 +153,8 @@ const PUBLIC_PREFIXES = [
   '/captain/confirm',
   '/leagues/rsvp',
   '/leagues/join',
+  // Partner Finder's emailed links ("I'm in", "stop these emails"). No login.
+  '/play',
   '/enter',
   '/pathway/p',
   '/pathway/curriculum',
@@ -257,7 +259,7 @@ export default function ClubSidebar() {
               // Every court, booked or open, priced for the member.
               ...(slug ? [{ name: 'Court Sheet', href: `/courtsheet/${slug}`, matches: ['/courtsheet'], icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
               // Pairing members for games is the member-side reason to open the app.
-              { name: 'CourtConnect', href: '/courtconnect/home', matches: ['/courtconnect'], icon: Handshake, color: '#34d399' },
+              { name: 'Find a Game', href: '/member/games', matches: ['/member/games'], icon: Handshake, color: '#34d399' },
               { name: 'My Account', href: '/client/dashboard', matches: ['/client/dashboard'], icon: Calendar, color: '#60a5fa' },
               { name: 'Find a Coach', href: '/find-coach', matches: ['/find-coach'], icon: GraduationCap, color: '#a78bfa' },
             ],
