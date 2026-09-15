@@ -20,7 +20,6 @@ import { MAX_RECIPIENTS, shortName, clubDate } from './format';
 import {
   clubRoster,
   ensureLinks,
-  ensurePrefs,
   gameGroup,
   loadClub,
   loadGame,
@@ -79,7 +78,19 @@ export async function inviteMembers(db: Db, game: Game, club: Club): Promise<num
 
   // Everyone needs a stop link, including members who have never opened the board.
   const missingPrefs = recipients.filter((r) => !r.stop_token);
-  for (const r of missingPrefs) r.stop_token = (await ensurePrefs(db, club.id, r.user_id))?.stop_token ?? null;
+  if (missingPrefs.length) {
+    await db.from('pf_member_prefs').upsert(
+      missingPrefs.map((r) => ({ club_id: club.id, user_id: r.user_id })),
+      { onConflict: 'club_id,user_id', ignoreDuplicates: true },
+    );
+    const { data: made } = await db
+      .from('pf_member_prefs')
+      .select('user_id, stop_token')
+      .eq('club_id', club.id)
+      .in('user_id', missingPrefs.map((r) => r.user_id));
+    const tokens = new Map(((made as { user_id: string; stop_token: string }[] | null) ?? []).map((m) => [m.user_id, m.stop_token]));
+    for (const r of missingPrefs) r.stop_token = tokens.get(r.user_id) ?? null;
+  }
 
   const [links, posterRow, left] = await Promise.all([
     ensureLinks(db, game, recipients.map((r) => r.user_id)),

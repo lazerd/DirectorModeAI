@@ -175,7 +175,7 @@ export function gameFullEmail(
     <p style="margin:0">${button(linkUrl(opts.token), 'See the game', INK)}</p>`;
   return {
     to: opts.to,
-    subject: ascii(`You're all set: ${headline(g, tz)}, ${shortDay(g.starts_at, tz)}`),
+    subject: ascii(`You're all set: ${formatWord(g)} ${shortDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`),
     html: shell(club, esc(title), body),
     sms: ascii(`${club.name}: your ${headline(g, tz)} is full. ${opts.group.map((m) => m.short).join(', ')}.`),
   };
@@ -213,7 +213,7 @@ export function gameCancelledEmail(
     ${details(g, club)}`;
   return {
     to: opts.to,
-    subject: ascii(`Cancelled: ${headline(g, tz)}, ${shortDay(g.starts_at, tz)}`),
+    subject: ascii(`Cancelled: ${formatWord(g)} ${shortDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`),
     html: shell(club, esc(title), body),
     sms: ascii(`${club.name}: ${opts.poster} cancelled the ${headline(g, tz)}.`),
   };

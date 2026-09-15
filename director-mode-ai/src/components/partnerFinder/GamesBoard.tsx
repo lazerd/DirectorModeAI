@@ -110,6 +110,10 @@ export default function GamesBoard({ clubId }: { clubId: string }) {
     <div className="space-y-8 text-lg text-slate-900">
       {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
 
+      {board.me.ntrp == null && !posting && (
+        <LevelPrompt clubId={board.club.id} onSaved={(m) => { say(m); load(); }} />
+      )}
+
       {posting ? (
         <PostForm
           board={board}
@@ -168,6 +172,35 @@ export default function GamesBoard({ clubId }: { clubId: string }) {
 
       <Settings board={board} onSaved={(m) => { say(m); load(); }} />
     </div>
+  );
+}
+
+/**
+ * First visit with no level on file. Asked up front because a member without a
+ * level can't join games that set one, and would otherwise only find out on
+ * tapping "I'm in".
+ */
+function LevelPrompt({ clubId, onSaved }: { clubId: string; onSaved: (m: Msg) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [hidden, setHidden] = useState(false);
+  if (hidden) return null;
+
+  async function pick(n: number | null) {
+    if (n == null) return setHidden(true);
+    setBusy(true);
+    const r = await postJson('/api/play/prefs', { club_id: clubId, ntrp: n });
+    setBusy(false);
+    onSaved(r.error ? { tone: 'bad', text: r.error } : { tone: 'good', text: `Thanks. Your level is ${n.toFixed(1)}.` });
+  }
+
+  return (
+    <section className="rounded-3xl border-2 border-emerald-300 bg-white p-5 sm:p-6">
+      <h2 className="text-2xl font-bold">What&rsquo;s your level?</h2>
+      <p className="mb-4 mt-1 text-slate-700">
+        Pick your NTRP rating so we can match you with the right games. You can change it later.
+      </p>
+      <LevelPicker value={null} onPick={pick} busy={busy} allowNotSure />
+    </section>
   );
 }
 
@@ -280,7 +313,7 @@ function GameCard({
           <p className="rounded-2xl bg-slate-50 px-4 py-3 text-slate-700">
             {myLevelKnown
               ? `This game is for ${g.rating} players.`
-              : 'Set your level below to join this game.'}
+              : 'Pick your level at the top of this page to join this game.'}
           </p>
         )}
       </div>
@@ -584,7 +617,7 @@ function Settings({ board, onSaved }: { board: Board; onSaved: (m: Msg) => void 
         <label className="flex min-h-[56px] cursor-pointer items-center justify-between gap-4">
           <span>
             <span className="block text-lg font-bold">Share my phone number with my group</span>
-            <span className="block text-base text-slate-600">Only the people in a game with you see it, once it&rsquo;s set.</span>
+            <span className="block text-base text-slate-600">Only the people playing in a game with you see it.</span>
           </span>
           <input
             type="checkbox"
