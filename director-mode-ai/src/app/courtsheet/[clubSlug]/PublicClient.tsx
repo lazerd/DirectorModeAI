@@ -250,7 +250,7 @@ function SheetTable({ sheet, bookHref }: { sheet: SheetResponse; bookHref: (time
         {showEarlier ? 'Hide earlier today' : 'Show earlier today'}
       </button>
     )}
-    // Scrolls sideways INSIDE the card on a phone; the time column stays put.
+    {/* Scrolls sideways INSIDE the card on a phone; the time column stays put. */}
     <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-auto max-h-[70vh]">
       <table className="border-separate border-spacing-0 text-xs w-full">
         <thead>
