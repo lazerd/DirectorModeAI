@@ -28,7 +28,18 @@ export type Candidate = {
   public_status: string;
   /** Days from today to the event's date in club terms; null when undated. */
   daysAway: number | null;
+  /**
+   * Days from today to the event's end_date, for an event that runs for weeks
+   * (a flex league's divisions are dated by their first day in June). Null or
+   * absent for a one-day event, which is judged by its date alone.
+   */
+  endsIn?: number | null;
 };
+
+/** The last day an event is on: its end date when it has one, else its date. */
+function lastDay(e: Candidate): number | null {
+  return e.endsIn ?? e.daysAway;
+}
 
 export function livePhase(e: Candidate): LivePhase | null {
   if (e.public_status === 'open') {
@@ -40,17 +51,15 @@ export function livePhase(e: Candidate): LivePhase | null {
   // An undated event cannot be judged, and 'running' is the flag most likely
   // to be stale — so no date means not shown.
   if (e.daysAway === null) return null;
-  if (e.daysAway > RUNNING_LOOKAHEAD_DAYS || e.daysAway < -RUNNING_GRACE_DAYS) return null;
+  const last = lastDay(e) as number;
+  if (e.daysAway > RUNNING_LOOKAHEAD_DAYS || last < -RUNNING_GRACE_DAYS) return null;
   return 'live';
 }
 
 /** A 'running' event too old to be believed — worth counting, not listing. */
 export function isStaleRunning(e: Candidate): boolean {
-  return (
-    e.public_status === 'running' &&
-    e.daysAway !== null &&
-    e.daysAway < -RUNNING_GRACE_DAYS
-  );
+  const last = lastDay(e);
+  return e.public_status === 'running' && last !== null && last < -RUNNING_GRACE_DAYS;
 }
 
 /** Whole days from today to a YYYY-MM-DD date, both read at midday UTC. */

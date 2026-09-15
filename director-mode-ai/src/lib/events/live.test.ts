@@ -40,6 +40,14 @@ describe('livePhase', () => {
     expect(livePhase({ public_status: 'running', daysAway: -1 })).toBe('live');
   });
 
+  it('keeps a multi-week event live until its end date', () => {
+    // Summer Flex League divisions: dated Jun 22, running to Oct 15.
+    expect(livePhase({ public_status: 'running', daysAway: -85, endsIn: 30 })).toBe('live');
+    expect(livePhase({ public_status: 'running', daysAway: -85, endsIn: -1 })).toBe('live');
+    expect(livePhase({ public_status: 'running', daysAway: -85, endsIn: -2 })).toBeNull();
+    expect(isStaleRunning({ public_status: 'running', daysAway: -85, endsIn: 30 })).toBe(false);
+  });
+
   it('drops a running event two days after its date', () => {
     // US Open Social, Sun 9/13, still "Happening now" on Tue 9/15.
     expect(livePhase({ public_status: 'running', daysAway: -2 })).toBeNull();

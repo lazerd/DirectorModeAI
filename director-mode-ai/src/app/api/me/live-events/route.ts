@@ -54,6 +54,17 @@ type EventRow = {
   match_format: string | null;
   public_status: string;
   event_date: string | null;
+  end_date: string | null;
+  hub_slug: string | null;
+  hub_title: string | null;
+};
+
+/**
+ * Hubs with their own hand-built page. A hub is otherwise served by the
+ * generic /tournaments/hub/[slug].
+ */
+const HUB_PAGES: Record<string, { public_href: string; manage_href: string; label: string }> = {
+  'summer-flex-2026': { public_href: '/flex', manage_href: '/flex/admin', label: 'League' },
 };
 
 /** The page a PLAYER would open — the one a director wants to hand out. */
@@ -106,7 +117,7 @@ export async function GET() {
   const [{ data: eventRows }, { data: leagueRows }, { data: classRows }] = await Promise.all([
     db
       .from('events')
-      .select('id, name, slug, event_code, match_format, public_status, event_date')
+      .select('id, name, slug, event_code, match_format, public_status, event_date, end_date, hub_slug, hub_title')
       .or(eventFilter)
       .in('public_status', ['open', 'running'])
       .limit(150),
@@ -132,10 +143,33 @@ export async function GET() {
 
   // ------------------------------------------------------------- events
   const events = (eventRows as EventRow[] | null) ?? [];
+  // Divisions of one competition share a hub_slug and get ONE row — the four
+  // flex league divisions are one thing to a director, not four.
+  const hubsSeen = new Set<string>();
   for (const e of events) {
     const daysAway = daysUntil(e.event_date, today);
-    const phase = livePhase({ public_status: e.public_status, daysAway });
+    const phase = livePhase({
+      public_status: e.public_status,
+      daysAway,
+      endsIn: daysUntil(e.end_date, today),
+    });
     if (!phase) continue;
+    if (e.hub_slug) {
+      if (hubsSeen.has(e.hub_slug)) continue;
+      hubsSeen.add(e.hub_slug);
+      const page = HUB_PAGES[e.hub_slug];
+      items.push({
+        id: `hub:${e.hub_slug}`,
+        name: e.hub_title || e.name,
+        kind: 'event',
+        phase,
+        daysAway: phase === 'live' ? 0 : daysAway,
+        label: page?.label ?? eventLabel(e.match_format),
+        manage_href: page?.manage_href ?? `/tournaments/hub/${e.hub_slug}`,
+        public_href: page?.public_href ?? `/tournaments/hub/${e.hub_slug}`,
+      });
+      continue;
+    }
     items.push({
       id: e.id,
       name: e.name,
@@ -224,7 +258,11 @@ export async function GET() {
   // when it finished months ago. Offered as a number the bar can mention
   // rather than fifteen rows nobody wanted.
   const staleEvents = events.filter((e) =>
-    isStaleRunning({ public_status: e.public_status, daysAway: daysUntil(e.event_date, today) }),
+    isStaleRunning({
+      public_status: e.public_status,
+      daysAway: daysUntil(e.event_date, today),
+      endsIn: daysUntil(e.end_date, today),
+    }),
   ).length;
   const staleLeagues = ((leagueRows as LeagueRow[] | null) ?? []).filter((l) => {
     const endsIn = daysUntil(l.end_date, today);
