@@ -16,7 +16,7 @@ export default async function PublicCourtSheetPage({ params }: PageProps) {
   if (!club) notFound();
 
   const db = getSupabaseAdmin();
-  const [{ data: courts }, chrome] = await Promise.all([
+  const [{ data: courts }, chrome, { data: site }] = await Promise.all([
     db
       .from('courts')
       .select('*')
@@ -32,6 +32,9 @@ export default async function PublicCourtSheetPage({ params }: PageProps) {
      * own look exactly as it was.
      */
     getClubChrome(club.id),
+    // Open cells link to the club site's booking page, which only exists
+    // for a club with a site.
+    db.from('club_site').select('club_id').eq('club_id', club.id).maybeSingle(),
   ]);
 
   return (
@@ -39,6 +42,7 @@ export default async function PublicCourtSheetPage({ params }: PageProps) {
       <PublicClient
         club={club as any}
         initialCourts={(courts ?? []) as any}
+        hasSite={!!site}
       />
     </ClubChrome>
   );

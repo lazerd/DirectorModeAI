@@ -8,7 +8,7 @@ import { TOURNAMENT_FORMATS } from '@/lib/eventCategory';
 import { resolveClubTimeZone } from '@/lib/captain/clubTime';
 import {
   CalendarDays, LayoutGrid, GraduationCap, User, ArrowRight, Trophy, Ticket, MapPin,
-  ClipboardList,
+  ClipboardList, Handshake,
 } from 'lucide-react';
 
 // The member's front door.
@@ -188,10 +188,10 @@ export default async function MemberHome() {
 
       <main className="max-w-3xl mx-auto px-5 py-8 space-y-8">
         {/* quick actions */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {/* Not "Book a court": the page joins open court time the club has
-              posted. There is no member self-booking to send them to. */}
-          <Action href={`/courtsheet/${club.slug}`} icon={LayoutGrid} label="Open court time" tone="#0891b2" />
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {/* The sheet shows every court, booked or open, at the member's rate. */}
+          <Action href={`/courtsheet/${club.slug}`} icon={LayoutGrid} label="Court sheet" tone="#0891b2" />
+          <Action href="/courtconnect/home" icon={Handshake} label="Find a game" tone="#059669" />
           <Action href="/client/dashboard" icon={GraduationCap} label="My lessons" tone="#7c3aed" />
           <Action href="/find-coach" icon={User} label="Find a coach" tone="#ea580c" />
           <Action href="/client/dashboard" icon={Trophy} label="My progress" tone="#ca8a04" />

@@ -12,7 +12,7 @@
  * again when it is made.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Slot = { time: string; cents: number; courtsFree: number };
 
@@ -109,8 +109,13 @@ const dayLabel = (ymd: string, timeZone: string, today: string) => {
 export default function BookCourt({
   clubSlug,
   theme,
+  initialDate,
+  initialTime,
 }: {
   clubSlug: string;
+  /** From the court sheet: the day and start time of the cell tapped. */
+  initialDate?: string;
+  initialTime?: string;
   theme: {
     primary: string;
     onPrimary: string;
@@ -132,6 +137,8 @@ export default function BookCourt({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [booked, setBooked] = useState<Booked | null>(null);
+  /** The time tapped on the court sheet, consumed by the first load. */
+  const pendingTime = useRef<string | null>(initialTime ?? null);
 
   const load = useCallback(
     async (d: string | null, m: number | null, viewAsPublic = asPublic) => {
@@ -148,6 +155,12 @@ export default function BookCourt({
         );
         const j = (await res.json()) as Availability;
         setData(j);
+        // Preselect the tapped time once, if it is still bookable.
+        if (pendingTime.current) {
+          const hit = j.slots?.find((s) => s.time === pendingTime.current);
+          pendingTime.current = null;
+          if (hit) setPicked(hit);
+        }
         if (j.date) setDate(j.date);
         if (j.minutes) setMinutes(j.minutes);
       } catch {
@@ -160,7 +173,8 @@ export default function BookCourt({
   );
 
   useEffect(() => {
-    load(null, null);
+    load(initialDate ?? null, null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [load]);
 
   async function submit(e: React.FormEvent) {

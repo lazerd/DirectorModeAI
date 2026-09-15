@@ -80,10 +80,13 @@ export async function GET(req: Request, { params }: RouteParams) {
   return NextResponse.json({
     club,
     courts: courts ?? [],
-    reservations: reservations.map((r) => ({
-      ...r,
-      signups_count: countsById[r.id] ?? 0,
-    })),
+    // Only what the club POSTED to join is described. Everything else is a
+    // time on a court: "Smith lesson" and its meta are not a stranger's to read.
+    reservations: reservations.map((r) =>
+      r.signups_open
+        ? { ...r, signups_count: countsById[r.id] ?? 0 }
+        : { ...r, title: '', signups_pitch: null, meta: {}, signups_count: 0 },
+    ),
   });
 }
 

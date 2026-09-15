@@ -1,20 +1,27 @@
 'use client';
 
 /**
- * Public member view — what non-staff visitors see at /courtsheet/[slug].
+ * Public court sheet — what anyone sees at /courtsheet/[slug].
  *
- * Shows only signups-open reservations as cards (a more inviting layout
- * than the staff grid for a public-facing surface). Members tap to join.
- * If they're not signed in, they enter name + email (creates a guest
- * signup; we can prompt them to claim their account later).
+ * Top: the sheet itself. Every court, every half hour, booked or open, and on
+ * an open cell the per-hour price for THIS visitor (public rate signed out,
+ * member rate signed in). Tapping an open cell goes to booking at that time.
+ *
+ * Below: sessions the club has opened for signups (drop-ins, clinics), which
+ * people join rather than book.
+ *
+ * It used to be only that second list, so a club with nine courts and nothing
+ * posted showed a visitor "Nothing open" — the opposite of the truth.
  */
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { LayoutGrid, Users, Calendar, Check, ChevronRight, MapPin } from 'lucide-react';
+import { LayoutGrid, Users, Check, ChevronRight, MapPin, Handshake } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Court, Club } from '@/lib/courtsheet/types';
 import { utcToLocalTime } from '@/lib/courtsheet/timezones';
 import { blockStyleFor, typeLabel } from '@/lib/courtsheet/theme';
+import type { SheetGrid, SheetCell } from '@/lib/courts/sheet';
 import DateNav from '@/components/courtsheet/DateNav';
 
 interface PublicReservation {
@@ -33,30 +40,54 @@ interface PublicReservation {
   meta: Record<string, unknown>;
 }
 
+type SheetResponse = SheetGrid & {
+  date: string;
+  audience: 'member' | 'public';
+  signedIn: boolean;
+  bookable: boolean;
+  bookingEnabled: boolean;
+  bookingNote: string | null;
+  memberFree: boolean;
+};
+
 interface Props {
   club: Club;
   initialCourts: Court[];
+  /** The club has a /c site, so there is a booking page to send an open cell to. */
+  hasSite: boolean;
 }
 
-export default function PublicClient({ club, initialCourts }: Props) {
+const money = (cents: number) =>
+  cents === 0 ? 'Free' : `$${(cents / 100).toFixed(cents % 100 === 0 ? 0 : 2)}`;
+
+/** '17:30' → '5:30'; the row label, where am/pm is carried by the hour headers. */
+function clock(hhmm: string): { label: string; onHour: boolean } {
+  const [h, m] = hhmm.split(':').map(Number);
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return { label: m === 0 ? `${h12}${h < 12 ? 'am' : 'pm'}` : `${h12}:${String(m).padStart(2, '0')}`, onHour: m === 0 };
+}
+
+export default function PublicClient({ club, initialCourts, hasSite }: Props) {
   const todayISO = useMemo(() => {
     return new Intl.DateTimeFormat('en-CA', { timeZone: club.timezone }).format(new Date());
   }, [club.timezone]);
 
   const [date, setDate] = useState(todayISO);
   const [reservations, setReservations] = useState<PublicReservation[]>([]);
+  const [sheet, setSheet] = useState<SheetResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [signupTarget, setSignupTarget] = useState<PublicReservation | null>(null);
 
   const fetchFeed = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(
-        `/api/courtsheet/public/${club.slug}?date=${encodeURIComponent(date)}`,
-        { cache: 'no-store' }
-      );
-      const data = await res.json();
-      setReservations((data.reservations as PublicReservation[]) ?? []);
+      const q = `date=${encodeURIComponent(date)}`;
+      const [feed, grid] = await Promise.all([
+        fetch(`/api/courtsheet/public/${club.slug}?${q}`, { cache: 'no-store' }).then((r) => r.json()),
+        fetch(`/api/clubs/${club.slug}/courts/sheet?${q}`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)),
+      ]);
+      setReservations((feed.reservations as PublicReservation[]) ?? []);
+      setSheet(grid as SheetResponse | null);
     } finally {
       setLoading(false);
     }
@@ -73,20 +104,26 @@ export default function PublicClient({ club, initialCourts }: Props) {
     return m;
   }, [initialCourts]);
 
+  const openNow = sheet
+    ? sheet.rows.reduce((n, r) => n + r.cells.filter((c) => c.state === 'open').length, 0)
+    : 0;
+  const here = `/courtsheet/${club.slug}`;
+
   return (
     <div className="min-h-screen bg-[var(--cm-ground,#001820)] text-white" style={{ fontFamily: "var(--cm-font, 'Inter', system-ui, sans-serif)" }}>
       {/* Hero */}
       <div className="relative overflow-hidden border-b border-white/[0.06]">
         <div className="absolute top-0 left-1/4 w-96 h-96 bg-[var(--cm-accent,#D3FB52)]/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-10 relative">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-10 relative">
           <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--cm-accent,#D3FB52)] mb-2">
             <LayoutGrid size={12} />
-            CourtSheet
+            Court sheet
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight mb-2">{club.name}</h1>
           <p className="text-white/50 text-sm flex items-center gap-2">
-            <MapPin size={12} /> Public sheet — join open court time
+            <MapPin size={12} />
+            {sheet ? `${sheet.courts.length} courts · what's booked and what's open` : 'What’s booked and what’s open'}
           </p>
 
           <div className="mt-6">
@@ -95,51 +132,91 @@ export default function PublicClient({ club, initialCourts }: Props) {
         </div>
       </div>
 
-      {/* Open signups feed */}
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 space-y-3">
-        {/*
-          "today" was wrong as soon as the date picker moved off today, and
-          "No open signups" read like the page had failed. This board shows
-          only what the club has POSTED as open — see the empty state below.
-        */}
-        <h2 className="text-sm font-semibold uppercase tracking-widest text-white/60 mb-3">
-          {openSignups.length === 0
-            ? 'Nothing open on this day'
-            : `${openSignups.length} open to join`}
-        </h2>
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+        {/* The sheet */}
+        <section>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-white/60">
+              {loading && !sheet ? 'Loading courts…' : `${openNow} open half hours`}
+            </h2>
+            {sheet?.bookingEnabled && (
+              <p className="text-xs text-white/50">
+                Prices per hour ·{' '}
+                {sheet.audience === 'member' ? (
+                  <span className="text-[var(--cm-accent,#D3FB52)]">your member rate</span>
+                ) : sheet.signedIn ? (
+                  'guest rate'
+                ) : (
+                  <>
+                    guest rate
+                    {sheet.memberFree ? ' — members play free. ' : '. Members, '}
+                    <Link href={`/login?next=${encodeURIComponent(here)}`} className="underline text-white/80 hover:text-white">
+                      sign in
+                    </Link>
+                    {sheet.memberFree ? '' : ' for your rate.'}
+                  </>
+                )}
+              </p>
+            )}
+          </div>
 
-        {loading ? (
-          <div className="space-y-2">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="cs-shimmer h-20 rounded-2xl" />
-            ))}
-          </div>
-        ) : openSignups.length === 0 ? (
-          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
-            {/*
-              Say what this page IS. A member arriving from a tile that used to
-              read "Book a court" assumed an empty board meant the booking was
-              broken, when the club simply has not posted anything.
-            */}
-            <p className="text-white/70 text-sm font-medium">
-              {club.name} hasn&apos;t posted any open court time for this day.
+          {sheet && sheet.courts.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center text-sm text-white/60">
+              {club.name} hasn&apos;t added its courts yet.
+            </div>
+          ) : sheet ? (
+            <>
+              <SheetTable
+                sheet={sheet}
+                bookHref={(time) =>
+                  sheet.bookable && hasSite
+                    ? `/c/${club.slug}/courts/book?date=${sheet.date}&time=${time}`
+                    : null
+                }
+              />
+              <Legend />
+              {sheet.bookingNote && <p className="mt-2 text-xs text-white/50">{sheet.bookingNote}</p>}
+              {!sheet.bookingEnabled && (
+                <p className="mt-2 text-xs text-white/50">
+                  Open courts aren&apos;t bookable online here yet — call or ask the front desk.
+                </p>
+              )}
+              {sheet.assumedHours && (
+                <p className="mt-1 text-xs text-white/40">Showing 7am–10pm; the club hasn&apos;t posted hours.</p>
+              )}
+            </>
+          ) : (
+            <div className="cs-shimmer h-64 rounded-2xl" />
+          )}
+        </section>
+
+        {/* CourtConnect — the reason a member opens this page is often "who can I play with". */}
+        <CourtConnectCard audience={sheet?.audience ?? 'public'} signedIn={!!sheet?.signedIn} />
+
+        {/* Open signups feed */}
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-white/60 mb-3">
+            {openSignups.length === 0 ? 'Drop-ins & clinics' : `${openSignups.length} open to join`}
+          </h2>
+
+          {loading && reservations.length === 0 ? (
+            <div className="cs-shimmer h-20 rounded-2xl" />
+          ) : openSignups.length === 0 ? (
+            <p className="text-white/40 text-sm">
+              Nothing posted to join on this day. Drop-in play and clinics show up here when the club opens them.
             </p>
-            <p className="text-white/40 text-sm mt-2">
-              Drop-in play, clinics and open court times show up here when the club opens them for
-              signups. Try another day, or ask the front desk to post one.
-            </p>
-          </div>
-        ) : (
-          openSignups.map((r) => (
-            <PublicSignupCard
-              key={r.id}
-              reservation={r}
-              court={courtsById[r.court_id]}
-              timezone={club.timezone}
-              onJoin={() => setSignupTarget(r)}
-            />
-          ))
-        )}
+          ) : (
+            openSignups.map((r) => (
+              <PublicSignupCard
+                key={r.id}
+                reservation={r}
+                court={courtsById[r.court_id]}
+                timezone={club.timezone}
+                onJoin={() => setSignupTarget(r)}
+              />
+            ))
+          )}
+        </section>
       </div>
 
       <PublicSignupSheet
@@ -152,6 +229,110 @@ export default function PublicClient({ club, initialCourts }: Props) {
         }}
       />
     </div>
+  );
+}
+
+function SheetTable({ sheet, bookHref }: { sheet: SheetResponse; bookHref: (time: string) => string | null }) {
+  return (
+    // Scrolls sideways INSIDE the card on a phone; the time column stays put.
+    <div className="rounded-2xl border border-white/10 bg-white/[0.02] overflow-auto max-h-[70vh]">
+      <table className="border-separate border-spacing-0 text-xs w-full">
+        <thead>
+          <tr>
+            <th className="sticky left-0 top-0 z-20 bg-[var(--cm-ground,#001820)] w-14 min-w-14 border-b border-white/10" />
+            {sheet.courts.map((c) => (
+              <th
+                key={c.id}
+                className="sticky top-0 z-10 bg-[var(--cm-ground,#001820)] px-1 py-2 min-w-[4.5rem] font-semibold text-white/70 border-b border-white/10 whitespace-nowrap"
+              >
+                {c.name.replace(/^Court\s+/i, 'Ct ')}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sheet.rows.map((row) => {
+            const t = clock(row.time);
+            const href = bookHref(row.time);
+            return (
+              <tr key={row.time}>
+                <th
+                  className={`sticky left-0 z-10 bg-[var(--cm-ground,#001820)] pr-2 text-right font-normal tabular-nums whitespace-nowrap ${t.onHour ? 'text-white/70 border-t border-white/10' : 'text-white/30'}`}
+                >
+                  {t.label}
+                </th>
+                {row.cells.map((cell, i) => (
+                  <td key={sheet.courts[i].id} className={`p-0.5 ${t.onHour ? 'border-t border-white/10' : ''}`}>
+                    <Cell cell={cell} href={href} court={sheet.courts[i].name} time={row.time} />
+                  </td>
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Cell({ cell, href, court, time }: { cell: SheetCell; href: string | null; court: string; time: string }) {
+  const base = 'h-8 rounded-md flex items-center justify-center tabular-nums';
+  if (cell.state === 'booked') {
+    return (
+      <div className={`${base} bg-white/[0.08] text-white/40`} title={`${court} ${time} — booked`}>
+        Booked
+      </div>
+    );
+  }
+  if (cell.state === 'past' || cell.state === 'maintenance') {
+    return <div className={`${base} bg-white/[0.02] text-white/20`}>{cell.state === 'maintenance' ? 'Closed' : ''}</div>;
+  }
+  const label = cell.centsPerHour == null ? 'Open' : money(cell.centsPerHour);
+  const cls = `${base} border border-[var(--cm-accent,#D3FB52)]/30 bg-[var(--cm-accent,#D3FB52)]/10 text-[var(--cm-accent,#D3FB52)] font-semibold`;
+  return href ? (
+    <Link href={href} className={`${cls} hover:bg-[var(--cm-accent,#D3FB52)]/25`} title={`Book ${court} at ${time}`}>
+      {label}
+    </Link>
+  ) : (
+    <div className={cls}>{label}</div>
+  );
+}
+
+function Legend() {
+  return (
+    <div className="mt-3 flex flex-wrap gap-4 text-[11px] text-white/50">
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block w-3 h-3 rounded-sm border border-[var(--cm-accent,#D3FB52)]/30 bg-[var(--cm-accent,#D3FB52)]/10" />
+        Open — tap to book
+      </span>
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block w-3 h-3 rounded-sm bg-white/[0.08]" />
+        Booked
+      </span>
+    </div>
+  );
+}
+
+function CourtConnectCard({ audience, signedIn }: { audience: 'member' | 'public'; signedIn: boolean }) {
+  const href = signedIn ? '/courtconnect/home' : `/login?next=${encodeURIComponent('/courtconnect/home')}`;
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-4 rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.06] p-4 sm:p-5 hover:bg-emerald-400/[0.1] transition"
+    >
+      <div className="shrink-0 w-11 h-11 rounded-xl bg-emerald-400/15 flex items-center justify-center">
+        <Handshake size={20} className="text-emerald-300" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold">Need a game? Find one on CourtConnect</div>
+        <div className="text-sm text-white/60 mt-0.5">
+          {audience === 'member'
+            ? 'Post a time, and players at your level get the invite and join.'
+            : 'Members post a time, and players at their level get the invite and join. Sign in to start one.'}
+        </div>
+      </div>
+      <ChevronRight size={18} className="shrink-0 text-white/40" />
+    </Link>
   );
 }
 

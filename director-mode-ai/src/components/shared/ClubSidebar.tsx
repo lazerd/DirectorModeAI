@@ -37,7 +37,7 @@ import {
 } from '@/config/nav';
 import {
   Zap, Home, LayoutGrid, Calendar, GraduationCap,
-  ChevronLeft, ChevronRight, Menu, X, HardHat, Eye, ClipboardList,
+  ChevronLeft, ChevronRight, Menu, X, HardHat, Eye, ClipboardList, Handshake,
 } from 'lucide-react';
 
 type Item = {
@@ -254,9 +254,10 @@ export default function ClubSidebar() {
             heading: null,
             items: [
               { name: 'My Club', href: '/member', matches: ['/member'], icon: Home, color: '#22d3ee' },
-              ...(slug ? [// Named for what the page does. ClubMode has no member self-booking, so
-            // "Book a Court" sent members to an empty board and read as broken.
-            { name: 'Open Court Time', href: `/courtsheet/${slug}`, matches: ['/courtsheet'], icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
+              // Every court, booked or open, priced for the member.
+              ...(slug ? [{ name: 'Court Sheet', href: `/courtsheet/${slug}`, matches: ['/courtsheet'], icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
+              // Pairing members for games is the member-side reason to open the app.
+              { name: 'CourtConnect', href: '/courtconnect/home', matches: ['/courtconnect'], icon: Handshake, color: '#34d399' },
               { name: 'My Account', href: '/client/dashboard', matches: ['/client/dashboard'], icon: Calendar, color: '#60a5fa' },
               { name: 'Find a Coach', href: '/find-coach', matches: ['/find-coach'], icon: GraduationCap, color: '#a78bfa' },
             ],

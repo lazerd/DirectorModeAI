@@ -22,8 +22,16 @@ export async function generateMetadata({
   };
 }
 
-export default async function BookCourtPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function BookCourtPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ date?: string; time?: string }>;
+}) {
   const { slug } = await params;
+  // Arriving from a tapped cell on the court sheet: open on that day and time.
+  const { date, time } = await searchParams;
   const bundle = await getClubSite(slug);
   if (!bundle) notFound();
   const { club, theme } = bundle;
@@ -56,6 +64,8 @@ export default async function BookCourtPage({ params }: { params: Promise<{ slug
       <div className="mt-8">
         <BookCourt
           clubSlug={club.slug}
+          initialDate={/^\d{4}-\d{2}-\d{2}$/.test(date ?? '') ? date : undefined}
+          initialTime={/^\d{2}:\d{2}$/.test(time ?? '') ? time : undefined}
           theme={{
             primary: theme.primary,
             onPrimary: readableOn(theme.primary),
