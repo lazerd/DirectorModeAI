@@ -17,6 +17,14 @@ describe('isClubPublicPath', () => {
     expect(isClubPublicPath('/calendar/import')).toBe(false);
   });
 
+  it('treats the QR check-in phone pages and kiosk board as public', () => {
+    expect(isClubPublicPath('/q/k7m2q9xdpa')).toBe(true);
+    expect(isClubPublicPath('/q/s/0123456789abcdef0123456789abcdef0123')).toBe(true);
+    expect(isClubPublicPath('/checkin/rossmoor-tennis-club/board')).toBe(true);
+    expect(isClubPublicPath('/run/checkin')).toBe(false);
+    expect(isClubPublicPath('/quads')).toBe(false);
+  });
+
   it('does not match look-alike paths', () => {
     expect(isClubPublicPath('/courts')).toBe(false);
     expect(isClubPublicPath('/club-site')).toBe(false);
