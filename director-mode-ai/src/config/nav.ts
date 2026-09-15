@@ -40,7 +40,7 @@
 import {
   LayoutGrid, CalendarDays, Shuffle, Calendar, Trophy, ClipboardList, Waves,
   Users, Database, Wrench, Clock, GraduationCap, Mountain, BarChart3, Sparkles,
-  Grid3x3, User, CalendarRange, Search, CalendarCheck, HardHat, Globe,
+  Grid3x3, User, CalendarRange, Search, CalendarCheck, HardHat, Globe, Handshake,
 } from 'lucide-react';
 
 export type NavIcon = typeof LayoutGrid;
@@ -212,15 +212,32 @@ export const SECTIONS: Section[] = [
         tag: 'ROSTER',
       },
       {
+        /*
+         * Matching members into games at their level is Partner Finder's job
+         * (below). CourtConnect never did it — no rating match, no club scope —
+         * so it no longer claims to.
+         */
         name: 'CourtConnect',
         href: '/courtconnect/home',
         match: '/courtconnect/home',
-        description: 'Player-to-player matching — members post games and find partners at their level.',
-        pitch: 'Match players by skill level, create events, and manage RSVPs with automatic waitlists.',
+        description: 'Player-run events and RSVPs with automatic waitlists. For matching members into games at their level, use Partner Finder.',
+        pitch: 'Let players create their own events and manage RSVPs with automatic waitlists.',
         icon: Users,
         color: '#34d399',
         product: true,
         tag: 'PLAYERS',
+      },
+      {
+        name: 'Partner Finder',
+        href: '/run/members/partner-finder',
+        match: '/run/members/partner-finder',
+        description: 'Members post "need 1 for doubles"; members at the right level get an email and join in one tap.',
+        pitch: 'A member needs a fourth. Members at the right level get an email, the first to tap "I\'m in" gets the spot, and the whole group gets a confirmation. No login, no group texts.',
+        icon: Handshake,
+        color: '#10b981',
+        product: true,
+        tag: 'MATCHING',
+        badge: 'NEW',
       },
     ],
   },
