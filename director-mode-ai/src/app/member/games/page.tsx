@@ -27,7 +27,8 @@ export default async function MemberGamesPage({ searchParams }: { searchParams: 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="bg-gradient-to-br from-emerald-700 to-teal-700 text-white">
-        <div className="mx-auto max-w-3xl px-5 py-8">
+        {/* pt-20 below md: ClubSidebar's fixed menu button sits at top-3 left-3 on phones. */}
+        <div className="mx-auto max-w-3xl px-5 pb-8 pt-20 md:pt-8">
           <Link href="/member" className="inline-flex min-h-[44px] items-center gap-2 text-lg text-emerald-50 hover:underline">
             <ArrowLeft className="h-5 w-5" /> {club.name}
           </Link>

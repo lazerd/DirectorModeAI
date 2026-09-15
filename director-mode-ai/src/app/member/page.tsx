@@ -210,7 +210,8 @@ export default async function MemberHome() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       {/* hero */}
       <header className="bg-gradient-to-br from-sky-600 to-cyan-700 text-white">
-        <div className="max-w-3xl mx-auto px-5 py-10">
+        {/* pt-20 below md: ClubSidebar's fixed menu button sits at top-3 left-3 on phones. */}
+        <div className="max-w-3xl mx-auto px-5 pb-10 pt-20 md:pt-10">
           {club.logo_url && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={club.logo_url} alt="" className="h-12 mb-4 object-contain" />
@@ -294,12 +295,18 @@ export default async function MemberHome() {
                 <span className="shrink-0 font-semibold text-emerald-700">See game →</span>
               </Link>
             ))}
-            <Link
-              href="/member/games"
-              className="flex min-h-[60px] items-center justify-center rounded-2xl bg-emerald-700 px-5 text-center text-xl font-bold text-white hover:bg-emerald-800"
-            >
-              {openGames.length ? 'Post a game that needs players' : 'No games need players yet. Post one'}
-            </Link>
+            {/* A quiet line when there's nothing on, with the way to change that. */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-3">
+              <span className="text-lg text-slate-600">
+                {openGames.length ? 'Need a player yourself?' : 'No games need players right now.'}
+              </span>
+              <Link
+                href="/member/games"
+                className="inline-flex min-h-[48px] items-center rounded-xl border-2 border-emerald-700 px-4 text-lg font-semibold text-emerald-800 hover:bg-emerald-50"
+              >
+                Post a game
+              </Link>
+            </div>
           </div>
         </section>
 

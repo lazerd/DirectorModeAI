@@ -143,7 +143,7 @@ export default function GamesBoard({ clubId }: { clubId: string }) {
       )}
 
       {board.mine.length > 0 && (
-        <Section title="Games you posted">
+        <Section title="Your games">
           {board.mine.map((g) => (
             <GameCard key={g.id} game={g} onDone={(m) => { say(m); load(); }} />
           ))}
@@ -237,7 +237,8 @@ function GameCard({
   }
 
   const facts = [
-    g.status === 'full' ? 'Full' : needsLabel(g.spotsLeft),
+    // A full game already wears the "Full" badge.
+    ...(g.status === 'full' ? [] : [needsLabel(g.spotsLeft)]),
     g.rating ? `Level ${g.rating}` : 'Any level',
     g.duration,
     g.court || 'Court to be decided',
@@ -384,9 +385,21 @@ function PostForm({
   const [duration, setDuration] = useState<number>(90);
   const [format, setFormat] = useState<GameFormat>('doubles');
   const [spots, setSpots] = useState<number>(1);
-  const [anyLevel, setAnyLevel] = useState(my == null);
-  const [min, setMin] = useState<number>(my != null ? clamp(my - 0.5) : 3.0);
-  const [max, setMax] = useState<number>(my != null ? clamp(my + 0.5) : 3.5);
+  /*
+   * "Any level" is the default and it means any level: null/null is what gets
+   * saved. A range is only ever what the poster can see in From/To — it starts
+   * around their own level the moment they choose "Choose a range".
+   */
+  const [anyLevel, setAnyLevel] = useState(true);
+  const [min, setMin] = useState<number>(3.0);
+  const [max, setMax] = useState<number>(3.5);
+  const chooseLevelMode = (v: string) => {
+    if (v === 'range' && anyLevel && my != null) {
+      setMin(clamp(my - 0.5));
+      setMax(clamp(my + 0.5));
+    }
+    setAnyLevel(v === 'any');
+  };
   const [includeUnrated, setIncludeUnrated] = useState(true);
   const [court, setCourt] = useState('');
   const [note, setNote] = useState('');
@@ -421,7 +434,7 @@ function PostForm({
     if (r.error) return setError(r.error);
     onPosted(
       r.notified > 0
-        ? `Your game is posted. We emailed ${r.notified} ${r.notified === 1 ? 'member' : 'members'} who might want to play. We'll email you when someone joins.`
+        ? `Your game is posted. We're emailing ${r.notified} ${r.notified === 1 ? 'member' : 'members'} who might want to play, and we'll email you when someone joins.`
         : "Your game is posted on the club's board. We didn't find members to email at that level yet, so others can join from the board.",
     );
   }
@@ -479,7 +492,7 @@ function PostForm({
             { value: 'range', label: 'Choose a range' },
           ]}
           value={anyLevel ? 'any' : 'range'}
-          onChange={(v) => setAnyLevel(v === 'any')}
+          onChange={chooseLevelMode}
         />
         {!anyLevel && (
           <div className="mt-4 space-y-4">
@@ -544,7 +557,7 @@ function PostForm({
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <button onClick={submit} disabled={busy} className={`${primaryBtn} flex-1`}>
-          {busy ? 'Posting and emailing…' : 'Post the game'}
+          {busy ? 'Posting…' : 'Post the game'}
         </button>
         <button onClick={onCancel} disabled={busy} className={`${secondaryBtn} sm:w-40`}>
           Back
@@ -559,6 +572,7 @@ function PostForm({
 function Settings({ board, onSaved }: { board: Board; onSaved: (m: Msg) => void }) {
   const [busy, setBusy] = useState(false);
   const [phone, setPhone] = useState(board.me.phone ?? '');
+  const [changingLevel, setChangingLevel] = useState(false);
   const clubRated = board.me.ntrpSource === 'club';
 
   async function save(patch: Record<string, unknown>, text: string) {
@@ -572,25 +586,39 @@ function Settings({ board, onSaved }: { board: Board; onSaved: (m: Msg) => void 
     <section className="space-y-6 rounded-3xl border border-slate-200 bg-white p-5 sm:p-7">
       <h2 className="text-2xl font-bold">Your settings</h2>
 
+      {/* One line, not a second picker: the level is asked for once, at the top of the page. */}
       <div>
-        <p className="text-lg font-bold">Your level</p>
-        {clubRated ? (
-          <p className="mt-1 text-slate-700">
-            The club has you at <strong>{board.me.ntrp?.toFixed(1)}</strong>. To change it, ask the tennis staff.
-          </p>
-        ) : (
-          <>
-            <p className="mb-3 mt-1 text-slate-700">
-              {board.me.ntrp != null
-                ? `You told us ${board.me.ntrp.toFixed(1)}. Tap to change it.`
-                : 'Tell us your level so we can send you games that suit you.'}
-            </p>
+        <p className="flex min-h-[44px] flex-wrap items-center gap-x-3 text-lg">
+          <span>
+            <span className="font-bold">Your level:</span>{' '}
+            {board.me.ntrp != null ? board.me.ntrp.toFixed(1) : 'not set yet'}
+          </span>
+          {clubRated ? (
+            <span className="text-base text-slate-600">set by the club. Ask the tennis staff to change it.</span>
+          ) : (
+            board.me.ntrp != null && (
+              <button
+                type="button"
+                onClick={() => setChangingLevel((v) => !v)}
+                className="min-h-[44px] px-1 font-semibold text-emerald-800 underline"
+              >
+                {changingLevel ? 'close' : 'change'}
+              </button>
+            )
+          )}
+        </p>
+        {changingLevel && !clubRated && (
+          <div className="mt-2">
             <LevelPicker
               value={board.me.ntrp}
               busy={busy}
-              onPick={(n) => n != null && save({ ntrp: n }, `Saved. Your level is ${n.toFixed(1)}.`)}
+              onPick={(n) => {
+                if (n == null) return;
+                setChangingLevel(false);
+                save({ ntrp: n }, `Saved. Your level is ${n.toFixed(1)}.`);
+              }}
             />
-          </>
+          </div>
         )}
       </div>
 
