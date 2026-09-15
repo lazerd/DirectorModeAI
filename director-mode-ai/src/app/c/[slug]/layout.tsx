@@ -17,9 +17,12 @@ import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import { getClubSite } from '@/lib/clubSite/server';
 import { getSiteVisitor } from '@/lib/clubSite/visitor';
-import { readableOn } from '@/lib/clubSite/theme';
+import { largeTextCss, readableOn } from '@/lib/clubSite/theme';
+import { EMBED_HEADER } from '@/lib/clubSite/embed';
+import EmbedRuntime from '@/components/clubSite/EmbedRuntime';
 import { getRateCards } from '@/lib/courts/server';
 import { bookingEnabled } from '@/lib/courts/pricing';
 import MemberBar from '@/components/clubSite/MemberBar';
@@ -67,6 +70,27 @@ export default async function ClubSiteLayout({
 
   const { club, site, theme } = bundle;
   const onPrimary = readableOn(theme.primary);
+  const largeText = largeTextCss(theme.textSize);
+
+  /*
+   * Embedded in the club's own website (`?embed=1`, flagged by middleware
+   * because a layout gets no searchParams). Their site already has a header,
+   * a footer and a way to reach the club, so ours would be a second copy
+   * stacked inside the first. The draft banner goes too: it is addressed to
+   * the director, and inside their homepage it would be addressed to members.
+   */
+  const embedded = (await headers()).get(EMBED_HEADER) === '1';
+  if (embedded) {
+    return (
+      <div
+        style={{ background: theme.cream, color: theme.ink, fontFamily: theme.fontFamily }}
+      >
+        {largeText && <style dangerouslySetInnerHTML={{ __html: largeText }} />}
+        <EmbedRuntime />
+        <main>{children}</main>
+      </div>
+    );
+  }
 
   /*
    * Who is looking, and what this club charges them.
@@ -108,6 +132,7 @@ export default async function ClubSiteLayout({
         minHeight: '100vh',
       }}
     >
+      {largeText && <style dangerouslySetInnerHTML={{ __html: largeText }} />}
       {bundle.isDraft && (
         /*
          * An unpublished site still renders at its real URL, on purpose: that

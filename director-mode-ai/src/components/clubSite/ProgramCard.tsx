@@ -10,7 +10,7 @@
 import Link from 'next/link';
 import type { ClubProgram } from '@/lib/clubSite/server';
 import type { ClubTheme } from '@/lib/clubSite/theme';
-import { readableOn, tint } from '@/lib/clubSite/theme';
+import { readableOn, tint, inkTint } from '@/lib/clubSite/theme';
 import {
   daysLabel,
   formatPrice,
@@ -44,7 +44,7 @@ export default function ProgramCard({
     <Link
       href={`/c/${clubSlug}/programs/${program.slug}`}
       className="block rounded-2xl border p-5 transition-shadow hover:shadow-md"
-      style={{ background: theme.surface, borderColor: tint(theme.ink, 0.12) }}
+      style={{ background: theme.surface, borderColor: inkTint(theme, 0.12) }}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -56,7 +56,7 @@ export default function ProgramCard({
               {program.sport}
             </span>
             {ages && (
-              <span className="text-xs font-medium" style={{ color: tint(theme.ink, 0.55) }}>
+              <span className="text-xs font-medium" style={{ color: inkTint(theme, 0.55) }}>
                 {ages}
               </span>
             )}
@@ -68,7 +68,7 @@ export default function ProgramCard({
             {program.title}
           </h3>
           {program.subtitle && (
-            <p className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.65) }}>
+            <p className="mt-1 text-sm" style={{ color: inkTint(theme, 0.65) }}>
               {program.subtitle}
             </p>
           )}
@@ -89,13 +89,13 @@ export default function ProgramCard({
       <dl className="mt-4 grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
         <div className="flex gap-2">
           <dt className="font-semibold">When</dt>
-          <dd style={{ color: tint(theme.ink, 0.7) }}>
+          <dd style={{ color: inkTint(theme, 0.7) }}>
             {daysLabel(program.days_of_week)}, {formatTimeRange(program.time_start, program.time_end)}
           </dd>
         </div>
         <div className="flex gap-2">
           <dt className="font-semibold">Dates</dt>
-          <dd style={{ color: tint(theme.ink, 0.7) }}>
+          <dd style={{ color: inkTint(theme, 0.7) }}>
             {sessions.count === 0 ? (
               'No sessions scheduled'
             ) : (
@@ -110,13 +110,13 @@ export default function ProgramCard({
         {program.coach_name && (
           <div className="flex gap-2">
             <dt className="font-semibold">Coach</dt>
-            <dd style={{ color: tint(theme.ink, 0.7) }}>{program.coach_name}</dd>
+            <dd style={{ color: inkTint(theme, 0.7) }}>{program.coach_name}</dd>
           </div>
         )}
         {sessions.skipped.length > 0 && (
           <div className="flex gap-2">
             <dt className="font-semibold">We skip</dt>
-            <dd style={{ color: tint(theme.ink, 0.7) }}>
+            <dd style={{ color: inkTint(theme, 0.7) }}>
               {sessions.skipped.map((d) => formatSessionDate(d, timeZone)).join(', ')}
             </dd>
           </div>

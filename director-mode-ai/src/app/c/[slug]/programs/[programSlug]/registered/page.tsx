@@ -12,7 +12,7 @@ import { notFound } from 'next/navigation';
 import { getClubProgram, getClubSite } from '@/lib/clubSite/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getClubPayments, paymentOffer } from '@/lib/courts/payments';
-import { readableOn, tint } from '@/lib/clubSite/theme';
+import { readableOn, tint, inkTint } from '@/lib/clubSite/theme';
 import {
   daysLabel,
   formatPrice,
@@ -69,7 +69,7 @@ export default async function RegisteredPage({
     <div className="mx-auto max-w-2xl px-5 py-14">
       <div
         className="rounded-2xl border p-7"
-        style={{ borderColor: tint(theme.ink, 0.14), background: theme.surface }}
+        style={{ borderColor: inkTint(theme, 0.14), background: theme.surface }}
       >
         <div className="text-4xl">{waitlisted ? '⏳' : '✅'}</div>
         <h1
@@ -79,7 +79,7 @@ export default async function RegisteredPage({
           {waitlisted ? "You're on the waitlist" : "You're in"}
           {registration ? ` — ${registration.participant_name}` : ''}
         </h1>
-        <p className="mt-2 text-base" style={{ color: tint(theme.ink, 0.7) }}>
+        <p className="mt-2 text-base" style={{ color: inkTint(theme, 0.7) }}>
           {waitlisted
             ? `${program.title} is full. We email you the moment a spot opens, and nothing is owed until then.`
             : `${program.title} at ${club.name}. A confirmation is on its way to your inbox.`}
@@ -88,7 +88,7 @@ export default async function RegisteredPage({
         <dl className="mt-6 space-y-2 text-sm">
           <div className="flex gap-2">
             <dt className="w-20 shrink-0 font-semibold">When</dt>
-            <dd style={{ color: tint(theme.ink, 0.75) }}>
+            <dd style={{ color: inkTint(theme, 0.75) }}>
               {daysLabel(program.days_of_week)},{' '}
               {formatTimeRange(program.time_start, program.time_end)}
             </dd>
@@ -98,7 +98,7 @@ export default async function RegisteredPage({
               <dt className="w-20 shrink-0 font-semibold">
                 {sessions.count} {sessions.count === 1 ? 'date' : 'dates'}
               </dt>
-              <dd style={{ color: tint(theme.ink, 0.75) }}>
+              <dd style={{ color: inkTint(theme, 0.75) }}>
                 {sessions.dates.map((d) => formatSessionDate(d, club.timezone)).join(' · ')}
               </dd>
             </div>
@@ -106,7 +106,7 @@ export default async function RegisteredPage({
           {sessions.skipped.length > 0 && (
             <div className="flex gap-2">
               <dt className="w-20 shrink-0 font-semibold">We skip</dt>
-              <dd style={{ color: tint(theme.ink, 0.75) }}>
+              <dd style={{ color: inkTint(theme, 0.75) }}>
                 {sessions.skipped.map((d) => formatSessionDate(d, club.timezone)).join(' · ')}
               </dd>
             </div>
@@ -114,7 +114,7 @@ export default async function RegisteredPage({
           {program.location_note && (
             <div className="flex gap-2">
               <dt className="w-20 shrink-0 font-semibold">Where</dt>
-              <dd style={{ color: tint(theme.ink, 0.75) }}>{program.location_note}</dd>
+              <dd style={{ color: inkTint(theme, 0.75) }}>{program.location_note}</dd>
             </div>
           )}
         </dl>
@@ -138,14 +138,14 @@ export default async function RegisteredPage({
               });
               if (offer.kind !== 'link') {
                 return (
-                  <p className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+                  <p className="mt-1 text-sm" style={{ color: inkTint(theme, 0.7) }}>
                     Your spot is held — {club.name} will be in touch about payment.
                   </p>
                 );
               }
               return (
                 <>
-                  <p className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+                  <p className="mt-1 text-sm" style={{ color: inkTint(theme, 0.7) }}>
                     {offer.note || 'Your spot is held. Pay now to lock it in.'}
                   </p>
                   <a

@@ -25,12 +25,14 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'];
 
 export default function PublicCalendarView({
-  club, year, published, items,
+  club, year, published, items, embedded = false,
 }: {
   club: { name: string; slug: string; logo_url: string | null; website: string | null };
   year: number;
   published: boolean;
   items: Item[];
+  /** Inside the club's own website: their logo and a link back to them are already around it. */
+  embedded?: boolean;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -67,7 +69,7 @@ export default function PublicCalendarView({
       }}>
       <header className="border-b" style={{ borderColor: '#0d3d4d' }}>
         <div className="max-w-3xl mx-auto px-5 py-8 text-center">
-          {club.logo_url && (
+          {club.logo_url && !embedded && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={club.logo_url} alt="" className="h-14 mx-auto mb-4 object-contain" />
           )}
@@ -152,12 +154,14 @@ export default function PublicCalendarView({
         )}
       </main>
 
+      {!embedded && (
       <footer className="max-w-3xl mx-auto px-5 pb-10 text-center text-xs opacity-40">
         {club.website && (
           <a href={club.website} target="_blank" rel="noreferrer" className="underline">{club.name}</a>
         )}
         <div className="mt-1">Calendar by ClubMode</div>
       </footer>
+      )}
     </div>
   );
 }

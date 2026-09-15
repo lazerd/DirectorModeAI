@@ -13,7 +13,9 @@
  * point of this page is that it belongs to the club and not to us.
  */
 
-import { FONT_CHOICES } from './schema';
+import { FONT_CHOICES, TEXT_SIZES } from './schema';
+
+export type TextSize = (typeof TEXT_SIZES)[number];
 
 export type ClubTheme = {
   primary: string;
@@ -24,9 +26,11 @@ export type ClubTheme = {
   /** A real CSS font stack, never a bare family name the visitor may not have. */
   fontFamily: string;
   headingFamily: string;
+  /** 'large' for clubs whose members read better at ~19px. See largeTextCss. */
+  textSize: TextSize;
 };
 
-const DEFAULT: Omit<ClubTheme, 'fontFamily' | 'headingFamily'> = {
+const DEFAULT: Omit<ClubTheme, 'fontFamily' | 'headingFamily' | 'textSize'> = {
   primary: '#14532d',
   secondary: '#b8860b',
   ink: '#1c2321',
@@ -62,6 +66,7 @@ type ThemeSource = {
   color_cream?: string | null;
   color_surface?: string | null;
   font_choice?: string | null;
+  text_size?: string | null;
 };
 
 const hex = (value: string | null | undefined, fallback: string): string => {
@@ -80,6 +85,7 @@ export function resolveTheme(site: ThemeSource | null | undefined): ClubTheme {
     surface: hex(site?.color_surface, DEFAULT.surface),
     fontFamily: fonts.body,
     headingFamily: fonts.heading,
+    textSize: site?.text_size === 'large' ? 'large' : 'standard',
   };
 }
 
@@ -114,4 +120,49 @@ export function tint(color: string, alpha: number): string {
   const n = parseInt(full, 16);
   if (Number.isNaN(n)) return `rgba(0,0,0,${alpha})`;
   return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
+
+/**
+ * The club's ink at `alpha`, for SECONDARY TEXT — darker when text is large.
+ *
+ * The pages draw captions, dates and labels as the ink colour faded to
+ * 55–70%. On a cream ground that is fine for most eyes and a strain for the
+ * members a large-text club turned it on for, so large text lifts any
+ * text-strength tint to at least 85%. Borders and panel washes (alpha below
+ * 0.35) are left alone — darkening those would make the page heavier, not more
+ * readable. With standard text this is exactly `tint(theme.ink, alpha)`, so a
+ * club that never touches the setting renders byte-for-byte as before.
+ */
+export function inkTint(theme: Pick<ClubTheme, 'ink' | 'textSize'>, alpha: number): string {
+  if (theme.textSize === 'large' && alpha >= 0.35) return tint(theme.ink, Math.max(alpha, 0.85));
+  return tint(theme.ink, alpha);
+}
+
+/**
+ * The stylesheet a large-text page adds, or '' for standard.
+ *
+ * Done by raising the ROOT font size rather than rewriting every Tailwind size
+ * class on every club page: the pages size everything in rem, so one rule
+ * scales body text to 19px and every heading, gap and card with it, in
+ * proportion — the same page, just bigger, which is what "easier to read"
+ * should mean. It is rendered inside the club's own page tree, so it leaves
+ * with the page on navigation and never reaches the director app.
+ *
+ * On top of that: inputs whose font size is set inline in px (the registration
+ * form) are brought up to match, anything tappable is at least 44px tall (the
+ * WCAG target size), and on the DARK shared surfaces — court sheet, calendar —
+ * the faded white/40–60 captions are lifted, since those use Tailwind opacity
+ * classes that inkTint cannot reach.
+ */
+export function largeTextCss(textSize: TextSize | null | undefined): string {
+  if (textSize !== 'large') return '';
+  return [
+    'html{font-size:118.75%}',
+    'input,select,textarea{font-size:1.05rem!important}',
+    'button,select,input:not([type=checkbox]):not([type=radio]):not([type=hidden]),[role=button]{min-height:44px}',
+    'a.inline-block,a.block,a[class*="rounded"]{min-height:44px}',
+    'a.inline-block{padding-top:.5rem;padding-bottom:.5rem}',
+    '[class*="text-white/30"],[class*="text-white/40"],[class*="text-white/50"],[class*="text-white/60"]{color:rgba(255,255,255,.85)!important}',
+    '.opacity-40,.opacity-50,.opacity-60{opacity:.85!important}',
+  ].join('\n');
 }

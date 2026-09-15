@@ -9,6 +9,7 @@
  */
 
 import { useState } from 'react';
+import { isEmbedParam, keepEmbed } from '@/lib/clubSite/embed';
 
 type Props = {
   clubSlug: string;
@@ -77,8 +78,12 @@ export default function RegisterForm({
       }
       // A full page load, not a router push: the confirmation reads the row
       // back so the parent sees the dates the server actually saved.
-      window.location.href =
-        `/c/${clubSlug}/programs/${programSlug}/registered?r=${encodeURIComponent(j.registration_id || '')}`;
+      // Embedded in the club's own website, the confirmation stays embedded too.
+      const embedded = isEmbedParam(new URLSearchParams(window.location.search).get('embed'));
+      window.location.href = keepEmbed(
+        `/c/${clubSlug}/programs/${programSlug}/registered?r=${encodeURIComponent(j.registration_id || '')}`,
+        embedded,
+      );
     } catch {
       setError('Network problem — please try again.');
       setBusy(false);

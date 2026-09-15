@@ -22,6 +22,18 @@ export function safeNext(raw: string | null | undefined): string | null {
 }
 
 /**
+ * True when every club role this person holds is plain `member`.
+ *
+ * No roles at all is NOT member-only: a brand-new account with no club becomes
+ * a director on first use, and sending it to an empty clubhouse would strand
+ * the one person about to set a club up. Owners are checked separately by the
+ * callers, because ownership lives on cc_clubs rather than in these rows.
+ */
+export function isMemberOnly(roles: string[]): boolean {
+  return roles.length > 0 && roles.every((r) => r === 'member');
+}
+
+/**
  * The default home for a signed-in user with nowhere specific to go.
  *
  * Mirrors ClubSidebar's member check: owners and staff (and brand-new users with
@@ -36,6 +48,7 @@ export async function defaultDestination(supabase: SupabaseClient, userId: strin
     if (owned) return '/welcome';
     const { data: mems } = await supabase
       .from('cc_club_members').select('club_id, role, created_at').eq('user_id', userId);
+    if (isMemberOnly((mems || []).map((m) => m.role))) return '/member';
     const primary = pickPrimaryClub(mems || [], null);
     const mem = (mems || []).find((m) => m.club_id === primary);
     if (mem?.role === 'member') return '/member';

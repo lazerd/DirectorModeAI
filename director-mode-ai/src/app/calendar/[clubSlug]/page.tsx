@@ -5,6 +5,8 @@ import { PUBLIC_ITEM_COLUMNS } from '@/lib/calendar/server';
 import { catalogEntry } from '@/lib/calendar/catalog';
 import ClubChrome, { getClubChrome } from '@/components/clubSite/ClubChrome';
 import PublicCalendarView from './PublicCalendarView';
+import EmbedRuntime from '@/components/clubSite/EmbedRuntime';
+import { isEmbedParam } from '@/lib/clubSite/embed';
 
 // The member-facing published calendar.
 //
@@ -62,8 +64,10 @@ export async function generateMetadata(
 }
 
 export default async function PublicCalendarPage(
-  { params, searchParams }: { params: { clubSlug: string }; searchParams: { year?: string } },
+  { params, searchParams }: { params: { clubSlug: string }; searchParams: { year?: string; embed?: string } },
 ) {
+  // Shown inside the club's own website — see lib/clubSite/embed.ts.
+  const embedded = isEmbedParam(searchParams.embed);
   const year = Number(searchParams.year) || new Date().getFullYear();
   const data = await getData(params.clubSlug, year);
   if (!data) notFound();
@@ -80,11 +84,13 @@ export default async function PublicCalendarPage(
 
   return (
     <ClubChrome chrome={chrome}>
+      {embedded && <EmbedRuntime />}
       <PublicCalendarView
         club={data.club as any}
         year={year}
         published={!!data.plan}
         items={items}
+        embedded={embedded}
       />
     </ClubChrome>
   );

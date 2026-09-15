@@ -15,7 +15,7 @@ import { getClubSite } from '@/lib/clubSite/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getRateCards } from '@/lib/courts/server';
 import { bookingEnabled, bookingRules, type RateCard } from '@/lib/courts/pricing';
-import { readableOn, tint } from '@/lib/clubSite/theme';
+import { readableOn, inkTint } from '@/lib/clubSite/theme';
 import { daysLabel, formatPrice } from '@/lib/programs/sessions';
 
 export const dynamic = 'force-dynamic';
@@ -88,7 +88,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
         Court time
       </h1>
       {site.courts_blurb && (
-        <p className="mt-3 max-w-2xl text-base leading-relaxed" style={{ color: tint(theme.ink, 0.7) }}>
+        <p className="mt-3 max-w-2xl text-base leading-relaxed" style={{ color: inkTint(theme, 0.7) }}>
           {site.courts_blurb}
         </p>
       )}
@@ -107,7 +107,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[420px] text-sm">
                 <thead>
-                  <tr style={{ color: tint(theme.ink, 0.55) }} className="text-left">
+                  <tr style={{ color: inkTint(theme, 0.55) }} className="text-left">
                     <th className="py-2 pr-4 font-semibold">Rate</th>
                     <th className="py-2 pr-4 font-semibold">When</th>
                     <th className="py-2 font-semibold">Per hour</th>
@@ -115,16 +115,16 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
                 </thead>
                 <tbody>
                   {rateCards.map((r) => (
-                    <tr key={r.id} style={{ borderTop: `1px solid ${tint(theme.ink, 0.1)}` }}>
+                    <tr key={r.id} style={{ borderTop: `1px solid ${inkTint(theme, 0.1)}` }}>
                       <td className="py-3 pr-4">
                         <div className="font-semibold">{r.label}</div>
-                        <div className="text-xs" style={{ color: tint(theme.ink, 0.55) }}>
+                        <div className="text-xs" style={{ color: inkTint(theme, 0.55) }}>
                           {r.applies_to === 'member' ? 'Members' : 'Public'}
                         </div>
                       </td>
-                      <td className="py-3 pr-4" style={{ color: tint(theme.ink, 0.7) }}>
+                      <td className="py-3 pr-4" style={{ color: inkTint(theme, 0.7) }}>
                         {daysLabel(r.days_of_week)}
-                        <div className="text-xs" style={{ color: tint(theme.ink, 0.5) }}>
+                        <div className="text-xs" style={{ color: inkTint(theme, 0.5) }}>
                           {r.time_start.slice(0, 5)}–{r.time_end.slice(0, 5)}
                         </div>
                       </td>
@@ -134,7 +134,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
                 </tbody>
               </table>
             </div>
-            <p className="mt-3 text-xs" style={{ color: tint(theme.ink, 0.5) }}>
+            <p className="mt-3 text-xs" style={{ color: inkTint(theme, 0.5) }}>
               Members book up to {memberRules.advanceDays} days ahead; the public up to{' '}
               {publicRules.advanceDays}.
             </p>
@@ -147,7 +147,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
             <div className="mt-4 overflow-x-auto">
               <table className="w-full min-w-[420px] text-sm">
                 <thead>
-                  <tr style={{ color: tint(theme.ink, 0.55) }} className="text-left">
+                  <tr style={{ color: inkTint(theme, 0.55) }} className="text-left">
                     <th className="py-2 pr-4 font-semibold">When</th>
                     <th className="py-2 pr-4 font-semibold">Members</th>
                     <th className="py-2 font-semibold">Public</th>
@@ -155,16 +155,16 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
                 </thead>
                 <tbody>
                   {site.court_rates.map((r, i) => (
-                    <tr key={i} style={{ borderTop: `1px solid ${tint(theme.ink, 0.1)}` }}>
+                    <tr key={i} style={{ borderTop: `1px solid ${inkTint(theme, 0.1)}` }}>
                       <td className="py-3 pr-4">
                         <div className="font-semibold">{r.label}</div>
                         {r.window && (
-                          <div className="text-xs" style={{ color: tint(theme.ink, 0.55) }}>
+                          <div className="text-xs" style={{ color: inkTint(theme, 0.55) }}>
                             {r.window}
                           </div>
                         )}
                         {r.note && (
-                          <div className="text-xs" style={{ color: tint(theme.ink, 0.45) }}>
+                          <div className="text-xs" style={{ color: inkTint(theme, 0.45) }}>
                             {r.note}
                           </div>
                         )}
@@ -191,7 +191,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
                   return (
                     <tr key={dow}>
                       <td className="py-1.5 pr-6 font-semibold">{name}</td>
-                      <td className="py-1.5" style={{ color: tint(theme.ink, 0.7) }}>
+                      <td className="py-1.5" style={{ color: inkTint(theme, 0.7) }}>
                         {windows.length
                           ? windows.map((w) => `${pretty(w.open)}–${pretty(w.close)}`).join(', ')
                           : 'Closed'}
@@ -211,7 +211,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
         </h2>
         <div
           className="mt-4 max-w-2xl rounded-2xl border p-5"
-          style={{ borderColor: tint(theme.ink, 0.12), background: theme.surface }}
+          style={{ borderColor: inkTint(theme, 0.12), background: theme.surface }}
         >
           {site.booking_policy_body ? (
             <div className="space-y-3 text-base leading-relaxed">
@@ -220,7 +220,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
               ))}
             </div>
           ) : (
-            <p className="text-base" style={{ color: tint(theme.ink, 0.7) }}>
+            <p className="text-base" style={{ color: inkTint(theme, 0.7) }}>
               Call the club to reserve a court.
             </p>
           )}
@@ -244,7 +244,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
                 }
                 style={
                   canBook
-                    ? { borderColor: tint(theme.ink, 0.2) }
+                    ? { borderColor: inkTint(theme, 0.2) }
                     : { background: theme.primary, color: onPrimary }
                 }
               >
@@ -263,7 +263,7 @@ export default async function ClubCourtsPage({ params }: { params: Promise<{ slu
             <Link
               href={`/courtsheet/${club.slug}`}
               className="rounded-xl border px-5 py-3 text-sm font-semibold"
-              style={{ borderColor: tint(theme.ink, 0.2) }}
+              style={{ borderColor: inkTint(theme, 0.2) }}
             >
               See the court sheet
             </Link>

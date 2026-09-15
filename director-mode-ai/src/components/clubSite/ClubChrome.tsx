@@ -23,7 +23,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveChrome, type ClubChrome as Chrome } from '@/lib/clubSite/chrome';
-import { resolveTheme } from '@/lib/clubSite/theme';
+import { largeTextCss, resolveTheme } from '@/lib/clubSite/theme';
 
 /**
  * A club's dark-surface chrome, or null when they have no site row.
@@ -36,7 +36,7 @@ export async function getClubChrome(clubId: string): Promise<Chrome | null> {
   const { data } = await getSupabaseAdmin()
     .from('club_site')
     .select(
-      'color_primary, color_secondary, color_ink, color_cream, color_surface, font_choice',
+      'color_primary, color_secondary, color_ink, color_cream, color_surface, font_choice, text_size',
     )
     .eq('club_id', clubId)
     .maybeSingle();
@@ -76,7 +76,11 @@ export default function ClubChrome({
   children: React.ReactNode;
 }) {
   if (!chrome) return <>{children}</>;
+  const large = largeTextCss(chrome.textSize);
   return (
-    <div style={{ ...chromeVars(chrome), display: 'contents' }}>{children}</div>
+    <div style={{ ...chromeVars(chrome), display: 'contents' }}>
+      {large && <style dangerouslySetInnerHTML={{ __html: large }} />}
+      {children}
+    </div>
   );
 }

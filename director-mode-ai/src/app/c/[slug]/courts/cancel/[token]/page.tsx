@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getClubSite } from '@/lib/clubSite/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { readableOn, tint } from '@/lib/clubSite/theme';
+import { readableOn, inkTint } from '@/lib/clubSite/theme';
 import { formatSessionDate } from '@/lib/programs/sessions';
 import CancelBooking from './CancelBooking';
 
@@ -67,10 +67,10 @@ export default async function CancelBookingPage({
       {!booking ? (
         <div
           className="mt-6 rounded-2xl border p-6"
-          style={{ borderColor: tint(theme.ink, 0.16), background: theme.surface }}
+          style={{ borderColor: inkTint(theme, 0.16), background: theme.surface }}
         >
           <p className="font-medium">We couldn&apos;t find that booking.</p>
-          <p className="mt-2 text-sm" style={{ color: tint(theme.ink, 0.6) }}>
+          <p className="mt-2 text-sm" style={{ color: inkTint(theme, 0.6) }}>
             The link may be from an old email, or the booking may already be gone.
             {club.phone ? ` Call ${club.phone} and we'll sort it out.` : ''}
           </p>
@@ -78,7 +78,7 @@ export default async function CancelBookingPage({
       ) : (
         <>
           {when && (
-            <p className="mt-2 text-base" style={{ color: tint(theme.ink, 0.7) }}>
+            <p className="mt-2 text-base" style={{ color: inkTint(theme, 0.7) }}>
               {courtName ? `${courtName} · ` : ''}
               {when} · {booking.minutes} minutes
             </p>
@@ -91,8 +91,8 @@ export default async function CancelBookingPage({
                 primary: theme.primary,
                 onPrimary: readableOn(theme.primary),
                 ink: theme.ink,
-                muted: tint(theme.ink, 0.6),
-                border: tint(theme.ink, 0.16),
+                muted: inkTint(theme, 0.6),
+                border: inkTint(theme, 0.16),
                 surface: theme.surface,
               }}
             />

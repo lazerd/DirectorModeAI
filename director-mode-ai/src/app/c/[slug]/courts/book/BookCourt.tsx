@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEmbedded } from '@/components/clubSite/useEmbedded';
 
 type Slot = { time: string; cents: number; courtsFree: number };
 
@@ -126,6 +127,7 @@ export default function BookCourt({
     muted: string;
   };
 }) {
+  const embedded = useEmbedded();
   const [data, setData] = useState<Availability | null>(null);
   const [date, setDate] = useState<string | null>(null);
   const [minutes, setMinutes] = useState<number | null>(null);
@@ -362,9 +364,18 @@ export default function BookCourt({
                       href={`/login?next=${encodeURIComponent(`/c/${clubSlug}/courts/book`)}`}
                       className="text-sm font-semibold underline"
                       style={{ color: theme.primary }}
+                      {...(embedded ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
                     >
                       Already a member? Sign in for member rates
                     </a>
+                    {/* Inside a club's website the browser will not keep a
+                        sign-in in the frame, so it happens in its own window —
+                        and says so, so nobody thinks the page broke. */}
+                    {embedded && (
+                      <span className="ml-1 text-xs" style={{ color: theme.muted }}>
+                        (opens in a new window)
+                      </span>
+                    )}
                   </div>
                 )}
               </>

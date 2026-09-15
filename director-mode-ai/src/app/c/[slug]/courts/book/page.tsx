@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getClubSite } from '@/lib/clubSite/server';
-import { readableOn, tint } from '@/lib/clubSite/theme';
+import { readableOn, inkTint } from '@/lib/clubSite/theme';
 import BookCourt from './BookCourt';
 
 export const dynamic = 'force-dynamic';
@@ -56,7 +56,7 @@ export default async function BookCourtPage({
         right for a guest, and it talked a MEMBER out of signing in — which is
         the only way to be charged the member rate.
       */}
-      <p className="mt-2 text-base" style={{ color: tint(theme.ink, 0.65) }}>
+      <p className="mt-2 text-base" style={{ color: inkTint(theme, 0.65) }}>
         Pick a time and it&apos;s yours. Guests can book without an account; members sign in for
         member rates.
       </p>
@@ -72,8 +72,8 @@ export default async function BookCourtPage({
             secondary: theme.secondary,
             ink: theme.ink,
             surface: theme.surface,
-            border: tint(theme.ink, 0.16),
-            muted: tint(theme.ink, 0.6),
+            border: inkTint(theme, 0.16),
+            muted: inkTint(theme, 0.6),
           }}
         />
       </div>
