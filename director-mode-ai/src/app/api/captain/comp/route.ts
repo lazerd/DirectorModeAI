@@ -12,6 +12,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { blockIfDemo } from '@/lib/demo/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,8 @@ export async function POST(req: Request) {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Not signed in.' }, { status: 401 });
+  const demo = await blockIfDemo(user.id);
+  if (demo) return demo;
 
   const body = (await req.json().catch(() => ({}))) as {
     user_id?: string;

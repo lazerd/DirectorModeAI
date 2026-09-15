@@ -24,9 +24,17 @@ const CLUB_SLUG_ROUTES: Record<string, string[]> = {
  */
 const CHECKIN_PREFIXES = ['/q/', '/checkin/'];
 
+/**
+ * A prospect's demo tour (/demo/<token>) is dressed in the club's colors and
+ * read by someone who has never used ClubMode: no director rail, no
+ * "Happening now", no assistant.
+ */
+const DEMO_PREFIXES = ['/demo/'];
+
 export function isClubPublicPath(pathname: string): boolean {
   if (pathname === '/c' || pathname.startsWith('/c/')) return true;
   if (CHECKIN_PREFIXES.some((p) => pathname.startsWith(p))) return true;
+  if (DEMO_PREFIXES.some((p) => pathname.startsWith(p))) return true;
   for (const [prefix, ownRoutes] of Object.entries(CLUB_SLUG_ROUTES)) {
     if (!pathname.startsWith(prefix + '/')) continue;
     const segment = pathname.slice(prefix.length + 1).split('/')[0];

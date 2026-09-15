@@ -66,6 +66,7 @@ export async function notifySignupsOfReservationChange(args: NotifyArgs): Promis
         newReservation: args.newReservation,
         timezone: args.club.timezone,
       }),
+      clubId: args.club.id,
     }));
 
     await sendBilledEmails(args.actor_user_id, payloads);

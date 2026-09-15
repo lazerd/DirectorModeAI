@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { slugify } from '@/lib/leagueUtils';
 import { newClubRow, uniqueJoinCode, isValidTimezone } from '@/lib/clubs/newClub';
+import { blockIfDemo } from '@/lib/demo/server';
 
 /**
  * POST /api/onboarding/first-run
@@ -63,6 +64,10 @@ export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Not signed in' }, { status: 401 });
+  // A demo login that creates a club would own it, and owning a club changes
+  // which club every tool shows it.
+  const demo = await blockIfDemo(user.id);
+  if (demo) return demo;
 
   let body: Body;
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'Bad JSON' }, { status: 400 }); }

@@ -1,5 +1,9 @@
 import twilio from 'twilio';
 import { consumeSmsCredits, CreditLimitError } from '@/lib/billing';
+import { demoSmsHold } from '@/lib/demo/suppress';
+
+/** What a held demo text reports, in the words the captain's screen shows. */
+export const DEMO_SMS_REASON = 'Demo: text not sent.';
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -135,6 +139,10 @@ function normalize(phone: string | null | undefined): string | null {
 export async function sendSms(userId: string, to: string, body: string): Promise<SmsResult> {
   const number = normalize(to);
   if (!number) return { to, status: 'skipped', reason: 'invalid_number' };
+  if (await demoSmsHold(userId)) {
+    console.info('[demo] text suppressed');
+    return { to: number, status: 'skipped', reason: DEMO_SMS_REASON };
+  }
   try {
     await consumeSmsCredits(userId, 1);
   } catch (err) {
@@ -166,6 +174,17 @@ export async function sendSmsBatch(userId: string, recipients: { phone: string; 
 
   if (valid.length === 0) {
     return { sent: 0, skipped: recipients.length, failed: 0, overageCents: 0, results: [] };
+  }
+
+  if (await demoSmsHold(userId)) {
+    console.info(`[demo] ${valid.length} text(s) suppressed`);
+    return {
+      sent: 0,
+      skipped: recipients.length,
+      failed: 0,
+      overageCents: 0,
+      results: valid.map((r) => ({ to: r.normalized, status: 'skipped' as const, reason: DEMO_SMS_REASON })),
+    };
   }
 
   const { overageCents } = await consumeSmsCredits(userId, valid.length);

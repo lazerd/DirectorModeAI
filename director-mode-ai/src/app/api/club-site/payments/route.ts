@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaffForClub } from '@/lib/courtsheet/routeAuth';
 import { isPaymentLink } from '@/config/payments';
+import { blockIfDemo } from '@/lib/demo/server';
 import { z } from 'zod';
 
 export const dynamic = 'force-dynamic';
@@ -133,6 +134,9 @@ export async function GET() {
 export async function PATCH(req: Request) {
   const ctx = await requireStaffForClub({ requireWrite: true });
   if ('error' in ctx) return ctx.error;
+  // How a real club gets paid is not a demo toy.
+  const demo = await blockIfDemo(ctx.user.id);
+  if (demo) return demo;
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== 'object') {

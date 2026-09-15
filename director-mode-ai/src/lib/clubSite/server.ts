@@ -52,6 +52,8 @@ export type ClubFacts = {
   is_public: boolean;
   owner_id: string;
   open_lessons_enabled: boolean | null;
+  /** Invented data for a sales demo: its site says "Demo Environment", its emails are held. */
+  demo_mode: boolean | null;
 };
 
 export type ClubSiteContent = {
@@ -186,7 +188,7 @@ export async function getClubSite(slug: string): Promise<ClubSiteBundle | null> 
   const { data: clubRow } = await db
     .from('cc_clubs')
     .select(
-      'id, slug, name, description, logo_url, cover_image_url, website, phone, email, address, city, state, zip, sports, timezone, is_public, owner_id, open_lessons_enabled',
+      'id, slug, name, description, logo_url, cover_image_url, website, phone, email, address, city, state, zip, sports, timezone, is_public, owner_id, open_lessons_enabled, demo_mode',
     )
     .eq('slug', clean)
     .maybeSingle();

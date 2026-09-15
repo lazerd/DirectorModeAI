@@ -141,6 +141,7 @@ export async function sendHostRequestEmails(
       html: shell(ctx.clubName, ctx.accent, captainInner),
       replyTo: ctx.clubEmail || undefined,
       from: fromLine(ctx.clubName),
+      clubSlug: ctx.clubSlug,
     }).catch(() => ({ sent: false })),
     // Only if the club has an address on file. A request nobody is told about
     // is a request that rots.
@@ -151,6 +152,7 @@ export async function sendHostRequestEmails(
           html: shell(ctx.clubName, ctx.accent, clubInner),
           replyTo: r.captainEmail,
           from: fromLine(ctx.clubName),
+          clubSlug: ctx.clubSlug,
         }).catch(() => ({ sent: false }))
       : Promise.resolve({ sent: false }),
   ]);
@@ -187,6 +189,7 @@ export async function sendHostApprovedEmail(
     html: shell(ctx.clubName, ctx.accent, inner),
     replyTo: ctx.clubEmail || undefined,
     from: fromLine(ctx.clubName),
+    clubSlug: ctx.clubSlug,
   }).catch(() => ({ sent: false }));
   return !!res?.sent;
 }

@@ -34,6 +34,7 @@ import {
   type WaitRow,
 } from '@/lib/checkin/server';
 import { courtCard, poolCards } from '@/lib/checkin/views';
+import { blockIfDemo } from '@/lib/demo/server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -223,6 +224,9 @@ export async function POST(req: Request) {
 
     case 'rotate_token': {
       if (!isManager) return managerOnly();
+      // A new token breaks every printed sign and the QR codes on the demo tour.
+      const demo = await blockIfDemo(ctx.user.id);
+      if (demo) return demo;
       const { data, error } = await ctx.db
         .from('checkin_spaces')
         .update({ token: newSpaceToken(), token_rotated_at: new Date().toISOString() })

@@ -13,6 +13,7 @@ import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveBillingUserId } from '@/lib/billing';
 import { buildCheckoutUrl, isCaptainPriceKey, type PriceKey } from '@/lib/lemonsqueezy';
 import { resolveCaptainRate } from '@/lib/captain/access';
+import { blockIfDemo } from '@/lib/demo/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,8 @@ export async function POST(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    const demo = await blockIfDemo(user.id);
+    if (demo) return demo;
 
     const body = await request.json().catch(() => ({}));
     const priceKey = body.priceKey as PriceKey | undefined;

@@ -166,6 +166,7 @@ export async function sendProgramConfirmation(ctx: ProgramEmailContext): Promise
     html: shell(ctx.clubName, ctx.accent, inner),
     replyTo: ctx.clubEmail || undefined,
     from: fromLine(ctx.clubName),
+    clubSlug: ctx.clubSlug,
   });
 }
 
@@ -187,6 +188,7 @@ export async function sendProgramWaitlist(
     html: shell(ctx.clubName, ctx.accent, inner),
     replyTo: ctx.clubEmail || undefined,
     from: fromLine(ctx.clubName),
+    clubSlug: ctx.clubSlug,
   });
 }
 
@@ -213,6 +215,7 @@ export async function sendProgramPromoted(ctx: ProgramEmailContext): Promise<Saf
     html: shell(ctx.clubName, ctx.accent, inner),
     replyTo: ctx.clubEmail || undefined,
     from: fromLine(ctx.clubName),
+    clubSlug: ctx.clubSlug,
   });
 }
 

@@ -22,6 +22,8 @@
 import crypto from 'crypto';
 import type { Resend } from 'resend';
 import { getSupabaseAdmin } from './supabase/admin';
+import { demoEmailHold, logDemoHold, type EmailAttribution } from './demo/suppress';
+import type { SuppressReason } from './demo/emailGuard';
 
 import { APP_URL } from '@/lib/appUrl';
 export type UnsubscribeScope = 'all';
@@ -181,10 +183,15 @@ type ResendSendInput = {
   subject: string;
   html: string;
   replyTo?: string;
-};
+} & EmailAttribution;
 
+/**
+ * `demo` marks a send the demo guard held back. It is success-shaped on
+ * purpose: a demo board member posting a game should see "we're emailing 12
+ * members", not an error, because everything else about the flow is real.
+ */
 export type SafeSendResult =
-  | { sent: true; messageId?: string }
+  | { sent: true; messageId?: string; demo?: SuppressReason }
   | { sent: false; reason: 'unsubscribed' | 'error'; error?: string };
 
 /**
@@ -208,6 +215,16 @@ export async function safeResendSend(
 ): Promise<SafeSendResult> {
   if (!input.to) {
     return { sent: false, reason: 'error', error: 'missing recipient' };
+  }
+  // Demo first: nothing about a demo may reach an inbox. See lib/demo/emailGuard.ts.
+  const hold = await demoEmailHold([input.to], {
+    clubId: input.clubId,
+    clubSlug: input.clubSlug,
+    billToUserId: input.billToUserId,
+  });
+  if (hold) {
+    logDemoHold(hold, input.to, input.subject);
+    return { sent: true, messageId: 'demo-suppressed', demo: hold };
   }
   if (await isUnsubscribed(input.to)) {
     return { sent: false, reason: 'unsubscribed' };

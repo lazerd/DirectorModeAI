@@ -416,7 +416,7 @@ function PostForm({
     if (!anyLevel && min > max) return setError('The lowest level must be at or below the highest.');
     setBusy(true);
     setError(null);
-    const r = await postJson<{ ok: boolean; notified: number }>('/api/play/games', {
+    const r = await postJson<{ ok: boolean; notified: number; demo?: boolean }>('/api/play/games', {
       club_id: board.club.id,
       date,
       time,
@@ -433,7 +433,9 @@ function PostForm({
     setBusy(false);
     if (r.error) return setError(r.error);
     onPosted(
-      r.notified > 0
+      r.demo
+        ? `Your game is posted. Demo: email not sent (would go to ${r.notified} ${r.notified === 1 ? 'person' : 'people'}).`
+        : r.notified > 0
         ? `Your game is posted. We're emailing ${r.notified} ${r.notified === 1 ? 'member' : 'members'} who might want to play, and we'll email you when someone joins.`
         : "Your game is posted on the club's board. We didn't find members to email at that level yet, so others can join from the board.",
     );

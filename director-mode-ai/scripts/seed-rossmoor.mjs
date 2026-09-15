@@ -65,6 +65,10 @@ const CLUB = {
   // Membership is Rossmoor residents only and runs through Wild Apricot, which
   // keeps the dues. A join request here would be a second front door.
   accept_join_requests: false,
+  // A sales demo full of invented members: the site says "Demo Environment"
+  // and every email the club would send is held (src/lib/demo/emailGuard.ts).
+  // hand-over-club.mjs switches this off.
+  demo_mode: true,
 };
 
 const SITE = {
@@ -186,7 +190,13 @@ Club events take priority, and team matches always leave two courts open.`,
     { label: 'Wild Card procedures', href: `${WA}/Wild-Card-Procedures`, kind: 'link' },
   ],
 
-  nav_links: [{ label: 'Join or renew', href: `${WA}/Join-us` }],
+  // The tools the site should lead to, as data: CourtConnect's public games
+  // board and the live check-in board. Relative paths, same site.
+  nav_links: [
+    { label: 'Find a game', href: `/c/${SLUG}/play` },
+    { label: 'Courts right now', href: `/checkin/${SLUG}/board` },
+    { label: 'Join or renew', href: `${WA}/Join-us` },
+  ],
 
   seo_title: 'Rossmoor Tennis Club — Walnut Creek, CA',
   seo_description:

@@ -26,6 +26,7 @@ import EmbedRuntime from '@/components/clubSite/EmbedRuntime';
 import { getRateCards } from '@/lib/courts/server';
 import { bookingEnabled } from '@/lib/courts/pricing';
 import MemberBar from '@/components/clubSite/MemberBar';
+import { findDemoLink, readDemoCookie } from '@/lib/demo/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,10 +100,13 @@ export default async function ClubSiteLayout({
    * because a member who cannot see a way to sign in is a member paying the
    * public rate on a page that says members play free.
    */
-  const [visitor, rateCards] = await Promise.all([
+  const [visitor, rateCards, demoLink] = await Promise.all([
     getSiteVisitor(club.id),
     getRateCards(club.id),
+    // A demo club's banner links back to the tour this visitor came from.
+    club.demo_mode ? readDemoCookie().then(findDemoLink) : Promise.resolve(null),
   ]);
+  const tourHref = demoLink && demoLink.club_id === club.id ? `/demo/${demoLink.token}` : null;
   const membersFree = rateCards.some((c) => c.applies_to === 'member' && c.price_cents === 0);
 
   const nav = [
@@ -133,7 +137,28 @@ export default async function ClubSiteLayout({
       }}
     >
       {largeText && <style dangerouslySetInnerHTML={{ __html: largeText }} />}
-      {bundle.isDraft && (
+      {club.demo_mode ? (
+        /*
+         * A club standing in for a sales demo. Same slot and color as the draft
+         * banner, but addressed to the prospect exploring it rather than to a
+         * director about to publish.
+         */
+        <div
+          style={{ background: '#92400e', color: '#fff' }}
+          className="px-4 py-2 text-center text-sm font-medium"
+        >
+          <strong>Demo Environment</strong>
+          <span className="opacity-90"> · Invented members · resets nightly</span>
+          {tourHref && (
+            <>
+              {' · '}
+              <a href={tourHref} className="underline underline-offset-2">
+                Back to the tour
+              </a>
+            </>
+          )}
+        </div>
+      ) : bundle.isDraft && (
         /*
          * An unpublished site still renders at its real URL, on purpose: that
          * is how a club is shown its own site before deciding to go live.

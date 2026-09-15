@@ -122,5 +122,6 @@ export async function sendCourtBookingEmail(ctx: CourtBookingEmail): Promise<Saf
     html,
     replyTo: ctx.clubEmail || undefined,
     from: fromLine(ctx.clubName),
+    clubSlug: ctx.clubSlug,
   });
 }

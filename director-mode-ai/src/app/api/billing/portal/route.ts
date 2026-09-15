@@ -8,6 +8,7 @@ import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveBillingUserId, } from '@/lib/billing';
 import { lsConfigured, getSubscription } from '@/lib/lemonsqueezy';
+import { blockIfDemo } from '@/lib/demo/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +22,8 @@ export async function POST() {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    const demo = await blockIfDemo(user.id);
+    if (demo) return demo;
 
     // The subscription lives on the club owner's profile.
     const ownerId = await resolveBillingUserId(user.id);

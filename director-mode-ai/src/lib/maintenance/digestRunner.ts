@@ -91,7 +91,7 @@ export async function runMaintenanceDigests(opts: { now?: Date; dryRun?: boolean
         continue;
       }
 
-      const payloads: { to: string; subject: string; html: string }[] = [];
+      const payloads: { to: string; subject: string; html: string; clubId: string }[] = [];
       for (const userId of crew) {
         // Claim first. A conflict means this person already got today's digest.
         const { error: claimErr } = await db
@@ -109,7 +109,7 @@ export async function runMaintenanceDigests(opts: { now?: Date; dryRun?: boolean
             .eq('user_id', userId);
           continue;
         }
-        payloads.push({ to: email, subject: digest.subject, html: digest.html });
+        payloads.push({ to: email, subject: digest.subject, html: digest.html, clubId: club.id });
       }
 
       const sent = payloads.length

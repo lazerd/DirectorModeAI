@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaffForClub } from '@/lib/courtsheet/routeAuth';
 import { clubSitePatchSchema } from '@/lib/clubSite/schema';
+import { blockIfDemo } from '@/lib/demo/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,6 +64,12 @@ export async function PATCH(req: Request) {
 
   if (Object.keys(parsed.data).length === 0) {
     return NextResponse.json({ error: 'Nothing to save.' }, { status: 400 });
+  }
+
+  // A demo club site stays a draft: publishing puts invented members on Google.
+  if (parsed.data.status === 'published') {
+    const demo = await blockIfDemo(ctx.user.id);
+    if (demo) return demo;
   }
 
   await ensureRow(ctx.db, ctx.club.id);

@@ -65,7 +65,9 @@ const db = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_
 
 // ---------------------------------------------------------------- the logins
 const ACCOUNTS = {
-  director: { email: 'rossmoor-demo@clubmode.ai', name: 'Demo Director', role: 'director' },
+  // Rossmoor is run by a volunteer board, not a tennis director, so the staff
+  // login is NAMED for that. Its club role is still `director`.
+  director: { email: 'rossmoor-demo@clubmode.ai', name: 'Board Member (demo)', role: 'director' },
   member: { email: 'rossmoor-member@clubmode.ai', name: 'Pat Demo', role: 'member' },
   member2: { email: 'rossmoor-member2@clubmode.ai', name: 'Lee Demo', role: 'member' },
 };

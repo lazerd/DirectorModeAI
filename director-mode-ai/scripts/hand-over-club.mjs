@@ -99,6 +99,20 @@ if (!user) {
 }
 
 /* --------------------------------------------------------- hand over the club */
+// A real club's email must flow, and its sales demo link must stop minting
+// sessions. Wipe the invented demo data separately before running this.
+{
+  const { error: demoErr } = await db.from('cc_clubs').update({ demo_mode: false }).eq('id', club.id);
+  if (demoErr) console.warn('Could not switch off demo_mode:', demoErr.message);
+  const { data: revoked } = await db
+    .from('demo_links')
+    .update({ active: false })
+    .eq('club_id', club.id)
+    .eq('active', true)
+    .select('token');
+  if (revoked?.length) console.log(`Demo links       ${revoked.length} revoked`);
+}
+
 if (club.owner_id !== user.id) {
   const { error } = await db.from('cc_clubs').update({ owner_id: user.id }).eq('id', club.id);
   if (error) {

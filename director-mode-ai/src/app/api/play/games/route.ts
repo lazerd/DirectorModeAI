@@ -18,6 +18,7 @@ import { inviteMembers } from '@/lib/partnerFinder/notify';
 import { loadGame, saveSelfRating } from '@/lib/partnerFinder/server';
 import { DAILY_POST_LIMIT, MAX_RECIPIENTS, MAX_SPOTS, NTRP_LEVELS, isFormat } from '@/lib/partnerFinder/format';
 import { background } from '@/lib/partnerFinder/background';
+import { isDemoClub } from '@/lib/demo/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -106,5 +107,7 @@ export async function POST(req: Request) {
   const { data: recipients } = await db.rpc('pf_game_recipients', { p_game: r.game_id, p_limit: MAX_RECIPIENTS });
   const notifying = ((recipients as unknown[] | null) ?? []).length;
   if (game && notifying > 0) background('invite emails', () => inviteMembers(db, game, club));
-  return NextResponse.json({ ok: true, game_id: r.game_id, notified: notifying });
+  // A demo club's invites are held back by the email guard; say so on screen.
+  const demo = await isDemoClub(club.id);
+  return NextResponse.json({ ok: true, game_id: r.game_id, notified: notifying, demo });
 }

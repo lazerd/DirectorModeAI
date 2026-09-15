@@ -39,13 +39,14 @@ import {
   type GameMessage,
 } from './emails';
 
-async function deliver(billTo: string | null, messages: GameMessage[]): Promise<number> {
+async function deliver(club: Club, messages: GameMessage[]): Promise<number> {
   const real = messages.filter((m) => !!m.to);
   if (!real.length) return 0;
   try {
+    // clubId lets a demo club's blast be held back (lib/demo/emailGuard.ts).
     const results = await sendBilledEmails(
-      billTo,
-      real.map((m) => ({ to: m.to, subject: m.subject, html: m.html })),
+      club.owner_id,
+      real.map((m) => ({ to: m.to, subject: m.subject, html: m.html, clubId: club.id })),
     );
     return results.filter((r) => r.sent).length;
   } catch (err) {
@@ -112,7 +113,7 @@ export async function inviteMembers(db: Db, game: Game, club: Club): Promise<num
       }),
     );
 
-  const sent = await deliver(club.owner_id, messages);
+  const sent = await deliver(club, messages);
   const now = new Date().toISOString();
   await Promise.all([
     db.from('pf_games').update({ notified_count: game.notified_count + sent, updated_at: now }).eq('id', game.id),
@@ -134,7 +135,7 @@ async function sendToGroup(
   const messages = group
     .filter((m) => m.email && links.has(m.userId))
     .map((m) => build({ to: m.email!, name: m.name, token: links.get(m.userId)!, group }));
-  return deliver(club.owner_id, messages);
+  return deliver(club, messages);
 }
 
 export async function afterJoin(db: Db, gameId: string, joinerId: string, nowFull: boolean): Promise<void> {
@@ -153,7 +154,7 @@ export async function afterJoin(db: Db, gameId: string, joinerId: string, nowFul
   const joiner = roster.find((r) => r.user_id === joinerId);
   if (!poster?.email) return;
   const links = await ensureLinks(db, game, [game.posted_by]);
-  await deliver(club.owner_id, [
+  await deliver(club, [
     someoneJoinedEmail(game, club, {
       to: poster.email,
       joiner: shortName(joiner?.full_name),
@@ -173,7 +174,7 @@ export async function afterLeave(db: Db, gameId: string, leaverId: string): Prom
   const leaver = roster.find((r) => r.user_id === leaverId);
   if (!poster?.email) return;
   const links = await ensureLinks(db, game, [game.posted_by]);
-  await deliver(club.owner_id, [
+  await deliver(club, [
     spotOpenedEmail(game, club, {
       to: poster.email,
       leaver: shortName(leaver?.full_name),
@@ -191,7 +192,7 @@ export async function afterCancel(db: Db, gameId: string): Promise<void> {
   const group = await gameGroup(db, game);
   const poster = group.find((m) => m.isPoster);
   await deliver(
-    club.owner_id,
+    club,
     group
       .filter((m) => !m.isPoster && m.email)
       .map((m) => gameCancelledEmail(game, club, { to: m.email!, name: m.name, poster: poster?.short || 'The poster' })),

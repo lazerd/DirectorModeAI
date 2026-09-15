@@ -17,6 +17,7 @@ import { sendBilledEmails } from '@/lib/email';
 import { APP_URL } from '@/lib/appUrl';
 import { CLUB_ROLES, ROLE_LABEL, type ClubRole } from '@/lib/clubRoles';
 import { randomBytes } from 'crypto';
+import { blockIfDemo } from '@/lib/demo/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -248,6 +249,9 @@ export async function POST(req: Request) {
   const ctx = await requireClubManager();
   if ('error' in ctx) return ctx.error;
   const { db, clubId, clubName, userId } = ctx;
+  // An invite reaches a real inbox and hands out a role. Not from a demo.
+  const demo = await blockIfDemo(userId);
+  if (demo) return demo;
 
   const body = (await req.json().catch(() => ({}))) as {
     email?: string;
@@ -340,6 +344,8 @@ export async function PATCH(req: Request) {
   const ctx = await requireClubManager();
   if ('error' in ctx) return ctx.error;
   const { db, clubId, userId } = ctx;
+  const demo = await blockIfDemo(userId);
+  if (demo) return demo;
 
   const body = (await req.json().catch(() => ({}))) as {
     user_id?: string;

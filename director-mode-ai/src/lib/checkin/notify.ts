@@ -64,6 +64,7 @@ export async function notifyOffer(opts: {
     html,
     replyTo: club.email || undefined,
     from: fromLine(club.name),
+    clubId: club.id,
   });
   return !!result?.sent;
 }

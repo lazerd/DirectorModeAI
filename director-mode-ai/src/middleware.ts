@@ -110,6 +110,50 @@ async function applyFramePolicy(
   return response;
 }
 
+/**
+ * Is this signed-in user a demo login (attached to any demo_links row)?
+ *
+ * Only asked on /admin paths, so the common path costs nothing. Service key
+ * over PostgREST because demo_links is service-role only; a minute of cache
+ * per user because the answer almost never changes.
+ */
+const demoUserCache = new Map<string, { at: number; demo: boolean }>();
+
+async function isDemoAccount(userId: string): Promise<boolean> {
+  const hit = demoUserCache.get(userId);
+  if (hit && Date.now() - hit.at < ORIGIN_TTL_MS) return hit.demo;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let demo = false;
+  if (url && key && /^[0-9a-f-]{36}$/i.test(userId)) {
+    try {
+      const res = await fetch(
+        `${url}/rest/v1/demo_links?select=token&or=(member_user_id.eq.${userId},director_user_id.eq.${userId})&limit=1`,
+        { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: 'no-store' },
+      );
+      if (res.ok) demo = ((await res.json()) as unknown[]).length > 0;
+    } catch {
+      // Unknown means not-a-demo: /admin has its own password gate behind this.
+    }
+  }
+  demoUserCache.set(userId, { at: Date.now(), demo });
+  return demo;
+}
+
+/**
+ * The admin console is off limits to demo logins. The two /api/admin routes
+ * every page calls — analytics and the view-as banner's "am I borrowing a
+ * session" check — stay open, or a demo would log errors on every page.
+ */
+function isDemoBlockedAdminPath(request: NextRequest): boolean {
+  const p = request.nextUrl.pathname;
+  if (p === '/admin' || p.startsWith('/admin/')) return true;
+  if (!p.startsWith('/api/admin/')) return false;
+  if (p.startsWith('/api/admin/track')) return false;
+  if (p === '/api/admin/view-as' && request.method === 'GET') return false;
+  return true;
+}
+
 export async function middleware(request: NextRequest) {
   // Runs before anything else: no Supabase round-trip, and no session cookie
   // written against a host we are trying to retire.
@@ -157,6 +201,16 @@ export async function middleware(request: NextRequest) {
   );
 
   const { data: { user } } = await supabase.auth.getUser();
+
+  if (user && isDemoBlockedAdminPath(request) && (await isDemoAccount(user.id))) {
+    if (request.nextUrl.pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Not available in the demo.', demo: true }, { status: 403 });
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = '/demo/unavailable';
+    url.search = '';
+    return NextResponse.redirect(url);
+  }
 
   const protectedPaths = [
     '/mixer/home',
@@ -279,6 +333,23 @@ export async function middleware(request: NextRequest) {
         }
       }
     }
+  }
+
+  /*
+   * A visitor opening a demo tour is marked with its token straight away, not
+   * only once they sign in through it. The public pages the tour links to
+   * (a court booking, a sign-up) have no login, and the email guard treats a
+   * signed-out browser carrying a real demo token as the demo
+   * (lib/demo/suppress.ts). A made-up token matches no link and does nothing.
+   */
+  const tourToken = /^\/demo\/([A-Za-z0-9_-]{24,128})$/.exec(request.nextUrl.pathname)?.[1];
+  if (tourToken && request.cookies.get('cm_demo')?.value !== tourToken) {
+    supabaseResponse.cookies.set('cm_demo', tourToken, {
+      path: '/',
+      sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 12,
+    });
   }
 
   const authPaths = ['/login', '/register'];

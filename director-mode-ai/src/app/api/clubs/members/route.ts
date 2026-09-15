@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { blockIfDemo } from '@/lib/demo/server';
 
 // Not exported — Next route files may only export handlers.
 /** Ordered loosest-to-tightest for display. Must match is_club_team(). */
@@ -72,6 +73,8 @@ export async function PATCH(req: Request) {
   const userClient = await createClient();
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const demo = await blockIfDemo(user.id);
+  if (demo) return demo;
 
   const body = await req.json().catch(() => null);
   const targetUserId = String(body?.userId || '');

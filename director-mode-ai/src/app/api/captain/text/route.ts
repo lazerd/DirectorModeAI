@@ -13,7 +13,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
-import { sendSmsBatch, checkSmsDelivery, describeSmsError } from '@/lib/twilio';
+import { sendSmsBatch, checkSmsDelivery, describeSmsError, DEMO_SMS_REASON } from '@/lib/twilio';
 import { CreditLimitError } from '@/lib/billing';
 import { resolveClubTimeZone } from '@/lib/captain/clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -143,6 +143,20 @@ export async function POST(req: Request) {
       );
     }
     return NextResponse.json({ error: 'Could not send those texts.' }, { status: 502 });
+  }
+
+  // A demo captain: nothing went to a carrier, so there is nothing to check.
+  if (batch.results.length && batch.results.every((r) => r.reason === DEMO_SMS_REASON)) {
+    return NextResponse.json({
+      ok: true,
+      sent: 0,
+      failed: 0,
+      noPhone,
+      demo: true,
+      report: withPhone.map((p) => ({ name: p.name, ok: true, reason: DEMO_SMS_REASON })),
+      commonFailure: null,
+      clubTz: await resolveClubTimeZone(getSupabaseAdmin(), team.club_id),
+    });
   }
 
   // Match each result back to the player it was for. sendSmsBatch keeps input

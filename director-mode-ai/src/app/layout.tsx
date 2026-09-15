@@ -5,6 +5,7 @@ import AssistantWidget from "@/components/assistant/AssistantWidget";
 import ClubSidebar from "@/components/shared/ClubSidebar";
 import TrialBanner from "@/components/billing/TrialBanner";
 import ViewAsBanner from "@/components/shared/ViewAsBanner";
+import DemoBanner from "@/components/demo/DemoBanner";
 import LiveEventsBar from "@/components/shared/LiveEventsBar";
 import { Toaster } from "sonner";
 import { APP_URL } from "@/lib/appUrl";
@@ -56,6 +57,8 @@ export default function RootLayout({
         <TrialBanner />
         {/* Renders nothing unless this browser is borrowing someone's session. */}
         <ViewAsBanner />
+        {/* Renders nothing unless this browser is inside a prospect's demo. */}
+        <DemoBanner />
         <AssistantWidget />
         <Toaster theme="dark" position="bottom-right" toastOptions={{ style: { background: '#002838', color: '#fff', border: '1px solid rgba(255,255,255,0.08)' } }} />
       </body>

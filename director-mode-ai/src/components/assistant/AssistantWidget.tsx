@@ -113,6 +113,8 @@ export default function AssistantWidget() {
         <button
           onClick={() => setOpen(true)}
           aria-label="Open ClubMode Assistant"
+          // Above the demo bar when there is one (DemoBanner sets the var).
+          style={{ bottom: 'calc(1.25rem + var(--demo-bar-h, 0px))' }}
           className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-yellow-300 text-[#001820] shadow-lg shadow-black/30 px-4 py-3 font-medium hover:bg-yellow-200 transition-colors"
         >
           <Sparkles size={18} />
@@ -122,7 +124,9 @@ export default function AssistantWidget() {
 
       {/* Panel */}
       {open && (
-        <div className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] max-w-sm h-[32rem] max-h-[calc(100vh-2.5rem)] flex flex-col rounded-2xl border border-white/10 bg-[#001820] text-white shadow-2xl shadow-black/50 overflow-hidden">
+        <div
+          style={{ bottom: 'calc(1.25rem + var(--demo-bar-h, 0px))' }}
+          className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] max-w-sm h-[32rem] max-h-[calc(100vh-2.5rem)] flex flex-col rounded-2xl border border-white/10 bg-[#001820] text-white shadow-2xl shadow-black/50 overflow-hidden">
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-white/[0.08] bg-[#002838]">
             <div className="flex items-center gap-2">

@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendBilledEmail } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
+import { blockIfDemo } from '@/lib/demo/server';
 
 import { APP_URL } from '@/lib/appUrl';
 const BASE = APP_URL;
@@ -48,6 +49,8 @@ export async function POST(req: Request) {
   const userClient = await createClient();
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const demo = await blockIfDemo(user.id);
+  if (demo) return demo;
   const club = await ownerClub(user.id);
   if (!club) return NextResponse.json({ error: 'No club to invite to' }, { status: 400 });
 

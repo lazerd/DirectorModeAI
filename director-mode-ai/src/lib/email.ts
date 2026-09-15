@@ -2,6 +2,7 @@ import { Resend } from 'resend';
 import { consumeEmailCredits, CreditLimitError } from '@/lib/billing';
 import { createServiceClient } from '@/lib/supabase/server';
 import { safeResendSend, type SafeSendResult } from '@/lib/emailUnsubscribe';
+import { demoEmailHold, logDemoHold } from '@/lib/demo/suppress';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -11,9 +12,39 @@ interface EmailPayload {
   subject: string;
   html: string;
   replyTo?: string;
+  /**
+   * The club this email is for. Optional, but pass it where it is known: a
+   * club in demo mode has its emails held back (lib/demo/emailGuard.ts), and
+   * this is how a send is recognised as that club's.
+   */
+  clubId?: string | null;
+  clubSlug?: string | null;
 }
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
+
+/**
+ * Demo sends are held BEFORE credits are spent, so exploring a demo never
+ * burns the real owner's allowance or trips a credit-limit error mid-tour.
+ * safeResendSend checks again; this copy exists only to skip the billing.
+ */
+async function holdForDemo(userId: string | null, p: EmailPayload): Promise<SafeSendResult | null> {
+  const hold = await demoEmailHold([p.to], { clubId: p.clubId, clubSlug: p.clubSlug, billToUserId: userId });
+  if (!hold) return null;
+  logDemoHold(hold, p.to, p.subject);
+  return { sent: true, messageId: 'demo-suppressed', demo: hold };
+}
+
+const toSend = (userId: string | null, p: EmailPayload) => ({
+  from: p.from || DEFAULT_FROM,
+  to: p.to,
+  subject: p.subject,
+  html: p.html,
+  ...(p.replyTo ? { replyTo: p.replyTo } : {}),
+  clubId: p.clubId,
+  clubSlug: p.clubSlug,
+  billToUserId: userId,
+});
 
 /**
  * Drop-in send that does TWO things at once:
@@ -25,16 +56,12 @@ const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.cl
  * simple and avoids race conditions.
  */
 export async function sendBilledEmail(userId: string | null, payload: EmailPayload): Promise<SafeSendResult> {
+  const held = await holdForDemo(userId, payload);
+  if (held) return held;
   if (userId) {
     await consumeEmailCredits(userId, 1);
   }
-  return safeResendSend(resend, {
-    from: payload.from || DEFAULT_FROM,
-    to: payload.to,
-    subject: payload.subject,
-    html: payload.html,
-    ...(payload.replyTo ? { replyTo: payload.replyTo } : {}),
-  });
+  return safeResendSend(resend, toSend(userId, payload));
 }
 
 /**
@@ -59,12 +86,16 @@ function isRetryable(r: SafeSendResult): boolean {
 }
 
 export async function sendBilledEmails(userId: string | null, payloads: EmailPayload[]): Promise<SafeSendResult[]> {
-  if (userId) {
-    await consumeEmailCredits(userId, payloads.length);
-  }
-
   const results = new Array<SafeSendResult>(payloads.length);
-  let pending = payloads.map((p, i) => ({ p, i }));
+  const holds = await Promise.all(payloads.map((p) => holdForDemo(userId, p)));
+  holds.forEach((h, i) => {
+    if (h) results[i] = h;
+  });
+  let pending = payloads.map((p, i) => ({ p, i })).filter(({ i }) => !holds[i]);
+
+  if (userId && pending.length) {
+    await consumeEmailCredits(userId, pending.length);
+  }
 
   for (let attempt = 1; attempt <= SEND_ATTEMPTS && pending.length; attempt++) {
     const retry: typeof pending = [];
@@ -73,13 +104,7 @@ export async function sendBilledEmails(userId: string | null, payloads: EmailPay
       const batch = pending.slice(start, start + SEND_BATCH);
       const settled = await Promise.all(
         batch.map(({ p }) =>
-          safeResendSend(resend, {
-            from: p.from || DEFAULT_FROM,
-            to: p.to,
-            subject: p.subject,
-            html: p.html,
-            ...(p.replyTo ? { replyTo: p.replyTo } : {}),
-          })
+          safeResendSend(resend, toSend(userId, p))
         )
       );
       settled.forEach((r, k) => {
