@@ -70,7 +70,7 @@ export default function MaintenanceClient({
   const [toast, setToast] = useState<string | null>(null);
   const [rowMenu, setRowMenu] = useState<ChecklistRow | null>(null);
   const [openTask, setOpenTask] = useState<Task | null>(null);
-  const [reporting, setReporting] = useState(false);
+  const [reporting, setReporting] = useState<false | 'problem' | 'task'>(false);
   const [setupIntent, setSetupIntent] = useState<'starter' | 'add' | null>(null);
 
   const refresh = useCallback(async () => {
@@ -230,7 +230,7 @@ export default function MaintenanceClient({
           />
         )}
         {board && tab === 'tasks' && (
-          <TasksTab board={board} who={who} onOpen={setOpenTask} onReport={() => setReporting(true)} />
+          <TasksTab board={board} who={who} onOpen={setOpenTask} onReport={() => setReporting('task')} />
         )}
         {board && tab === 'projects' && <ProjectsTab board={board} canManage={canManage} onChanged={refresh} />}
         {board && tab === 'setup' && canManage && (
@@ -243,10 +243,10 @@ export default function MaintenanceClient({
         )}
       </div>
 
-      {/* Report a problem — from Today and Tasks. */}
-      {board && (tab === 'today' || tab === 'tasks') && (
+      {/* Report a problem — from Today. Tasks has its own Create a Task button. */}
+      {board && tab === 'today' && (
         <button
-          onClick={() => setReporting(true)}
+          onClick={() => setReporting('problem')}
           className="fixed bottom-24 right-4 z-40 inline-flex min-h-[52px] items-center gap-2 rounded-full px-5 text-[15px] font-semibold text-[#1a1200] shadow-lg md:bottom-8"
           style={{ background: ACCENT }}
         >
@@ -304,6 +304,7 @@ export default function MaintenanceClient({
       )}
       {reporting && (
         <ReportSheet
+          title={reporting === 'task' ? 'Create a task' : 'Report a problem'}
           onClose={() => setReporting(false)}
           onPosted={async () => {
             setReporting(false);
@@ -600,6 +601,13 @@ function TasksTab({
 
   return (
     <div className="mt-5">
+      <button
+        onClick={onReport}
+        className="mb-4 inline-flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl px-6 text-[16px] font-semibold text-[#1a1200] shadow-lg sm:w-auto"
+        style={{ background: ACCENT }}
+      >
+        <Plus size={20} /> Create a Task
+      </button>
       <div className="flex flex-wrap items-center gap-2">
         {(['open', 'done'] as const).map((v) => (
           <button
@@ -626,13 +634,7 @@ function TasksTab({
       ) : list.length === 0 ? (
         <div className="mt-6 rounded-2xl border border-white/10 bg-[#002838] p-5 text-[15px] text-white/60">
           {view === 'open' ? (
-            <>
-              No open work orders. Anyone on staff can{' '}
-              <button onClick={onReport} className="underline" style={{ color: ACCENT }}>
-                report a problem
-              </button>
-              .
-            </>
+            'No open tasks. Tap Create a Task to post one. Anyone on staff can.'
           ) : (
             'Nothing finished in the last 30 days.'
           )}
@@ -663,7 +665,7 @@ function TasksTab({
   );
 }
 
-function ReportSheet({ onClose, onPosted }: { onClose: () => void; onPosted: () => void }) {
+function ReportSheet({ title: sheetTitle, onClose, onPosted }: { title: string; onClose: () => void; onPosted: () => void }) {
   const [photo, setPhoto] = useState<Photo | null>(null);
   const [title, setTitle] = useState('');
   const [location, setLocation] = useState('');
@@ -696,7 +698,7 @@ function ReportSheet({ onClose, onPosted }: { onClose: () => void; onPosted: () 
   };
 
   return (
-    <Sheet open title="Report a problem" onClose={onClose}>
+    <Sheet open title={sheetTitle} onClose={onClose}>
       <div className="space-y-3">
         <PhotoPicker value={photo} onChange={setPhoto} label="Take a photo of it" />
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing? e.g. Court 4 net torn" style={FIELD} className={fieldCls} autoFocus />
