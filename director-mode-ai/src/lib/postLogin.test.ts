@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { safeNext } from './postLogin';
+import { isMemberOnly, safeNext } from './postLogin';
 import { friendlyAuthError } from './authErrors';
 
 describe('safeNext', () => {
@@ -32,5 +32,17 @@ describe('friendlyAuthError', () => {
   it('falls back for anything it does not recognise', () => {
     expect(friendlyAuthError('something odd', 'fallback')).toBe('fallback');
     expect(friendlyAuthError(undefined, 'fallback')).toBe('fallback');
+  });
+});
+
+describe('isMemberOnly', () => {
+  it('is true only when every role is member', () => {
+    expect(isMemberOnly(['member'])).toBe(true);
+    expect(isMemberOnly(['member', 'member'])).toBe(true);
+    expect(isMemberOnly(['member', 'coach'])).toBe(false);
+    expect(isMemberOnly(['director'])).toBe(false);
+  });
+  it('leaves a brand-new account with no club alone', () => {
+    expect(isMemberOnly([])).toBe(false);
   });
 });

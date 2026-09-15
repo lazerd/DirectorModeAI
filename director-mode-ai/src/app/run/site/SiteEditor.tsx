@@ -420,6 +420,25 @@ export default function SiteEditor() {
 
       {error && <p className="text-sm text-red-300">{error}</p>}
 
+      {/*
+        For the club that already has a website it is keeping (Wild Apricot
+        for dues, say). Near the top because it changes what the rest of this
+        page is FOR: their header and footer stay theirs, and these sections
+        are what gets pasted in.
+      */}
+      <Link
+        href="/run/site/embed"
+        className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-[#002838] p-4 hover:border-[#D3FB52]/30"
+      >
+        <div>
+          <div className="font-semibold text-white">Already have a website?</div>
+          <div className="mt-0.5 text-sm text-white/50">
+            Put your classes, calendar and court booking on it — copy, paste, done.
+          </div>
+        </div>
+        <span className="text-sm font-semibold text-[#D3FB52]">Add to your website →</span>
+      </Link>
+
       {/* --------------------------------------------------------- the top */}
       <section>
         <h2 className="font-display text-xl text-white">The top of your page</h2>
@@ -524,6 +543,42 @@ export default function SiteEditor() {
               <option value="condensed">Bold condensed</option>
             </select>
           </div>
+        </div>
+        {/*
+          Large text is for clubs whose members are mostly older. It changes
+          the size of everything on the public pages, not just one font, so it
+          lives with the look rather than with the words.
+        */}
+        <div className="mt-5">
+          <label className={labelCls}>Text size</label>
+          <div className="inline-flex rounded-lg border border-white/10 p-1" role="radiogroup" aria-label="Text size">
+            {[
+              ['standard', 'Standard'],
+              ['large', 'Large, easier to read'],
+            ].map(([value, label]) => {
+              const on = ((site.text_size as string) || 'standard') === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  disabled={busy}
+                  onClick={() => {
+                    if (!on) save({ text_size: value });
+                  }}
+                  className={`rounded-md px-4 py-2 text-sm font-medium disabled:opacity-60 ${
+                    on ? 'bg-[#D3FB52] text-[#001820]' : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-xs text-white/40">
+            Large makes every word and button on your public pages bigger, with darker grey text.
+          </p>
         </div>
       </section>
 

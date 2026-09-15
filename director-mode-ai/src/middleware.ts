@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { APP_URL, LEGACY_HOST } from '@/lib/appUrl';
+import { isMemberOnly } from '@/lib/postLogin';
+import { EMBED_HEADER, clubSlugFromPath, frameAncestors, isEmbedParam } from '@/lib/clubSite/embed';
 
 type CookieToSet = { name: string; value: string; options?: any };
 
@@ -41,15 +43,97 @@ function redirectLegacyHost(request: NextRequest): NextResponse | null {
   return NextResponse.redirect(target, isApi ? 308 : 301);
 }
 
+/**
+ * The sites a club allows to frame its pages, cached briefly per slug.
+ *
+ * Only asked for on `?embed=1` requests to a club's public pages, so the
+ * common path costs nothing. Read with the service key over PostgREST rather
+ * than the visitor's client because a DRAFT site's row is not publicly
+ * readable, and the policy must not change with who is looking. `no-store`
+ * so Next's fetch cache never pins a club to yesterday's list; the minute of
+ * in-memory cache is what keeps a busy embedded page from a query per load.
+ */
+const ORIGIN_TTL_MS = 60_000;
+const originCache = new Map<string, { at: number; origins: string[] }>();
+
+async function embedOriginsFor(slug: string): Promise<string[]> {
+  const hit = originCache.get(slug);
+  if (hit && Date.now() - hit.at < ORIGIN_TTL_MS) return hit.origins;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let origins: string[] = [];
+  if (url && key) {
+    try {
+      const res = await fetch(
+        `${url}/rest/v1/cc_clubs?slug=eq.${encodeURIComponent(slug)}&select=club_site(embed_origins)&limit=1`,
+        { headers: { apikey: key, Authorization: `Bearer ${key}` }, cache: 'no-store' },
+      );
+      if (res.ok) {
+        const rows = (await res.json()) as { club_site: { embed_origins?: string[] } | { embed_origins?: string[] }[] | null }[];
+        const site = rows[0]?.club_site;
+        const row = Array.isArray(site) ? site[0] : site;
+        origins = Array.isArray(row?.embed_origins) ? row!.embed_origins! : [];
+      }
+    } catch {
+      // A failed lookup falls back to "no list", which for an embed means any
+      // site — the documented default — rather than a blank frame on a
+      // club's homepage because our database blinked.
+    }
+  }
+  originCache.set(slug, { at: Date.now(), origins });
+  return origins;
+}
+
+/**
+ * Who may put this response in an <iframe>. See lib/clubSite/embed.ts for the
+ * policy and why an unconfigured club's embed pages are open to any site.
+ *
+ * Everything else is `frame-ancestors 'self'` — /run, /admin, /login and every
+ * director tool — so a signed-in director cannot be clickjacked. `'self'` and
+ * not `'none'` because the app frames its own pages (the embed preview in the
+ * site editor). This only governs being FRAMED: OAuth and Supabase auth are
+ * top-level redirects and email links, which frame-ancestors does not touch.
+ */
+async function applyFramePolicy(
+  response: NextResponse,
+  embedSlug: string | null,
+): Promise<NextResponse> {
+  const embed = !!embedSlug;
+  const origins = embedSlug ? await embedOriginsFor(embedSlug) : [];
+  response.headers.set('Content-Security-Policy', `frame-ancestors ${frameAncestors(embed, origins)}`);
+  if (embed) {
+    response.headers.delete('X-Frame-Options');
+  } else {
+    // For the few browsers that predate frame-ancestors.
+    response.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  }
+  return response;
+}
+
 export async function middleware(request: NextRequest) {
   // Runs before anything else: no Supabase round-trip, and no session cookie
   // written against a host we are trying to retire.
   const legacy = redirectLegacyHost(request);
   if (legacy) return legacy;
 
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
+  /*
+   * `?embed=1` on a club's public page. Layouts get no searchParams, so the
+   * club-site layout learns it from a request header set here — always
+   * stripped first, so a client cannot send its own.
+   */
+  const embedSlug = isEmbedParam(request.nextUrl.searchParams.get('embed'))
+    ? clubSlugFromPath(request.nextUrl.pathname)
+    : null;
+  // Built at call time, not once: setAll below rewrites the request cookies,
+  // and a Headers copy taken earlier would forward the stale ones.
+  const forward = () => {
+    const headers = new Headers(request.headers);
+    headers.delete(EMBED_HEADER);
+    if (embedSlug) headers.set(EMBED_HEADER, '1');
+    return NextResponse.next({ request: { headers } });
+  };
+
+  let supabaseResponse = forward();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -63,9 +147,7 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          supabaseResponse = NextResponse.next({
-            request,
-          });
+          supabaseResponse = forward();
           cookiesToSet.forEach(({ name, value, options }) =>
             supabaseResponse.cookies.set(name, value, options)
           );
@@ -204,11 +286,26 @@ export async function middleware(request: NextRequest) {
 
   if (isAuthPath && user) {
     const url = request.nextUrl.clone();
-    url.pathname = '/';
+    /*
+     * A signed-in person back on /login. Directors and staff keep landing on
+     * '/', as they always have. Someone whose ONLY club role is member gets
+     * their clubhouse instead: '/' is the director pitch, and a member sent
+     * there has no idea where their club went.
+     */
+    const { data: owned } = await supabase
+      .from('cc_clubs').select('id').eq('owner_id', user.id).limit(1).maybeSingle();
+    let memberOnly = false;
+    if (!owned) {
+      const { data: mine } = await supabase
+        .from('cc_club_members').select('role').eq('user_id', user.id);
+      memberOnly = isMemberOnly(((mine as { role: string }[] | null) || []).map((m) => m.role));
+    }
+    url.pathname = memberOnly ? '/member' : '/';
+    if (memberOnly) url.search = '';
     return NextResponse.redirect(url);
   }
 
-  return supabaseResponse;
+  return applyFramePolicy(supabaseResponse, embedSlug);
 }
 
 export const config = {

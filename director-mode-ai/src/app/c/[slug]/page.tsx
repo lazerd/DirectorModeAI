@@ -8,26 +8,49 @@
  */
 
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { getClubSite } from '@/lib/clubSite/server';
-import { readableOn, tint } from '@/lib/clubSite/theme';
+import { readableOn, tint, inkTint } from '@/lib/clubSite/theme';
 import ProgramCard from '@/components/clubSite/ProgramCard';
 import { formatPrice } from '@/lib/programs/sessions';
 import { getRateCards } from '@/lib/courts/server';
 import { bookingEnabled } from '@/lib/courts/pricing';
+import { isEmbedParam, parseEmbedSection, type EmbedSection } from '@/lib/clubSite/embed';
 
 export const dynamic = 'force-dynamic';
 
-export default async function ClubHomePage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ClubHomePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ embed?: string; section?: string }>;
+}) {
   const { slug } = await params;
+  const sp = await searchParams;
   const bundle = await getClubSite(slug);
   if (!bundle) notFound();
+
+  /*
+   * One section on its own, for a club dropping just its team or its about
+   * text into an existing page of their website (`?embed=1&section=team`).
+   * Only in embed mode: on the real site a section URL would be a homepage
+   * with most of it missing. The calendar is its own page, so that section is
+   * a redirect rather than a copy.
+   */
+  const embedded = isEmbedParam(sp.embed);
+  const section = embedded ? parseEmbedSection(sp.section) : null;
+  if (section === 'calendar') redirect(`/calendar/${encodeURIComponent(bundle.club.slug)}?embed=1`);
+  if (section === 'courts') redirect(`/c/${encodeURIComponent(bundle.club.slug)}/courts?embed=1`);
+  const show = (key: EmbedSection | 'rest') => !section || section === key;
 
   const { club, site, theme, programs } = bundle;
   const onPrimary = readableOn(theme.primary);
   const where = [club.city, club.state].filter(Boolean).join(', ');
   const heroImage = site.hero_image_url || club.cover_image_url;
-  const featured = programs.slice(0, 4);
+  // The programs section embedded on its own shows every class, not a teaser
+  // pointing at a page the visitor is already inside.
+  const featured = section === 'programs' ? programs : programs.slice(0, 4);
   // A first-come club (Rossmoor: courts open to every resident) has nothing to
   // book, and a link promising booking sends people looking for a form.
   const canBook = bookingEnabled(await getRateCards(club.id));
@@ -42,10 +65,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
     id?: string;
   }) => (
     <section id={id} className="mx-auto max-w-5xl px-5 py-12">
-      <h2
-        className="text-2xl font-bold sm:text-3xl"
-        style={{ fontFamily: theme.headingFamily }}
-      >
+      <h2 className="text-2xl font-bold sm:text-3xl" style={{ fontFamily: theme.headingFamily }}>
         {title}
       </h2>
       <div className="mt-6">{children}</div>
@@ -55,56 +75,60 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
   return (
     <>
       {/* ---------------------------------------------------------- hero */}
-      <div style={{ background: theme.primary, color: onPrimary }} className="relative">
-        {heroImage && (
-          <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={heroImage}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-              style={{ opacity: 0.35 }}
-            />
-            <div className="absolute inset-0" style={{ background: tint(theme.ink, 0.35) }} />
-          </>
-        )}
-        <div className="relative mx-auto max-w-5xl px-5 py-16 sm:py-24">
-          <h1
-            className="max-w-3xl text-4xl font-bold leading-[1.05] sm:text-6xl"
-            style={{ fontFamily: theme.headingFamily }}
-          >
-            {site.hero_headline || club.name}
-          </h1>
-          {(site.hero_subhead || club.description) && (
-            <p className="mt-5 max-w-2xl text-lg opacity-90 sm:text-xl">
-              {site.hero_subhead || club.description}
-            </p>
+      {show('rest') && (
+        <div style={{ background: theme.primary, color: onPrimary }} className="relative">
+          {heroImage && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={heroImage}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+                style={{ opacity: 0.35 }}
+              />
+              <div className="absolute inset-0" style={{ background: tint(theme.ink, 0.35) }} />
+            </>
           )}
-          {where && <p className="mt-3 text-sm opacity-70">{where}</p>}
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link
-              href={site.hero_cta_href || `/c/${club.slug}/programs`}
-              className="rounded-xl px-6 py-3 text-base font-bold"
-              style={{ background: theme.secondary, color: readableOn(theme.secondary) }}
+          <div className="relative mx-auto max-w-5xl px-5 py-16 sm:py-24">
+            <h1
+              className="max-w-3xl text-4xl font-bold leading-[1.05] sm:text-6xl"
+              style={{ fontFamily: theme.headingFamily }}
             >
-              {site.hero_cta_label || 'See our programs'}
-            </Link>
-            {club.phone && (
-              <a
-                href={`tel:${club.phone.replace(/[^0-9+]/g, '')}`}
-                className="rounded-xl border px-6 py-3 text-base font-semibold"
-                style={{ borderColor: onPrimary, color: onPrimary }}
-              >
-                Call {club.phone}
-              </a>
+              {site.hero_headline || club.name}
+            </h1>
+            {(site.hero_subhead || club.description) && (
+              <p className="mt-5 max-w-2xl text-lg opacity-90 sm:text-xl">
+                {site.hero_subhead || club.description}
+              </p>
             )}
+            {where && <p className="mt-3 text-sm opacity-70">{where}</p>}
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                href={site.hero_cta_href || `/c/${club.slug}/programs`}
+                className="rounded-xl px-6 py-3 text-base font-bold"
+                style={{ background: theme.secondary, color: readableOn(theme.secondary) }}
+              >
+                {site.hero_cta_label || 'See our programs'}
+              </Link>
+              {club.phone && (
+                <a
+                  href={`tel:${club.phone.replace(/[^0-9+]/g, '')}`}
+                  className="rounded-xl border px-6 py-3 text-base font-semibold"
+                  style={{ borderColor: onPrimary, color: onPrimary }}
+                >
+                  Call {club.phone}
+                </a>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* ------------------------------------------------------ amenities */}
-      {site.amenities.length > 0 && (
-        <div style={{ background: theme.surface, borderBottom: `1px solid ${tint(theme.ink, 0.1)}` }}>
+      {show('rest') && site.amenities.length > 0 && (
+        <div
+          style={{ background: theme.surface, borderBottom: `1px solid ${inkTint(theme, 0.1)}` }}
+        >
           <div className="mx-auto grid max-w-5xl gap-x-8 gap-y-3 px-5 py-8 sm:grid-cols-2 lg:grid-cols-3">
             {site.amenities.map((a, i) => (
               <div key={i} className="flex gap-3">
@@ -115,7 +139,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
                 <div>
                   <div className="font-semibold">{a.label}</div>
                   {a.detail && (
-                    <div className="text-sm" style={{ color: tint(theme.ink, 0.6) }}>
+                    <div className="text-sm" style={{ color: inkTint(theme, 0.6) }}>
                       {a.detail}
                     </div>
                   )}
@@ -127,7 +151,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
       )}
 
       {/* ---------------------------------------------------------- about */}
-      {site.about_body && (
+      {show('about') && site.about_body && (
         <Section title={`About ${club.name}`}>
           {/* Plain paragraphs, split on blank lines — a club types prose, not markup. */}
           <div className="max-w-3xl space-y-4 text-base leading-relaxed">
@@ -139,7 +163,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
       )}
 
       {/* -------------------------------------------------------- programs */}
-      {featured.length > 0 && (
+      {show('programs') && featured.length > 0 && (
         <Section title="Programs &amp; classes" id="programs">
           <div className="grid gap-4 sm:grid-cols-2">
             {featured.map((p) => (
@@ -165,7 +189,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
       )}
 
       {/* ------------------------------------------------------ membership */}
-      {site.membership_tiers.length > 0 && (
+      {show('rest') && site.membership_tiers.length > 0 && (
         <div style={{ background: theme.surface }}>
           <Section title="Membership">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -173,7 +197,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
                 <div
                   key={i}
                   className="rounded-2xl border p-5"
-                  style={{ borderColor: tint(theme.ink, 0.12), background: theme.cream }}
+                  style={{ borderColor: inkTint(theme, 0.12), background: theme.cream }}
                 >
                   <div className="text-lg font-bold" style={{ fontFamily: theme.headingFamily }}>
                     {t.name}
@@ -191,7 +215,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
                       {t.includes.map((inc, j) => (
                         <li key={j} className="flex gap-2">
                           <span style={{ color: theme.secondary }}>✓</span>
-                          <span style={{ color: tint(theme.ink, 0.75) }}>{inc}</span>
+                          <span style={{ color: inkTint(theme, 0.75) }}>{inc}</span>
                         </li>
                       ))}
                     </ul>
@@ -213,7 +237,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
       )}
 
       {/* ---------------------------------------------------------- courts */}
-      {(site.court_rates.length > 0 || site.courts_blurb) && (
+      {show('rest') && (site.court_rates.length > 0 || site.courts_blurb) && (
         <Section title="Court time">
           {site.courts_blurb && (
             <p className="max-w-3xl text-base leading-relaxed">{site.courts_blurb}</p>
@@ -222,7 +246,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
             <div className="mt-6 overflow-x-auto">
               <table className="w-full min-w-[480px] text-sm">
                 <thead>
-                  <tr style={{ color: tint(theme.ink, 0.55) }} className="text-left">
+                  <tr style={{ color: inkTint(theme, 0.55) }} className="text-left">
                     <th className="py-2 pr-4 font-semibold">When</th>
                     <th className="py-2 pr-4 font-semibold">Members</th>
                     <th className="py-2 font-semibold">Public</th>
@@ -230,11 +254,11 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
                 </thead>
                 <tbody>
                   {site.court_rates.map((r, i) => (
-                    <tr key={i} style={{ borderTop: `1px solid ${tint(theme.ink, 0.1)}` }}>
+                    <tr key={i} style={{ borderTop: `1px solid ${inkTint(theme, 0.1)}` }}>
                       <td className="py-3 pr-4">
                         <div className="font-semibold">{r.label}</div>
                         {r.window && (
-                          <div className="text-xs" style={{ color: tint(theme.ink, 0.55) }}>
+                          <div className="text-xs" style={{ color: inkTint(theme, 0.55) }}>
                             {r.window}
                           </div>
                         )}
@@ -258,7 +282,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
       )}
 
       {/* -------------------------------------------------------- services */}
-      {site.services.length > 0 && (
+      {show('rest') && site.services.length > 0 && (
         <div style={{ background: theme.surface }}>
           <Section title="At the club">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -266,11 +290,11 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
                 <div
                   key={i}
                   className="rounded-2xl border p-5"
-                  style={{ borderColor: tint(theme.ink, 0.12), background: theme.cream }}
+                  style={{ borderColor: inkTint(theme, 0.12), background: theme.cream }}
                 >
                   <div className="font-bold">{s.name}</div>
                   {s.blurb && (
-                    <p className="mt-1.5 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+                    <p className="mt-1.5 text-sm" style={{ color: inkTint(theme, 0.7) }}>
                       {s.blurb}
                     </p>
                   )}
@@ -296,7 +320,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
       )}
 
       {/* ----------------------------------------------------------- staff */}
-      {site.staff.length > 0 && (
+      {show('team') && site.staff.length > 0 && (
         <Section title="Our team">
           <div className="grid gap-6 sm:grid-cols-2">
             {site.staff.map((s, i) => (
@@ -324,12 +348,15 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
                     </div>
                   )}
                   {s.bio && (
-                    <p className="mt-1.5 text-sm leading-relaxed" style={{ color: tint(theme.ink, 0.7) }}>
+                    <p
+                      className="mt-1.5 text-sm leading-relaxed"
+                      style={{ color: inkTint(theme, 0.7) }}
+                    >
                       {s.bio}
                     </p>
                   )}
                   {(s.email || s.phone) && (
-                    <div className="mt-1.5 text-xs" style={{ color: tint(theme.ink, 0.55) }}>
+                    <div className="mt-1.5 text-xs" style={{ color: inkTint(theme, 0.55) }}>
                       {s.email && (
                         <a href={`mailto:${s.email}`} className="hover:underline">
                           {s.email}
@@ -347,7 +374,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
       )}
 
       {/* -------------------------------------------------- partner links */}
-      {site.partner_links.length > 0 && (
+      {show('rest') && site.partner_links.length > 0 && (
         <div style={{ background: theme.surface }}>
           <Section title="Also at the club">
             {/*
@@ -373,7 +400,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
                     key={i}
                     {...(p.href ? { href: p.href } : {})}
                     className={`block rounded-2xl border p-5${p.href ? ' transition-shadow hover:shadow-md' : ''}`}
-                    style={{ borderColor: tint(theme.ink, 0.12), background: theme.cream }}
+                    style={{ borderColor: inkTint(theme, 0.12), background: theme.cream }}
                   >
                     {p.sport && (
                       <div
@@ -385,7 +412,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
                     )}
                     <div className="mt-1 font-bold">{p.name}</div>
                     {p.blurb && (
-                      <p className="mt-1.5 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+                      <p className="mt-1.5 text-sm" style={{ color: inkTint(theme, 0.7) }}>
                         {p.blurb}
                       </p>
                     )}
@@ -411,7 +438,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
         phone the club for the packet anyway. So a document without a file is
         not shown, and the whole section disappears when none of them have one.
       */}
-      {site.documents.filter((d) => !!d.href).length > 0 && (
+      {show('rest') && site.documents.filter((d) => !!d.href).length > 0 && (
         <Section title="Forms &amp; documents">
           <div className="flex flex-wrap gap-3">
             {site.documents
@@ -421,7 +448,7 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
                   key={i}
                   href={d.href as string}
                   className="rounded-xl border px-4 py-3 text-sm font-semibold"
-                  style={{ borderColor: tint(theme.ink, 0.15), background: theme.surface }}
+                  style={{ borderColor: inkTint(theme, 0.15), background: theme.surface }}
                 >
                   {d.label} ↓
                 </a>
@@ -430,56 +457,72 @@ export default async function ClubHomePage({ params }: { params: Promise<{ slug:
         </Section>
       )}
 
+      {/* A section with nothing in it yet says so, rather than an empty frame
+          on the club's website that looks broken. */}
+      {section &&
+        ((section === 'about' && !site.about_body) ||
+          (section === 'team' && site.staff.length === 0) ||
+          (section === 'programs' && programs.length === 0)) && (
+          <p
+            className="mx-auto max-w-5xl px-5 py-10 text-base"
+            style={{ color: inkTint(theme, 0.65) }}
+          >
+            Nothing to show here yet.
+          </p>
+        )}
+
       {/* -------------------------------------------------------- contact */}
-      <div style={{ background: tint(theme.primary, 0.08) }}>
-        <Section title="Visit us">
-          <div className="grid gap-6 sm:grid-cols-2">
-            <div className="space-y-1 text-base">
-              {club.address && <div>{club.address}</div>}
-              {where && (
-                <div>
-                  {where} {club.zip || ''}
-                </div>
-              )}
-              {club.phone && (
-                <div className="pt-2">
-                  <a
-                    href={`tel:${club.phone.replace(/[^0-9+]/g, '')}`}
-                    className="font-semibold hover:underline"
-                    style={{ color: theme.primary }}
-                  >
-                    {club.phone}
-                  </a>
-                </div>
-              )}
-              {club.email && (
-                <div>
-                  <a
-                    href={`mailto:${club.email}`}
-                    className="font-semibold hover:underline"
-                    style={{ color: theme.primary }}
-                  >
-                    {club.email}
-                  </a>
+      {show('rest') && (
+        <div style={{ background: tint(theme.primary, 0.08) }}>
+          <Section title="Visit us">
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="space-y-1 text-base">
+                {club.address && <div>{club.address}</div>}
+                {where && (
+                  <div>
+                    {where} {club.zip || ''}
+                  </div>
+                )}
+                {club.phone && (
+                  <div className="pt-2">
+                    <a
+                      href={`tel:${club.phone.replace(/[^0-9+]/g, '')}`}
+                      className="font-semibold hover:underline"
+                      style={{ color: theme.primary }}
+                    >
+                      {club.phone}
+                    </a>
+                  </div>
+                )}
+                {club.email && (
+                  <div>
+                    <a
+                      href={`mailto:${club.email}`}
+                      className="font-semibold hover:underline"
+                      style={{ color: theme.primary }}
+                    >
+                      {club.email}
+                    </a>
+                  </div>
+                )}
+              </div>
+              {site.booking_policy_body && (
+                <div
+                  className="rounded-2xl border p-5 text-sm leading-relaxed"
+                  style={{ borderColor: inkTint(theme, 0.12), background: theme.surface }}
+                >
+                  <div className="mb-2 font-bold">Booking a court</div>
+                  {site.booking_policy_body.split(/\n\s*\n/).map((p, i) => (
+                    <p key={i} className={i ? 'mt-2' : ''} style={{ color: inkTint(theme, 0.75) }}>
+                      {p}
+                    </p>
+                  ))}
                 </div>
               )}
             </div>
-            {site.booking_policy_body && (
-              <div
-                className="rounded-2xl border p-5 text-sm leading-relaxed"
-                style={{ borderColor: tint(theme.ink, 0.12), background: theme.surface }}
-              >
-                <div className="mb-2 font-bold">Booking a court</div>
-                {site.booking_policy_body.split(/\n\s*\n/).map((p, i) => (
-                  <p key={i} className={i ? 'mt-2' : ''} style={{ color: tint(theme.ink, 0.75) }}>
-                    {p}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
-        </Section>
-      </div>
+          </Section>
+        </div>
+      )}
     </>
   );
 }

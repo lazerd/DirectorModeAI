@@ -21,7 +21,7 @@
  * Pure, and shared by the style layer and its tests.
  */
 
-import type { ClubTheme } from './theme';
+import type { ClubTheme, TextSize } from './theme';
 
 /** Minimum contrast for accent text on the ground. WCAG AA for large text. */
 export const MIN_ACCENT_CONTRAST = 3.0;
@@ -44,6 +44,8 @@ export type ClubChrome = {
   border: string;
   fontFamily: string;
   headingFamily: string;
+  /** Carried through so the dark surfaces honour a club's large-text setting. */
+  textSize: TextSize;
 };
 
 /* ------------------------------------------------------------ colour maths */
@@ -178,9 +180,14 @@ export function resolveChrome(theme: ClubTheme): ClubChrome {
     accent,
     onAccent: contrast('#ffffff', accent) >= MIN_TEXT_CONTRAST ? '#ffffff' : '#111111',
     text,
-    muted: text === '#ffffff' ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.6)',
+    // Large text lifts secondary text too — see inkTint in theme.ts.
+    muted:
+      text === '#ffffff'
+        ? `rgba(255,255,255,${theme.textSize === 'large' ? 0.85 : 0.55})`
+        : `rgba(0,0,0,${theme.textSize === 'large' ? 0.85 : 0.6})`,
     border: text === '#ffffff' ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.14)',
     fontFamily: theme.fontFamily,
     headingFamily: theme.headingFamily,
+    textSize: theme.textSize ?? 'standard',
   };
 }

@@ -15,7 +15,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getClubSite } from '@/lib/clubSite/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { readableOn, tint } from '@/lib/clubSite/theme';
+import { readableOn, tint, inkTint } from '@/lib/clubSite/theme';
 import { formatPrice } from '@/lib/programs/sessions';
 import HostRequestForm, { type HostPackage } from './HostRequestForm';
 
@@ -63,7 +63,7 @@ export default async function HostPage({ params }: { params: Promise<{ slug: str
       <h1 className="text-3xl font-bold sm:text-4xl" style={{ fontFamily: theme.headingFamily }}>
         Play your home matches here
       </h1>
-      <p className="mt-3 max-w-2xl text-base leading-relaxed" style={{ color: tint(theme.ink, 0.7) }}>
+      <p className="mt-3 max-w-2xl text-base leading-relaxed" style={{ color: inkTint(theme, 0.7) }}>
         No home courts for your league season? Bring your team to {club.name}. You get the courts
         for every home match, and your players get a real club to play at.
       </p>
@@ -71,10 +71,10 @@ export default async function HostPage({ params }: { params: Promise<{ slug: str
       {packages.length === 0 ? (
         <div
           className="mt-8 rounded-2xl border p-8 text-center"
-          style={{ borderColor: tint(theme.ink, 0.12), background: theme.surface }}
+          style={{ borderColor: inkTint(theme, 0.12), background: theme.surface }}
         >
           <p className="font-medium">Hosting packages aren&apos;t published yet.</p>
-          <p className="mt-2 text-sm" style={{ color: tint(theme.ink, 0.6) }}>
+          <p className="mt-2 text-sm" style={{ color: inkTint(theme, 0.6) }}>
             {club.phone ? `Call ${club.phone} and we'll talk it through.` : 'Get in touch and we can talk it through.'}
           </p>
         </div>
@@ -91,7 +91,7 @@ export default async function HostPage({ params }: { params: Promise<{ slug: str
                 <div
                   key={p.id}
                   className="rounded-2xl border p-5"
-                  style={{ borderColor: tint(theme.ink, 0.14), background: theme.surface }}
+                  style={{ borderColor: inkTint(theme, 0.14), background: theme.surface }}
                 >
                   <div className="text-lg font-bold" style={{ fontFamily: theme.headingFamily }}>
                     {p.label}
@@ -100,17 +100,17 @@ export default async function HostPage({ params }: { params: Promise<{ slug: str
                     <span className="text-3xl font-bold" style={{ color: theme.primary }}>
                       {formatPrice(p.price_cents)}
                     </span>
-                    <span className="text-sm" style={{ color: tint(theme.ink, 0.55) }}>
+                    <span className="text-sm" style={{ color: inkTint(theme, 0.55) }}>
                       for the season
                     </span>
                   </div>
-                  <div className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.65) }}>
+                  <div className="mt-1 text-sm" style={{ color: inkTint(theme, 0.65) }}>
                     {p.courts} courts · {p.matches_included} home matches ·{' '}
                     <strong>{formatPrice(Math.round(perMatch))} a match</strong>
                   </div>
 
                   {p.blurb && (
-                    <p className="mt-3 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+                    <p className="mt-3 text-sm" style={{ color: inkTint(theme, 0.7) }}>
                       {p.blurb}
                     </p>
                   )}
@@ -120,7 +120,7 @@ export default async function HostPage({ params }: { params: Promise<{ slug: str
                       {includes.map((line, i) => (
                         <li key={i} className="flex gap-2">
                           <span style={{ color: theme.secondary }}>✓</span>
-                          <span style={{ color: tint(theme.ink, 0.75) }}>{line}</span>
+                          <span style={{ color: inkTint(theme, 0.75) }}>{line}</span>
                         </li>
                       ))}
                     </ul>
@@ -158,8 +158,8 @@ export default async function HostPage({ params }: { params: Promise<{ slug: str
                 onPrimary,
                 ink: theme.ink,
                 surface: theme.surface,
-                border: tint(theme.ink, 0.16),
-                muted: tint(theme.ink, 0.6),
+                border: inkTint(theme, 0.16),
+                muted: inkTint(theme, 0.6),
               }}
             />
           </div>

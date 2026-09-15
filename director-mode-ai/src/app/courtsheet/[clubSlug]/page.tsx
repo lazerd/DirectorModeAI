@@ -3,15 +3,20 @@ import { resolvePublicClub } from '@/lib/courtsheet/routeAuth';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import ClubChrome, { getClubChrome } from '@/components/clubSite/ClubChrome';
 import PublicClient from './PublicClient';
+import EmbedRuntime from '@/components/clubSite/EmbedRuntime';
+import { isEmbedParam } from '@/lib/clubSite/embed';
 
 export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ clubSlug: string }>;
+  searchParams: Promise<{ embed?: string }>;
 }
 
-export default async function PublicCourtSheetPage({ params }: PageProps) {
+export default async function PublicCourtSheetPage({ params, searchParams }: PageProps) {
   const { clubSlug } = await params;
+  // Shown inside the club's own website — see lib/clubSite/embed.ts.
+  const embedded = isEmbedParam((await searchParams).embed);
   const club = await resolvePublicClub(clubSlug);
   if (!club) notFound();
 
@@ -39,10 +44,12 @@ export default async function PublicCourtSheetPage({ params }: PageProps) {
 
   return (
     <ClubChrome chrome={chrome}>
+      {embedded && <EmbedRuntime />}
       <PublicClient
         club={club as any}
         initialCourts={(courts ?? []) as any}
         hasSite={!!site}
+        embedded={embedded}
       />
     </ClubChrome>
   );

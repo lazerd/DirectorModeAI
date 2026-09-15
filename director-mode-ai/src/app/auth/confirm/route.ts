@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import type { NextRequest } from 'next/server';
 import type { EmailOtpType } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/server';
-import { safeNext } from '@/lib/postLogin';
+import { defaultDestination, safeNext } from '@/lib/postLogin';
 
 /**
  * /auth/confirm — where confirmation, magic-link, invite and password-reset
@@ -35,5 +35,9 @@ export async function GET(request: NextRequest) {
 
   const next = safeNext(searchParams.get('next'));
   if (next) redirect(next);
-  redirect(type === 'recovery' ? '/reset-password' : '/welcome');
+  if (type === 'recovery') redirect('/reset-password');
+  // Directors and staff land on the /welcome checklist as before; a member's
+  // checklist would be all tools they cannot open, so they get /member.
+  const { data: { user } } = await supabase.auth.getUser();
+  redirect(user ? await defaultDestination(supabase, user.id) : '/welcome');
 }

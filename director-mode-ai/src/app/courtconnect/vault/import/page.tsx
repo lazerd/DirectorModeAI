@@ -1,128 +1,86 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { trackEvent } from '@/lib/analytics';
 import { ArrowLeft, Upload, FileText, Check, AlertCircle, Download, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-
-type ParsedPlayer = {
-  full_name: string;
-  email: string;
-  phone: string;
-  gender: string;
-  age: string;
-  usta_rating: string;
-  utr_rating: string;
-  primary_sport: string;
-  notes: string;
-  valid: boolean;
-  error?: string;
-};
+import {
+  FIELD_LABEL,
+  IMPORT_FIELDS,
+  buildPlayers,
+  detectMapping,
+  parseCSV,
+  planImport,
+  summarizePlan,
+  vaultColumns,
+  type ColumnMapping,
+  type DetectedMapping,
+  type ImportField,
+  type ImportedPlayer,
+} from '@/lib/vault/csvImport';
 
 const EXPECTED_HEADERS = ['name', 'email', 'phone', 'gender', 'age', 'ntrp', 'utr', 'sport', 'notes'];
 
-const GENDER_MAP: Record<string, string> = {
-  'm': 'male', 'male': 'male', 'man': 'male',
-  'f': 'female', 'female': 'female', 'woman': 'female',
-  'nb': 'non_binary', 'non-binary': 'non_binary', 'nonbinary': 'non_binary', 'non_binary': 'non_binary',
+const SOURCE_LABEL: Record<DetectedMapping['source'], string> = {
+  wildapricot: 'Looks like a Wild Apricot export',
+  template: 'PlayerVault template',
+  generic: 'Columns matched by their headings',
+  positional: 'No heading row — read in template column order',
 };
 
-const SPORT_MAP: Record<string, string> = {
-  'tennis': 'tennis', 't': 'tennis',
-  'pickleball': 'pickleball', 'pb': 'pickleball', 'pickle': 'pickleball',
-  'padel': 'padel',
-  'squash': 'squash',
-  'badminton': 'badminton',
-  'racquetball': 'racquetball',
-  'table tennis': 'table_tennis', 'table_tennis': 'table_tennis', 'tt': 'table_tennis', 'ping pong': 'table_tennis',
-};
-
-function parseCSV(text: string): string[][] {
-  const rows: string[][] = [];
-  let current = '';
-  let inQuotes = false;
-  let row: string[] = [];
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (inQuotes) {
-      if (ch === '"' && text[i + 1] === '"') {
-        current += '"';
-        i++;
-      } else if (ch === '"') {
-        inQuotes = false;
-      } else {
-        current += ch;
-      }
-    } else {
-      if (ch === '"') {
-        inQuotes = true;
-      } else if (ch === ',') {
-        row.push(current.trim());
-        current = '';
-      } else if (ch === '\n' || (ch === '\r' && text[i + 1] === '\n')) {
-        row.push(current.trim());
-        if (row.some(cell => cell.length > 0)) rows.push(row);
-        row = [];
-        current = '';
-        if (ch === '\r') i++;
-      } else {
-        current += ch;
-      }
-    }
-  }
-  row.push(current.trim());
-  if (row.some(cell => cell.length > 0)) rows.push(row);
-
-  return rows;
-}
-
-function parseRow(cells: string[]): ParsedPlayer {
-  const [name, email, phone, gender, age, ntrp, utr, sport, notes] = cells.map(c => (c || '').trim());
-
-  const player: ParsedPlayer = {
-    full_name: name || '',
-    email: email || '',
-    phone: phone || '',
-    gender: GENDER_MAP[gender?.toLowerCase()] || '',
-    age: age || '',
-    usta_rating: ntrp || '',
-    utr_rating: utr || '',
-    primary_sport: SPORT_MAP[sport?.toLowerCase()] || 'tennis',
-    notes: notes || '',
-    valid: true,
-  };
-
-  if (!player.full_name) {
-    player.valid = false;
-    player.error = 'Name is required';
-  }
-
-  const ntrpNum = parseFloat(player.usta_rating);
-  if (player.usta_rating && (isNaN(ntrpNum) || ntrpNum < 1 || ntrpNum > 7)) {
-    player.valid = false;
-    player.error = `Invalid NTRP: ${player.usta_rating}`;
-  }
-
-  const utrNum = parseFloat(player.utr_rating);
-  if (player.utr_rating && (isNaN(utrNum) || utrNum < 1 || utrNum > 16.5)) {
-    player.valid = false;
-    player.error = `Invalid UTR: ${player.utr_rating}`;
-  }
-
-  return player;
-}
-
+/*
+ * Two steps before anything is written: check the columns, then check the
+ * people. Reading by position silently put a Wild Apricot "User ID" in the
+ * name column; a mapping the director can see and fix is what stops that.
+ */
 export default function CSVImportPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [parsedPlayers, setParsedPlayers] = useState<ParsedPlayer[]>([]);
+  const [rows, setRows] = useState<string[][]>([]);
+  const [detected, setDetected] = useState<DetectedMapping | null>(null);
+  const [mapping, setMapping] = useState<ColumnMapping>([]);
+  const [step, setStep] = useState<'upload' | 'columns' | 'people'>('upload');
+  const [removed, setRemoved] = useState<Set<number>>(new Set());
+  const [includeNoEmail, setIncludeNoEmail] = useState(false);
+  const [existing, setExisting] = useState<Map<string, { id: string; notes: string | null }>>(new Map());
   const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState<{ success: number; failed: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ summary: string; failed: number } | null>(null);
   const [fileName, setFileName] = useState('');
+
+  const reset = () => {
+    setRows([]);
+    setDetected(null);
+    setMapping([]);
+    setRemoved(new Set());
+    setStep('upload');
+    setFileName('');
+    setImportResult(null);
+  };
+
+  // The director's existing vault, by email — the duplicate check. RLS scopes
+  // this to their own rows ("Directors can manage own vault").
+  useEffect(() => {
+    if (step !== 'people') return;
+    (async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase
+        .from('cc_vault_players')
+        .select('id, email, notes')
+        .eq('director_id', user.id)
+        .not('email', 'is', null);
+      const m = new Map<string, { id: string; notes: string | null }>();
+      for (const r of (data ?? []) as { id: string; email: string; notes: string | null }[]) {
+        const e = r.email.trim().toLowerCase();
+        if (e && !m.has(e)) m.set(e, { id: r.id, notes: r.notes });
+      }
+      setExisting(m);
+    })();
+  }, [step]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -134,33 +92,45 @@ export default function CSVImportPage() {
     const reader = new FileReader();
     reader.onload = (event) => {
       const text = event.target?.result as string;
-      const rows = parseCSV(text);
-
-      if (rows.length < 2) {
-        setParsedPlayers([]);
+      const parsed = parseCSV(text);
+      if (parsed.length === 0) {
+        reset();
         return;
       }
-
-      // Skip header row
-      const header = rows[0].map(h => h.toLowerCase().trim());
-      const isHeader = header.some(h =>
-        ['name', 'email', 'full_name', 'phone', 'gender', 'ntrp', 'utr', 'rating', 'sport'].includes(h)
-      );
-
-      const dataRows = isHeader ? rows.slice(1) : rows;
-      const players = dataRows.map(row => parseRow(row));
-      setParsedPlayers(players);
+      const d = detectMapping(parsed[0]);
+      setRows(parsed);
+      setDetected(d);
+      setMapping(d.mapping);
+      setRemoved(new Set());
+      setStep('columns');
     };
     reader.readAsText(file);
   };
 
-  const removePlayer = (index: number) => {
-    setParsedPlayers(prev => prev.filter((_, i) => i !== index));
+  const players: ImportedPlayer[] = useMemo(
+    () => (detected ? buildPlayers(rows, mapping, detected.hasHeader) : []),
+    [rows, mapping, detected],
+  );
+  const kept = useMemo(() => players.filter((_, i) => !removed.has(i)), [players, removed]);
+  const plan = useMemo(
+    () => planImport(kept, new Map([...existing].map(([k, v]) => [k, v.id])), { includeNoEmail }),
+    [kept, existing, includeNoEmail],
+  );
+
+  const setColumn = (col: number, field: ImportField | null) => {
+    setMapping((prev) => {
+      const next = [...prev];
+      // A field feeds from one column; choosing it here releases it elsewhere.
+      if (field) for (let i = 0; i < next.length; i++) if (next[i] === field) next[i] = null;
+      next[col] = field;
+      return next;
+    });
   };
 
+  const hasName = mapping.includes('full_name') || mapping.includes('first_name') || mapping.includes('last_name');
+
   const handleImport = async () => {
-    const validPlayers = parsedPlayers.filter(p => p.valid);
-    if (validPlayers.length === 0) return;
+    if (plan.inserts.length + plan.updates.length === 0) return;
 
     setImporting(true);
     setImportResult(null);
@@ -169,39 +139,52 @@ export default function CSVImportPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setImporting(false); return; }
 
-    let success = 0;
     let failed = 0;
 
-    for (const player of validPlayers) {
-      const { error } = await supabase
-        .from('cc_vault_players')
-        .insert({
-          director_id: user.id,
-          full_name: player.full_name,
-          email: player.email || null,
-          phone: player.phone || null,
-          gender: player.gender || null,
-          age: player.age ? parseInt(player.age) : null,
-          usta_rating: player.usta_rating ? parseFloat(player.usta_rating) : null,
-          utr_rating: player.utr_rating ? parseFloat(player.utr_rating) : null,
-          primary_sport: player.primary_sport || 'tennis',
-          notes: player.notes || null,
-          rating_source: 'manual',
-        });
-
-      if (error) {
-        failed++;
-      } else {
-        success++;
+    // Inserts in batches — one round trip per player made a 300-member
+    // export take a minute.
+    for (let i = 0; i < plan.inserts.length; i += 100) {
+      const batch = plan.inserts.slice(i, i + 100).map((p) => ({
+        director_id: user.id,
+        ...vaultColumns(p, 'insert'),
+      }));
+      const { error } = await supabase.from('cc_vault_players').insert(batch);
+      if (!error) continue;
+      // One bad row fails the whole batch; retry singly so the rest still land.
+      for (const row of batch) {
+        const { error: rowError } = await supabase.from('cc_vault_players').insert(row);
+        if (rowError) failed++;
       }
     }
 
-    trackEvent('feature_use', 'import_players', 'vault', { success, failed });
-    setImportResult({ success, failed });
+    for (const { id, player } of plan.updates) {
+      const cols = vaultColumns(player, 'update');
+      // Membership details are appended to the notes a director already
+      // wrote, and only when they are not already there.
+      const prior = [...existing.values()].find((v) => v.id === id)?.notes ?? '';
+      if (player.notes && !prior.includes(player.notes)) {
+        cols.notes = prior ? `${prior}\n${player.notes}` : player.notes;
+      }
+      const { error } = await supabase
+        .from('cc_vault_players')
+        .update(cols)
+        .eq('id', id)
+        .eq('director_id', user.id);
+      if (error) failed++;
+    }
+
+    const summary = summarizePlan(plan);
+    trackEvent('feature_use', 'import_players', 'vault', {
+      inserted: plan.inserts.length,
+      updated: plan.updates.length,
+      failed,
+      source: detected?.source,
+    });
+    setImportResult({ summary, failed });
     setImporting(false);
 
     if (failed === 0) {
-      setTimeout(() => router.push('/courtconnect/vault'), 1500);
+      setTimeout(() => router.push('/courtconnect/vault'), 2500);
     }
   };
 
@@ -216,14 +199,22 @@ export default function CSVImportPage() {
     URL.revokeObjectURL(url);
   };
 
-  const validCount = parsedPlayers.filter(p => p.valid).length;
-  const invalidCount = parsedPlayers.filter(p => !p.valid).length;
+  const validCount = kept.filter((p) => p.valid).length;
+  const invalidCount = kept.filter((p) => !p.valid).length;
+  const header = detected?.hasHeader ? rows[0] : null;
+  const samples = detected ? rows.slice(detected.hasHeader ? 1 : 0, (detected.hasHeader ? 1 : 0) + 3) : [];
 
   const sportLabel = (sport: string) =>
     sport.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+  const statusOf = (p: ImportedPlayer) => {
+    if (!p.valid) return 'fix';
+    if (!p.email) return includeNoEmail ? 'new' : 'skip';
+    return existing.has(p.email) ? 'update' : 'new';
+  };
+
   return (
-    <div className="p-6 max-w-4xl mx-auto page-enter">
+    <div className="p-6 max-w-5xl mx-auto page-enter">
       <Link
         href="/courtconnect/vault"
         className="inline-flex items-center gap-2 text-sm text-white/50 hover:text-white mb-6"
@@ -233,64 +224,147 @@ export default function CSVImportPage() {
       </Link>
 
       <h1 className="text-2xl font-display text-white mb-2">CSV Import</h1>
-      <p className="text-white/50 mb-6">Bulk import players from a CSV file into your vault.</p>
+      <p className="text-white/50 mb-6">
+        Bring in players from any spreadsheet — a membership system export or our template. You check the
+        columns and the people before anything is saved.
+      </p>
 
-      {/* Template download */}
-      <div className="card p-4 mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-white/80 font-medium text-sm">Need a template?</p>
-            <p className="text-white/40 text-xs">Download a CSV template with the correct columns.</p>
+      {step === 'upload' && (
+        <>
+          {/* Wild Apricot is the most common source for a club that keeps it for dues. */}
+          <div className="card p-4 mb-6 border-[#D3FB52]/20">
+            <p className="text-white/80 font-medium text-sm">Importing from Wild Apricot?</p>
+            <p className="text-white/50 text-sm mt-1">
+              Export your contacts: <b className="text-white/80">Contacts → Export</b> (choose CSV), then upload the
+              file here. First and last names are joined, and membership level, status and join date are kept.
+            </p>
           </div>
-          <button onClick={downloadTemplate} className="btn btn-sm bg-white/10 text-white hover:bg-white/20">
-            <Download size={14} /> Download Template
-          </button>
-        </div>
-      </div>
 
-      {/* Expected format */}
-      <div className="card p-4 mb-6">
-        <p className="text-white/60 text-sm mb-2 font-medium">Expected columns:</p>
-        <div className="flex flex-wrap gap-2">
-          {EXPECTED_HEADERS.map(h => (
-            <span key={h} className="px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-white/60 font-mono">
-              {h}
+          {/* Template download */}
+          <div className="card p-4 mb-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 font-medium text-sm">Starting from scratch?</p>
+                <p className="text-white/40 text-xs">Download a CSV template with the usual columns.</p>
+              </div>
+              <button onClick={downloadTemplate} className="btn btn-sm bg-white/10 text-white hover:bg-white/20">
+                <Download size={14} /> Download Template
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {EXPECTED_HEADERS.map(h => (
+                <span key={h} className="px-2 py-1 bg-white/5 border border-white/10 rounded text-xs text-white/60 font-mono">
+                  {h}
+                </span>
+              ))}
+            </div>
+            <p className="text-white/30 text-xs mt-2">
+              Gender: M/F/NB. Sport: tennis, pickleball, padel, squash, badminton, racquetball, table tennis. NTRP: 1.0-7.0. UTR: 1-16.5.
+            </p>
+          </div>
+
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="card p-12 text-center cursor-pointer hover:border-[#D3FB52]/30 transition-colors"
+          >
+            <Upload size={40} className="mx-auto text-white/20 mb-4" />
+            <p className="text-white/70 font-medium mb-1">Click to upload a CSV file</p>
+            <p className="text-white/40 text-sm">Any column order — we read the headings</p>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+          </div>
+        </>
+      )}
+
+      {step !== 'upload' && detected && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <FileText size={18} className="text-[#D3FB52]" />
+            <span className="text-white font-medium">{fileName}</span>
+            <span className="text-white/40 text-sm">
+              {players.length} rows · {SOURCE_LABEL[detected.source]}
             </span>
-          ))}
-        </div>
-        <p className="text-white/30 text-xs mt-2">
-          Gender: M/F/NB. Sport: tennis, pickleball, padel, squash, badminton, racquetball, table tennis. NTRP: 1.0-7.0. UTR: 1-16.5.
-        </p>
-      </div>
-
-      {/* File Upload */}
-      {parsedPlayers.length === 0 && (
-        <div
-          onClick={() => fileInputRef.current?.click()}
-          className="card p-12 text-center cursor-pointer hover:border-[#D3FB52]/30 transition-colors"
-        >
-          <Upload size={40} className="mx-auto text-white/20 mb-4" />
-          <p className="text-white/70 font-medium mb-1">Click to upload a CSV file</p>
-          <p className="text-white/40 text-sm">or drag and drop</p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv"
-            className="hidden"
-            onChange={handleFileSelect}
-          />
+          </div>
+          <button onClick={reset} className="btn btn-ghost btn-sm text-white/50">
+            Choose another file
+          </button>
         </div>
       )}
 
-      {/* Preview */}
-      {parsedPlayers.length > 0 && (
+      {/* ------------------------------------------------ step 1: columns */}
+      {step === 'columns' && detected && (
         <>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <FileText size={18} className="text-[#D3FB52]" />
-              <span className="text-white font-medium">{fileName}</span>
-              <span className="text-white/40 text-sm">{parsedPlayers.length} rows</span>
+          <div className="card overflow-hidden mb-4">
+            <div className="px-4 pt-4">
+              <p className="text-white font-medium">1. Check the columns</p>
+              <p className="text-white/40 text-sm">
+                We matched what we could. Change any that are wrong, or set a column to &quot;Don&apos;t import&quot;.
+              </p>
             </div>
+            <div className="overflow-x-auto mt-3">
+              <table className="table text-sm">
+                <thead>
+                  <tr>
+                    <th>{header ? 'Column in your file' : 'Column'}</th>
+                    <th>Example</th>
+                    <th>Goes into</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mapping.map((field, col) => (
+                    <tr key={col}>
+                      <td className="font-medium">{header ? header[col] || <span className="text-white/30">(blank)</span> : `Column ${col + 1}`}</td>
+                      <td className="text-white/50 max-w-[260px] truncate">
+                        {samples.map((r) => r[col]).filter(Boolean).slice(0, 2).join(' · ') || '—'}
+                      </td>
+                      <td>
+                        <select
+                          value={field ?? ''}
+                          onChange={(e) => setColumn(col, (e.target.value || null) as ImportField | null)}
+                          className="rounded-lg border border-white/10 bg-[#001820] px-2 py-1.5 text-sm"
+                          style={{ color: '#ffffff' }}
+                        >
+                          <option value="">Don&apos;t import</option>
+                          {IMPORT_FIELDS.map((f) => (
+                            <option key={f} value={f}>{FIELD_LABEL[f]}</option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {!hasName && (
+            <p className="text-red-400 text-sm mb-3">Choose which column holds the name (or first and last name).</p>
+          )}
+          <p className="text-white/40 text-xs mb-4">
+            Membership level and join date are saved in each player&apos;s notes; membership status is saved as
+            active, inactive or guest.
+          </p>
+          <button
+            onClick={() => setStep('people')}
+            disabled={!hasName}
+            className="btn bg-[#D3FB52] text-[#002838] hover:bg-[#c5f035] w-full btn-lg font-semibold"
+          >
+            Next: check the people
+          </button>
+        </>
+      )}
+
+      {/* ------------------------------------------------- step 2: people */}
+      {step === 'people' && (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <button onClick={() => setStep('columns')} className="btn btn-ghost btn-sm text-white/60">
+              ← Back to columns
+            </button>
             <div className="flex items-center gap-3">
               {validCount > 0 && (
                 <span className="flex items-center gap-1 text-emerald-400 text-sm">
@@ -299,16 +373,28 @@ export default function CSVImportPage() {
               )}
               {invalidCount > 0 && (
                 <span className="flex items-center gap-1 text-red-400 text-sm">
-                  <AlertCircle size={14} /> {invalidCount} invalid
+                  <AlertCircle size={14} /> {invalidCount} need fixing
                 </span>
               )}
-              <button
-                onClick={() => { setParsedPlayers([]); setFileName(''); setImportResult(null); }}
-                className="btn btn-ghost btn-sm text-white/50"
-              >
-                Clear
-              </button>
             </div>
+          </div>
+
+          <div className="card p-4 mb-4">
+            <p className="text-white font-medium">{summarizePlan(plan)}</p>
+            <p className="text-white/40 text-sm mt-1">
+              Someone already in your vault with the same email is updated, not added twice. Blank cells never
+              erase what you already have.
+            </p>
+            {(plan.skippedNoEmail.length > 0 || includeNoEmail) && (
+              <label className="mt-3 flex items-center gap-2 text-sm text-white/70 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeNoEmail}
+                  onChange={(e) => setIncludeNoEmail(e.target.checked)}
+                />
+                Also add people with no email (they can&apos;t be checked for duplicates)
+              </label>
+            )}
           </div>
 
           <div className="card overflow-hidden mb-6">
@@ -321,62 +407,71 @@ export default function CSVImportPage() {
                     <th>Email</th>
                     <th>Phone</th>
                     <th>Gender</th>
-                    <th>Age</th>
                     <th>NTRP</th>
-                    <th>UTR</th>
                     <th>Sport</th>
+                    <th>Membership</th>
                     <th className="w-8"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {parsedPlayers.map((player, i) => (
-                    <tr key={i} className={!player.valid ? 'bg-red-500/5' : ''}>
-                      <td>
-                        {player.valid ? (
-                          <Check size={14} className="text-emerald-400" />
-                        ) : (
-                          <span title={player.error}><AlertCircle size={14} className="text-red-400" /></span>
-                        )}
-                      </td>
-                      <td className="font-medium">{player.full_name || <span className="text-red-400">Missing</span>}</td>
-                      <td className="text-white/50">{player.email || '—'}</td>
-                      <td className="text-white/50">{player.phone || '—'}</td>
-                      <td className="text-white/50">{player.gender ? player.gender.charAt(0).toUpperCase() : '—'}</td>
-                      <td className="text-white/50">{player.age || '—'}</td>
-                      <td>{player.usta_rating || '—'}</td>
-                      <td>{player.utr_rating || '—'}</td>
-                      <td className="text-white/50">{sportLabel(player.primary_sport)}</td>
-                      <td>
-                        <button onClick={() => removePlayer(i)} className="p-1 hover:bg-white/10 rounded text-white/30 hover:text-red-400">
-                          <Trash2 size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {players.map((player, i) => {
+                    if (removed.has(i)) return null;
+                    const s = statusOf(player);
+                    return (
+                      <tr key={i} className={!player.valid ? 'bg-red-500/5' : ''}>
+                        <td>
+                          {s === 'fix' ? (
+                            <span title={player.error}><AlertCircle size={14} className="text-red-400" /></span>
+                          ) : s === 'skip' ? (
+                            <span className="text-[10px] uppercase text-white/40" title="No email">skip</span>
+                          ) : s === 'update' ? (
+                            <span className="text-[10px] uppercase text-sky-300" title="Already in your vault">update</span>
+                          ) : (
+                            <Check size={14} className="text-emerald-400" />
+                          )}
+                        </td>
+                        <td className="font-medium">{player.full_name || <span className="text-red-400">Missing</span>}</td>
+                        <td className="text-white/50">{player.email || '—'}</td>
+                        <td className="text-white/50">{player.phone || '—'}</td>
+                        <td className="text-white/50">{player.gender ? player.gender.charAt(0).toUpperCase() : '—'}</td>
+                        <td>{player.usta_rating || '—'}</td>
+                        <td className="text-white/50">{sportLabel(player.primary_sport)}</td>
+                        <td className="text-white/50 max-w-[240px] truncate" title={player.notes}>
+                          {player.membership_status ?? (player.notes ? 'in notes' : '—')}
+                        </td>
+                        <td>
+                          <button
+                            onClick={() => setRemoved((prev) => new Set(prev).add(i))}
+                            className="p-1 hover:bg-white/10 rounded text-white/30 hover:text-red-400"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
 
-          {/* Import result */}
           {importResult && (
             <div className={`alert ${importResult.failed === 0 ? 'alert-success' : 'alert-warning'} mb-4`}>
               <p className="text-sm">
-                Imported {importResult.success} player{importResult.success !== 1 ? 's' : ''} successfully!
-                {importResult.failed > 0 && ` ${importResult.failed} failed.`}
-                {importResult.failed === 0 && ' Redirecting to vault...'}
+                Done — {importResult.summary}.
+                {importResult.failed > 0 && ` ${importResult.failed} could not be saved.`}
+                {importResult.failed === 0 && ' Taking you to your vault…'}
               </p>
             </div>
           )}
 
-          {/* Import button */}
           <button
             onClick={handleImport}
             className="btn bg-[#D3FB52] text-[#002838] hover:bg-[#c5f035] w-full btn-lg font-semibold"
-            disabled={importing || validCount === 0}
+            disabled={importing || !!importResult || plan.inserts.length + plan.updates.length === 0}
           >
             {importing ? <div className="spinner" /> : (
-              <><Upload size={18} /> Import {validCount} Player{validCount !== 1 ? 's' : ''} to Vault</>
+              <><Upload size={18} /> Import: {plan.inserts.length} new, {plan.updates.length} updated</>
             )}
           </button>
         </>

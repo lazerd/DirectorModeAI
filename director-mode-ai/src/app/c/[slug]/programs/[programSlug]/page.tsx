@@ -16,7 +16,7 @@ import {
   programAvailability,
   registrationWindow,
 } from '@/lib/clubSite/server';
-import { readableOn, tint } from '@/lib/clubSite/theme';
+import { readableOn, tint, inkTint } from '@/lib/clubSite/theme';
 import {
   daysLabel,
   formatPrice,
@@ -119,7 +119,7 @@ export default async function ProgramDetailPage({
               {program.sport}
             </span>
             {(program.age_min || program.age_max) && (
-              <span className="text-xs font-medium" style={{ color: tint(theme.ink, 0.55) }}>
+              <span className="text-xs font-medium" style={{ color: inkTint(theme, 0.55) }}>
                 {program.age_min && program.age_max
                   ? `Ages ${program.age_min}–${program.age_max}`
                   : `Ages ${program.age_min}+`}
@@ -134,44 +134,44 @@ export default async function ProgramDetailPage({
             {program.title}
           </h1>
           {program.subtitle && (
-            <p className="mt-2 text-lg" style={{ color: tint(theme.ink, 0.65) }}>
+            <p className="mt-2 text-lg" style={{ color: inkTint(theme, 0.65) }}>
               {program.subtitle}
             </p>
           )}
 
           <dl
             className="mt-6 grid gap-x-8 gap-y-3 rounded-2xl border p-5 text-sm sm:grid-cols-2"
-            style={{ borderColor: tint(theme.ink, 0.12), background: theme.surface }}
+            style={{ borderColor: inkTint(theme, 0.12), background: theme.surface }}
           >
             <div>
               <dt className="font-semibold">When</dt>
-              <dd style={{ color: tint(theme.ink, 0.7) }}>
+              <dd style={{ color: inkTint(theme, 0.7) }}>
                 {daysLabel(program.days_of_week)},{' '}
                 {formatTimeRange(program.time_start, program.time_end)}
               </dd>
             </div>
             <div>
               <dt className="font-semibold">Sessions</dt>
-              <dd style={{ color: tint(theme.ink, 0.7) }}>
+              <dd style={{ color: inkTint(theme, 0.7) }}>
                 {sessions.count} {sessions.count === 1 ? 'class' : 'classes'}
               </dd>
             </div>
             {program.coach_name && (
               <div>
                 <dt className="font-semibold">Coach</dt>
-                <dd style={{ color: tint(theme.ink, 0.7) }}>{program.coach_name}</dd>
+                <dd style={{ color: inkTint(theme, 0.7) }}>{program.coach_name}</dd>
               </div>
             )}
             <div>
               <dt className="font-semibold">Where</dt>
-              <dd style={{ color: tint(theme.ink, 0.7) }}>
+              <dd style={{ color: inkTint(theme, 0.7) }}>
                 {program.location_note || club.name}
               </dd>
             </div>
             {program.level_note && (
               <div className="sm:col-span-2">
                 <dt className="font-semibold">Level</dt>
-                <dd style={{ color: tint(theme.ink, 0.7) }}>{program.level_note}</dd>
+                <dd style={{ color: inkTint(theme, 0.7) }}>{program.level_note}</dd>
               </div>
             )}
           </dl>
@@ -191,7 +191,7 @@ export default async function ProgramDetailPage({
           >
             Every date
           </h2>
-          <p className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.6) }}>
+          <p className="mt-1 text-sm" style={{ color: inkTint(theme, 0.6) }}>
             Struck-through dates are weeks we skip — they are not charged and not made up.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -204,8 +204,8 @@ export default async function ProgramDetailPage({
                   style={
                     skipped
                       ? {
-                          borderColor: tint(theme.ink, 0.12),
-                          color: tint(theme.ink, 0.4),
+                          borderColor: inkTint(theme, 0.12),
+                          color: inkTint(theme, 0.4),
                           textDecoration: 'line-through',
                           background: 'transparent',
                         }
@@ -221,7 +221,7 @@ export default async function ProgramDetailPage({
                 </span>
               ))}
             {sessions.dates.length === 0 && sessions.skipped.length === 0 && (
-              <span className="text-sm" style={{ color: tint(theme.ink, 0.55) }}>
+              <span className="text-sm" style={{ color: inkTint(theme, 0.55) }}>
                 Dates are being finalised.
               </span>
             )}
@@ -232,30 +232,30 @@ export default async function ProgramDetailPage({
         <aside>
           <div
             className="rounded-2xl border p-5 lg:sticky lg:top-6"
-            style={{ borderColor: tint(theme.ink, 0.14), background: theme.surface }}
+            style={{ borderColor: inkTint(theme, 0.14), background: theme.surface }}
           >
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold" style={{ color: theme.primary }}>
                 {formatPrice(program.price_cents)}
               </span>
               {sessions.count > 0 && (program.price_cents ?? 0) > 0 && (
-                <span className="text-sm" style={{ color: tint(theme.ink, 0.55) }}>
+                <span className="text-sm" style={{ color: inkTint(theme, 0.55) }}>
                   for {sessions.count} {sessions.count === 1 ? 'class' : 'classes'}
                 </span>
               )}
             </div>
             {program.member_price_cents != null && (
-              <div className="mt-1 text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+              <div className="mt-1 text-sm" style={{ color: inkTint(theme, 0.7) }}>
                 {formatPrice(program.member_price_cents)} for members
               </div>
             )}
             {program.drop_in_price_cents != null && (
-              <div className="text-sm" style={{ color: tint(theme.ink, 0.7) }}>
+              <div className="text-sm" style={{ color: inkTint(theme, 0.7) }}>
                 {formatPrice(program.drop_in_price_cents)} to drop in
               </div>
             )}
             {program.price_note && (
-              <div className="mt-2 text-xs" style={{ color: tint(theme.ink, 0.6) }}>
+              <div className="mt-2 text-xs" style={{ color: inkTint(theme, 0.6) }}>
                 {program.price_note}
               </div>
             )}
@@ -286,7 +286,7 @@ export default async function ProgramDetailPage({
                   onAccent={onPrimary}
                   ink={theme.ink}
                   surface={theme.cream}
-                  border={tint(theme.ink, 0.18)}
+                  border={inkTint(theme, 0.18)}
                 />
               ) : (
                 <div>

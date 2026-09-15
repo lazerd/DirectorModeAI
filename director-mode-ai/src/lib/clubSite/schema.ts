@@ -13,6 +13,7 @@
  */
 
 import { z } from 'zod';
+import { normalizeEmbedOrigin } from './embed';
 
 /** Trimmed, length-capped text. Empty becomes undefined so blanks don't render. */
 const text = (max: number) =>
@@ -148,6 +149,30 @@ const hexColor = z
   .optional();
 
 export const FONT_CHOICES = ['sans', 'serif', 'condensed'] as const;
+export const TEXT_SIZES = ['standard', 'large'] as const;
+
+/**
+ * The sites allowed to embed this club's pages. Each entry is normalised to a
+ * bare origin (normalizeEmbedOrigin) and one that cannot be is REJECTED here
+ * rather than dropped, so the director sees which line was wrong instead of
+ * watching it silently vanish from the list.
+ */
+const embedOrigins = z
+  .array(z.string().trim().max(200))
+  .max(20)
+  .transform((list, ctx) => {
+    const out: string[] = [];
+    for (const item of list) {
+      if (!item) continue;
+      const origin = normalizeEmbedOrigin(item);
+      if (!origin) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `"${item}" is not a website address` });
+        return z.NEVER;
+      }
+      if (!out.includes(origin)) out.push(origin);
+    }
+    return out;
+  });
 
 /**
  * What the editor may PATCH. Every key optional — the editor autosaves one
@@ -161,6 +186,8 @@ export const clubSitePatchSchema = z
     color_cream: hexColor,
     color_surface: hexColor,
     font_choice: z.enum(FONT_CHOICES).optional(),
+    text_size: z.enum(TEXT_SIZES).optional(),
+    embed_origins: embedOrigins.optional(),
 
     hero_headline: text(160),
     hero_subhead: text(400),

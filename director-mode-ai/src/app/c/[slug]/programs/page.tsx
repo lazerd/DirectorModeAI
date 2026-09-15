@@ -7,7 +7,7 @@
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getClubSite } from '@/lib/clubSite/server';
-import { tint } from '@/lib/clubSite/theme';
+import { inkTint } from '@/lib/clubSite/theme';
 import ProgramCard from '@/components/clubSite/ProgramCard';
 
 export const dynamic = 'force-dynamic';
@@ -54,7 +54,7 @@ export default async function ClubProgramsPage({
       <h1 className="text-3xl font-bold sm:text-4xl" style={{ fontFamily: theme.headingFamily }}>
         Programs &amp; classes
       </h1>
-      <p className="mt-3 max-w-2xl text-base" style={{ color: tint(theme.ink, 0.65) }}>
+      <p className="mt-3 max-w-2xl text-base" style={{ color: inkTint(theme, 0.65) }}>
         Every class with its real dates — including the weeks we skip — and sign-up in a couple of
         taps.
       </p>
@@ -62,10 +62,10 @@ export default async function ClubProgramsPage({
       {programs.length === 0 && (
         <div
           className="mt-8 rounded-2xl border p-8 text-center"
-          style={{ borderColor: tint(theme.ink, 0.12), background: theme.surface }}
+          style={{ borderColor: inkTint(theme, 0.12), background: theme.surface }}
         >
           <p className="font-medium">Nothing is open for registration right now.</p>
-          <p className="mt-2 text-sm" style={{ color: tint(theme.ink, 0.6) }}>
+          <p className="mt-2 text-sm" style={{ color: inkTint(theme, 0.6) }}>
             New sessions go up here as they are scheduled.
             {club.phone ? ` In the meantime, call ${club.phone}.` : ''}
           </p>
@@ -76,7 +76,7 @@ export default async function ClubProgramsPage({
         <section key={g.key} className="mt-10">
           <h2
             className="text-xs font-bold uppercase tracking-[0.16em]"
-            style={{ color: tint(theme.ink, 0.5) }}
+            style={{ color: inkTint(theme, 0.5) }}
           >
             {g.label}
           </h2>
@@ -106,7 +106,7 @@ export default async function ClubProgramsPage({
         <section className="mt-14">
           <h2
             className="text-xs font-bold uppercase tracking-[0.16em]"
-            style={{ color: tint(theme.ink, 0.5) }}
+            style={{ color: inkTint(theme, 0.5) }}
           >
             Run by our other pros
           </h2>
@@ -118,7 +118,7 @@ export default async function ClubProgramsPage({
                   key={i}
                   href={p.href as string}
                   className="rounded-xl border px-4 py-3 text-sm font-semibold"
-                  style={{ borderColor: tint(theme.ink, 0.15), background: theme.surface }}
+                  style={{ borderColor: inkTint(theme, 0.15), background: theme.surface }}
                 >
                   {p.name}
                   {p.sport ? ` · ${p.sport}` : ''} →

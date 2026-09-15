@@ -1,0 +1,73 @@
+<!doctype html>
+<!--
+  Embed test page — NOT a club website.
+
+  Stands in for "some other website" framing ClubMode's embed pages, so the
+  framing header, the in-frame links and /embed.js auto-resize can be checked
+  from a genuinely different origin. Serve this folder on another port and
+  open it:
+
+    cd scripts/fixtures && python -m http.server 5050
+    http://localhost:5050/embed-test.html?base=http://localhost:3000&slug=lafayette-tennis-club
+
+  `base` defaults to http://localhost:3000, `slug` to lafayette-tennis-club.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Embed test page</title>
+    <style>
+      body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #eef0f3; color: #222; }
+      header { background: #444; color: #fff; padding: 14px 20px; }
+      header b { letter-spacing: .04em; }
+      main { max-width: 1000px; margin: 0 auto; padding: 20px; }
+      section { background: #fff; border: 2px dashed #999; border-radius: 8px; margin: 0 0 28px; padding: 12px; }
+      h2 { margin: 0 0 8px; font-size: 14px; text-transform: uppercase; letter-spacing: .08em; color: #666; }
+      .meta { font: 12px ui-monospace, monospace; color: #888; margin-top: 6px; }
+    </style>
+  </head>
+  <body>
+    <header><b>EMBED TEST PAGE</b> — a stand-in host site, not a real club</header>
+    <main id="sections"></main>
+    <script>
+      (function () {
+        var q = new URLSearchParams(location.search);
+        var base = (q.get('base') || 'http://localhost:3000').replace(/\/$/, '');
+        var slug = q.get('slug') || 'lafayette-tennis-club';
+        var only = q.get('only');
+        var sections = [
+          ['programs', '/c/' + slug + '/programs?embed=1'],
+          ['calendar', '/calendar/' + slug + '?embed=1'],
+          ['courts', '/c/' + slug + '/courts?embed=1'],
+          ['about', '/c/' + slug + '?embed=1&section=about'],
+          ['team', '/c/' + slug + '?embed=1&section=team'],
+        ];
+        var main = document.getElementById('sections');
+        sections.forEach(function (s) {
+          if (only && only !== s[0]) return;
+          var sec = document.createElement('section');
+          sec.id = 'section-' + s[0];
+          var h = document.createElement('h2');
+          h.textContent = s[0];
+          var f = document.createElement('iframe');
+          f.src = base + s[1];
+          f.title = 'Embed test: ' + s[0];
+          f.setAttribute('data-clubmode-embed', '');
+          f.style.cssText = 'width:100%;min-height:600px;border:0;display:block;';
+          var meta = document.createElement('div');
+          meta.className = 'meta';
+          meta.textContent = f.src;
+          sec.appendChild(h);
+          sec.appendChild(f);
+          sec.appendChild(meta);
+          main.appendChild(sec);
+        });
+        var script = document.createElement('script');
+        script.src = base + '/embed.js';
+        script.async = true;
+        document.body.appendChild(script);
+      })();
+    </script>
+  </body>
+</html>

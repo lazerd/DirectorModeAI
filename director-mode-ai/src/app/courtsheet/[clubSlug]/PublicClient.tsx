@@ -15,7 +15,7 @@
  */
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutGrid, Users, Check, ChevronRight, MapPin, Handshake } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Court, Club } from '@/lib/courtsheet/types';
@@ -55,6 +55,8 @@ interface Props {
   initialCourts: Court[];
   /** The club has a /c site, so there is a booking page to send an open cell to. */
   hasSite: boolean;
+  /** Shown inside the club's own website (`?embed=1`). */
+  embedded?: boolean;
 }
 
 const money = (cents: number) =>
@@ -67,7 +69,7 @@ function clock(hhmm: string): { label: string; onHour: boolean } {
   return { label: m === 0 ? `${h12}${h < 12 ? 'am' : 'pm'}` : `${h12}:${String(m).padStart(2, '0')}`, onHour: m === 0 };
 }
 
-export default function PublicClient({ club, initialCourts, hasSite }: Props) {
+export default function PublicClient({ club, initialCourts, hasSite, embedded = false }: Props) {
   const todayISO = useMemo(() => {
     return new Intl.DateTimeFormat('en-CA', { timeZone: club.timezone }).format(new Date());
   }, [club.timezone]);
@@ -154,6 +156,9 @@ export default function PublicClient({ club, initialCourts, hasSite }: Props) {
                       sign in
                     </Link>
                     {sheet.memberFree ? '' : ' for your rate.'}
+                    {/* A frame cannot hold a sign-in (third-party cookies), so it
+                        opens outside — and the page says so first. */}
+                    {embedded && ' (Opens in a new window.)'}
                   </>
                 )}
               </p>
@@ -190,8 +195,12 @@ export default function PublicClient({ club, initialCourts, hasSite }: Props) {
           )}
         </section>
 
-        {/* CourtConnect — the reason a member opens this page is often "who can I play with". */}
-        <CourtConnectCard audience={sheet?.audience ?? 'public'} signedIn={!!sheet?.signedIn} />
+        {/* CourtConnect — the reason a member opens this page is often "who can I play with".
+            Not inside a club's own website: it is a ClubMode product that needs
+            a sign-in the frame cannot hold, cross-sold on somebody else's page. */}
+        {!embedded && (
+          <CourtConnectCard audience={sheet?.audience ?? 'public'} signedIn={!!sheet?.signedIn} />
+        )}
 
         {/* Open signups feed */}
         <section className="space-y-3">
@@ -221,6 +230,7 @@ export default function PublicClient({ club, initialCourts, hasSite }: Props) {
 
       <PublicSignupSheet
         target={signupTarget}
+        embedded={embedded}
         clubName={club.name}
         onClose={() => setSignupTarget(null)}
         onJoined={() => {
@@ -431,11 +441,13 @@ function PublicSignupCard({
 
 function PublicSignupSheet({
   target,
+  embedded,
   clubName,
   onClose,
   onJoined,
 }: {
   target: PublicReservation | null;
+  embedded: boolean;
   // Named in the SMS consent line: carriers require the opt-in to say who the
   // messages come from, not just "this club".
   clubName: string;
@@ -448,6 +460,15 @@ function PublicSignupSheet({
   const [smsOptIn, setSmsOptIn] = useState(false);
   const [smsPhone, setSmsPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  /*
+   * Inside a club's website the frame is as tall as the whole sheet, so a
+   * `fixed` dialog centres on the FRAME — possibly a screen below where the
+   * visitor tapped. Bring it to them.
+   */
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (target && embedded) panelRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [target, embedded]);
 
   if (!target) return null;
 
@@ -484,7 +505,7 @@ function PublicSignupSheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-[var(--cm-ground,#001820)] border border-white/10 p-5 sm:p-6 space-y-4 shadow-2xl">
+      <div ref={panelRef} className="relative w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl bg-[var(--cm-ground,#001820)] border border-white/10 p-5 sm:p-6 space-y-4 shadow-2xl">
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[var(--cm-accent,#D3FB52)]">
           <Users size={11} />
           Sign up
