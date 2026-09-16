@@ -45,7 +45,7 @@ export default async function CrmPage() {
     loadContactIndex(ctx.db),
     // Null when the outreach deck's tables are not there yet. Today hides the
     // line rather than claiming an empty deck.
-    loadDeckCount(ctx.db),
+    loadDeckCount(ctx.db, ctx.today),
   ]);
 
   const { live, cold } = splitDeals(orgs);

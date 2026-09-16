@@ -5,6 +5,7 @@
 
 import type { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type { ActivityKind } from './stages';
+import type { ISODate } from './dates';
 import { regionOf } from './region';
 import {
   ACTIVITY_COLS,
@@ -143,11 +144,28 @@ export async function loadContactIndex(
  */
 const DECK_TABLES = ['crm_outreach_queue', 'crm_outreach_emails', 'crm_outreach_drafts'];
 
-export async function loadDeckCount(db: Db): Promise<number | null> {
+/** Endings. A deck of thirty sent emails is not thirty emails to send. */
+const DECK_DONE = ['sent', 'rejected', 'failed', 'skipped', 'cancelled'];
+
+export async function loadDeckCount(db: Db, today: ISODate): Promise<number | null> {
   for (const table of DECK_TABLES) {
     try {
-      const { count, error } = await db.from(table).select('id', { count: 'exact', head: true });
-      if (!error && typeof count === 'number') return count;
+      /*
+       * "Today's deck" means today's, not everything ever drafted. Filtered on
+       * the deck's own send_date and status — but if that table turns out to
+       * be shaped differently, the narrow query errors and the plain head
+       * count below still answers, rather than the line disappearing because
+       * a column was renamed next door.
+       */
+      const narrow = await db
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .eq('send_date', today)
+        .not('status', 'in', `(${DECK_DONE.join(',')})`);
+      if (!narrow.error && typeof narrow.count === 'number') return narrow.count;
+
+      const all = await db.from(table).select('id', { count: 'exact', head: true });
+      if (!all.error && typeof all.count === 'number') return all.count;
     } catch {
       // Not there. Try the next name, then give up quietly.
     }
