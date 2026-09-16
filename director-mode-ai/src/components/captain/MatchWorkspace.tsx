@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import MatchNextStep, { matchStage } from '@/components/captain/MatchNextStep';
 import RecapPanel from '@/components/captain/RecapPanel';
+import TopDogPanel from '@/components/captain/TopDogPanel';
 import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 import { lineupAsText } from '@/lib/captain/lineupText';
@@ -117,6 +118,7 @@ export default function MatchWorkspace({
   status,
   initialResults,
   recapSentAt,
+  topdogMatchId,
   withdrawals,
   teamName,
   opponent,
@@ -142,9 +144,12 @@ export default function MatchWorkspace({
     won: boolean | null;
     defaulted?: boolean;
     default_by?: 'us' | 'them' | null;
+    opponentNames?: string[] | null;
   }[];
   /** When the post-match recap last went to the team, if it has. */
   recapSentAt: string | null;
+  /** TopDog's id for this match, when linked — enables "Enter on TopDog". */
+  topdogMatchId?: string | null;
   /**
    * Who tapped "I can't play" on the lineup email. Keyed by PLAYER, not by
    * slot, so a withdrawal survives every swap and line flip below — a bail
@@ -248,6 +253,14 @@ export default function MatchWorkspace({
           .filter((r) => (r as { defaulted?: boolean }).defaulted)
           .map((r) => [r.courtNumber, ((r as { default_by?: 'us' | 'them' }).default_by ?? 'them')]),
       ) as Record<number, 'us' | 'them' | null>,
+  );
+  /** The other team's players per court, "Jane Smith / Ann Lee" — read off the card, used to fill TopDog. */
+  const [opponentNames, setOpponentNames] = useState<Record<number, string>>(() =>
+    Object.fromEntries(
+      initialResults
+        .filter((r) => r.opponentNames?.length)
+        .map((r) => [r.courtNumber, (r.opponentNames ?? []).join(' / ')]),
+    ),
   );
   const [scores, setScores] = useState<Record<number, { score: string; won: boolean | null }>>(
     Object.fromEntries(
@@ -908,6 +921,10 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           won: scores[c.courtNumber]?.won ?? null,
           defaulted: !!defaulted[c.courtNumber],
           default_by: defaulted[c.courtNumber] ?? undefined,
+          opponent_names: (opponentNames[c.courtNumber] ?? '')
+            .split('/')
+            .map((n) => n.trim())
+            .filter(Boolean),
         })),
       },
       (j) => {
@@ -919,6 +936,24 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         router.refresh();
       },
     );
+
+  /**
+   * Whether the results form differs from what is saved. TopDog is filled from
+   * the SAVED results, so on 9/16 a re-read photo that was never saved went to
+   * TopDog without the opponent names it had just read.
+   */
+  const resultsDirty = courts.some((c) => {
+    const saved = initialResults.find((r) => r.courtNumber === c.courtNumber);
+    const now = scores[c.courtNumber];
+    const names = (v: string | undefined) =>
+      (v ?? '').split('/').map((n) => n.trim()).filter(Boolean).join('/');
+    return (
+      (now?.score ?? '') !== (saved?.score ?? '') ||
+      (now?.won ?? null) !== (saved?.won ?? null) ||
+      (defaulted[c.courtNumber] ?? null) !== (saved?.defaulted ? (saved.default_by ?? 'them') : null) ||
+      names(opponentNames[c.courtNumber]) !== names((saved?.opponentNames ?? []).join('/'))
+    );
+  });
 
   function setScore(courtNumber: number, patch: Partial<{ score: string; won: boolean | null }>) {
     setScores((s) => ({
@@ -971,6 +1006,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         score: string | null;
         won: boolean | null;
         defaulted: boolean;
+        opponents?: string[];
         winnerFrom: 'circle' | 'scores' | 'unclear';
         confidence: 'high' | 'medium' | 'low';
       }[];
@@ -981,6 +1017,9 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
 
       for (const r of rows) {
         setScore(r.court_number, { score: r.score ?? '', won: r.won });
+        if (r.opponents?.length) {
+          setOpponentNames((o) => ({ ...o, [r.court_number]: (r.opponents ?? []).join(' / ') }));
+        }
         setDefaulted((d) => ({
           ...d,
           [r.court_number]: r.defaulted ? (r.won === false ? 'us' : 'them') : null,
@@ -1000,7 +1039,15 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           (noCircle.length
             ? ` No winner circled on ${noCircle.join(', ')}, so the winner there came from the scores.`
             : '') +
-          ' Nothing is saved yet.',
+          // Say whether the other team's names came off the card: they are what
+          // lets the TopDog fill pick their players too.
+          (() => {
+            const named = rows.filter((r) => r.opponents?.length).length;
+            return named
+              ? ` Read ${opponent ?? 'the other team'}'s players on ${named} of ${rows.length} courts (the "vs" boxes).`
+              : ` Couldn't read ${opponent ?? 'the other team'}'s player names on the card.`;
+          })() +
+          ' Press Save scores to keep all of it, then Enter on TopDog.',
       );
     } catch (e: any) {
       setReadNote(e?.message || 'Could not read the scorecard.');
@@ -2452,6 +2499,16 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                       <div className="text-white text-sm flex-1 min-w-[10rem]">
                         {nameOf(c.player1Id)}
                         {c.courtType === 'doubles' ? ` / ${nameOf(c.player2Id)}` : ''}
+                        <input
+                          value={opponentNames[c.courtNumber] ?? ''}
+                          onChange={(e) =>
+                            setOpponentNames((o) => ({ ...o, [c.courtNumber]: e.target.value }))
+                          }
+                          placeholder={c.courtType === 'doubles' ? 'vs their players: Jane Smith / Ann Lee' : 'vs their player'}
+                          aria-label={`Opponents on court ${c.courtNumber}`}
+                          style={INPUT_COLOR}
+                          className="mt-1.5 block w-full max-w-sm px-2.5 py-1.5 rounded-lg bg-[#001820] border border-white/10 placeholder-white/25 text-xs focus:border-[#D3FB52]/50 focus:outline-none"
+                        />
                       </div>
                       <input
                         value={defaulted[c.courtNumber] ? 'Default' : s.score}
@@ -2537,6 +2594,16 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
             hasResults={initialResults.length > 0}
             recapSentAt={recapSentAt}
             timeZone={timeZone}
+          />
+
+          {/* Carries the SAVED scores to TopDog, so it holds back while the
+              form above has changes that aren't saved yet. */}
+          <TopDogPanel
+            teamId={teamId}
+            matchId={matchId}
+            linkedMatchId={topdogMatchId ?? null}
+            hasResults={initialResults.length > 0}
+            unsaved={resultsDirty}
           />
         </section>
       )}

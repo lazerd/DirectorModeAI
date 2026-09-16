@@ -9,7 +9,7 @@ import { useRouter } from 'next/navigation';
  *
  * Opens TopDog's Enter Score page with the scores in the link; the captain taps
  * the "Fill from ClubMode" bookmark there, checks the card, picks the other
- * team's players (ClubMode never has them) and presses Submit on TopDog.
+ * team's players it could not match, and presses Submit on TopDog.
  * Nothing is ever submitted from here.
  */
 export default function TopDogPanel({
@@ -17,12 +17,15 @@ export default function TopDogPanel({
   matchId,
   linkedMatchId,
   hasResults,
+  unsaved = false,
 }: {
   teamId: string;
   matchId: string;
   /** TopDog's id for this match, when it is linked. */
   linkedMatchId: string | null;
   hasResults: boolean;
+  /** The score form above has changes not saved yet — TopDog would get the old ones. */
+  unsaved?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<'open' | 'fix' | 'link' | null>(null);
@@ -96,7 +99,7 @@ export default function TopDogPanel({
           <p className="text-white/40 text-sm mt-0.5">
             {linkedMatchId
               ? hasResults
-                ? 'Opens the TopDog score card. Tap your Fill from ClubMode bookmark there, pick the other team’s players, check it, and Submit.'
+                ? 'Opens the TopDog score card. Tap your Fill from ClubMode bookmark there, check the card against the paper, and Submit.'
                 : 'Save the court scores above first. Then this fills the TopDog card for you.'
               : 'Link this match to its TopDog match to fill the score card from here.'}
           </p>
@@ -105,7 +108,7 @@ export default function TopDogPanel({
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => open('open')}
-              disabled={!hasResults || !!busy}
+              disabled={!hasResults || unsaved || !!busy}
               className={primary}
             >
               {busy === 'open' ? 'Opening…' : 'Enter on TopDog'}
@@ -113,6 +116,13 @@ export default function TopDogPanel({
           </div>
         )}
       </div>
+
+      {unsaved && linkedMatchId && (
+        <p className="mt-3 text-sm text-amber-200">
+          You have score changes that aren&apos;t saved. Press <b>Save scores</b> above first. TopDog
+          gets what is saved, including the opponents&apos; names.
+        </p>
+      )}
 
       {opened && (
         <div className="mt-3 rounded-lg border border-[#D3FB52]/30 bg-[#D3FB52]/10 p-3 text-sm text-[#D3FB52]">
@@ -137,7 +147,7 @@ export default function TopDogPanel({
           Set up the Fill from ClubMode bookmark (one time)
         </Link>
         {linkedMatchId && hasResults && (
-          <button onClick={() => open('fix')} disabled={!!busy} className="hover:text-white underline underline-offset-2">
+          <button onClick={() => open('fix')} disabled={unsaved || !!busy} className="hover:text-white underline underline-offset-2">
             Already posted? Correct it on TopDog
           </button>
         )}

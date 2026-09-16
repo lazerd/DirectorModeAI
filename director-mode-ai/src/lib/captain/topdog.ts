@@ -82,6 +82,8 @@ export type FillCourt = {
   won: boolean | null;
   defaulted: boolean;
   defaultBy: 'us' | 'them' | null;
+  /** The other team's players as written on the scorecard, when known. */
+  opponents?: string[];
 };
 
 /** What the bookmarklet reads. Keep in step with public/topdog-fill.js. */
@@ -102,8 +104,8 @@ export type FillPayload = {
     winner: 'us' | 'them' | null;
     /** Our names, or 'default' when we could not field the court. */
     us: (string | null)[] | 'default';
-    /** Only ever 'default' — ClubMode doesn't know the other team's names. */
-    them: 'default' | null;
+    /** Their names as written on the scorecard, 'default', or null when unknown. */
+    them: (string | null)[] | 'default' | null;
     sets: SetScore[];
   }[];
 };
@@ -131,6 +133,9 @@ export function buildFillPayload(input: {
     const names = c.players.slice(0, need);
     while (names.length < need) names.push(null);
 
+    const theirs = (c.opponents ?? []).map((n) => n.trim()).filter(Boolean).slice(0, need);
+    const them = theirs.length ? theirs : null;
+
     if (c.defaulted) {
       const weDefaulted = c.defaultBy === 'us';
       if (!weDefaulted && names.some((n) => !n)) problems.push(`${label}: a player is missing from the lineup.`);
@@ -140,13 +145,31 @@ export function buildFillPayload(input: {
         status: 'DF',
         winner: weDefaulted ? 'them' : 'us',
         us: weDefaulted ? 'default' : names,
-        them: weDefaulted ? null : 'default',
+        them: weDefaulted ? them : 'default',
         // TopDog: "Default matches must be recorded as 6-0, 6-0."
         sets: weDefaulted ? [[0, 6], [0, 6]] : [[6, 0], [6, 0]],
       } as FillPayload['lines'][number];
     }
 
-    const { sets, retired } = topdogSets(c.score);
+    const read = topdogSets(c.score);
+    const retired = read.retired;
+    let sets = read.sets;
+    // TopDog puts each team's games on that team's row, so the sets must be
+    // from OUR side. A score saved winner-first on a loss ("6-1, 6-2", lost)
+    // would hand us the 6s. When the saved sets contradict the saved winner,
+    // turn them so the winner leads, and say so.
+    if (!retired && c.won != null && sets.length) {
+      const ours = sets.filter(([a, b]) => a > b).length;
+      const theirs = sets.filter(([a, b]) => b > a).length;
+      if ((c.won && ours < theirs) || (!c.won && ours > theirs)) {
+        sets = sets.map(([a, b]) => [b, a] as SetScore);
+        problems.push(
+          `${label}: the saved score ${c.score} doesn't match the ${c.won ? 'win' : 'loss'}, so TopDog gets ${sets
+            .map(([a, b]) => `${a}-${b}`)
+            .join(', ')}. Fix the score in ClubMode too.`,
+        );
+      }
+    }
     if (!sets.length) problems.push(`${label}: no score saved.`);
     if (c.won == null) problems.push(`${label}: no winner marked.`);
     if (names.some((n) => !n)) problems.push(`${label}: a player is missing from the lineup.`);
@@ -156,7 +179,7 @@ export function buildFillPayload(input: {
       status: retired ? 'RE' : 'C',
       winner: c.won == null ? null : c.won ? 'us' : 'them',
       us: names,
-      them: null,
+      them,
       sets,
     } as FillPayload['lines'][number];
   });

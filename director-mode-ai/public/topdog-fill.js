@@ -90,10 +90,18 @@
    * surname first — any run of words after the first name — and only use the
    * first name to split two players who share a surname. Anything short of
    * exactly one candidate is left blank and flagged, never guessed.
+   *
+   * Opponent names come off a handwritten card, so they may also be
+   * "Smith, Jane" or one word: a lone surname, or failing that a lone first name
+   * (flagged for checking).
    */
   function findPlayer(select, fullName) {
-    var words = String(fullName || '').trim().split(/\s+/);
-    if (words.length < 2) return { status: 'none' };
+    var raw = String(fullName || '').trim();
+    var comma = raw.indexOf(',');
+    if (comma > 0) raw = raw.slice(comma + 1).trim() + ' ' + raw.slice(0, comma).trim();
+    var words = raw.split(/\s+/).filter(Boolean);
+    if (!words.length) return { status: 'none' };
+    if (words.length === 1) return findByOneWord(select, letters(words[0]));
     var first = letters(words[0]);
     var rest = words.slice(1).map(letters);
     var surnames = {};
@@ -122,6 +130,24 @@
     return { status: 'none' };
   }
 
+  function findByOneWord(select, word) {
+    var byLast = [];
+    var byFirst = [];
+    for (var k = 0; k < select.options.length; k++) {
+      var o = select.options[k];
+      if (!o.value || o.value === '-1') continue;
+      var n = optionName(o.text);
+      if (!n) continue;
+      if (n.last === word) byLast.push(o);
+      if (n.first === word) byFirst.push(o);
+    }
+    if (byLast.length === 1) return { status: 'ok', option: byLast[0] };
+    if (byLast.length > 1) return { status: 'ambiguous' };
+    if (byFirst.length === 1) return { status: 'check', option: byFirst[0] };
+    if (byFirst.length > 1) return { status: 'ambiguous' };
+    return { status: 'none' };
+  }
+
   function setSelect(select, value) {
     if (!select) return false;
     select.value = value;
@@ -142,6 +168,7 @@
 
   var issues = [];
   var toPick = [];
+  var unnamedCourts = [];
   var firstFlag = null;
   var filled = 0;
 
@@ -194,12 +221,30 @@
 
         var other = el(theirs.p + slot + '_' + i);
         if (!other) continue;
+        var theirName = Array.isArray(line.them) ? line.them[slot - 1] : null;
         if (line.them === 'default') {
           setSelect(other, '-1');
+        } else if (theirName) {
+          var got = findPlayer(other, theirName);
+          if (got.option) {
+            setSelect(other, got.option.value);
+            if (got.status === 'check') {
+              mark(other, AMBER);
+              issues.push(label + ': read "' + theirName + '" off the scorecard as "' + got.option.text.replace(/\s*\(.*$/, '') + '". Check it.');
+              firstFlag = firstFlag || other;
+            } else {
+              mark(other, GREEN);
+            }
+          } else {
+            other.value = ''; fire(other); mark(other, AMBER);
+            issues.push(label + ': "' + theirName + '" from the scorecard ' + (got.status === 'ambiguous' ? 'matches more than one player' : 'is not') + ' on the ' + (payload.opponent || 'other team') + ' TopDog roster. Pick the player by hand.');
+            toPick.push(other);
+          }
         } else if (!other.value || other.value === '-1') {
           if (other.value === '-1') { other.value = ''; fire(other); }
           mark(other, AMBER);
           toPick.push(other);
+          if (unnamedCourts.indexOf(line.court) < 0) unnamedCourts.push(line.court);
         }
       }
 
@@ -239,7 +284,8 @@
   }
   add('div', 'ClubMode filled ' + filled + ' court' + (filled === 1 ? '' : 's'), 'font-weight:700;font-size:16px;color:#D3FB52;margin-bottom:6px');
   if (toPick.length) {
-    add('div', 'Your turn: pick ' + (payload.opponent || 'the other team') + '\'s players in the ' + toPick.length + ' amber box' + (toPick.length === 1 ? '' : 'es') + '. ClubMode doesn\'t have their names.', 'margin-bottom:6px');
+    add('div', 'Your turn: pick ' + (payload.opponent || 'the other team') + '\'s players in the ' + toPick.length + ' amber box' + (toPick.length === 1 ? '' : 'es') + '.' +
+      (unnamedCourts.length ? ' No opponent names are saved in ClubMode for court' + (unnamedCourts.length === 1 ? ' ' : 's ') + unnamedCourts.join(', ') + '.' : ''), 'margin-bottom:6px');
   }
   if (issues.length) {
     var list = add('ul', '', 'margin:6px 0;padding-left:18px;color:#fecaca');
