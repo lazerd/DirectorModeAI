@@ -27,7 +27,9 @@ export default async function DeckPage() {
   const payload = await loadDeck(ctx.db, ctx.repEmail);
 
   return (
-    <div className="min-h-screen bg-[#001820] px-4 pb-24 pt-20 text-white sm:px-6 md:pt-8">
+    // pb-36 on a phone leaves room under the sticky action bar and the app's
+    // own fixed "Ask ClubMode" button; neither may cover the last line.
+    <div className="min-h-screen bg-[#001820] px-4 pb-36 pt-20 text-white sm:px-6 sm:pb-12 md:pt-8">
       <div className="mx-auto max-w-[620px]">
         <header className="flex items-baseline justify-between gap-3">
           <h1 className="font-display text-2xl text-white">Today&rsquo;s deck</h1>

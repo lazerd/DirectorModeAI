@@ -320,8 +320,22 @@ export default function Deck({ initial, repName }: { initial: Payload; repName: 
         </p>
       </div>
 
-      {/* The buttons are the same four decisions as the keys and the swipe. */}
-      <div className="mt-4 grid grid-cols-4 gap-2">
+      {/*
+        The buttons are the same four decisions as the keys and the swipe.
+
+        Two things on a phone, both about the same 56px:
+
+        `pr-14` keeps the row clear of the app's global "Ask ClubMode" button,
+        which is fixed in the bottom-right corner and sat directly on top of
+        Approve — a primary action you could not fully tap. Reserving the
+        column beside it is the only fix that holds at every scroll position,
+        because a fixed button does not move when you scroll and a sticky one
+        stops being sticky at the end of the document.
+
+        `sticky` then keeps the four decisions reachable while the rep scrolls
+        a long email, which on a 430px screen is what they are always doing.
+      */}
+      <div className="sticky bottom-3 z-10 mt-4 grid grid-cols-4 gap-2 rounded-xl bg-[#001820]/90 py-2 pr-14 backdrop-blur sm:static sm:bg-transparent sm:py-0 sm:pr-0 sm:backdrop-blur-none">
         <Button onClick={() => setAsking(true)} testid="deck-skip" tone="skip">
           Skip <Key>←</Key>
         </Button>
