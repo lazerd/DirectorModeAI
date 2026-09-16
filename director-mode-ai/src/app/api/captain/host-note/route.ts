@@ -61,7 +61,11 @@ export async function GET(req: Request) {
   const q = new URL(req.url).searchParams;
   const ctx = await requireTeam(q.get('team_id') || '');
   if (isError(ctx)) return ctx.error;
-  const { db, team, teamId } = ctx;
+  const { team, teamId } = ctx;
+  // requireTeam() has authorised the caller for this team; every query below
+  // is scoped to teamId. ctx.db carries the caller's RLS, and host notes have
+  // no user policies, so they are read and written with the admin client.
+  const db = getSupabaseAdmin();
   const matchId = q.get('match_id');
 
   let notesQ = db
@@ -95,7 +99,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Paste the whole email from the host club.' }, { status: 400 });
   }
   try {
-    const note = await fileHostNote(ctx.db, ctx.team, { source: 'paste', body: text, matchId: body.match_id });
+    const note = await fileHostNote(getSupabaseAdmin(), ctx.team, {
+      source: 'paste',
+      body: text,
+      matchId: body.match_id,
+    });
     return NextResponse.json({ note });
   } catch (e) {
     const err = e as HostNoteError;
@@ -113,7 +121,8 @@ export async function PATCH(req: Request) {
   };
   const ctx = await requireTeam(body.team_id || '');
   if (isError(ctx)) return ctx.error;
-  const { db, teamId } = ctx;
+  const { teamId } = ctx;
+  const db = getSupabaseAdmin(); // see GET: authorised above, scoped by teamId below
 
   const { data: note } = await db
     .from('captain_host_notes')
