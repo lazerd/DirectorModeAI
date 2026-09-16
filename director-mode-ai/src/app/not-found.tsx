@@ -1,5 +1,7 @@
 import Link from 'next/link';
+import { cookies } from 'next/headers';
 import { Zap, ArrowRight } from 'lucide-react';
+import { DEMO_COOKIE } from '@/lib/demo/server';
 
 /**
  * The 404 a stranger sees.
@@ -9,7 +11,15 @@ import { Zap, ArrowRight } from 'lucide-react';
  * "404: This page could not be found." on white. For someone arriving from a
  * cold email that reads as a dead site, not a mistyped address.
  */
-export default function NotFound() {
+export default async function NotFound() {
+  /*
+   * A demo link signs the browser in as the demo member, so the owner's own
+   * pages stop existing for it — and a 404 that says "the address is slightly
+   * off" sends them hunting for a typo that isn't there. Say what actually
+   * happened (Darrin, 2026-09-16, hitting his own /crm from inside the demo).
+   */
+  const inDemo = !!(await cookies()).get(DEMO_COOKIE)?.value;
+
   return (
     <div
       className="flex min-h-screen items-center justify-center bg-[#001016] px-5 text-white"
@@ -33,6 +43,14 @@ export default function NotFound() {
           The link may be out of date, or the address slightly off. Nothing is broken —
           you&apos;re just somewhere that isn&apos;t a page.
         </p>
+
+        {inDemo && (
+          <p className="mt-6 rounded-xl border border-[#D3FB52]/30 bg-[#D3FB52]/10 px-4 py-3 text-[14px] leading-relaxed text-white/80">
+            You&apos;re signed in to a demo right now, so your own pages are out of reach.
+            Use <strong>Leave demo</strong> at the bottom of the screen, then sign in as
+            yourself.
+          </p>
+        )}
 
         <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
           <Link
