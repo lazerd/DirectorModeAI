@@ -1039,7 +1039,15 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           (noCircle.length
             ? ` No winner circled on ${noCircle.join(', ')}, so the winner there came from the scores.`
             : '') +
-          ' Nothing is saved yet.',
+          // Say whether the other team's names came off the card: they are what
+          // lets the TopDog fill pick their players too.
+          (() => {
+            const named = rows.filter((r) => r.opponents?.length).length;
+            return named
+              ? ` Read ${opponent ?? 'the other team'}'s players on ${named} of ${rows.length} courts (the "vs" boxes).`
+              : ` Couldn't read ${opponent ?? 'the other team'}'s player names on the card.`;
+          })() +
+          ' Press Save scores to keep all of it, then Enter on TopDog.',
       );
     } catch (e: any) {
       setReadNote(e?.message || 'Could not read the scorecard.');
