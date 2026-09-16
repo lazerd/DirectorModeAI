@@ -56,6 +56,12 @@ export default function Compose({
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
+  /*
+   * Which template this started from, for the ledger. Kept after an edit on
+   * purpose — "they took the intro and changed a line" is the useful fact, and
+   * clearing it on the first keystroke would record almost nothing.
+   */
+  const [templateSlug, setTemplateSlug] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<string[]>([]);
   const [canSend, setCanSend] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -75,7 +81,11 @@ export default function Compose({
 
   function applyTemplate(slug: string) {
     const t = templates.find((x) => x.slug === slug);
-    if (!t) return;
+    if (!t) {
+      setTemplateSlug(null);
+      return;
+    }
+    setTemplateSlug(t.slug);
     setSubject(t.subject);
     setBody(t.body);
   }
@@ -87,7 +97,7 @@ export default function Compose({
       const res = await fetch('/api/crm/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: org.id, contact_id: contactId, subject, body, confirm }),
+        body: JSON.stringify({ org_id: org.id, contact_id: contactId, subject, body, confirm, template_slug: templateSlug }),
       });
       const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (confirm) {
@@ -99,6 +109,7 @@ export default function Compose({
         if (j.status === 'sent') {
           setSubject('');
           setBody('');
+          setTemplateSlug(null);
           onSent();
         }
         return;

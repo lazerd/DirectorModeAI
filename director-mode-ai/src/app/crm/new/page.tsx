@@ -19,7 +19,7 @@ export const metadata = {
 export default async function NewOrgPage() {
   const ctx = await requireCrmForPage('/crm/new');
   return (
-    <div className="min-h-screen bg-[#001820] px-4 py-6 text-white sm:px-6 md:px-10">
+    <div className="min-h-screen bg-[#001820] px-4 pb-10 pt-20 text-white sm:px-6 md:px-10 md:pt-8">
       <div className="mx-auto max-w-lg">
         <Link href="/crm" className="text-sm text-white/40 hover:text-white">
           ← Pipeline

@@ -77,6 +77,18 @@ export async function loadOrg(db: Db, id: string): Promise<OrgBundle | null> {
   };
 }
 
+/**
+ * The reps, for turning crm_orgs.owner_email into initials on a card.
+ *
+ * Without this the badge falls back to the first two letters of the address —
+ * "DA" for darrinjco@gmail.com, which is not what anyone calls him. Two rows,
+ * so it is one cheap query rather than anything clever.
+ */
+export async function loadReps(db: Db): Promise<{ email: string; full_name: string | null; initials: string | null }[]> {
+  const { data } = await db.from('crm_users').select('email, full_name, initials').eq('active', true);
+  return (data as { email: string; full_name: string | null; initials: string | null }[] | null) || [];
+}
+
 export interface Template {
   id: string;
   slug: string;

@@ -23,14 +23,21 @@ import type { OrgCard } from '@/lib/crm/types';
 
 const VIEW_KEY = 'crm:view';
 
-function Initials({ email }: { email: string | null }) {
+/**
+ * Whose deal it is, in two characters.
+ *
+ * Looked up against the allowlist rather than derived from the address: the
+ * fallback turns darrinjco@gmail.com into "DA", which is nobody's initials.
+ */
+function Initials({ email, reps }: { email: string | null; reps: Rep[] }) {
   if (!email) return null;
+  const rep = reps.find((r) => r.email.toLowerCase() === email.toLowerCase()) ?? null;
   return (
     <span
-      title={email}
+      title={rep?.full_name || email}
       className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-[10px] font-semibold text-white/70"
     >
-      {initialsFor({ full_name: null, email })}
+      {initialsFor(rep ? { ...rep, email } : { full_name: null, email })}
     </span>
   );
 }
@@ -50,7 +57,7 @@ function NextStep({ org, today }: { org: OrgCard; today: ISODate }) {
   );
 }
 
-function Card({ org, today }: { org: OrgCard; today: ISODate }) {
+function Card({ org, today, reps }: { org: OrgCard; today: ISODate; reps: Rep[] }) {
   const age = ageLabel(org.last_activity_at, today);
   return (
     <Link
@@ -59,7 +66,7 @@ function Card({ org, today }: { org: OrgCard; today: ISODate }) {
     >
       <div className="flex items-start justify-between gap-2">
         <span className="font-semibold leading-tight text-white">{org.name}</span>
-        <Initials email={org.owner_email} />
+        <Initials email={org.owner_email} reps={reps} />
       </div>
       <div className="mt-2 text-xs leading-snug">
         <NextStep org={org} today={today} />
@@ -72,12 +79,16 @@ function Card({ org, today }: { org: OrgCard; today: ISODate }) {
   );
 }
 
+export type Rep = { email: string; full_name: string | null; initials: string | null };
+
 export default function PipelineBoard({
   orgs,
+  reps,
   today,
   byStage,
 }: {
   orgs: OrgCard[];
+  reps: Rep[];
   today: ISODate;
   byStage: { stage: Stage; count: number }[];
 }) {
@@ -167,7 +178,7 @@ export default function PipelineBoard({
                   </h2>
                   <div className="space-y-2">
                     {list.map((o) => (
-                      <Card key={o.id} org={o} today={today} />
+                      <Card key={o.id} org={o} today={today} reps={reps} />
                     ))}
                     {list.length === 0 && (
                       <div className="rounded-xl border border-dashed border-white/[0.06] p-3 text-[11px] text-white/20">
@@ -203,7 +214,7 @@ export default function PipelineBoard({
                         {age && <span>Last touch {age}</span>}
                       </div>
                     </div>
-                    <Initials email={o.owner_email} />
+                    <Initials email={o.owner_email} reps={reps} />
                   </div>
                 </Link>
               </li>

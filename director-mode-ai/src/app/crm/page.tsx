@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { requireCrmForPage } from '@/lib/crm/server';
-import { loadPipeline } from '@/lib/crm/load';
+import { loadPipeline, loadReps } from '@/lib/crm/load';
 import { buildPipeline, money } from '@/lib/crm/insights';
 import PipelineBoard from './PipelineBoard';
 
@@ -24,11 +24,11 @@ export const metadata = {
 
 export default async function CrmPage() {
   const ctx = await requireCrmForPage('/crm');
-  const orgs = await loadPipeline(ctx.db);
+  const [orgs, reps] = await Promise.all([loadPipeline(ctx.db), loadReps(ctx.db)]);
   const pipeline = buildPipeline(orgs, ctx.today);
 
   return (
-    <div className="min-h-screen bg-[#001820] px-4 py-6 text-white sm:px-6 md:px-10">
+    <div className="min-h-screen bg-[#001820] px-4 pb-10 pt-20 text-white sm:px-6 md:px-10 md:pt-8">
       <div className="mx-auto max-w-[1400px]">
         <header className="flex flex-wrap items-baseline justify-between gap-3">
           <div>
@@ -91,6 +91,7 @@ export default async function CrmPage() {
           <div className="mt-8">
             <PipelineBoard
               orgs={orgs}
+              reps={reps}
               today={ctx.today}
               byStage={pipeline.byStage.map(({ stage, count }) => ({ stage, count }))}
             />
