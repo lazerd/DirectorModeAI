@@ -27,9 +27,7 @@ const GOOD = [
   '',
   'It is the club\'s own site, court booking, members finding a fourth, and a QR code at the gate. Two clubs at Rossmoor and Lafayette are running on it.',
   '',
-  'I would rather build Agawam Hunt Club one and send you the link than describe mine.',
-  '',
-  'Worth 15 minutes?',
+  "If you want, I'll build Agawam Hunt Club's and send you the link. Costs you nothing.",
 ].join('\n');
 
 describe('the validator', () => {
@@ -47,7 +45,7 @@ describe('the validator', () => {
   });
 
   it('rejects an invented court count', () => {
-    const bad = GOOD.replace('I would rather', 'Your six Har-Tru courts are the kind of thing we handle. I would rather');
+    const bad = GOOD.replace('If you want', 'Your six Har-Tru courts are the kind of thing we handle. If you want');
     expect(validate(bad, FACTS)).toContain('invented_fact');
   });
 
@@ -57,7 +55,7 @@ describe('the validator', () => {
   });
 
   it('rejects an invented membership number', () => {
-    const bad = GOOD.replace('I would rather', 'With your 600 members this matters. I would rather');
+    const bad = GOOD.replace('If you want', 'With your 600 members this matters. If you want');
     expect(validate(bad, FACTS)).toContain('invented_fact');
   });
 
@@ -74,7 +72,14 @@ describe('the validator', () => {
   });
 
   it('rejects a letter that never makes the ask', () => {
-    expect(validate(GOOD.replace('Worth 15 minutes?', 'Let me know!'), FACTS)).toContain('no_ask');
+    const noOffer = GOOD.replace(/If you want[\s\S]*$/, 'That is all I wanted to say.');
+    expect(validate(noOffer, FACTS)).toContain('no_ask');
+  });
+
+  it('rejects the salesy wording Darrin banned', () => {
+    const salesy = `${GOOD}\n\nWorth 15 minutes?`;
+    expect(validate(salesy, FACTS)).toContain('sales_speak');
+    expect(validate(GOOD.replace('I built', 'I wanted to reach out about what I built'), FACTS)).toContain('sales_speak');
   });
 
   it('rejects a letter that forgot the person or the club', () => {
@@ -119,7 +124,7 @@ describe('falling back rather than sending something odd', () => {
   });
 
   it('throws away an invalid draft and sends the plain template instead', async () => {
-    const bad = 'Hi Mary, I noticed your eight clay courts at Agawam. Worth 15 minutes?';
+    const bad = "Hi Mary, I noticed your eight clay courts at Agawam. I'll build yours and send you the link.";
     const d = await draftEmail(FACTS, TPL, { kind: 'intro', client: stub(bad) });
     expect(d.generated_by).toBe('template');
     expect(d.rejected).toContain('invented_fact');

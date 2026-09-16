@@ -66,6 +66,7 @@ export type Violation =
   | 'placeholder'
   | 'too_long'
   | 'no_ask'
+  | 'sales_speak'
   | 'no_name'
   | 'no_club'
   | 'invented_fact'
@@ -76,7 +77,8 @@ export const VIOLATION_TEXT: Record<Violation, string> = {
   empty: 'came back empty',
   placeholder: 'left a placeholder unfilled',
   too_long: `ran over ${MAX_WORDS} words`,
-  no_ask: 'never made the ask',
+  no_ask: 'never offered to build them one',
+  sales_speak: 'used a salesy phrase we have banned',
   no_name: "did not use the contact's first name",
   no_club: 'never named the club',
   invented_fact: 'invented something about the club',
@@ -104,6 +106,30 @@ const INVENTED = [
   /\b(?:looks? like|seems? like|sounds? like) (?:you|your club)\b/i,
 ];
 
+/**
+ * The phrases that give a sales email away.
+ *
+ * Darrin's rule, on reading the first draft: "Stuff like 'Worth 15 minutes?'
+ * is so AI salesly awful… messages need to be from the heart." A letter asking
+ * a stranger for a meeting is a sales email. A letter offering to build their
+ * club something, free, whether or not they ever pay, is a gift — so the ask
+ * became the offer, and the meeting-request wording is banned outright.
+ */
+const SALES_SPEAK = [
+  /\bworth \d+ minutes\b/i,
+  /\b(?:quick|brief) (?:question|call|chat)\b/i,
+  /\breach(?:ing)? out\b/i,
+  /\bcircle back\b/i,
+  /\btouch(?:ing)? base\b/i,
+  /\bhope (?:this|you)[^.]{0,30}(?:finds you well|are well|doing well)\b/i,
+  /\b(?:solutions?|leverage|streamline|synergy|value prop|pain points?|ROI|onboarding experience)\b/i,
+  /\bexcited to\b/i,
+  /\blet me know if you(?:'re| are) interested\b/i,
+  /\b(?:book|schedule|hop on|jump on) a (?:call|demo|time)\b/i,
+  /\bgame[- ]chang(?:er|ing)\b/i,
+  /\bI help \w+ clubs\b/i,
+];
+
 /** Things a model adds that turn a note back into a campaign. */
 const MARKUP = [/\[[^\]]+\]\([^)]+\)/, /^\s*[*-]\s+/m, /\*\*/, /^#{1,6}\s/m, /https?:\/\//i];
 
@@ -127,9 +153,13 @@ export function validate(body: string, facts: ClubFacts): Violation[] {
 
   if (/\{\{|\}\}|\[(?:club|name|first_name|your|insert)[^\]]*\]|__+/i.test(text)) out.push('placeholder');
   if (wordCount(text) > MAX_WORDS) out.push('too_long');
-  // The ask is the only thing this email is for. "15 minutes" is the wording
-  // in the template and the wording the model is told to end on.
-  if (!/\b15 minutes\b/i.test(text)) out.push('no_ask');
+  // The offer IS the ask: he builds their club's site and sends the link,
+  // free, the way Rossmoor and Lafayette got theirs. A letter that describes
+  // the product and stops has nothing in it for the person reading.
+  const offersToBuild = /\bbuild\b/i.test(text);
+  const offersToShow = /\b(?:send you the link|send it to you|send you a link|link to it|have a look|look at it|see it)\b/i.test(text);
+  if (!offersToBuild || !offersToShow) out.push('no_ask');
+  if (SALES_SPEAK.some((re) => re.test(text))) out.push('sales_speak');
   if (facts.firstName && !new RegExp(`\\b${escapeRe(facts.firstName)}\\b`, 'i').test(text)) out.push('no_name');
   if (facts.club && !clubMentioned(text, facts.club)) out.push('no_club');
   if (INVENTED.some((re) => re.test(text))) out.push('invented_fact');
@@ -217,14 +247,20 @@ export function whyLine(facts: ClubFacts, opts: { kind: 'intro' | 'followup'; da
 const SYSTEM = [
   'You write one short cold email at a time, from a tennis director in California to a person at another racquet club.',
   '',
-  'Who is writing: he runs the tennis program at a club in the East Bay. He was paying for software that did about a third of what he needed, so he built his own, and it became a product called ClubMode. It is the club\'s own public website, court booking, members finding each other a fourth (CourtConnect), captain tools for league teams, and a QR code at the gate for court check-in. Two clubs at Rossmoor and Lafayette Tennis Club have working sites on it now — he built each one before anyone paid him anything. That offer is the letter: he will build theirs and send the link.',
+  'Who is writing: he is the tennis director at a club in Orinda, California. Not a software person — he started building this because he was spending Sunday nights making draw sheets in Excel and answering forty texts about who was playing at nine. It turned into the club\'s own website, court sign-ups, members finding each other a fourth, captain tools for league teams, and a QR code on the fence so nobody argues about whose court it is.',
+  '',
+  'The story he can tell, and it is true: last month he built one for a club of 200 players in their seventies and eighties who run everything off a whiteboard and a paper sign-in sheet at the kiosk. Their tournament director had been nursing the same pairings spreadsheet for years. Watching him press one button and get his round sheets was the most fun the sender has had doing this. Lafayette Tennis Club has one too. He built both before anyone paid him anything.',
+  '',
+  'THE ASK IS A GIFT, NOT A MEETING. The letter ends by offering to build THEIR club\'s one and send them the link — free, whether or not they ever pay, because he would just like them to see it. Never ask for a call, a meeting, a demo, or minutes of their time.',
   '',
   'RULES, all of them hard:',
   '- The ONLY facts you know about the recipient\'s club are the ones in the Facts block. You do not know their court count, their surface, their founding year, their membership, their programs, their weather, or their season. Never imply you have looked at their club, their website or their schedule. Never open with "I noticed" or "I saw".',
   `- Under ${MAX_WORDS} words. Shorter is better. Three or four short paragraphs.`,
   '- Open "Hi <first name>," on its own line.',
   '- Name the club once, naturally, the way a person would say it out loud.',
-  '- End on exactly this ask, as its own line: "Worth 15 minutes?"',
+  '- End by offering to build their club\'s and send them the link, in his own words, saying plainly that it costs them nothing and he will do it whether or not they ever pay him. Something like: "If you want, I\'ll build <club>\'s and send you the link." NEVER "Worth 15 minutes?", never any request for a call or a meeting.',
+  '- Say one true, human thing about why he made it or what it was like watching someone use it. A letter with no feeling in it is a brochure. Do not manufacture emotion about THEIR club — the feeling is his, about his own work.',
+  '- Banned outright, they read as sales: "worth 15 minutes", "quick question", "reaching out", "circle back", "touching base", "hope this finds you well", "solutions", "leverage", "streamline", "excited to", "let me know if you\'re interested", "book a call", "game-changer".',
   '- No sign-off, no name at the end, no "--". A signature is added after you.',
   '- Plain text. No markdown, no bullet points, no bold, no links, no URLs.',
   '- No subject-line clichés: no "Quick question", no "Following up", no "Touching base", no all-caps, no emoji, no exclamation marks.',
