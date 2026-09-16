@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { setsFromScore } from '@/lib/captain/recap';
+import { resultFromCircle, type CircledSide } from '@/lib/captain/scorecardRead';
 
 /**
  * POST /api/captain/read-scorecard — read a photo of the paper scorecard and
@@ -114,14 +115,14 @@ export async function POST(req: Request) {
         '\n\nFor each of OUR courts, read the set scores and decide whether OUR pair won. ' +
         // How captains actually mark a paper card: the winning team is CIRCLED.
         // The reader used to ignore the circles and guess winners from scores.
-        'HOW TO TELL WHO WON: captains circle the winning team on each line, a ring drawn around a team ' +
-        "name, the pair of player names, or that side's score. A circle is the captain's own record of the " +
-        'winner, so it decides `won`, even when the scores are hard to read. Scores on a circled line are ' +
-        'written from the circled (winning) team\'s side. So: if OUR team is circled, copy each set exactly as ' +
-        'written ("2-6, 6-3, 10-7" stays "2-6, 6-3, 10-7"). If THEIR team is circled, flip every set ' +
-        '("6-3, 6-4" becomes "3-6, 4-6"). Never flip a line where our team is circled. If the circle and the ' +
-        'set scores disagree, still take the winner from the circle and set confidence to low. Only when ' +
-        'a line has no circle, decide the winner from the scores. ' +
+        'HOW WINNERS ARE MARKED: the captain draws a circle (a hand-drawn loop or oval) around the WINNING ' +
+        "team on each line: around that team's player names, team name, or score. Scores are written the " +
+        'way tennis scores are written, winner first, and are usually on one line between or beside the ' +
+        'two pairs, so where the score sits says NOTHING about who won. Only the circle does. For every line, ' +
+        'look carefully at whose names are inside the circle and report it in `circled`: "ours" if the loop ' +
+        'surrounds our players, "theirs" if it surrounds the other team\'s players, "none" if the line has no ' +
+        'circle, "unclear" if you cannot tell. Report `written_score` EXACTLY as written on the card, digit ' +
+        'for digit, without turning it around. ' +
         'Report the score from OUR perspective — if we lost 6-4 6-3, the score is "4-6, 3-6". ' +
         'A court marked default, DEF or walkover was not played: set defaulted true and still say who took the point. ' +
         'A RETIRED court WAS played: defaulted false, keep the games played and end the score with " RET" (e.g. "6-4, 5-6 RET"). ' +
@@ -156,11 +157,14 @@ export async function POST(req: Request) {
                   items: { type: 'string' },
                   description: "The other team's players on this line as written, one per player. Empty if not written.",
                 },
-                winner_from: {
+                circled: {
                   type: 'string',
-                  enum: ['circle', 'scores', 'unclear'],
-                  description:
-                    'circle = a team was circled on this line; scores = no circle, so the winner was read from the set scores',
+                  enum: ['ours', 'theirs', 'none', 'unclear'],
+                  description: "Whose players are inside the hand-drawn circle on this line: ours, theirs, none, unclear",
+                },
+                written_score: {
+                  type: ['string', 'null'],
+                  description: 'The score exactly as written on the card, not turned around, e.g. "6-1, 6-2". Null if unreadable.',
                 },
                 confidence: {
                   type: 'string',
@@ -168,7 +172,7 @@ export async function POST(req: Request) {
                   description: 'How legible this line was',
                 },
               },
-              required: ['court_number', 'defaulted'],
+              required: ['court_number', 'defaulted', 'circled', 'written_score'],
             },
           },
         },
@@ -208,9 +212,18 @@ export async function POST(req: Request) {
       // Drop anything that isn't one of our courts rather than inventing rows.
       .filter((c) => known.has(Number(c.court_number)))
       .map((c) => {
-        const score = typeof c.score === 'string' && c.score.trim() ? c.score.trim() : null;
-        const won = typeof c.won === 'boolean' ? c.won : null;
         const defaulted = c.defaulted === true;
+        const circled: CircledSide = ['ours', 'theirs', 'none', 'unclear'].includes(c.circled)
+          ? c.circled
+          : 'unclear';
+        // The circle decides the winner and which way round the written score
+        // goes — worked out here, not by the model (see lib/captain/scorecardRead).
+        const fromCircle = defaulted
+          ? null
+          : resultFromCircle(circled, typeof c.written_score === 'string' ? c.written_score : null);
+        const modelScore = typeof c.score === 'string' && c.score.trim() ? c.score.trim() : null;
+        const score = fromCircle ? (fromCircle.score ?? modelScore) : modelScore;
+        const won = fromCircle ? fromCircle.won : typeof c.won === 'boolean' ? c.won : null;
         // The model can flip a score the wrong way round. A played, finished
         // court whose sets say the opposite of `won` is wrong somewhere, so it
         // is never reported as a confident read.
@@ -232,7 +245,9 @@ export async function POST(req: Request) {
                 .map((n: string) => n.trim())
                 .slice(0, 2)
             : [],
-          winnerFrom: ['circle', 'scores', 'unclear'].includes(c.winner_from) ? c.winner_from : 'unclear',
+          winnerFrom: fromCircle ? 'circle' : circled === 'none' ? 'scores' : 'unclear',
+          circled,
+          writtenScore: typeof c.written_score === 'string' ? c.written_score : null,
           confidence: contradicts
             ? 'low'
             : ['high', 'medium', 'low'].includes(c.confidence)
