@@ -5,6 +5,7 @@ import { gateTeam } from '@/lib/captain/access';
 import { committedCounts, playedCounts } from '@/lib/captain/server';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
 import HostEmailPanel from '@/components/captain/HostEmailPanel';
+import HostNotePanel from '@/components/captain/HostNotePanel';
 import { resolveClubTimeZone } from '@/lib/captain/clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { DEFAULT_JTT_COURT_FORMAT, leagueSpec } from '@/lib/captain/leagues';
@@ -169,6 +170,20 @@ export default async function MatchPage({
           timeZone={timeZone}
         />
       </div>
+
+      {/* Away: the host club's own details (warm-up, check-in, parking), pasted
+          or forwarded, applied to the fields the players' emails print. */}
+      {!match.is_home && (
+        <div className="mt-5">
+          <HostNotePanel
+            teamId={team.id}
+            matchId={params.matchId}
+            opponent={(match.opponent as string) || null}
+            lineupSent={!!match.lineup_email_sent_at}
+            hostUpdateSentAt={(match.host_update_sent_at as string) || null}
+          />
+        </div>
+      )}
 
       <MatchWorkspace
         teamId={team.id}

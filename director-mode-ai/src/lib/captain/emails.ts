@@ -368,6 +368,35 @@ export function matchReminderEmail(
 }
 
 /**
+ * The host club's details, sent to the players in a lineup that already went
+ * out without them — warm-up time, check-in, parking, who their captain is.
+ * Only ever to the players on this match's courts: the rest of the roster isn't
+ * going.
+ */
+export function hostUpdateEmail(
+  team: string,
+  m: MatchInfo,
+  r: Recipient,
+  yourCourt: string | null,
+  tz?: string,
+): { to: string; subject: string; html: string } {
+  return {
+    to: r.email,
+    subject: `${team}: details for ${m.isHome ? '' : 'the away match '}${formatMatchWhen(m.matchAt, tz)}${m.opponent ? ` at ${m.opponent}` : ''}`,
+    html: shell(
+      `Match details from ${m.opponent || 'the host club'}`,
+      `<p style="font-size:15px;margin:0 0 12px">Hi ${r.name}, here's what the host club sent about the match you're playing.</p>
+       ${matchLines(m, tz)}
+       ${yourCourt ? `<p style="font-size:16px;margin:8px 0"><strong>You're on ${yourCourt}</strong></p>` : ''}
+       ${calendarBlock(team, m, yourCourt, r.token, tz)}
+       <p style="font-size:13px;color:#64748b;margin:14px 0 0">
+         Something come up? <a href="${BASE}/captain/confirm/${r.token}/${m.id}?a=out" style="color:#b91c1c">Let your captain know you can't make it</a>.
+       </p>`,
+    ),
+  };
+}
+
+/**
  * Straight to the captain the moment a player pulls out of a committed lineup.
  * This is the whole point of the decline button — a withdrawal that sits unread
  * in a group text until match morning is worse than no button at all.

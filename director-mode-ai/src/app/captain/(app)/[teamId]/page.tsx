@@ -20,6 +20,7 @@ import TeamSettingsPanel from '@/components/captain/TeamSettingsPanel';
 import StrengthOrderPanel from '@/components/captain/StrengthOrderPanel';
 import NeverPairPanel from '@/components/captain/NeverPairPanel';
 import SeasonAvailabilityPanel from '@/components/captain/SeasonAvailabilityPanel';
+import TeamHostNotes from '@/components/captain/TeamHostNotes';
 import { resolveClubTimeZone } from '@/lib/captain/clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { defaultCourts, leagueSpec } from '@/lib/captain/leagues';
@@ -293,6 +294,9 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       </section>
 
       <OpponentDirectory contacts={opponentContacts} teamId={team.id} division={team.level} />
+
+      {/* Host clubs' emails, forwarded to the team's address or pasted on a match. */}
+      <TeamHostNotes teamId={team.id} timeZone={timeZone} />
 
       {atRisk.length > 0 && (
         <div className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/[0.07] p-4">
