@@ -6,6 +6,7 @@ import {
   scheduleWarnings,
   suggestFields,
   tokensFromRecipients,
+  withoutOurPeople,
   type HostNoteExtract,
   type MatchLite,
 } from './hostNote';
@@ -104,6 +105,20 @@ describe('suggestFields', () => {
   it('uses the address when one is given', () => {
     const out = suggestFields(season[1], { ...colleen, address: '711 Silver Lake Dr, Danville' });
     expect(out.location).toBe('Crow Canyon, 711 Silver Lake Dr, Danville');
+  });
+});
+
+describe('withoutOurPeople', () => {
+  it("keeps Crow Canyon's captains and drops ours", () => {
+    const listed = [
+      { name: 'Colleen McClure', email: 'lilstew@prodigy.net', phone: null },
+      { name: 'Darrin Cohen', email: null, phone: null },
+      { name: 'Robyn Rogin', email: 'robyn.rogin@gmail.com', phone: null },
+      { name: 'Cheryl Moore', email: 'cherylannmoore27@gmail.com', phone: null },
+    ];
+    expect(
+      withoutOurPeople(listed, { names: ['darrin cohen'], emails: ['Robyn.Rogin@gmail.com'] }).map((c) => c.name),
+    ).toEqual(['Colleen McClure', 'Cheryl Moore']);
   });
 });
 

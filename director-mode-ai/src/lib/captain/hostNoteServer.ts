@@ -14,6 +14,7 @@ import {
   type HostNoteExtract,
   type HostNoteFields,
   type MatchLite,
+  withoutOurPeople,
 } from './hostNote';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
@@ -144,6 +145,37 @@ export type FiledNote = {
   warnings?: string[];
 };
 
+/** Everyone on our side of the email: roster, team contacts, captain and co-captains. */
+async function ourPeople(db: SupabaseClient, teamId: string): Promise<{ names: string[]; emails: string[] }> {
+  const [{ data: team }, { data: staff }, { data: players }, { data: contacts }] = await Promise.all([
+    db.from('captain_teams').select('captain_user_id').eq('id', teamId).maybeSingle(),
+    db.from('captain_team_staff').select('user_id').eq('team_id', teamId),
+    db.from('captain_players').select('name, email').eq('team_id', teamId),
+    db.from('captain_team_contacts').select('name, email').eq('team_id', teamId),
+  ]);
+  const userIds = [
+    (team as { captain_user_id?: string } | null)?.captain_user_id,
+    ...((staff as { user_id: string }[] | null) ?? []).map((s) => s.user_id),
+  ].filter(Boolean) as string[];
+
+  const names: string[] = [];
+  const emails: string[] = [];
+  for (const p of [...((players as { name: string; email: string | null }[] | null) ?? []), ...((contacts as { name: string; email: string | null }[] | null) ?? [])]) {
+    if (p.name) names.push(p.name);
+    if (p.email) emails.push(p.email);
+  }
+  if (userIds.length) {
+    const { data: profiles } = await db.from('profiles').select('full_name').in('id', userIds);
+    for (const pr of (profiles as { full_name: string | null }[] | null) ?? []) if (pr.full_name) names.push(pr.full_name);
+    const admin = getSupabaseAdmin();
+    for (const id of userIds) {
+      const { data } = await admin.auth.admin.getUserById(id);
+      if (data?.user?.email) emails.push(data.user.email);
+    }
+  }
+  return { names, emails };
+}
+
 /** Read, match and store an email as a pending note on a team. */
 export async function fileHostNote(
   db: SupabaseClient,
@@ -162,7 +194,7 @@ export async function fileHostNote(
   const { data: rows } = await db.from('captain_matches').select(MATCH_FIELDS).eq('team_id', team.id).order('match_at');
   const matches = (rows as MatchLite[] | null) ?? [];
 
-  const extracted = await extractHostNote({
+  const read = await extractHostNote({
     teamName: team.name,
     body: input.body,
     subject: input.subject,
@@ -170,6 +202,7 @@ export async function fileHostNote(
     matches,
     timeZone,
   });
+  const extracted = { ...read, captains: withoutOurPeople(read.captains, await ourPeople(db, team.id)) };
 
   const matchId =
     input.matchId && matches.some((m) => m.id === input.matchId)

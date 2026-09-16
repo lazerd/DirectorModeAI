@@ -152,6 +152,21 @@ export function suggestFields(match: MatchLite, x: HostNoteExtract): HostNoteFie
   };
 }
 
+/**
+ * Drop our own people from the host's captain list. The email is addressed TO
+ * our captains, so the model tends to list them too — on 9/16 Colleen's note
+ * came back with Darrin and Robyn beside Colleen and Cheryl.
+ */
+export function withoutOurPeople(
+  captains: HostNoteExtract['captains'],
+  ours: { names: (string | null | undefined)[]; emails: (string | null | undefined)[] },
+): HostNoteExtract['captains'] {
+  const norm = (s: string | null | undefined) => (s || '').toLowerCase().replace(/[^a-z@.]/g, '');
+  const names = new Set(ours.names.map(norm).filter(Boolean));
+  const emails = new Set(ours.emails.map(norm).filter(Boolean));
+  return captains.filter((c) => !names.has(norm(c.name)) && !(c.email && emails.has(norm(c.email))));
+}
+
 /** The team's forwarding address: `<token>@<domain>`. */
 export function inboundAddress(token: string, domain = process.env.CAPTAIN_INBOUND_DOMAIN || 'mail.clubmode.ai') {
   return `${token}@${domain}`;
