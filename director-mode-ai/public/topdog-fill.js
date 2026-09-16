@@ -24,6 +24,13 @@
   }
   var form = document.querySelector('form[action*="ScoreCardEntry" i]') || document.forms[0];
   if (!form || !form.elements.namedItem('defltcode_0')) {
+    /* TopDog serves no blank card for a match that is already posted. */
+    if (/action=insert/i.test(location.search)) {
+      if (confirm('TopDog has no blank score card for this match, so it looks like the scores are already posted.\n\nOpen the posted card so you can correct it? (Tap Fill from ClubMode again once it loads.)')) {
+        location.href = location.href.replace(/action=insert/i, 'action=update');
+      }
+      return;
+    }
     alert('This TopDog page has no score card on it to fill.');
     return;
   }
