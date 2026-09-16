@@ -4,7 +4,19 @@
  */
 
 import type { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { ACTIVITY_COLS, CONTACT_COLS, ORG_COLS, type Activity, type Contact, type Org, type OrgCard } from './types';
+import type { ActivityKind } from './stages';
+import type { ISODate } from './dates';
+import { regionOf } from './region';
+import {
+  ACTIVITY_COLS,
+  CONTACT_COLS,
+  ORG_COLS,
+  type Activity,
+  type ColdRow,
+  type Contact,
+  type Org,
+  type OrgCard,
+} from './types';
 
 type Db = ReturnType<typeof getSupabaseAdmin>;
 
@@ -22,25 +34,143 @@ export async function loadPipeline(db: Db): Promise<OrgCard[]> {
   if (!rows.length) return [];
 
   const [{ data: acts }, { data: contacts }] = await Promise.all([
-    db.from('crm_activities').select('org_id, occurred_at').order('occurred_at', { ascending: false }),
+    db
+      .from('crm_activities')
+      .select('org_id, occurred_at, kind, body')
+      .order('occurred_at', { ascending: false }),
     db.from('crm_contacts').select('org_id'),
   ]);
 
-  const latest = new Map<string, string>();
-  for (const a of (acts as { org_id: string; occurred_at: string }[] | null) || []) {
+  type ActRow = { org_id: string; occurred_at: string; kind: ActivityKind; body: string };
+  const latest = new Map<string, ActRow>();
+  for (const a of (acts as ActRow[] | null) || []) {
     // Ordered newest-first, so the first one wins.
-    if (!latest.has(a.org_id)) latest.set(a.org_id, a.occurred_at);
+    if (!latest.has(a.org_id)) latest.set(a.org_id, a);
   }
   const counts = new Map<string, number>();
   for (const c of (contacts as { org_id: string }[] | null) || []) {
     counts.set(c.org_id, (counts.get(c.org_id) ?? 0) + 1);
   }
 
-  return rows.map((o) => ({
-    ...o,
-    last_activity_at: latest.get(o.id) ?? null,
-    contact_count: counts.get(o.id) ?? 0,
+  return rows.map((o) => {
+    const a = latest.get(o.id) ?? null;
+    return {
+      ...o,
+      last_activity_at: a?.occurred_at ?? null,
+      last_activity_kind: a?.kind ?? null,
+      last_activity_body: a?.body ?? null,
+      contact_count: counts.get(o.id) ?? 0,
+    };
+  });
+}
+
+/**
+ * The two halves of /crm.
+ *
+ * A "live deal" is one somebody has actually done something about: it has
+ * moved off `researching`, or there is at least one activity against it. The
+ * other 519 are the cold list.
+ *
+ * Note what this is NOT: a filter on `source`. If Darrin logs a call against a
+ * DCA club tomorrow morning, that club is a live deal by lunchtime without
+ * anyone remembering to change a field — which is the only version of this
+ * rule that survives contact with a working week. The board stays the handful
+ * of real deals it was before 519 rows arrived.
+ */
+export function splitDeals(orgs: OrgCard[]): { live: OrgCard[]; cold: OrgCard[] } {
+  const live: OrgCard[] = [];
+  const cold: OrgCard[] = [];
+  for (const o of orgs) {
+    if (o.stage !== 'researching' || o.last_activity_at) live.push(o);
+    else cold.push(o);
+  }
+  return { live, cold };
+}
+
+/**
+ * Cold clubs, trimmed to what the list draws.
+ *
+ * `contact_names` is one string per club rather than an array of contacts:
+ * the search box needs to match "benin" against whoever is there, and a
+ * lower-cased haystack is both smaller on the wire and faster to test than
+ * walking an array per keystroke across 519 rows.
+ */
+export function toColdRows(
+  cold: OrgCard[],
+  contactsByOrg: Map<string, { full_name: string; email: string | null }[]>,
+): ColdRow[] {
+  return cold.map((o) => ({
+    id: o.id,
+    name: o.name,
+    region: regionOf(o),
+    state: o.state,
+    stage: o.stage,
+    contact_count: o.contact_count,
+    contact_names: (contactsByOrg.get(o.id) ?? [])
+      .map((c) => `${c.full_name} ${c.email ?? ''}`)
+      .join(' ')
+      .toLowerCase()
+      .slice(0, 400),
+    last_activity_at: o.last_activity_at,
+    queued_at: o.queued_at,
   }));
+}
+
+/** Every contact's name and address, grouped by club, for toColdRows(). */
+export async function loadContactIndex(
+  db: Db,
+): Promise<Map<string, { full_name: string; email: string | null }[]>> {
+  const { data } = await db.from('crm_contacts').select('org_id, full_name, email');
+  const by = new Map<string, { full_name: string; email: string | null }[]>();
+  for (const c of (data as { org_id: string; full_name: string; email: string | null }[] | null) || []) {
+    const list = by.get(c.org_id);
+    if (list) list.push(c);
+    else by.set(c.org_id, [c]);
+  }
+  return by;
+}
+
+/**
+ * How many emails are waiting in today's outreach deck.
+ *
+ * The deck (/crm/deck) and its crm_outreach_* tables are being built next to
+ * this. Today's list wants the number; it must not be the reason the page
+ * breaks if the table is not there yet, so this asks each candidate name in
+ * turn and returns null the moment none of them answer. PostgREST reports an
+ * unknown table as an error rather than throwing, so both paths are handled.
+ *
+ * Returns null for "there is no deck", which the caller renders as no line at
+ * all — not as "0 emails queued", which would read as a deck that is empty.
+ */
+const DECK_TABLES = ['crm_outreach_queue', 'crm_outreach_emails', 'crm_outreach_drafts'];
+
+/** Endings. A deck of thirty sent emails is not thirty emails to send. */
+const DECK_DONE = ['sent', 'rejected', 'failed', 'skipped', 'cancelled'];
+
+export async function loadDeckCount(db: Db, today: ISODate): Promise<number | null> {
+  for (const table of DECK_TABLES) {
+    try {
+      /*
+       * "Today's deck" means today's, not everything ever drafted. Filtered on
+       * the deck's own send_date and status — but if that table turns out to
+       * be shaped differently, the narrow query errors and the plain head
+       * count below still answers, rather than the line disappearing because
+       * a column was renamed next door.
+       */
+      const narrow = await db
+        .from(table)
+        .select('id', { count: 'exact', head: true })
+        .eq('send_date', today)
+        .not('status', 'in', `(${DECK_DONE.join(',')})`);
+      if (!narrow.error && typeof narrow.count === 'number') return narrow.count;
+
+      const all = await db.from(table).select('id', { count: 'exact', head: true });
+      if (!all.error && typeof all.count === 'number') return all.count;
+    } catch {
+      // Not there. Try the next name, then give up quietly.
+    }
+  }
+  return null;
 }
 
 export interface OrgBundle {

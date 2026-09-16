@@ -31,6 +31,10 @@ const TEXT_FIELDS: Record<string, number> = {
   state: 40,
   owner_email: 200,
   source: 200,
+  // Free text, not an enum: the DCA's four are what the import writes, but a
+  // rep typing "Pacific Northwest" should get "Pacific Northwest" rather than
+  // a constraint violation. See lib/crm/region.ts.
+  region: 40,
   next_step: 300,
   demo_url: 400,
   notes: 8000,

@@ -91,6 +91,15 @@ async function main() {
         stage: 'researching',
         owner_email: OWNER,
         source: 'Directors Club of America',
+        /*
+         * The region is a column now (supabase/migrations/crm_region.sql) —
+         * the cold list filters on it, and the ask box answers "which West
+         * clubs have no contact?" from it. The sentence below still says it
+         * in prose because the org page reads better with it; this is the
+         * copy anything queryable uses. A club the directory files under no
+         * region gets null, not a guess.
+         */
+        region,
         notes: [
           region ? `DCA ${region} region.` : 'DCA member club (region not recorded).',
           'From the members-only directory, scraped 2026-06-29. No contact has been approached yet.',

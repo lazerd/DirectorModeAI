@@ -46,6 +46,7 @@ export async function POST(req: Request) {
       owner_email: text(body.owner_email, 200) ?? ctx.repEmail,
       mrr_target_cents: Number.isFinite(mrr) && mrr >= 0 ? Math.round(mrr) : DEFAULT_MRR_TARGET_CENTS,
       source: text(body.source, 200),
+      region: text(body.region, 40),
       next_step: text(body.next_step, 300),
       next_step_at: nextStepAt,
       demo_url: text(body.demo_url, 400),
