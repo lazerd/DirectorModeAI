@@ -276,6 +276,40 @@ export default function OrgDetail({
         <p className="rounded-lg bg-[#D3FB52]/10 p-3 text-sm text-[#D3FB52]">{sentNote}</p>
       )}
 
+      {/*
+        127 of the imported clubs have nobody on file. For those, finding a
+        name IS the next action — not the stage, not the demo link — so it is
+        said here, above everything else, rather than waiting politely in the
+        contacts section three screens down on a phone.
+      */}
+      {contacts.length === 0 && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-4">
+          <p className="text-sm font-semibold text-amber-100">Nobody here yet.</p>
+          <p className="mt-1 text-sm text-amber-200/70">
+            Find the racquets director — the club&rsquo;s own site, its staff page, or its board page.
+            Paste the list in and this club becomes something you can actually write to.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {org.website && (
+              <a
+                href={org.website}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg border border-amber-300/40 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-400/10"
+              >
+                Open {org.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} ↗
+              </a>
+            )}
+            <a
+              href="#contacts"
+              className="rounded-lg bg-amber-300 px-3 py-1.5 text-xs font-semibold text-[#3a2b00]"
+            >
+              Add someone
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* --------------------------------------------------------- ask box */}
       <AskBox
         orgId={org.id}
@@ -392,36 +426,11 @@ export default function OrgDetail({
       </section>
 
       {/* ----------------------------------------------------------- contacts */}
-      <section>
+      <section id="contacts" className="scroll-mt-20">
         <div className="flex items-baseline justify-between gap-3">
           <h2 className="font-display text-xl text-white">Contacts</h2>
           <span className="text-xs text-white/30">{contacts.length}</span>
         </div>
-
-        {/*
-          128 of the 519 imported clubs have nobody on file. For those, finding
-          a name IS the next action, and saying it loudly here is the whole
-          difference between a row in a list and a piece of work.
-        */}
-        {contacts.length === 0 && (
-          <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-4">
-            <p className="text-sm font-semibold text-amber-100">Nobody here yet.</p>
-            <p className="mt-1 text-sm text-amber-200/70">
-              Find the racquets director — the club&rsquo;s own site, its staff page, or its board page.
-              Paste the list below and this club becomes something you can actually write to.
-            </p>
-            {org.website && (
-              <a
-                href={org.website}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-3 inline-block rounded-lg border border-amber-300/40 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-400/10"
-              >
-                Open {org.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} ↗
-              </a>
-            )}
-          </div>
-        )}
 
         <div className="mt-3 space-y-2">
           {contacts.map((c) => (
