@@ -151,7 +151,25 @@ export function buildFillPayload(input: {
       } as FillPayload['lines'][number];
     }
 
-    const { sets, retired } = topdogSets(c.score);
+    const read = topdogSets(c.score);
+    const retired = read.retired;
+    let sets = read.sets;
+    // TopDog puts each team's games on that team's row, so the sets must be
+    // from OUR side. A score saved winner-first on a loss ("6-1, 6-2", lost)
+    // would hand us the 6s. When the saved sets contradict the saved winner,
+    // turn them so the winner leads, and say so.
+    if (!retired && c.won != null && sets.length) {
+      const ours = sets.filter(([a, b]) => a > b).length;
+      const theirs = sets.filter(([a, b]) => b > a).length;
+      if ((c.won && ours < theirs) || (!c.won && ours > theirs)) {
+        sets = sets.map(([a, b]) => [b, a] as SetScore);
+        problems.push(
+          `${label}: the saved score ${c.score} doesn't match the ${c.won ? 'win' : 'loss'}, so TopDog gets ${sets
+            .map(([a, b]) => `${a}-${b}`)
+            .join(', ')}. Fix the score in ClubMode too.`,
+        );
+      }
+    }
     if (!sets.length) problems.push(`${label}: no score saved.`);
     if (c.won == null) problems.push(`${label}: no winner marked.`);
     if (names.some((n) => !n)) problems.push(`${label}: a player is missing from the lineup.`);

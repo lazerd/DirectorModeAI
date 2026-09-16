@@ -118,6 +118,24 @@ describe('buildFillPayload', () => {
     expect(payload.lines[0]).toMatchObject({ winner: 'them', us: 'default', sets: [[0, 6], [0, 6]] });
   });
 
+  it('9/16 court 1: a loss saved as "6-1, 6-2" goes to TopDog as 1-6, 2-6', () => {
+    const { payload, problems } = buildFillPayload({
+      ...base,
+      courts: [court(1, { score: '6-1, 6-2', won: false })],
+    });
+    expect(payload.lines[0]).toMatchObject({ winner: 'them', sets: [[1, 6], [2, 6]] });
+    expect(problems[0]).toContain('TopDog gets 1-6, 2-6');
+  });
+
+  it('leaves a three-set win alone even though we lost a set', () => {
+    const { payload, problems } = buildFillPayload({
+      ...base,
+      courts: [court(1, { score: '4-6, 6-3, 10-7', won: true })],
+    });
+    expect(payload.lines[0].sets).toEqual([[4, 6], [6, 3], [1, 0]]);
+    expect(problems).toEqual([]);
+  });
+
   it('marks a retirement', () => {
     const { payload } = buildFillPayload({ ...base, courts: [court(1, { score: '6-4, 5-6 RET', won: false })] });
     expect(payload.lines[0]).toMatchObject({ status: 'RE', winner: 'them', sets: [[6, 4], [5, 6]] });
