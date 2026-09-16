@@ -5,7 +5,6 @@ import { gateTeam } from '@/lib/captain/access';
 import { committedCounts, playedCounts } from '@/lib/captain/server';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
 import HostEmailPanel from '@/components/captain/HostEmailPanel';
-import TopDogPanel from '@/components/captain/TopDogPanel';
 import { resolveClubTimeZone } from '@/lib/captain/clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { DEFAULT_JTT_COURT_FORMAT, leagueSpec } from '@/lib/captain/leagues';
@@ -202,6 +201,7 @@ export default async function MatchPage({
           opponentNames: (r.opponent_names as string[] | null) ?? null,
         }))}
         recapSentAt={(match.recap_sent_at as string) ?? null}
+        topdogMatchId={(match.source_match_id as string) || null}
         withdrawals={withdrawals}
         teamName={team.name}
         opponent={(match.opponent as string) || null}
@@ -213,13 +213,6 @@ export default async function MatchPage({
         timeZone={timeZone}
       />
 
-      {/* Carries the SAVED scores to the league's own score card on TopDog. */}
-      <TopDogPanel
-        teamId={team.id}
-        matchId={params.matchId}
-        linkedMatchId={(match.source_match_id as string) || null}
-        hasResults={((results as unknown[]) || []).length > 0}
-      />
     </div>
   );
 }

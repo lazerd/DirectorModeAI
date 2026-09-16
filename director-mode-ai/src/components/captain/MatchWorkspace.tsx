@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import MatchNextStep, { matchStage } from '@/components/captain/MatchNextStep';
 import RecapPanel from '@/components/captain/RecapPanel';
+import TopDogPanel from '@/components/captain/TopDogPanel';
 import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 import { lineupAsText } from '@/lib/captain/lineupText';
@@ -117,6 +118,7 @@ export default function MatchWorkspace({
   status,
   initialResults,
   recapSentAt,
+  topdogMatchId,
   withdrawals,
   teamName,
   opponent,
@@ -146,6 +148,8 @@ export default function MatchWorkspace({
   }[];
   /** When the post-match recap last went to the team, if it has. */
   recapSentAt: string | null;
+  /** TopDog's id for this match, when linked — enables "Enter on TopDog". */
+  topdogMatchId?: string | null;
   /**
    * Who tapped "I can't play" on the lineup email. Keyed by PLAYER, not by
    * slot, so a withdrawal survives every swap and line flip below — a bail
@@ -932,6 +936,24 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         router.refresh();
       },
     );
+
+  /**
+   * Whether the results form differs from what is saved. TopDog is filled from
+   * the SAVED results, so on 9/16 a re-read photo that was never saved went to
+   * TopDog without the opponent names it had just read.
+   */
+  const resultsDirty = courts.some((c) => {
+    const saved = initialResults.find((r) => r.courtNumber === c.courtNumber);
+    const now = scores[c.courtNumber];
+    const names = (v: string | undefined) =>
+      (v ?? '').split('/').map((n) => n.trim()).filter(Boolean).join('/');
+    return (
+      (now?.score ?? '') !== (saved?.score ?? '') ||
+      (now?.won ?? null) !== (saved?.won ?? null) ||
+      (defaulted[c.courtNumber] ?? null) !== (saved?.defaulted ? (saved.default_by ?? 'them') : null) ||
+      names(opponentNames[c.courtNumber]) !== names((saved?.opponentNames ?? []).join('/'))
+    );
+  });
 
   function setScore(courtNumber: number, patch: Partial<{ score: string; won: boolean | null }>) {
     setScores((s) => ({
@@ -2564,6 +2586,16 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
             hasResults={initialResults.length > 0}
             recapSentAt={recapSentAt}
             timeZone={timeZone}
+          />
+
+          {/* Carries the SAVED scores to TopDog, so it holds back while the
+              form above has changes that aren't saved yet. */}
+          <TopDogPanel
+            teamId={teamId}
+            matchId={matchId}
+            linkedMatchId={topdogMatchId ?? null}
+            hasResults={initialResults.length > 0}
+            unsaved={resultsDirty}
           />
         </section>
       )}
