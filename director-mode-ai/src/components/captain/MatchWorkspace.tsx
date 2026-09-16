@@ -971,6 +971,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         score: string | null;
         won: boolean | null;
         defaulted: boolean;
+        winnerFrom: 'circle' | 'scores' | 'unclear';
         confidence: 'high' | 'medium' | 'low';
       }[];
       if (!rows.length) {
@@ -987,10 +988,19 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       }
 
       const shaky = rows.filter((r) => r.confidence !== 'high').map((r) => `court ${r.court_number}`);
+      // A circled team is the captain's own mark of the winner; say where the
+      // winner had to be inferred from scores instead.
+      const noCircle = rows
+        .filter((r) => !r.defaulted && r.winnerFrom !== 'circle')
+        .map((r) => `court ${r.court_number}`);
       setReadNote(
-        shaky.length
-          ? `Filled ${rows.length} courts. Check ${shaky.join(', ')} — the writing was hard to read. Nothing is saved yet.`
-          : `Filled ${rows.length} courts. Check them, then save. Nothing is saved yet.`,
+        (shaky.length
+          ? `Filled ${rows.length} courts. Check ${shaky.join(', ')}. The writing was hard to read, or the circle and the scores disagree.`
+          : `Filled ${rows.length} courts. Check them, then save.`) +
+          (noCircle.length
+            ? ` No winner circled on ${noCircle.join(', ')}, so the winner there came from the scores.`
+            : '') +
+          ' Nothing is saved yet.',
       );
     } catch (e: any) {
       setReadNote(e?.message || 'Could not read the scorecard.');

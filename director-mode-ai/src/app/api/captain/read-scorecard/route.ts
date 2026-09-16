@@ -111,6 +111,14 @@ export async function POST(req: Request) {
         'Our lineup, so you can match each line by the players written on it:\n' +
         roster.map((r) => `- Court ${r.court_number} (${r.court_type}): ${r.players.join(' / ')}`).join('\n') +
         '\n\nFor each of OUR courts, read the set scores and decide whether OUR pair won. ' +
+        // How captains actually mark a paper card: the winning team is CIRCLED.
+        // The reader used to ignore the circles and guess winners from scores.
+        'HOW TO TELL WHO WON: captains circle the winning team on each line, a ring drawn around a team ' +
+        "name, the pair of player names, or that side's score. A circle is the captain's own record of the " +
+        'winner, so it decides `won`, even when the scores are hard to read. Scores on a circled line are ' +
+        'often written winner-first, so use the circle to turn them into OUR perspective. If the circle and ' +
+        'the set scores disagree, still take the winner from the circle and set confidence to low. Only when ' +
+        'a line has no circle, decide the winner from the scores. ' +
         'Report the score from OUR perspective — if we lost 6-4 6-3, the score is "4-6, 3-6". ' +
         'A court marked default, DEF, retired or walkover was not played: set defaulted true and still say who took the point. ' +
         'Use null for anything you genuinely cannot read rather than guessing — a wrong score is worse than a blank one. ' +
@@ -137,6 +145,12 @@ export async function POST(req: Request) {
                 },
                 won: { type: ['boolean', 'null'], description: 'Did OUR pair win this court?' },
                 defaulted: { type: 'boolean', description: 'True if nobody played it (default/walkover/retired)' },
+                winner_from: {
+                  type: 'string',
+                  enum: ['circle', 'scores', 'unclear'],
+                  description:
+                    'circle = a team was circled on this line; scores = no circle, so the winner was read from the set scores',
+                },
                 confidence: {
                   type: 'string',
                   enum: ['high', 'medium', 'low'],
@@ -187,6 +201,7 @@ export async function POST(req: Request) {
         score: typeof c.score === 'string' && c.score.trim() ? c.score.trim() : null,
         won: typeof c.won === 'boolean' ? c.won : null,
         defaulted: c.defaulted === true,
+        winnerFrom: ['circle', 'scores', 'unclear'].includes(c.winner_from) ? c.winner_from : 'unclear',
         confidence: ['high', 'medium', 'low'].includes(c.confidence) ? c.confidence : 'medium',
       })),
   });
