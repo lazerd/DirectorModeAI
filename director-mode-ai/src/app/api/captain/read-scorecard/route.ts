@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { setsFromScore } from '@/lib/captain/recap';
 
 /**
  * POST /api/captain/read-scorecard — read a photo of the paper scorecard and
@@ -116,11 +117,14 @@ export async function POST(req: Request) {
         'HOW TO TELL WHO WON: captains circle the winning team on each line, a ring drawn around a team ' +
         "name, the pair of player names, or that side's score. A circle is the captain's own record of the " +
         'winner, so it decides `won`, even when the scores are hard to read. Scores on a circled line are ' +
-        'often written winner-first, so use the circle to turn them into OUR perspective. If the circle and ' +
-        'the set scores disagree, still take the winner from the circle and set confidence to low. Only when ' +
+        'written from the circled (winning) team\'s side. So: if OUR team is circled, copy each set exactly as ' +
+        'written ("2-6, 6-3, 10-7" stays "2-6, 6-3, 10-7"). If THEIR team is circled, flip every set ' +
+        '("6-3, 6-4" becomes "3-6, 4-6"). Never flip a line where our team is circled. If the circle and the ' +
+        'set scores disagree, still take the winner from the circle and set confidence to low. Only when ' +
         'a line has no circle, decide the winner from the scores. ' +
         'Report the score from OUR perspective — if we lost 6-4 6-3, the score is "4-6, 3-6". ' +
-        'A court marked default, DEF, retired or walkover was not played: set defaulted true and still say who took the point. ' +
+        'A court marked default, DEF or walkover was not played: set defaulted true and still say who took the point. ' +
+        'A RETIRED court WAS played: defaulted false, keep the games played and end the score with " RET" (e.g. "6-4, 5-6 RET"). ' +
         'Use null for anything you genuinely cannot read rather than guessing — a wrong score is worse than a blank one. ' +
         'Call record_scorecard exactly once.',
     },
@@ -144,7 +148,7 @@ export async function POST(req: Request) {
                   description: 'Set scores from OUR perspective, e.g. "6-4, 3-6, 10-7". Null if unreadable.',
                 },
                 won: { type: ['boolean', 'null'], description: 'Did OUR pair win this court?' },
-                defaulted: { type: 'boolean', description: 'True if nobody played it (default/walkover/retired)' },
+                defaulted: { type: 'boolean', description: 'True if nobody played it (default/walkover). A retirement was played: false.' },
                 winner_from: {
                   type: 'string',
                   enum: ['circle', 'scores', 'unclear'],
@@ -196,13 +200,32 @@ export async function POST(req: Request) {
     courts: courts
       // Drop anything that isn't one of our courts rather than inventing rows.
       .filter((c) => known.has(Number(c.court_number)))
-      .map((c) => ({
-        court_number: Number(c.court_number),
-        score: typeof c.score === 'string' && c.score.trim() ? c.score.trim() : null,
-        won: typeof c.won === 'boolean' ? c.won : null,
-        defaulted: c.defaulted === true,
-        winnerFrom: ['circle', 'scores', 'unclear'].includes(c.winner_from) ? c.winner_from : 'unclear',
-        confidence: ['high', 'medium', 'low'].includes(c.confidence) ? c.confidence : 'medium',
-      })),
+      .map((c) => {
+        const score = typeof c.score === 'string' && c.score.trim() ? c.score.trim() : null;
+        const won = typeof c.won === 'boolean' ? c.won : null;
+        const defaulted = c.defaulted === true;
+        // The model can flip a score the wrong way round. A played, finished
+        // court whose sets say the opposite of `won` is wrong somewhere, so it
+        // is never reported as a confident read.
+        const sets = setsFromScore(score);
+        const contradicts =
+          !defaulted &&
+          won !== null &&
+          !!score &&
+          !/ret/i.test(score) &&
+          (won ? sets.ours < sets.theirs : sets.ours > sets.theirs);
+        return {
+          court_number: Number(c.court_number),
+          score,
+          won,
+          defaulted,
+          winnerFrom: ['circle', 'scores', 'unclear'].includes(c.winner_from) ? c.winner_from : 'unclear',
+          confidence: contradicts
+            ? 'low'
+            : ['high', 'medium', 'low'].includes(c.confidence)
+              ? c.confidence
+              : 'medium',
+        };
+      }),
   });
 }
