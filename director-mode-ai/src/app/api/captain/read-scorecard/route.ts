@@ -212,7 +212,7 @@ export async function POST(req: Request) {
           !defaulted &&
           won !== null &&
           !!score &&
-          !/ret/i.test(score) &&
+          !/\bret/i.test(score) &&
           (won ? sets.ours < sets.theirs : sets.ours > sets.theirs);
         return {
           court_number: Number(c.court_number),
