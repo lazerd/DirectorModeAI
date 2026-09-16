@@ -136,6 +136,23 @@ describe('buildFillPayload', () => {
     ]);
   });
 
+  it('carries the opponent names read off the scorecard', () => {
+    const { payload } = buildFillPayload({
+      ...base,
+      courts: [court(1, { opponents: [' Jane Smith ', 'Ann Lee', 'stray'] }), court(2)],
+    });
+    expect(payload.lines[0].them).toEqual(['Jane Smith', 'Ann Lee']);
+    expect(payload.lines[1].them).toBeNull();
+  });
+
+  it('keeps Default for their side when they defaulted, whatever names were written', () => {
+    const { payload } = buildFillPayload({
+      ...base,
+      courts: [court(4, { opponents: ['Jane Smith'], won: true, defaulted: true, defaultBy: 'them' })],
+    });
+    expect(payload.lines[0].them).toBe('default');
+  });
+
   it('sends one name for a singles court', () => {
     const { payload } = buildFillPayload({
       ...base,

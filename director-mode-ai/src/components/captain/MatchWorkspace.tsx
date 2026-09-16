@@ -142,6 +142,7 @@ export default function MatchWorkspace({
     won: boolean | null;
     defaulted?: boolean;
     default_by?: 'us' | 'them' | null;
+    opponentNames?: string[] | null;
   }[];
   /** When the post-match recap last went to the team, if it has. */
   recapSentAt: string | null;
@@ -248,6 +249,14 @@ export default function MatchWorkspace({
           .filter((r) => (r as { defaulted?: boolean }).defaulted)
           .map((r) => [r.courtNumber, ((r as { default_by?: 'us' | 'them' }).default_by ?? 'them')]),
       ) as Record<number, 'us' | 'them' | null>,
+  );
+  /** The other team's players per court, "Jane Smith / Ann Lee" — read off the card, used to fill TopDog. */
+  const [opponentNames, setOpponentNames] = useState<Record<number, string>>(() =>
+    Object.fromEntries(
+      initialResults
+        .filter((r) => r.opponentNames?.length)
+        .map((r) => [r.courtNumber, (r.opponentNames ?? []).join(' / ')]),
+    ),
   );
   const [scores, setScores] = useState<Record<number, { score: string; won: boolean | null }>>(
     Object.fromEntries(
@@ -908,6 +917,10 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           won: scores[c.courtNumber]?.won ?? null,
           defaulted: !!defaulted[c.courtNumber],
           default_by: defaulted[c.courtNumber] ?? undefined,
+          opponent_names: (opponentNames[c.courtNumber] ?? '')
+            .split('/')
+            .map((n) => n.trim())
+            .filter(Boolean),
         })),
       },
       (j) => {
@@ -971,6 +984,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         score: string | null;
         won: boolean | null;
         defaulted: boolean;
+        opponents?: string[];
         winnerFrom: 'circle' | 'scores' | 'unclear';
         confidence: 'high' | 'medium' | 'low';
       }[];
@@ -981,6 +995,9 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
 
       for (const r of rows) {
         setScore(r.court_number, { score: r.score ?? '', won: r.won });
+        if (r.opponents?.length) {
+          setOpponentNames((o) => ({ ...o, [r.court_number]: (r.opponents ?? []).join(' / ') }));
+        }
         setDefaulted((d) => ({
           ...d,
           [r.court_number]: r.defaulted ? (r.won === false ? 'us' : 'them') : null,
@@ -2452,6 +2469,16 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                       <div className="text-white text-sm flex-1 min-w-[10rem]">
                         {nameOf(c.player1Id)}
                         {c.courtType === 'doubles' ? ` / ${nameOf(c.player2Id)}` : ''}
+                        <input
+                          value={opponentNames[c.courtNumber] ?? ''}
+                          onChange={(e) =>
+                            setOpponentNames((o) => ({ ...o, [c.courtNumber]: e.target.value }))
+                          }
+                          placeholder={c.courtType === 'doubles' ? 'vs their players: Jane Smith / Ann Lee' : 'vs their player'}
+                          aria-label={`Opponents on court ${c.courtNumber}`}
+                          style={INPUT_COLOR}
+                          className="mt-1.5 block w-full max-w-sm px-2.5 py-1.5 rounded-lg bg-[#001820] border border-white/10 placeholder-white/25 text-xs focus:border-[#D3FB52]/50 focus:outline-none"
+                        />
                       </div>
                       <input
                         value={defaulted[c.courtNumber] ? 'Default' : s.score}

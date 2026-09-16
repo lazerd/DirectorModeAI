@@ -41,7 +41,14 @@ export async function POST(req: Request) {
     team_id?: string;
     match_id?: string;
     mark_played?: boolean;
-    results?: { court_number: number; score?: string | null; won?: boolean | null; defaulted?: boolean; default_by?: 'us' | 'them' }[];
+    results?: {
+      court_number: number;
+      score?: string | null;
+      won?: boolean | null;
+      defaulted?: boolean;
+      default_by?: 'us' | 'them';
+      opponent_names?: string[] | null;
+    }[];
   };
   if (!body.team_id || !body.match_id) {
     return NextResponse.json({ error: 'team_id and match_id are required.' }, { status: 400 });
@@ -73,6 +80,16 @@ export async function POST(req: Request) {
         // playoff eligibility stay honest.
         defaulted: r.defaulted === true,
         default_by: r.defaulted === true ? (r.default_by === 'us' ? 'us' : 'them') : null,
+        // Only written when the caller sends them, so a save that doesn't know
+        // the opponents can't wipe names read off the scorecard.
+        ...(Array.isArray(r.opponent_names)
+          ? {
+              opponent_names: r.opponent_names
+                .filter((n) => typeof n === 'string' && n.trim())
+                .map((n) => n.trim())
+                .slice(0, 2),
+            }
+          : {}),
       })),
       { onConflict: 'match_id,court_number' },
     );

@@ -70,7 +70,7 @@ export default async function MatchPage({
       .order('court_number'),
     db
       .from('captain_results')
-      .select('court_number, score, won, defaulted, default_by')
+      .select('court_number, score, won, defaulted, default_by, opponent_names')
       .eq('match_id', params.matchId),
   ]);
 
@@ -199,6 +199,7 @@ export default async function MatchPage({
           won: (r.won as boolean) ?? null,
           defaulted: (r.defaulted as boolean) ?? false,
           default_by: (r.default_by as 'us' | 'them' | null) ?? null,
+          opponentNames: (r.opponent_names as string[] | null) ?? null,
         }))}
         recapSentAt={(match.recap_sent_at as string) ?? null}
         withdrawals={withdrawals}

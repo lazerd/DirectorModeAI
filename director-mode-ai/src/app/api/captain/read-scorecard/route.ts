@@ -125,6 +125,8 @@ export async function POST(req: Request) {
         'Report the score from OUR perspective — if we lost 6-4 6-3, the score is "4-6, 3-6". ' +
         'A court marked default, DEF or walkover was not played: set defaulted true and still say who took the point. ' +
         'A RETIRED court WAS played: defaulted false, keep the games played and end the score with " RET" (e.g. "6-4, 5-6 RET"). ' +
+        "Also copy the OTHER team's player names on each of our lines into `opponents`, exactly as written " +
+        '(one entry per player, first name and surname when both are there). Leave it empty if none are written. ' +
         'Use null for anything you genuinely cannot read rather than guessing — a wrong score is worse than a blank one. ' +
         'Call record_scorecard exactly once.',
     },
@@ -149,6 +151,11 @@ export async function POST(req: Request) {
                 },
                 won: { type: ['boolean', 'null'], description: 'Did OUR pair win this court?' },
                 defaulted: { type: 'boolean', description: 'True if nobody played it (default/walkover). A retirement was played: false.' },
+                opponents: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: "The other team's players on this line as written, one per player. Empty if not written.",
+                },
                 winner_from: {
                   type: 'string',
                   enum: ['circle', 'scores', 'unclear'],
@@ -219,6 +226,12 @@ export async function POST(req: Request) {
           score,
           won,
           defaulted,
+          opponents: Array.isArray(c.opponents)
+            ? c.opponents
+                .filter((n: unknown) => typeof n === 'string' && n.trim())
+                .map((n: string) => n.trim())
+                .slice(0, 2)
+            : [],
           winnerFrom: ['circle', 'scores', 'unclear'].includes(c.winner_from) ? c.winner_from : 'unclear',
           confidence: contradicts
             ? 'low'

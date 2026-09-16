@@ -53,7 +53,7 @@ export async function GET(req: Request) {
       .eq('match_id', matchId),
     db
       .from('captain_results')
-      .select('court_number, score, won, defaulted, default_by')
+      .select('court_number, score, won, defaulted, default_by, opponent_names')
       .eq('match_id', matchId),
     db.from('captain_players').select('id, name').eq('team_id', teamId),
   ]);
@@ -78,6 +78,7 @@ export async function GET(req: Request) {
       won: (r?.won as boolean | null) ?? null,
       defaulted: r?.defaulted === true,
       defaultBy: (r?.default_by as 'us' | 'them' | null) ?? null,
+      opponents: (r?.opponent_names as string[] | null) ?? [],
     };
   });
 
