@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Write one email to one person, look at it, then send it.
+ * Write one email to one person, look at it, then send it — all on this page.
  *
  * THE PREVIEW IS THE PRODUCT. There is no path from typing to sending that
  * does not go through a rendered preview showing the real From, the real
@@ -16,9 +16,17 @@
  * One recipient. The picker is a radio list, not checkboxes, and the API takes
  * a single contact_id. Writing to a whole board means four emails and four
  * previews, which is the intended friction.
+ *
+ * CONTROLLED BY THE PAGE. Which contact is selected and whether this is open
+ * live in OrgDetail, because the Email button on a contact's row opens this
+ * with that person already chosen. Darrin's words: "it should basically open
+ * up a list of templates right on this page, i select one, then it opens up
+ * the text in a text editing box, and then i can click send right from here".
+ * So the templates are a visible list with their names on, not a dropdown you
+ * have to open to find out what is in it.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Template } from '@/lib/crm/load';
 import type { Contact, Org } from '@/lib/crm/types';
 
@@ -35,12 +43,26 @@ interface Preview {
   text: string;
 }
 
+/** A subject and a body handed in from somewhere else — the ask box's draft. */
+export interface ComposeSeed {
+  contact_id: string;
+  subject: string;
+  body: string;
+  /** Changes whenever a new seed arrives, so the same draft twice still applies. */
+  key: string;
+}
+
 export default function Compose({
   org,
   contacts,
   templates,
   repEmail,
   canEmail,
+  open,
+  onOpenChange,
+  contactId,
+  onContactId,
+  seed,
   onSent,
 }: {
   org: Org;
@@ -49,10 +71,14 @@ export default function Compose({
   templates: Template[];
   repEmail: string;
   canEmail: boolean;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  contactId: string;
+  onContactId: (id: string) => void;
+  seed: ComposeSeed | null;
+  /** A real send happened — the page re-reads its timeline. */
   onSent: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [contactId, setContactId] = useState('');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -67,6 +93,8 @@ export default function Compose({
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ status: string; message: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const appliedSeed = useRef<string | null>(null);
 
   /** Any change to what would be sent invalidates the approval. */
   const invalidate = useCallback(() => {
@@ -79,15 +107,34 @@ export default function Compose({
     invalidate();
   }, [contactId, subject, body, invalidate]);
 
-  function applyTemplate(slug: string) {
-    const t = templates.find((x) => x.slug === slug);
-    if (!t) {
+  // A draft from the ask box lands here. It fills the same two boxes a
+  // template does, and goes through the same preview and Send — the ask box
+  // cannot send, and this is the seam where that is true.
+  useEffect(() => {
+    if (!seed || appliedSeed.current === seed.key) return;
+    appliedSeed.current = seed.key;
+    setSubject(seed.subject);
+    setBody(seed.body);
+    setTemplateSlug(null);
+    setResult(null);
+  }, [seed]);
+
+  function applyTemplate(t: Template) {
+    if (templateSlug === t.slug) {
+      // Pressing the selected one again clears it, so "actually I'll write it
+      // myself" does not mean reloading the page.
       setTemplateSlug(null);
+      setSubject('');
+      setBody('');
       return;
     }
     setTemplateSlug(t.slug);
     setSubject(t.subject);
     setBody(t.body);
+    setResult(null);
+    // Straight into the editing box with the cursor in it — that is the whole
+    // point of picking a template from a list rather than a dropdown.
+    window.setTimeout(() => bodyRef.current?.focus(), 0);
   }
 
   async function ask(confirm: boolean) {
@@ -103,14 +150,18 @@ export default function Compose({
       if (confirm) {
         // A held or blocked send comes back 422 with its reason. It is NOT a
         // success, and must never be drawn like one — see lib/crm/send.ts.
-        setResult({ status: String(j.status ?? (res.ok ? 'sent' : 'failed')), message: String(j.message ?? j.error ?? '') });
+        const status = String(j.status ?? (res.ok ? 'sent' : 'failed'));
+        setResult({ status, message: String(j.message ?? j.error ?? '') });
         setPreview(null);
         setCanSend(false);
-        if (j.status === 'sent') {
+        if (status === 'sent') {
           setSubject('');
           setBody('');
           setTemplateSlug(null);
+          // The panel folds away and the confirmation goes up on the page,
+          // next to the History the send just added a line to.
           onSent();
+          onOpenChange(false);
         }
         return;
       }
@@ -131,7 +182,7 @@ export default function Compose({
       <section>
         <button
           type="button"
-          onClick={() => setOpen(true)}
+          onClick={() => onOpenChange(true)}
           className="rounded-lg border border-white/15 px-4 py-2 text-sm font-medium text-white/70 hover:text-white"
         >
           Write to someone here
@@ -140,11 +191,13 @@ export default function Compose({
     );
   }
 
+  const to = contacts.find((c) => c.id === contactId) ?? null;
+
   return (
-    <section className="rounded-2xl border border-white/[0.08] bg-[#002838] p-4">
+    <section className="rounded-2xl border border-[#D3FB52]/20 bg-[#002838] p-4">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-display text-xl text-white">Write an email</h2>
-        <button type="button" onClick={() => setOpen(false)} className="text-xs text-white/40 hover:text-white">
+        <button type="button" onClick={() => onOpenChange(false)} className="text-xs text-white/40 hover:text-white">
           Close
         </button>
       </div>
@@ -179,14 +232,16 @@ export default function Compose({
               {contacts.map((c) => (
                 <label
                   key={c.id}
-                  className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm hover:bg-white/[0.03]"
+                  className={`flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm hover:bg-white/[0.03] ${
+                    contactId === c.id ? 'bg-white/[0.05]' : ''
+                  }`}
                 >
                   <input
                     type="radio"
                     name="crm-to"
                     value={c.id}
                     checked={contactId === c.id}
-                    onChange={() => setContactId(c.id)}
+                    onChange={() => onContactId(c.id)}
                     className="accent-[#D3FB52]"
                   />
                   <span className="min-w-0">
@@ -202,19 +257,27 @@ export default function Compose({
           {/* -------------------------------------------------- templates */}
           {templates.length > 0 && (
             <div className="mt-4">
-              <label className={LABEL} htmlFor="tpl">
-                Start from
-              </label>
-              <select id="tpl" defaultValue="" onChange={(e) => applyTemplate(e.target.value)} className={FIELD}>
-                <option value="">Blank</option>
+              <span className={LABEL}>Start from</span>
+              <div className="flex flex-wrap gap-1.5">
                 {templates.map((t) => (
-                  <option key={t.slug} value={t.slug}>
+                  <button
+                    key={t.slug}
+                    type="button"
+                    onClick={() => applyTemplate(t)}
+                    aria-pressed={templateSlug === t.slug}
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-medium ${
+                      templateSlug === t.slug
+                        ? 'border-[#D3FB52] bg-[#D3FB52] text-[#001820]'
+                        : 'border-white/15 text-white/70 hover:border-[#D3FB52]/40 hover:text-white'
+                    }`}
+                  >
                     {t.name}
-                  </option>
+                  </button>
                 ))}
-              </select>
-              <p className="mt-1 text-[11px] text-white/30">
+              </div>
+              <p className="mt-1.5 text-[11px] text-white/30">
                 {'{{first_name}} {{club}} {{rep_name}} {{demo_url}} {{next_step}}'} fill in from this club.
+                Pick one to drop it in the box, then edit it.
               </p>
             </div>
           )}
@@ -231,6 +294,7 @@ export default function Compose({
             </label>
             <textarea
               id="msg"
+              ref={bodyRef}
               rows={10}
               value={body}
               onChange={(e) => setBody(e.target.value)}
@@ -312,7 +376,7 @@ export default function Compose({
               onClick={() => ask(false)}
               className="mt-4 rounded-lg border border-white/20 px-5 py-2.5 text-sm font-semibold text-white hover:border-[#D3FB52]/50 disabled:opacity-40"
             >
-              {busy ? 'Building…' : 'Preview it'}
+              {busy ? 'Building…' : to ? `Preview it for ${to.full_name}` : 'Preview it'}
             </button>
           )}
         </>

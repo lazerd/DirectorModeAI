@@ -1,24 +1,44 @@
 'use client';
 
 /**
- * One prospect club, editable in place.
+ * One prospect club.
+ *
+ * The plan, the demo link, the people, the composer, what we know, and the
+ * history — in that order, because that is the order a rep uses them.
  *
  * Every field autosaves on blur — same rule as /run/site, and for the same
  * reason: this is a working tool a rep opens on a phone to change one date,
  * and a Save button is a thing to forget.
+ *
+ * TWO THINGS THAT CHANGED AFTER DARRIN USED IT:
+ *
+ *   1. CONTACTS ARE TEXT UNTIL YOU EDIT THEM. Every contact used to render as
+ *      five input boxes with their placeholders showing, so a club with
+ *      fifteen board members was fifteen copies of "Role — decision maker,
+ *      champion, gatekeeper". Now a contact reads as a line of facts; clicking
+ *      a value (or Edit) turns that card into the form it used to be. Empty
+ *      fields are a quiet "add phone", not a repeated hint.
+ *   2. EMAIL MEANS THE COMPOSER, NOT YOUR MAIL APP. The per-contact Email
+ *      button used to be a mailto: link, which launches Outlook and loses the
+ *      template, the merge fields, the preview and the ledger. It now opens
+ *      the panel below with that person selected and scrolls to it. The
+ *      address itself is still a mailto: for the rare case where you do want
+ *      your own client.
  *
  * Compose lives at the bottom rather than in a modal. A modal would hide the
  * contact list and the notes at exactly the moment the rep needs them, and on
  * a 430px screen it would hide everything.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ageLabel, shortDate, type ISODate } from '@/lib/crm/dates';
 import { ACTIVITY_KINDS, ACTIVITY_LABEL, ORG_TYPES, STAGES, STAGE_LABEL, type ActivityKind } from '@/lib/crm/stages';
+import { regionOf } from '@/lib/crm/region';
 import type { Template } from '@/lib/crm/load';
 import type { Activity, Contact, Org } from '@/lib/crm/types';
-import Compose from './Compose';
+import AskBox, { DRAFT_KEY, type AskDraft } from '../AskBox';
+import Compose, { type ComposeSeed } from './Compose';
 
 const FIELD =
   'w-full rounded-lg border border-white/10 bg-[#001820] px-3 py-2 text-sm text-white focus:border-[#D3FB52]/50 focus:outline-none';
@@ -48,11 +68,31 @@ export default function OrgDetail({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sentNote, setSentNote] = useState<string | null>(null);
+
+  // ------------------------------------------------------ the composer
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeTo, setComposeTo] = useState('');
+  const [seed, setSeed] = useState<ComposeSeed | null>(null);
+  const composeRef = useRef<HTMLDivElement | null>(null);
 
   const flash = useCallback(() => {
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   }, []);
+
+  /** Re-read the club from the server without reloading the page. */
+  const reload = useCallback(async () => {
+    const res = await fetch(`/api/crm/orgs/${org.id}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const j = (await res.json().catch(() => null)) as
+      | { org: Org; contacts: Contact[]; activities: Activity[] }
+      | null;
+    if (!j) return;
+    setOrg(j.org);
+    setContacts(j.contacts);
+    setActivities(j.activities);
+  }, [org.id]);
 
   /** One PATCH per changed field. */
   const save = useCallback(
@@ -72,14 +112,46 @@ export default function OrgDetail({
         }
         setOrg(j.org);
         flash();
-        // A stage change writes an activity server-side; re-render to show it.
-        if ('stage' in patch) router.refresh();
+        // A stage change writes an activity server-side; pull the timeline.
+        if ('stage' in patch) void reload();
       } finally {
         setBusy(false);
       }
     },
-    [org.id, flash, router],
+    [org.id, flash, reload],
   );
+
+  const openComposerFor = useCallback((contactId: string) => {
+    setComposeTo(contactId);
+    setComposeOpen(true);
+    setSentNote(null);
+    // Let the panel render before scrolling at it.
+    window.setTimeout(() => composeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 0);
+  }, []);
+
+  /*
+   * A draft written by the ask box on /crm arrives through sessionStorage —
+   * see AskBox. Read once and thrown away, so a back button does not refill
+   * the composer with an email the rep already sent.
+   */
+  useEffect(() => {
+    let raw: string | null = null;
+    try {
+      raw = window.sessionStorage.getItem(DRAFT_KEY);
+      if (raw) window.sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    try {
+      const d = JSON.parse(raw) as AskDraft;
+      if (d?.org_id !== initialOrg.id) return;
+      setSeed({ contact_id: d.contact_id, subject: d.subject, body: d.body, key: `${Date.now()}` });
+      openComposerFor(d.contact_id);
+    } catch {
+      // A mangled draft is not worth an error message.
+    }
+  }, [initialOrg.id, openComposerFor]);
 
   const Text = ({
     name,
@@ -121,37 +193,42 @@ export default function OrgDetail({
     [contacts],
   );
 
-  async function patchContact(id: string, patch: Record<string, unknown>) {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/crm/contacts/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
-      });
-      const j = (await res.json().catch(() => ({}))) as { contact?: Contact; error?: string };
-      if (!res.ok || !j.contact) {
-        setError(j.error || 'Could not save.');
-        return;
+  const patchContact = useCallback(
+    async (id: string, patch: Record<string, unknown>) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/crm/contacts/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        });
+        const j = (await res.json().catch(() => ({}))) as { contact?: Contact; error?: string };
+        if (!res.ok || !j.contact) {
+          setError(j.error || 'Could not save.');
+          return;
+        }
+        const next = j.contact;
+        setContacts((cs) =>
+          cs.map((c) =>
+            c.id === next.id ? next : patch.is_primary === true ? { ...c, is_primary: false } : c,
+          ),
+        );
+        flash();
+      } finally {
+        setBusy(false);
       }
-      const next = j.contact;
-      setContacts((cs) =>
-        cs.map((c) =>
-          c.id === next.id ? next : patch.is_primary === true ? { ...c, is_primary: false } : c,
-        ),
-      );
-      flash();
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    [flash],
+  );
 
   async function removeContact(id: string, name: string) {
     if (!window.confirm(`Remove ${name}?`)) return;
     const res = await fetch(`/api/crm/contacts/${id}`, { method: 'DELETE' });
     if (res.ok) setContacts((cs) => cs.filter((c) => c.id !== id));
   }
+
+  const region = regionOf(org);
 
   return (
     <div className="mt-3 space-y-8">
@@ -175,9 +252,40 @@ export default function OrgDetail({
           {(org.city || org.state) && <span>{[org.city, org.state].filter(Boolean).join(', ')}</span>}
           {org.member_count != null && <span>{org.member_count.toLocaleString('en-US')} members</span>}
         </div>
+        {/* Where this club came from and which slice of the roster it is in.
+            Both were buried in the notes paragraph before. */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+          {region && (
+            <span className="rounded bg-white/[0.07] px-2 py-0.5 uppercase tracking-wide text-white/55">
+              {region}
+            </span>
+          )}
+          {org.source && (
+            <span className="rounded bg-white/[0.07] px-2 py-0.5 text-white/55">via {org.source}</span>
+          )}
+          {org.queued_at && (
+            <span className="rounded bg-[#D3FB52]/15 px-2 py-0.5 font-semibold uppercase tracking-wide text-[#D3FB52]">
+              Queued for outreach
+            </span>
+          )}
+        </div>
       </header>
 
       {error && <p className="text-sm text-red-300">{error}</p>}
+      {sentNote && (
+        <p className="rounded-lg bg-[#D3FB52]/10 p-3 text-sm text-[#D3FB52]">{sentNote}</p>
+      )}
+
+      {/* --------------------------------------------------------- ask box */}
+      <AskBox
+        orgId={org.id}
+        clubName={org.name}
+        onDraft={(d) => {
+          setSeed({ contact_id: d.contact_id, subject: d.subject, body: d.body, key: `${Date.now()}` });
+          openComposerFor(d.contact_id);
+        }}
+        onApplied={() => void reload()}
+      />
 
       {/* ------------------------------------------------------- stage + plan */}
       <section className="rounded-2xl border border-white/[0.08] bg-[#002838] p-4">
@@ -289,111 +397,66 @@ export default function OrgDetail({
           <h2 className="font-display text-xl text-white">Contacts</h2>
           <span className="text-xs text-white/30">{contacts.length}</span>
         </div>
+
+        {/*
+          128 of the 519 imported clubs have nobody on file. For those, finding
+          a name IS the next action, and saying it loudly here is the whole
+          difference between a row in a list and a piece of work.
+        */}
+        {contacts.length === 0 && (
+          <div className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-4">
+            <p className="text-sm font-semibold text-amber-100">Nobody here yet.</p>
+            <p className="mt-1 text-sm text-amber-200/70">
+              Find the racquets director — the club&rsquo;s own site, its staff page, or its board page.
+              Paste the list below and this club becomes something you can actually write to.
+            </p>
+            {org.website && (
+              <a
+                href={org.website}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-3 inline-block rounded-lg border border-amber-300/40 px-3 py-1.5 text-xs font-semibold text-amber-100 hover:bg-amber-400/10"
+              >
+                Open {org.website.replace(/^https?:\/\//, '').replace(/\/$/, '')} ↗
+              </a>
+            )}
+          </div>
+        )}
+
         <div className="mt-3 space-y-2">
           {contacts.map((c) => (
-            <div
+            <ContactCard
               key={c.id}
-              className={`rounded-xl border p-3 ${
-                c.do_not_contact ? 'border-red-500/20 bg-[#002838]/50' : 'border-white/[0.08] bg-[#002838]'
-              }`}
-            >
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  defaultValue={c.full_name}
-                  aria-label="Name"
-                  onBlur={(e) => e.target.value !== c.full_name && patchContact(c.id, { full_name: e.target.value })}
-                  className={`${FIELD} font-semibold`}
-                />
-                <input
-                  defaultValue={c.title ?? ''}
-                  placeholder="Title"
-                  aria-label="Title"
-                  onBlur={(e) => e.target.value !== (c.title ?? '') && patchContact(c.id, { title: e.target.value })}
-                  className={FIELD}
-                />
-                <input
-                  defaultValue={c.email ?? ''}
-                  placeholder="Email"
-                  aria-label="Email"
-                  inputMode="email"
-                  onBlur={(e) =>
-                    e.target.value.toLowerCase() !== (c.email ?? '') && patchContact(c.id, { email: e.target.value })
-                  }
-                  className={FIELD}
-                />
-                <input
-                  defaultValue={c.phone ?? ''}
-                  placeholder="Phone"
-                  aria-label="Phone"
-                  inputMode="tel"
-                  onBlur={(e) => e.target.value !== (c.phone ?? '') && patchContact(c.id, { phone: e.target.value })}
-                  className={FIELD}
-                />
-                <input
-                  defaultValue={c.role ?? ''}
-                  placeholder="Role — decision maker, champion, gatekeeper"
-                  aria-label="Role"
-                  onBlur={(e) => e.target.value !== (c.role ?? '') && patchContact(c.id, { role: e.target.value })}
-                  className={`${FIELD} sm:col-span-2`}
-                />
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
-                {c.email && (
-                  <a href={`mailto:${c.email}`} className="font-medium text-[#D3FB52] hover:underline">
-                    Email ↗
-                  </a>
-                )}
-                {c.phone && (
-                  <a href={`tel:${c.phone.replace(/[^\d+]/g, '')}`} className="text-white/50 hover:text-white">
-                    Call
-                  </a>
-                )}
-                <button
-                  type="button"
-                  onClick={() => patchContact(c.id, { is_primary: !c.is_primary })}
-                  className={c.is_primary ? 'font-semibold text-[#D3FB52]' : 'text-white/40 hover:text-white'}
-                >
-                  {c.is_primary ? '★ Primary' : 'Make primary'}
-                </button>
-                {/*
-                  The one-click stop. Flipping this is enough: the Compose
-                  picker below drops them, and lib/crm/compose.ts refuses them
-                  again server-side, so nothing can send to them afterwards.
-                */}
-                <button
-                  type="button"
-                  onClick={() => patchContact(c.id, { do_not_contact: !c.do_not_contact })}
-                  className={c.do_not_contact ? 'font-semibold text-red-300' : 'text-white/40 hover:text-red-300'}
-                >
-                  {c.do_not_contact ? "Don't contact — on" : "Don't contact"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => removeContact(c.id, c.full_name)}
-                  className="ml-auto text-white/25 hover:text-red-300"
-                >
-                  Remove
-                </button>
-              </div>
-            </div>
+              contact={c}
+              onPatch={(patch) => patchContact(c.id, patch)}
+              onRemove={() => removeContact(c.id, c.full_name)}
+              onEmail={() => openComposerFor(c.id)}
+            />
           ))}
         </div>
-        <AddContacts
-          orgId={org.id}
-          onContacts={(cs) => setContacts(cs)}
-          onError={setError}
-        />
+        <AddContacts orgId={org.id} onContacts={(cs) => setContacts(cs)} onError={setError} />
       </section>
 
       {/* ------------------------------------------------------------ compose */}
-      <Compose
-        org={org}
-        contacts={emailable}
-        templates={templates}
-        repEmail={repEmail}
-        canEmail={canEmail}
-        onSent={() => router.refresh()}
-      />
+      <div ref={composeRef} className="scroll-mt-20">
+        <Compose
+          org={org}
+          contacts={emailable}
+          templates={templates}
+          repEmail={repEmail}
+          canEmail={canEmail}
+          open={composeOpen}
+          onOpenChange={setComposeOpen}
+          contactId={composeTo}
+          onContactId={setComposeTo}
+          seed={seed}
+          onSent={() => {
+            setSentNote('Sent. It is on the timeline below.');
+            void reload();
+            router.refresh();
+          }}
+        />
+      </div>
 
       {/* -------------------------------------------------------------- notes */}
       <section>
@@ -401,6 +464,7 @@ export default function OrgDetail({
         <div className="mt-3 grid gap-4 sm:grid-cols-2">
           <Text name="website" label="Website" placeholder="https://…" />
           <Text name="source" label="How we found them" />
+          <Text name="region" label="Region" placeholder="East, Central, West…" />
           <Text name="city" label="City" />
           <Text name="state" label="State" />
           <div>
@@ -474,6 +538,219 @@ export default function OrgDetail({
   );
 }
 
+/**
+ * One contact: a line of facts, or the form it used to be.
+ *
+ * Read mode is the default because a club board is fifteen of these, and
+ * fifteen sets of five inputs with their placeholders showing is a wall of
+ * grey hint text with the actual names lost in it. Clicking any value — or
+ * Edit — opens the form for that one card. Empty fields show as a quiet "add
+ * phone" rather than a repeated instruction.
+ */
+function ContactCard({
+  contact: c,
+  onPatch,
+  onRemove,
+  onEmail,
+}: {
+  contact: Contact;
+  onPatch: (patch: Record<string, unknown>) => void;
+  onRemove: () => void;
+  onEmail: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [focusField, setFocusField] = useState<string | null>(null);
+
+  function edit(field?: string) {
+    setFocusField(field ?? null);
+    setEditing(true);
+  }
+
+  const shell = c.do_not_contact
+    ? 'border-red-500/20 bg-[#002838]/50'
+    : 'border-white/[0.08] bg-[#002838]';
+
+  if (editing) {
+    const auto = (name: string) => (el: HTMLInputElement | null) => {
+      if (el && focusField === name) {
+        el.focus();
+        setFocusField(null);
+      }
+    };
+    return (
+      <div className={`rounded-xl border p-3 ${shell}`}>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <input
+            ref={auto('full_name')}
+            defaultValue={c.full_name}
+            aria-label="Name"
+            onBlur={(e) => e.target.value !== c.full_name && onPatch({ full_name: e.target.value })}
+            className={`${FIELD} font-semibold`}
+          />
+          <input
+            ref={auto('title')}
+            defaultValue={c.title ?? ''}
+            placeholder="Title"
+            aria-label="Title"
+            onBlur={(e) => e.target.value !== (c.title ?? '') && onPatch({ title: e.target.value })}
+            className={FIELD}
+          />
+          <input
+            ref={auto('email')}
+            defaultValue={c.email ?? ''}
+            placeholder="Email"
+            aria-label="Email"
+            inputMode="email"
+            onBlur={(e) => e.target.value.toLowerCase() !== (c.email ?? '') && onPatch({ email: e.target.value })}
+            className={FIELD}
+          />
+          <input
+            ref={auto('phone')}
+            defaultValue={c.phone ?? ''}
+            placeholder="Phone"
+            aria-label="Phone"
+            inputMode="tel"
+            onBlur={(e) => e.target.value !== (c.phone ?? '') && onPatch({ phone: e.target.value })}
+            className={FIELD}
+          />
+          <input
+            ref={auto('role')}
+            defaultValue={c.role ?? ''}
+            placeholder="Role — decision maker, champion, gatekeeper"
+            aria-label="Role"
+            onBlur={(e) => e.target.value !== (c.role ?? '') && onPatch({ role: e.target.value })}
+            className={`${FIELD} sm:col-span-2`}
+          />
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <button
+            type="button"
+            onClick={() => onPatch({ is_primary: !c.is_primary })}
+            className={c.is_primary ? 'font-semibold text-[#D3FB52]' : 'text-white/40 hover:text-white'}
+          >
+            {c.is_primary ? '★ Primary' : 'Make primary'}
+          </button>
+          {/*
+            The one-click stop. Flipping this is enough: the Compose picker
+            below drops them, and lib/crm/compose.ts refuses them again
+            server-side, so nothing can send to them afterwards.
+          */}
+          <button
+            type="button"
+            onClick={() => onPatch({ do_not_contact: !c.do_not_contact })}
+            className={c.do_not_contact ? 'font-semibold text-red-300' : 'text-white/40 hover:text-red-300'}
+          >
+            {c.do_not_contact ? "Don't contact — on" : "Don't contact"}
+          </button>
+          <button type="button" onClick={onRemove} className="text-white/25 hover:text-red-300">
+            Remove
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditing(false)}
+            className="ml-auto rounded-lg border border-white/15 px-3 py-1 font-medium text-white/70 hover:text-white"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  /** A value you can click to edit, or a quiet prompt when there is none. */
+  const Value = ({ field, text, prefix }: { field: string; text: string | null; prefix?: string }) =>
+    text ? (
+      <button
+        type="button"
+        onClick={() => edit(field)}
+        className="text-left text-white/55 hover:text-white"
+        title="Click to edit"
+      >
+        {prefix}
+        {text}
+      </button>
+    ) : null;
+
+  const missing = [
+    !c.title && { field: 'title', label: 'add title' },
+    !c.email && { field: 'email', label: 'add email' },
+    !c.phone && { field: 'phone', label: 'add phone' },
+    !c.role && { field: 'role', label: 'add role' },
+  ].filter(Boolean) as { field: string; label: string }[];
+
+  return (
+    <div className={`rounded-xl border p-3 ${shell}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <button
+            type="button"
+            onClick={() => edit('full_name')}
+            className="text-left font-semibold text-white hover:text-[#D3FB52]"
+            title="Click to edit"
+          >
+            {c.is_primary && <span className="mr-1 text-[#D3FB52]">★</span>}
+            {c.full_name}
+          </button>
+          {c.title && <span className="ml-2 text-sm text-white/45">{c.title}</span>}
+          {c.do_not_contact && (
+            <span className="ml-2 rounded bg-red-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-300">
+              Don&rsquo;t contact
+            </span>
+          )}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+            {c.email && (
+              <span className="text-white/55">
+                {/* The address itself stays a mailto: for the rare case where
+                    you really do want your own mail client. The Email button
+                    on the right is the one that keeps the template, the merge
+                    fields, the preview and the ledger. */}
+                <a href={`mailto:${c.email}`} className="hover:text-white hover:underline" title="Open in your mail app">
+                  {c.email}
+                </a>
+              </span>
+            )}
+            {c.phone && (
+              <a href={`tel:${c.phone.replace(/[^\d+]/g, '')}`} className="text-white/55 hover:text-white">
+                {c.phone}
+              </a>
+            )}
+            <Value field="role" text={c.role} />
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-1.5">
+          {c.email && !c.do_not_contact && (
+            <button
+              type="button"
+              onClick={onEmail}
+              className="rounded-lg bg-[#D3FB52] px-3 py-1.5 text-xs font-semibold text-[#001820]"
+            >
+              Email
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => edit()}
+            className="rounded-lg border border-white/15 px-2.5 py-1.5 text-xs font-medium text-white/50 hover:text-white"
+          >
+            Edit
+          </button>
+        </div>
+      </div>
+
+      {missing.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-x-3 text-[11px] text-white/25">
+          {missing.map((m) => (
+            <button key={m.field} type="button" onClick={() => edit(m.field)} className="hover:text-white/60">
+              {m.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Copy to clipboard, with the only feedback that matters: the word "Copied". */
 function CopyButton({ value }: { value: string }) {
   const [done, setDone] = useState(false);
@@ -541,6 +818,7 @@ function AddContacts({
       }
       onContacts(j.contacts);
       setPaste('');
+      setMode(null);
       setNote(
         [
           `Added ${j.added}.`,
@@ -569,10 +847,14 @@ function AddContacts({
         onError(j.error || 'Could not add them.');
         return;
       }
-      // The list refreshes from the server copy on the next load; for now the
-      // new row is appended so the rep can fill it in immediately.
-      onContacts([]);
-      window.location.reload();
+      // Re-read the list rather than reload the page — the composer may be
+      // open with a draft in it, and a reload would throw that away.
+      const after = await fetch(`/api/crm/orgs/${orgId}`, { cache: 'no-store' });
+      const bundle = (await after.json().catch(() => null)) as { contacts?: Contact[] } | null;
+      if (bundle?.contacts) onContacts(bundle.contacts);
+      setName('');
+      setMode(null);
+      setNote('Added. Click their name to fill in the rest.');
     } finally {
       setBusy(false);
     }

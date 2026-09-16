@@ -21,6 +21,8 @@ const ORG: Org = {
   owner_email: 'darrinjco@gmail.com',
   mrr_target_cents: 7500,
   source: null,
+  region: null,
+  queued_at: null,
   next_step: 'Warm intro to Mary Benin',
   next_step_at: '2026-09-21',
   demo_url: 'https://clubmode.ai/demo/abc123',
