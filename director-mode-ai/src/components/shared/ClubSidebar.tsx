@@ -37,7 +37,7 @@ import {
 } from '@/config/nav';
 import {
   Zap, Home, LayoutGrid, Calendar, GraduationCap,
-  ChevronLeft, ChevronRight, Menu, X, HardHat, Eye, ClipboardList, Handshake,
+  ChevronLeft, ChevronRight, Menu, X, HardHat, Eye, ClipboardList, Handshake, Target,
 } from 'lucide-react';
 
 type Item = {
@@ -213,6 +213,16 @@ export default function ClubSidebar() {
    */
   const [canViewAs, setCanViewAs] = useState(false);
   /*
+   * The sales CRM, for the two people who sell ClubMode and nobody else.
+   *
+   * Asked for, never assumed, and never rendered on a "maybe": the answer is
+   * is_crm_user() on the server (lib/crm/server.ts), and a club owner or
+   * director must not learn from their own nav that a pipeline with their name
+   * in it exists. /api/crm/access returns a bare boolean and nothing else;
+   * every route that carries data 404s to the same caller.
+   */
+  const [canCrm, setCanCrm] = useState(false);
+  /*
    * The teams this person captains.
    *
    * A captain is usually a club MEMBER, and the member nav is four items —
@@ -228,6 +238,10 @@ export default function ClubSidebar() {
     fetch('/api/admin/view-as')
       .then((r) => r.json())
       .then((j: { allowed?: boolean }) => setCanViewAs(!!j?.allowed))
+      .catch(() => {});
+    fetch('/api/crm/access')
+      .then((r) => r.json())
+      .then((j: { allowed?: boolean }) => setCanCrm(!!j?.allowed))
       .catch(() => {});
   }, []);
 
@@ -328,9 +342,21 @@ export default function ClubSidebar() {
     icon: Eye,
     color: '#fbbf24',
   };
+  const CRM_ITEM: Item = {
+    name: 'Pipeline',
+    href: '/crm',
+    matches: ['/crm'],
+    icon: Target,
+    color: '#f472b6',
+  };
   // Shown even on the member nav: the whole point is to reach it from whatever
-  // screen the owner happens to be on.
-  const footerItems = [...(isMember ? [] : FOOTER_ITEMS), ...(canViewAs ? [VIEW_AS_ITEM] : [])];
+  // screen the owner happens to be on. Same for the CRM — a rep is as likely
+  // to be inside a club's tools as on the homepage when a prospect calls.
+  const footerItems = [
+    ...(isMember ? [] : FOOTER_ITEMS),
+    ...(canViewAs ? [VIEW_AS_ITEM] : []),
+    ...(canCrm ? [CRM_ITEM] : []),
+  ];
 
   /*
    * CaptainMode leads the member nav when this person captains something. The

@@ -251,6 +251,19 @@ export async function middleware(request: NextRequest) {
     // PlayerVault and the club profile (director tools under /courtconnect).
     '/courtconnect/vault',
     '/courtconnect/club',
+    /*
+     * The sales CRM. This is a startsWith list, so '/crm' covers /crm/new and
+     * /crm/<id> too — and there is deliberately nothing public under /crm for
+     * it to catch by mistake (the trap '/calendar' fell into above).
+     *
+     * This gate only says "be signed in". Being a CRM user is a separate
+     * question answered by requireCrm() in every page and route, which 404s
+     * rather than 403s — a signed-in club owner must not learn this exists.
+     * Both are needed: without this line an anonymous visitor would reach the
+     * page and get a 404 that looks like a missing route, which is fine, but
+     * they would also skip the login redirect every other tool gives them.
+     */
+    '/crm',
   ];
   /*
    * Public pages that live UNDER a protected prefix.
