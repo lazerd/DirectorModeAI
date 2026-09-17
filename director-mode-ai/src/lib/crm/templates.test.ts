@@ -34,12 +34,15 @@ const CONTACT = {
 } as Contact;
 
 const REP = 'Darrin Cohen';
+// mergeValuesFor renders rep_name as the founding-team signer now (no personal
+// name goes out), so the letters under test sign the same way.
 const VALUES = mergeValuesFor(ORG, CONTACT, REP);
+const SIGNER = VALUES.rep_name;
 
 describe('depersonalize', () => {
   it('puts the first name, the club and the rep back as merge fields', () => {
     const draft =
-      'Hi Mary,\n\nI would rather show you Rossmoor Tennis Club than describe it.\n\nDarrin Cohen';
+      `Hi Mary,\n\nI would rather show you Rossmoor Tennis Club than describe it.\n\n${SIGNER}`;
     expect(depersonalize(draft, VALUES)).toBe(
       'Hi {{first_name}},\n\nI would rather show you {{club}} than describe it.\n\n{{rep_name}}',
     );
@@ -59,8 +62,9 @@ describe('depersonalize', () => {
   it('replaces the longest value first, so the rep name is not half-eaten', () => {
     // The rep is Darrin Cohen and the CONTACT is also called Darrin. The rep's
     // full name must come out whole as {{rep_name}}, not "{{first_name}} Cohen".
-    const contact = { ...CONTACT, full_name: 'Darrin Webb' } as Contact;
-    const values = mergeValuesFor(ORG, contact, REP);
+    // Values handed in directly: the point is longest-value-first, and a signer
+    // whose name starts with the contact's first name is the shape that breaks it.
+    const values = { ...VALUES, first_name: 'Darrin', rep_name: 'Darrin Cohen' };
     expect(depersonalize('Thanks,\nDarrin Cohen', values)).toBe('Thanks,\n{{rep_name}}');
   });
 
@@ -108,7 +112,7 @@ describe('templateFromDraft', () => {
     const out = templateFromDraft(
       {
         subject: 'A question about Rossmoor Tennis Club',
-        body: 'Hi Mary,\n\nWorth 15 minutes?\n\nDarrin Cohen',
+        body: `Hi Mary,\n\nWorth 15 minutes?\n\n${SIGNER}`,
       },
       VALUES,
       ORG,
