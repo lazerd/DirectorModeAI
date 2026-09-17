@@ -3,6 +3,9 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import PanScroll from '@/components/tournament/PanScroll';
 
+import CompassDrawSvg from '@/components/tournament/CompassDrawSvg';
+import { adaptFlexCompass } from '@/lib/flexCompassAdapter';
+
 export type MatchT = { token: string; a: string; b: string; score: string; winner_side: 'a' | 'b' | null; status: string; label?: string };
 export type StandingT = { name: string; w: number; l: number; gf: number; ga: number };
 export type GroupT = { title: string; matches: MatchT[]; standings: StandingT[] | null; subtitle?: string; complete?: boolean; isPlayoff?: boolean };
@@ -430,13 +433,19 @@ function CompassDraw({ stages, r1 }: { stages: Record<string, MatchT[]>; r1?: [s
     Object.keys(stages).length > 0
       ? stages
       : { 'main:1': (r1 || []).map(([a, b], i) => ({ token: '', a, b, score: '', winner_side: null, status: 'pending' })) };
+  // Shared draw sheet when the stages make a recognisable compass; the older
+  // direction-row view stays as the fallback.
+  const sheet = adaptFlexCompass(safeStages);
+  const sheetEntries = sheet ? new Map(sheet.entries.map((e) => [e.id, e])) : null;
   return (
     <div style={{ marginBottom: 6 }}>
       <p style={{ fontSize: 14, color: '#3A4254', lineHeight: 1.5, margin: '0 0 12px' }}>
         A 16-player <strong>Compass Draw</strong>: <strong style={{ color: '#B07D00' }}>win</strong> and you advance East toward the championship; <strong style={{ color: '#1B448C' }}>lose</strong> and you slide West (then North / South / corners) — nobody&apos;s knocked out, everyone plays on. The draw below fills in live as results are reported.
       </p>
-      <div style={{ border: '1px solid #EEF1F6', borderRadius: 10, padding: '14px 12px', marginBottom: 12, background: '#FBFCFE' }}>
-        {COMPASS_DIRECTIONS.map((dir) => <DirectionRow key={dir.key} dir={dir} stages={safeStages} />)}
+      <div style={{ border: '1px solid #EEF1F6', borderRadius: 10, padding: '14px 12px', marginBottom: 12, background: '#fff' }}>
+        {sheet
+          ? <CompassDrawSvg matches={sheet.matches} entryById={sheetEntries!} revealAllSeeds />
+          : COMPASS_DIRECTIONS.map((dir) => <DirectionRow key={dir.key} dir={dir} stages={safeStages} />)}
       </div>
     </div>
   );
