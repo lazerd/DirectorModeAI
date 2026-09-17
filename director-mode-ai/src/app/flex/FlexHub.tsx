@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import PanScroll from '@/components/tournament/PanScroll';
 
 import CompassDrawSvg from '@/components/tournament/CompassDrawSvg';
-import DrawSheetLens from '@/components/tournament/DrawSheetLens';
+import DrawSheetZoom from '@/components/tournament/DrawSheetZoom';
 import { adaptFlexCompass } from '@/lib/flexCompassAdapter';
 
 export type MatchT = { token: string; a: string; b: string; score: string; winner_side: 'a' | 'b' | null; status: string; label?: string };
@@ -445,7 +445,7 @@ function CompassDraw({ stages, r1 }: { stages: Record<string, MatchT[]>; r1?: [s
       </p>
       <div style={{ border: '1px solid #EEF1F6', borderRadius: 10, padding: '14px 12px', marginBottom: 12, background: '#fff' }}>
         {sheet
-          ? <DrawSheetLens><CompassDrawSvg matches={sheet.matches} entryById={sheetEntries!} revealAllSeeds /></DrawSheetLens>
+          ? <DrawSheetZoom><CompassDrawSvg matches={sheet.matches} entryById={sheetEntries!} revealAllSeeds /></DrawSheetZoom>
           : COMPASS_DIRECTIONS.map((dir) => <DirectionRow key={dir.key} dir={dir} stages={safeStages} />)}
       </div>
     </div>

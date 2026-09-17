@@ -12,7 +12,7 @@
 import { isCompassFormat, buildCompassGroups } from '@/lib/compassLayout';
 import CompassDrawSvg, { compassSizeOf } from './CompassDrawSvg';
 import BracketDrawSvg, { layoutBracket } from './BracketDrawSvg';
-import DrawSheetLens from './DrawSheetLens';
+import DrawSheetZoom from './DrawSheetZoom';
 import { buildRoundRobinGrid, type RRCell } from '@/lib/roundRobinGrid';
 import PanScroll from './PanScroll';
 
@@ -214,9 +214,9 @@ export default function DrawView({
   // a fallback for any draw that isn't a standard 8 or 16.
   if (isCompassFormat(format) && compassSizeOf(matches)) {
     return (
-      <DrawSheetLens>
+      <DrawSheetZoom>
         <CompassDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />
-      </DrawSheetLens>
+      </DrawSheetZoom>
     );
   }
 
@@ -281,9 +281,9 @@ export default function DrawView({
   // returns null for them and they keep the column view below.
   if (format.startsWith('single-elim') && layoutBracket(matches)) {
     return (
-      <DrawSheetLens>
+      <DrawSheetZoom>
         <BracketDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />
-      </DrawSheetLens>
+      </DrawSheetZoom>
     );
   }
 
