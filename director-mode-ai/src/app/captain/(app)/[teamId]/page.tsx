@@ -18,6 +18,7 @@ import ImportPanel from '@/components/captain/ImportPanel';
 import PreseasonPanel from '@/components/captain/PreseasonPanel';
 import TeamSettingsPanel from '@/components/captain/TeamSettingsPanel';
 import StrengthOrderPanel from '@/components/captain/StrengthOrderPanel';
+import FormOrderPanel from '@/components/captain/FormOrderPanel';
 import NeverPairPanel from '@/components/captain/NeverPairPanel';
 import SeasonAvailabilityPanel from '@/components/captain/SeasonAvailabilityPanel';
 import TeamHostNotes from '@/components/captain/TeamHostNotes';
@@ -461,6 +462,9 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       />
 
       <StrengthOrderPanel teamId={team.id} players={roster as never} />
+
+      {/* What played lines say the order should be — proposals only. */}
+      <FormOrderPanel teamId={team.id} />
 
       <NeverPairPanel
         teamId={team.id}
