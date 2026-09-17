@@ -20,6 +20,7 @@
  */
 
 import { daysBetween, isOverdue, type ISODate } from './dates';
+import { isOnDate, timeLabel } from './schedule';
 import { CLOSED_STAGES } from './stages';
 import type { OrgCard } from './types';
 
@@ -83,6 +84,16 @@ export interface TodayList {
   dueTodayCount: number;
   silentDemoCount: number;
   unansweredReplyCount: number;
+  /** Emails a rep queued for later that are due before midnight, their time. */
+  scheduledTodayCount: number;
+}
+
+/** The little a Today line needs to know about a scheduled email. */
+export interface ScheduledForToday {
+  orgId: string;
+  orgName: string | null;
+  contactName: string | null;
+  send_at: string;
 }
 
 /**
@@ -95,6 +106,7 @@ export function buildToday(
   today: ISODate,
   deckQueued: number | null,
   queuedForOutreach = 0,
+  scheduled: ScheduledForToday[] = [],
 ): TodayList {
   const open = live.filter((o) => !CLOSED_STAGES.includes(o.stage));
 
@@ -193,7 +205,40 @@ export function buildToday(
     });
   }
 
-  // ------------------------------------------------------- 4. the deck
+  /*
+   * ---------------------------------------- 4. what goes out by itself today
+   *
+   * Above the deck line, and said even when there is only one, because this is
+   * the one item on Today that will happen WITHOUT the rep doing anything. A
+   * rep who has forgotten they queued an email to a club president needs to be
+   * reminded while there is still time to cancel it, not afterwards.
+   */
+  const dueToSend = scheduled.filter((s) => isOnDate(s.send_at, today));
+  if (dueToSend.length === 1) {
+    const s = dueToSend[0];
+    items.push({
+      text: `1 email goes out on its own today — ${timeLabel(s.send_at)} to ${
+        s.contactName ?? 'a contact'
+      } at ${s.orgName ?? 'a club'}`,
+      orgId: s.orgId,
+      actionLabel: 'See it',
+      href: `/crm/${s.orgId}`,
+      tone: 'today',
+    });
+  } else if (dueToSend.length > 1) {
+    const clubs = new Set(dueToSend.map((s) => s.orgId));
+    items.push({
+      text:
+        `${dueToSend.length} emails are scheduled to go out today` +
+        (clubs.size === 1 ? `, all to ${dueToSend[0].orgName ?? 'one club'}` : ` to ${clubs.size} clubs`),
+      orgId: clubs.size === 1 ? dueToSend[0].orgId : null,
+      actionLabel: clubs.size === 1 ? 'See them' : 'See the clubs',
+      href: clubs.size === 1 ? `/crm/${dueToSend[0].orgId}` : '#live',
+      tone: 'today',
+    });
+  }
+
+  // ------------------------------------------------------- 5. the deck
   if (deckQueued !== null) {
     items.push({
       text:
@@ -222,5 +267,6 @@ export function buildToday(
     dueTodayCount: dueToday.length,
     silentDemoCount: silentDemos.length,
     unansweredReplyCount: replyIds.size,
+    scheduledTodayCount: dueToSend.length,
   };
 }

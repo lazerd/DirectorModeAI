@@ -35,7 +35,8 @@ import { useRouter } from 'next/navigation';
 import { ageLabel, shortDate, type ISODate } from '@/lib/crm/dates';
 import { ACTIVITY_KINDS, ACTIVITY_LABEL, ORG_TYPES, STAGES, STAGE_LABEL, type ActivityKind } from '@/lib/crm/stages';
 import { regionOf } from '@/lib/crm/region';
-import type { Template } from '@/lib/crm/load';
+import type { ScheduledEmail, Template } from '@/lib/crm/load';
+import { label as whenLabel } from '@/lib/crm/schedule';
 import type { Activity, Contact, Org } from '@/lib/crm/types';
 import AskBox, { DRAFT_KEY, type AskDraft } from '../AskBox';
 import Compose, { type ComposeSeed } from './Compose';
@@ -49,22 +50,27 @@ export default function OrgDetail({
   contacts: initialContacts,
   activities: initialActivities,
   templates,
+  scheduled: initialScheduled,
   today,
   repEmail,
+  otherRepName,
   canEmail,
 }: {
   org: Org;
   contacts: Contact[];
   activities: Activity[];
   templates: Template[];
+  scheduled: ScheduledEmail[];
   today: ISODate;
   repEmail: string;
+  otherRepName: string | null;
   canEmail: boolean;
 }) {
   const router = useRouter();
   const [org, setOrg] = useState(initialOrg);
   const [contacts, setContacts] = useState(initialContacts);
   const [activities, setActivities] = useState(initialActivities);
+  const [scheduled, setScheduled] = useState(initialScheduled);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -92,6 +98,14 @@ export default function OrgDetail({
     setOrg(j.org);
     setContacts(j.contacts);
     setActivities(j.activities);
+  }, [org.id]);
+
+  /** Re-read what is queued to go out, without reloading the page. */
+  const reloadScheduled = useCallback(async () => {
+    const res = await fetch(`/api/crm/scheduled?org_id=${org.id}`, { cache: 'no-store' });
+    if (!res.ok) return;
+    const j = (await res.json().catch(() => null)) as { scheduled?: ScheduledEmail[] } | null;
+    if (j?.scheduled) setScheduled(j.scheduled);
   }, [org.id]);
 
   /** One PATCH per changed field. */
@@ -221,6 +235,24 @@ export default function OrgDetail({
     },
     [flash],
   );
+
+  /**
+   * Stop one. Named in the confirm — "Cancel the email to Mary Benin on
+   * Thursday 8:00am?" — because on a phone the button is next to another
+   * club's, and an email cancelled by accident is silently never sent.
+   */
+  async function cancelScheduled(id: string, who: string, when: string) {
+    if (!window.confirm(`Cancel the email to ${who} ${when}? It will not be sent.`)) return;
+    setError(null);
+    const res = await fetch(`/api/crm/scheduled/${id}`, { method: 'DELETE' });
+    const j = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setError(j.error || 'Could not cancel that.');
+    } else {
+      setSentNote(`Cancelled — nothing goes to ${who}.`);
+    }
+    void reloadScheduled();
+  }
 
   async function removeContact(id: string, name: string) {
     if (!window.confirm(`Remove ${name}?`)) return;
@@ -446,6 +478,79 @@ export default function OrgDetail({
         <AddContacts orgId={org.id} onContacts={(cs) => setContacts(cs)} onError={setError} />
       </section>
 
+      {/* ---------------------------------------------------------- scheduled */}
+      {/*
+        Above the composer, not below it. An email that will send itself on
+        Thursday is a commitment already made; a rep opening this club needs to
+        see it before they write another one, not after. Empty means no
+        section at all — a "Nothing scheduled" heading on every club would be
+        four words of furniture on 522 pages.
+      */}
+      {scheduled.length > 0 && (
+        <section className="rounded-2xl border border-[#D3FB52]/25 bg-[#002838] p-4">
+          <h2 className="font-display text-xl text-white">Going out on its own</h2>
+          <p className="mt-1 text-sm text-white/45">
+            Queued and waiting. This exact text is what sends — cancel it any time before it does.
+          </p>
+          <ul className="mt-3 space-y-2">
+            {scheduled.map((s) => {
+              const who =
+                contacts.find((c) => c.id === s.contact_id)?.full_name ?? s.contact_name ?? s.to_email;
+              return (
+                <li
+                  key={s.id}
+                  className="rounded-xl border border-white/[0.08] bg-[#001820] p-3"
+                >
+                  <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <span className="font-semibold text-[#D3FB52]">
+                      Scheduled: {whenLabel(s.send_at)}
+                    </span>
+                    <span className="text-white/60">to {who}</span>
+                  </div>
+                  <p className="mt-0.5 truncate text-sm text-white/75">{s.subject}</p>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/30">
+                    <span>queued by {s.rep_email}</span>
+                    {s.status === 'sending' && <span className="text-amber-200">sending now</span>}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={s.status === 'sending'}
+                      onClick={() => {
+                        // Back into the composer with its own text, and the id
+                        // of the row it will replace. It goes through the same
+                        // preview as anything else before it can be re-queued.
+                        setSeed({
+                          contact_id: s.contact_id,
+                          subject: s.subject,
+                          body: s.body,
+                          key: `${Date.now()}`,
+                          replaces: s.id,
+                          replaces_at: s.send_at,
+                          template_slug: s.template_slug,
+                        });
+                        openComposerFor(s.contact_id);
+                      }}
+                      className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white/70 hover:text-white disabled:opacity-40"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={s.status === 'sending'}
+                      onClick={() => void cancelScheduled(s.id, who, whenLabel(s.send_at))}
+                      className="rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white/50 hover:border-red-400/40 hover:text-red-300 disabled:opacity-40"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       {/* ------------------------------------------------------------ compose */}
       <div ref={composeRef} className="scroll-mt-20">
         <Compose
@@ -453,6 +558,7 @@ export default function OrgDetail({
           contacts={emailable}
           templates={templates}
           repEmail={repEmail}
+          otherRepName={otherRepName}
           canEmail={canEmail}
           open={composeOpen}
           onOpenChange={setComposeOpen}
@@ -462,7 +568,12 @@ export default function OrgDetail({
           onSent={() => {
             setSentNote('Sent. It is on the timeline below.');
             void reload();
+            void reloadScheduled();
             router.refresh();
+          }}
+          onScheduled={() => {
+            setSentNote('Queued. It is in "Going out on its own" above until it sends.');
+            void reloadScheduled();
           }}
         />
       </div>
