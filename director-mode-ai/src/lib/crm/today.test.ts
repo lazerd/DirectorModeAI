@@ -211,6 +211,55 @@ describe('buildToday', () => {
     expect(t.items[0].href).toBe('#cold');
   });
 
+  /*
+   * The scheduled line. This is the only item on Today that describes
+   * something that will happen WITHOUT the rep doing anything, so it is said
+   * even when there is only one of them.
+   */
+  describe('emails that send themselves today', () => {
+    // 8 AM Pacific on 16 Sep 2026 is 15:00 UTC.
+    const at8 = '2026-09-16T15:00:00Z';
+
+    it('says nothing when nothing is queued', () => {
+      expect(buildToday([], TODAY, null, 0, []).items).toEqual([]);
+    });
+
+    it('names the one, with the time and the person', () => {
+      const t = buildToday([], TODAY, null, 0, [
+        { orgId: 'o1', orgName: 'Rossmoor Tennis Club', contactName: 'Mary Benin', send_at: at8 },
+      ]);
+      expect(t.scheduledTodayCount).toBe(1);
+      expect(t.items[0].text).toBe(
+        '1 email goes out on its own today — 8:00am to Mary Benin at Rossmoor Tennis Club',
+      );
+      expect(t.items[0].href).toBe('/crm/o1');
+    });
+
+    it('counts several, and says how many clubs', () => {
+      const t = buildToday([], TODAY, null, 0, [
+        { orgId: 'o1', orgName: 'Rossmoor', contactName: 'Mary', send_at: at8 },
+        { orgId: 'o2', orgName: 'Lafayette', contactName: 'Hunter', send_at: at8 },
+      ]);
+      expect(t.items[0].text).toBe('2 emails are scheduled to go out today to 2 clubs');
+    });
+
+    it('ignores ones queued for another day', () => {
+      const t = buildToday([], TODAY, null, 0, [
+        { orgId: 'o1', orgName: 'Rossmoor', contactName: 'Mary', send_at: '2026-09-21T15:00:00Z' },
+      ]);
+      expect(t.scheduledTodayCount).toBe(0);
+      expect(t.items).toEqual([]);
+    });
+
+    it('counts a late-evening send as today, not tomorrow', () => {
+      // 2026-09-17T05:00Z is 10 PM Pacific on the 16th.
+      const t = buildToday([], TODAY, null, 0, [
+        { orgId: 'o1', orgName: 'Rossmoor', contactName: 'Mary', send_at: '2026-09-17T05:00:00Z' },
+      ]);
+      expect(t.scheduledTodayCount).toBe(1);
+    });
+  });
+
   it('does not turn 519 cold clubs into 519 lines', () => {
     // The caller passes live deals only. Even if a cold club slipped in, a
     // club with no next step and nothing logged is not a Today item — the

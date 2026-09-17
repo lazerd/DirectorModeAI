@@ -219,6 +219,73 @@ export async function loadReps(db: Db): Promise<{ email: string; full_name: stri
   return (data as { email: string; full_name: string | null; initials: string | null }[] | null) || [];
 }
 
+/**
+ * Emails a rep has queued for later, newest date last.
+ *
+ * `sending` is included alongside `scheduled` on purpose: a row a cron tick
+ * has claimed is still, from the rep's point of view, an email that has not
+ * arrived anywhere yet, and it disappearing off the list for fifteen minutes
+ * would read as "it went" when it may yet fail.
+ *
+ * Club and contact names come along so the list says "Thursday 8:00am to Mary
+ * Benin" rather than two UUIDs.
+ */
+export interface ScheduledEmail {
+  id: string;
+  org_id: string;
+  contact_id: string;
+  to_email: string;
+  subject: string;
+  body: string;
+  template_slug: string | null;
+  send_at: string;
+  rep_email: string;
+  status: 'scheduled' | 'sending';
+  org_name: string | null;
+  contact_name: string | null;
+}
+
+const SCHEDULED_SELECT =
+  'id, org_id, contact_id, to_email, subject, body, template_slug, send_at, rep_email, status, ' +
+  'crm_orgs(name), crm_contacts(full_name)';
+
+type ScheduledJoinRow = Omit<ScheduledEmail, 'org_name' | 'contact_name'> & {
+  crm_orgs: { name: string } | { name: string }[] | null;
+  crm_contacts: { full_name: string } | { full_name: string }[] | null;
+};
+
+function one<T>(v: T | T[] | null): T | null {
+  return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
+export async function loadScheduled(db: Db, orgId?: string): Promise<ScheduledEmail[]> {
+  let q = db
+    .from('crm_scheduled_emails')
+    .select(SCHEDULED_SELECT)
+    .in('status', ['scheduled', 'sending'])
+    .order('send_at');
+  if (orgId) q = q.eq('org_id', orgId);
+
+  const { data, error } = await q;
+  // The table is additive and new. A database that has not had the migration
+  // run yet must not take the whole org page down with it.
+  if (error) return [];
+  return ((data as unknown as ScheduledJoinRow[] | null) || []).map((r) => ({
+    id: r.id,
+    org_id: r.org_id,
+    contact_id: r.contact_id,
+    to_email: r.to_email,
+    subject: r.subject,
+    body: r.body,
+    template_slug: r.template_slug,
+    send_at: r.send_at,
+    rep_email: r.rep_email,
+    status: r.status,
+    org_name: one(r.crm_orgs)?.name ?? null,
+    contact_name: one(r.crm_contacts)?.full_name ?? null,
+  }));
+}
+
 export interface Template {
   id: string;
   slug: string;

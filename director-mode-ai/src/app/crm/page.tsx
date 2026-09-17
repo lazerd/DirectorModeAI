@@ -5,6 +5,7 @@ import {
   loadDeckCount,
   loadPipeline,
   loadReps,
+  loadScheduled,
   splitDeals,
   toColdRows,
 } from '@/lib/crm/load';
@@ -39,20 +40,34 @@ export const metadata = {
 
 export default async function CrmPage() {
   const ctx = await requireCrmForPage('/crm');
-  const [orgs, reps, contactsByOrg, deckQueued] = await Promise.all([
+  const [orgs, reps, contactsByOrg, deckQueued, scheduled] = await Promise.all([
     loadPipeline(ctx.db),
     loadReps(ctx.db),
     loadContactIndex(ctx.db),
     // Null when the outreach deck's tables are not there yet. Today hides the
     // line rather than claiming an empty deck.
     loadDeckCount(ctx.db, ctx.today),
+    // Emails a rep queued for later. The only thing on Today that happens
+    // without anybody clicking anything, so it gets said out loud.
+    loadScheduled(ctx.db),
   ]);
 
   const { live, cold } = splitDeals(orgs);
   const pipeline = buildPipeline(live, ctx.today);
   const coldRows = toColdRows(cold, contactsByOrg);
   const queuedForOutreach = orgs.filter((o) => o.queued_at).length;
-  const todayList = buildToday(live, ctx.today, deckQueued, queuedForOutreach);
+  const todayList = buildToday(
+    live,
+    ctx.today,
+    deckQueued,
+    queuedForOutreach,
+    scheduled.map((s) => ({
+      orgId: s.org_id,
+      orgName: s.org_name,
+      contactName: s.contact_name,
+      send_at: s.send_at,
+    })),
+  );
   const noContact = orgs.filter((o) => o.contact_count === 0).length;
 
   return (
