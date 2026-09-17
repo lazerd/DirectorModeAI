@@ -13,14 +13,14 @@
  * Hookless, no server-only imports — same constraints as the rest of DrawView.
  */
 
-type Entry = {
+export type Entry = {
   id: string;
   player_name: string;
   partner_name: string | null;
   seed: number | null;
 };
 
-type Match = {
+export type Match = {
   id: string;
   bracket: 'main' | 'consolation';
   round: number;
@@ -35,14 +35,14 @@ type Match = {
 };
 
 // ---- geometry -------------------------------------------------------------
-const PW = 172; // width of a player line
-const SEP = 20; // vertical gap between a match's two player lines
+export const PW = 172; // width of a player line
+export const SEP = 20; // vertical gap between a match's two player lines
 // No gap between rounds: with no connector elbows, each round's line starts
 // exactly where the previous one ends, emerging from the midpoint of the
 // pair that feeds it — the join reads without a line being drawn for it.
 const GAP = 0;
-const COL = PW + GAP;
-const PITCH = 56; // vertical distance between Round 1 match centres
+export const COL = PW + GAP;
+export const PITCH = 56; // vertical distance between Round 1 match centres
 
 const ARM_UP_1 = -108; // North semis row
 const ARM_UP_2 = -168; // North final row
@@ -53,16 +53,16 @@ const ARM_UP_2 = -168; // North final row
  * the centre height of the match they just won, so each round's two lines land
  * on the midpoints of the pair feeding it and the spacing doubles each round.
  */
-type Placed = { m: Match | null; x: number; yA: number; yB: number; flow: 'right' | 'left' };
+export type Placed = { m: Match | null; x: number; yA: number; yB: number; flow: 'right' | 'left' };
 
-const mid = (p: Placed) => (p.yA + p.yB) / 2;
+export const mid = (p: Placed) => (p.yA + p.yB) / 2;
 
 /** A first-round match: two lines a fixed SEP apart, centred on `y`. */
-const seedRow = (m: Match, x: number, y: number, flow: 'right' | 'left'): Placed =>
+export const seedRow = (m: Match, x: number, y: number, flow: 'right' | 'left'): Placed =>
   ({ m, x, yA: y - SEP / 2, yB: y + SEP / 2, flow });
 
 /** A later-round match: its lines sit on the centres of the pair feeding it. */
-const feedRow = (m: Match, x: number, a: Placed, b: Placed, flow: 'right' | 'left'): Placed =>
+export const feedRow = (m: Match, x: number, a: Placed, b: Placed, flow: 'right' | 'left'): Placed =>
   ({ m, x, yA: mid(a), yB: mid(b), flow });
 
 const colorFor: Record<string, string> = {
@@ -192,8 +192,10 @@ export default function CompassDrawSvg({
   return (
     <svg
       viewBox={`${minX} ${minY} ${maxX - minX} ${maxY - minY}`}
-      className="w-full h-auto"
-      style={{ maxHeight: '78vh' }}
+      className="w-full h-auto mx-auto block"
+      // Never scale a small draw UP past its natural size, or a 3-round bracket
+      // balloons to fill a wide screen and the type goes with it.
+      style={{ maxWidth: maxX - minX, maxHeight: '78vh' }}
       role="img"
       aria-label="Compass draw"
     >
@@ -256,10 +258,10 @@ export default function CompassDrawSvg({
   );
 }
 
-const leftEdge = (p: Placed) => (p.flow === 'right' ? p.x : p.x - PW);
-const rightEdge = (p: Placed) => leftEdge(p) + PW;
+export const leftEdge = (p: Placed) => (p.flow === 'right' ? p.x : p.x - PW);
+export const rightEdge = (p: Placed) => leftEdge(p) + PW;
 
-function MatchLines({
+export function MatchLines({
   p, entryById, revealAllSeeds, color, tieBothSides = false,
 }: {
   p: Placed;
@@ -335,7 +337,7 @@ function PlayerLine({
 }
 
 /** Scores are stored from side A's view; a champion's line reads winner-first. */
-function winnerFirst(score: string | null, winner: 'a' | 'b'): string | null {
+export function winnerFirst(score: string | null, winner: 'a' | 'b'): string | null {
   if (!score || winner === 'a') return score;
   const tail = score.match(/,?\s*(RET|W\/O|WO|DEF)\s*$/i)?.[0] ?? '';
   const body = tail ? score.slice(0, score.length - tail.length) : score;

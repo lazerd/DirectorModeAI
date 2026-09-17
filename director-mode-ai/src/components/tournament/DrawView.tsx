@@ -11,6 +11,7 @@
 
 import { isCompassFormat, buildCompassGroups } from '@/lib/compassLayout';
 import CompassDrawSvg, { compassSizeOf } from './CompassDrawSvg';
+import BracketDrawSvg, { layoutBracket } from './BracketDrawSvg';
 import { buildRoundRobinGrid, type RRCell } from '@/lib/roundRobinGrid';
 import PanScroll from './PanScroll';
 
@@ -272,7 +273,14 @@ export default function DrawView({
     );
   }
 
-  // Generic elimination bracket (single-elim / FMLC / FFIC).
+  // Standard elimination draws render on the same engine as the compass sheet.
+  // Feed-in formats (FMLC/FFIC) inject players mid-bracket, so layoutBracket
+  // returns null for them and they keep the column view below.
+  if (format.startsWith('single-elim') && layoutBracket(matches)) {
+    return <BracketDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />;
+  }
+
+  // Generic elimination bracket (FMLC / FFIC, and anything unrecognised).
   const brackets = (['main', 'consolation'] as const).filter((b) =>
     matches.some((m) => m.bracket === b)
   );
