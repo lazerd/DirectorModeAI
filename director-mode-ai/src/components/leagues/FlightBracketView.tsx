@@ -21,6 +21,8 @@
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Trophy, Crown, Medal, Users, Clock, CheckCircle2, Shield } from 'lucide-react';
+import CompassDrawSvg from '@/components/tournament/CompassDrawSvg';
+import { adaptLeagueCompass } from '@/lib/leagueCompassAdapter';
 
 export type BracketEntry = {
   id: string;
@@ -97,11 +99,39 @@ export default function FlightBracketView({
       {leagueType === 'single_elimination' && (
         <SingleElimView flight={flight} matches={matches} entryById={entryById} {...shared} />
       )}
-      {leagueType === 'compass' && (
-        <CompassView flight={flight} entries={entries} matches={matches} entryById={entryById} {...shared} />
-      )}
+      {leagueType === 'compass' && <CompassSection flight={flight} entries={entries} matches={matches} entryById={entryById} {...shared} />}
     </div>
   );
+}
+
+/**
+ * Compass flights render as the shared tournament draw sheet when their shape
+ * can be mapped onto it (see leagueCompassAdapter). Anything the adapter does
+ * not understand — notably the league's own 16-player quadrant variant — keeps
+ * the older stacked-rows view rather than being drawn wrong.
+ */
+function CompassSection({
+  flight,
+  entries,
+  matches,
+  entryById,
+  ...shared
+}: {
+  flight: BracketFlight;
+  entries: BracketEntry[];
+  matches: BracketMatch[];
+  entryById: Map<string, BracketEntry>;
+} & SharedProps) {
+  const sheet = adaptLeagueCompass(flight.size, entries, matches);
+  if (sheet) {
+    const sheetEntries = new Map(sheet.entries.map((e) => [e.id, e]));
+    return (
+      <div className="bg-white rounded-xl p-4 overflow-hidden">
+        <CompassDrawSvg matches={sheet.matches} entryById={sheetEntries} revealAllSeeds />
+      </div>
+    );
+  }
+  return <CompassView flight={flight} entries={entries} matches={matches} entryById={entryById} {...shared} />;
 }
 
 type SharedProps = {

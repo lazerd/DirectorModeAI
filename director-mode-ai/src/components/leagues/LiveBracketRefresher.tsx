@@ -137,7 +137,15 @@ export default function LiveBracketRefresher({
     }
 
     setFlights(newFlights);
-    setEntriesByFlightId(newEntries);
+    // league_entries has no public SELECT policy (league_flights and
+    // league_matches both do), so on the public page this refetch comes back
+    // empty and would blank every player name while the scores stay — leaving
+    // a bracket of TBDs. Keep whatever we already had rather than wipe it.
+    setEntriesByFlightId(prev => {
+      const gotAny = Object.values(newEntries).some(list => list.length > 0);
+      const hadAny = Object.values(prev).some(list => list.length > 0);
+      return !gotAny && hadAny ? prev : newEntries;
+    });
     setMatchesByFlightId(newMatches);
     setLastUpdateTs(Date.now());
     setJustUpdated(true);
