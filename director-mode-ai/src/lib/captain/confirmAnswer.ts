@@ -53,7 +53,9 @@ export async function applyAnswer(
    */
   const { data: lineupRows } = await admin
     .from('captain_lineups')
-    .select('id, team_id, match_id, court_number, court_type, player1_id, player2_id')
+    .select(
+      'id, team_id, match_id, court_number, court_type, player1_id, player2_id, player1_declined_at, player2_declined_at',
+    )
     .eq('match_id', matchId)
     .or(`player1_id.eq.${player.id},player2_id.eq.${player.id}`)
     .order('court_number');
@@ -65,8 +67,16 @@ export async function applyAnswer(
       court_type: string;
       player1_id: string | null;
       player2_id: string | null;
+      player1_declined_at: string | null;
+      player2_declined_at: string | null;
     }[]) || []
   ).filter((l) => l.team_id === player.team_id);
+
+  // Was this player already marked out of every line they are on? Then this
+  // post is a repeat, not news.
+  const alreadyDeclined =
+    lines.length > 0 &&
+    lines.every((l) => (l.player1_id === player.id ? l.player1_declined_at : l.player2_declined_at));
 
   const inLineup = lines.length > 0;
   const now = new Date().toISOString();
@@ -124,8 +134,10 @@ export async function applyAnswer(
     { onConflict: 'match_id,player_id' },
   );
 
-  // A withdrawal is time-critical for the captain; a confirmation is not.
-  if (action === 'out' && inLineup) {
+  // A withdrawal is time-critical for the captain; a confirmation is not. Only
+  // a CHANGE is news: a mail webview that posts the form twice (Stef's did, a
+  // second apart) used to alert every captain twice for one withdrawal.
+  if (action === 'out' && inLineup && !alreadyDeclined) {
     await alertCaptains(player.team_id, matchId, player.name, court, note);
   }
 
@@ -195,9 +207,12 @@ async function alertCaptains(
     const to = Array.from(new Set(emails));
     const results = await sendAll(
       team.captain_user_id,
-      to.map((addr) =>
-        withdrawalAlertEmail(addr, team.name, info, playerName, court, note, team.id, clubTimeZoneOf(teamRow)),
-      ),
+      to.map((addr) => ({
+        // Operational: this is the account holder's own alert, and it must not
+        // be silenced by the marketing opt-out list.
+        ...withdrawalAlertEmail(addr, team.name, info, playerName, court, note, team.id, clubTimeZoneOf(teamRow)),
+        operational: true,
+      })),
     );
 
     // Loud on failure. A withdrawal alert that quietly doesn't arrive is the one

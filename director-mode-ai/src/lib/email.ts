@@ -19,6 +19,8 @@ interface EmailPayload {
    */
   clubId?: string | null;
   clubSlug?: string | null;
+  /** Operational mail to the account holder — see safeResendSend. */
+  operational?: boolean;
 }
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
@@ -41,6 +43,7 @@ const toSend = (userId: string | null, p: EmailPayload) => ({
   subject: p.subject,
   html: p.html,
   ...(p.replyTo ? { replyTo: p.replyTo } : {}),
+  operational: p.operational,
   clubId: p.clubId,
   clubSlug: p.clubSlug,
   billToUserId: userId,

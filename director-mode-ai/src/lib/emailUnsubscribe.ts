@@ -183,6 +183,14 @@ type ResendSendInput = {
   subject: string;
   html: string;
   replyTo?: string;
+  /**
+   * Operational mail to the account holder — "a player pulled out of your
+   * lineup", not a broadcast. It ignores the unsubscribe list and carries no
+   * unsubscribe footer: Darrin's own captain alerts went silent for eight days
+   * because his address landed on that list, and a footer on an alert is what
+   * put it there.
+   */
+  operational?: boolean;
 } & EmailAttribution;
 
 /**
@@ -226,10 +234,12 @@ export async function safeResendSend(
     logDemoHold(hold, input.to, input.subject);
     return { sent: true, messageId: 'demo-suppressed', demo: hold };
   }
-  if (await isUnsubscribed(input.to)) {
+  if (!input.operational && (await isUnsubscribed(input.to))) {
     return { sent: false, reason: 'unsubscribed' };
   }
-  const htmlWithFooter = input.html + buildUnsubscribeFooterHtml(input.to);
+  const htmlWithFooter = input.operational
+    ? input.html
+    : input.html + buildUnsubscribeFooterHtml(input.to);
   try {
     const resendInput: any = {
       from: input.from,

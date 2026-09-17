@@ -1,44 +1,40 @@
 /**
  * Public /unsubscribe page.
  *
- * Visiting /unsubscribe?token=<signed> verifies the HMAC token from the
- * email footer and, if valid, inserts a row into email_unsubscribes for
- * that address. Once the row exists, safeResendSend short-circuits every
- * future email to that recipient.
+ * Visiting /unsubscribe?token=<signed> verifies the HMAC token from the email
+ * footer and SHOWS a button. The write happens in POST /api/unsubscribe.
  *
- * One-click via GET — visiting the link is enough. Offers a "resubscribe"
- * form (POST-style via a nested route) in case they change their mind.
- * Unknown / tampered tokens show a friendly error.
+ * It used to opt the address out on the GET itself, so a link scanner, a mail
+ * app's preview fetch or a prefetch could unsubscribe someone who never
+ * clicked. That is how Darrin's own address ended up on the list on
+ * 2026-09-08, and eight days of his captain alerts went nowhere. A GET renders;
+ * only a posted form changes anything.
  */
 
 import Link from 'next/link';
 import { Trophy, Check, AlertCircle } from 'lucide-react';
-import {
-  verifyUnsubscribeToken,
-  recordUnsubscribe,
-  removeUnsubscribe,
-  isUnsubscribed,
-} from '@/lib/emailUnsubscribe';
+import { verifyUnsubscribeToken, isUnsubscribed } from '@/lib/emailUnsubscribe';
 
 export const dynamic = 'force-dynamic';
 
-type SearchParams = Promise<{ token?: string; action?: string }>;
+type SearchParams = Promise<{ token?: string; state?: string; m?: string }>;
 
 export default async function UnsubscribePage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
-  const { token, action } = await searchParams;
+  const { token, state: posted, m } = await searchParams;
   const payload = token ? verifyUnsubscribeToken(token) : null;
 
   let state:
     | 'no-token'
     | 'invalid-token'
+    | 'confirm'
     | 'unsubscribed'
     | 'resubscribed'
     | 'error' = 'no-token';
-  let errorMessage = '';
+  const errorMessage = m || '';
   let email: string | null = null;
 
   if (!token) {
@@ -47,29 +43,12 @@ export default async function UnsubscribePage({
     state = 'invalid-token';
   } else {
     email = payload.email;
-    if (action === 'resubscribe') {
-      const result = await removeUnsubscribe(payload.email, payload.scope);
-      if (result.success) {
-        state = 'resubscribed';
-      } else {
-        state = 'error';
-        errorMessage = result.error || 'Failed to resubscribe';
-      }
+    // Only POST /api/unsubscribe writes; this page reflects what it did, or
+    // asks. An address already on the list reads as unsubscribed either way.
+    if (posted === 'unsubscribed' || posted === 'resubscribed' || posted === 'error') {
+      state = posted;
     } else {
-      // Default action is unsubscribe. Idempotent — if they already were
-      // unsubscribed, we still show the confirmation.
-      const already = await isUnsubscribed(payload.email);
-      if (!already) {
-        const result = await recordUnsubscribe(payload.email, payload.scope);
-        if (!result.success) {
-          state = 'error';
-          errorMessage = result.error || 'Failed to unsubscribe';
-        } else {
-          state = 'unsubscribed';
-        }
-      } else {
-        state = 'unsubscribed';
-      }
+      state = (await isUnsubscribed(payload.email)) ? 'unsubscribed' : 'confirm';
     }
   }
 
@@ -112,6 +91,28 @@ export default async function UnsubscribePage({
             </>
           )}
 
+          {state === 'confirm' && email && (
+            <>
+              <h1 className="text-lg font-semibold mb-3">Stop these emails?</h1>
+              <p className="text-sm text-white/70 mb-4">
+                <span className="font-mono text-white">{email}</span> will stop receiving match
+                reminders, lesson notifications, event invites and bracket updates.
+              </p>
+              <form method="POST" action="/api/unsubscribe">
+                <input type="hidden" name="token" value={token} />
+                <button
+                  type="submit"
+                  className="inline-block px-4 py-2.5 text-sm font-semibold rounded-lg bg-[#D3FB52] text-[#001820]"
+                >
+                  Unsubscribe {email}
+                </button>
+              </form>
+              <p className="text-xs text-white/40 mt-4">
+                Nothing has changed yet — this takes effect when you press the button.
+              </p>
+            </>
+          )}
+
           {state === 'unsubscribed' && email && (
             <>
               <div className="flex items-center gap-2 text-[#D3FB52] mb-3">
@@ -130,12 +131,16 @@ export default async function UnsubscribePage({
                 contacts you through the platform.
               </p>
               <p className="text-xs text-white/50 mb-2">Changed your mind?</p>
-              <Link
-                href={`/unsubscribe?token=${token}&action=resubscribe`}
-                className="inline-block px-4 py-2 text-sm border border-white/20 rounded-lg hover:bg-white/5 text-white/80"
-              >
-                Resubscribe
-              </Link>
+              <form method="POST" action="/api/unsubscribe">
+                <input type="hidden" name="token" value={token} />
+                <input type="hidden" name="action" value="resubscribe" />
+                <button
+                  type="submit"
+                  className="inline-block px-4 py-2 text-sm border border-white/20 rounded-lg hover:bg-white/5 text-white/80"
+                >
+                  Resubscribe
+                </button>
+              </form>
             </>
           )}
 

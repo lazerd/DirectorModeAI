@@ -58,7 +58,11 @@ export async function alertIfStepUp(teamId: string, matchId: string, playerId: s
     const tz = clubTimeZoneOf(teamRow);
     await sendAll(
       team.captain_user_id,
-      Array.from(new Set(emails)).map((to) => stepUpAlertEmail(to, team.name, info, playerName, open, team.id, tz)),
+      Array.from(new Set(emails)).map((to) => ({
+        // The captain's own alert: never silenced by the marketing opt-out.
+        ...stepUpAlertEmail(to, team.name, info, playerName, open, team.id, tz),
+        operational: true,
+      })),
     );
   } catch (e) {
     console.error('[captain] step-up alert failed', e);
