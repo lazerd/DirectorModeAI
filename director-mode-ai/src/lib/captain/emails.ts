@@ -24,7 +24,66 @@ export type MatchInfo = {
   arrivalNote?: string | null;
   opposingCaptainName?: string | null;
   opposingCaptainPhone?: string | null;
+  /** Lines the match is played over. When set, a lineup short of them says so. */
+  singlesCourts?: number | null;
+  doublesCourts?: number | null;
 };
+
+export type OpenLine = { courtType: 'singles' | 'doubles'; courtNumber: number };
+
+const hasPlayers = (names: string[]) => names.some((n) => n && n !== '—');
+
+/**
+ * The lines nobody is on yet: the match's singles and doubles counts minus the
+ * courts that have players. Those lines get defaulted unless someone steps up —
+ * the captain may only default so many without penalty, and the team needs to
+ * know which line and how many people it would take.
+ *
+ * Empty courts keep their own number; lines with no court row take the lowest
+ * numbers nobody is using, singles first. Unknown counts (null) report nothing,
+ * so a team without line counts never gets a false alarm.
+ */
+export function openLines(
+  m: Pick<MatchInfo, 'singlesCourts' | 'doublesCourts'>,
+  rows: { courtNumber: number; courtType: 'singles' | 'doubles'; names: string[] }[],
+): OpenLine[] {
+  if (m.singlesCourts == null && m.doublesCourts == null) return [];
+  const out: OpenLine[] = [];
+  const used = new Set(rows.map((r) => r.courtNumber));
+  for (const type of ['singles', 'doubles'] as const) {
+    const want = (type === 'singles' ? m.singlesCourts : m.doublesCourts) ?? 0;
+    const ofType = rows.filter((r) => r.courtType === type);
+    const filled = ofType.filter((r) => hasPlayers(r.names)).length;
+    let missing = Math.max(0, want - filled);
+    for (const r of ofType.filter((x) => !hasPlayers(x.names)).sort((a, b) => a.courtNumber - b.courtNumber)) {
+      if (!missing) break;
+      out.push({ courtType: type, courtNumber: r.courtNumber });
+      missing--;
+    }
+    for (let n = 1; missing > 0 && n < 100; n++) {
+      if (used.has(n)) continue;
+      used.add(n);
+      out.push({ courtType: type, courtNumber: n });
+      missing--;
+    }
+  }
+  return out;
+}
+
+export const openLineLabel = (l: OpenLine) => `${l.courtType === 'singles' ? 'Singles' : 'Doubles'} ${l.courtNumber}`;
+
+/** "Doubles 4", "Doubles 3 and Doubles 4". */
+export function openLinesText(lines: OpenLine[]): string {
+  const labels = lines.map(openLineLabel);
+  return labels.length <= 1 ? labels.join('') : `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]}`;
+}
+
+/** Players it would take to cover the open lines: "two more players". */
+export function playersNeededText(lines: OpenLine[]): string {
+  const n = lines.reduce((sum, l) => sum + (l.courtType === 'doubles' ? 2 : 1), 0);
+  const words = ['no', 'one', 'two', 'three', 'four', 'five', 'six'];
+  return `${words[n] ?? n} more player${n === 1 ? '' : 's'}`;
+}
 
 export type Recipient = { playerId: string; name: string; email: string; token: string };
 
@@ -279,6 +338,51 @@ export function lineupEmail(
       </tr>`;
   }
 
+  /*
+   * A line nobody is on. Without this the table simply ended at Doubles 3 and
+   * nobody could tell that Doubles 4 was about to be defaulted, or that two
+   * people saying yes would save it. JTT shares its lines across rounds, so a
+   * missing row there isn't a defaulted line — adult sheets only.
+   */
+  const open = byRound ? [] : openLines(m, rows);
+  const nonEmpty = rows.filter((row) => hasPlayers(row.names));
+  if (open.length && nonEmpty.length !== rows.length) {
+    table = '';
+    for (const row of nonEmpty) {
+      table += `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;white-space:nowrap;color:#64748b;font-size:13px">
+          ${lineupLineLabel(row)}
+        </td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:15px">${row.names.join(' / ')}</td>
+      </tr>`;
+    }
+  }
+  const openRows = open
+    .map(
+      (l) => `
+      <tr>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;white-space:nowrap;color:#b45309;font-size:13px">
+          ${openLineLabel(l)}
+        </td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:15px;color:#b45309">
+          <em>No players yet: defaulted unless ${l.courtType === 'doubles' ? 'two players step' : 'someone steps'} up</em>
+        </td>
+      </tr>`,
+    )
+    .join('');
+  const shortNotice = open.length
+    ? `<div style="margin:0 0 16px;padding:12px 14px;border-radius:10px;background:#fffbeb;border:1px solid #fcd34d">
+         <p style="font-size:15px;margin:0 0 6px;color:#92400e"><strong>We're short: ${openLinesText(open)} will be defaulted unless ${playersNeededText(open)} can play.</strong></p>
+         ${
+           isPlaying
+             ? `<p style="font-size:14px;margin:0;color:#78350f">You're in the lineup. If you know a teammate who could make it, nudge them to update their availability or tell your captain.</p>`
+             : `<p style="font-size:14px;margin:0 0 10px;color:#78350f">If your plans have changed and you can play, say so now and your captain will put you in.</p>
+                ${button(`${BASE}/captain/availability/${r.token}`, 'I can play after all', BRAND)}`
+         }
+       </div>`
+    : '';
+
   // A JTT child can be on up to three lines — name every one, with its round.
   const mine = ordered.filter((row) => row.names.includes(r.name));
   const courtLabel = mine.length
@@ -303,11 +407,15 @@ export function lineupEmail(
   const vars = varsFor(team, r.name, m, tz);
   return {
     to: r.email,
-    subject: subjectOf(c, `${team} lineup — ${formatMatchWhen(m.matchAt, tz)}`, vars),
+    subject: subjectOf(
+      c,
+      `${team} lineup — ${formatMatchWhen(m.matchAt, tz)}${open.length ? ` — need ${playersNeededText(open)}` : ''}`,
+      vars,
+    ),
     html: shell(
       'Here’s the lineup',
-      `${introBlock(c, vars)}${matchLines(m, tz)}
-       <table style="width:100%;border-collapse:collapse;margin:12px 0">${table}</table>
+      `${introBlock(c, vars)}${shortNotice}${matchLines(m, tz)}
+       <table style="width:100%;border-collapse:collapse;margin:12px 0">${table}${openRows}</table>
        ${confirm}`,
     ),
   };
@@ -431,6 +539,42 @@ export function withdrawalAlertEmail(
        <p style="font-size:14px;color:#475569;margin:0 0 16px">
          Their availability for this match is now <strong>No</strong>, so the lineup builder won't
          put them back. Open the match to slot someone else in or blast the subs.
+       </p>
+       <div style="margin:8px 0">
+         ${button(`${BASE}/captain/${teamId}/match/${m.id}`, 'Open the match →', BRAND)}
+       </div>`,
+      'Sent automatically by CaptainMode.',
+    ),
+  };
+}
+
+/**
+ * A player said they CAN play a match whose lineup is short a line. The lineup
+ * email tells the team "Doubles 4 is defaulted unless two players step up";
+ * this is the other half, so the captain hears the moment someone does instead
+ * of finding it on the match page the night before.
+ */
+export function stepUpAlertEmail(
+  to: string,
+  team: string,
+  m: MatchInfo,
+  playerName: string,
+  open: OpenLine[],
+  teamId: string,
+  tz?: string,
+): { to: string; subject: string; html: string } {
+  return {
+    to,
+    subject: `${playerName} can play — ${team} ${formatMatchWhen(m.matchAt, tz)}`,
+    html: shell(
+      `${playerName} can play after all`,
+      `${matchLines(m, tz)}
+       <p style="font-size:16px;margin:0 0 8px">
+         ${escapeHtml(playerName)} just marked themselves <strong>available</strong>. The lineup is still
+         short: ${openLinesText(open)} (${playersNeededText(open)} needed).
+       </p>
+       <p style="font-size:14px;color:#475569;margin:0 0 16px">
+         They aren't in the lineup yet. Open the match to put them on a line, then resend the lineup.
        </p>
        <div style="margin:8px 0">
          ${button(`${BASE}/captain/${teamId}/match/${m.id}`, 'Open the match →', BRAND)}
@@ -996,6 +1140,13 @@ export function visitingBodyText(
     lineCount?: number | null;
     singlesCourts?: number | null;
     doublesCourts?: number | null;
+    /**
+     * Lines the saved lineup can't cover yet, and how many players are
+     * available. "We're fielding all 4 lines" to the other captain when we have
+     * six players is the one sentence that must never go out.
+     */
+    openLines?: OpenLine[] | null;
+    playersAvailable?: number | null;
     /** Anything the captain keeps saying every away match. */
     notes?: string | null;
     fromName?: string | null;
@@ -1009,13 +1160,20 @@ export function visitingBodyText(
     ? `Hi ${opts.opposingCaptainName.trim().split(/\s+/)[0]},`
     : 'Hi there,';
 
+  const open = opts.openLines ?? [];
   const lines =
-    opts.lineCount && opts.lineCount > 0
-      ? `We're fielding all ${opts.lineCount} lines` +
-        (opts.singlesCourts && opts.doublesCourts
-          ? ` (${opts.singlesCourts} singles, ${opts.doublesCourts} doubles).`
-          : '.')
-      : null;
+    open.length && opts.lineCount
+      ? `A heads-up on numbers: at the moment we ${
+          opts.playersAvailable ? `only have ${opts.playersAvailable} players available` : 'are short of players'
+        }, so we may need to default ${open.length === 1 ? 'line' : 'lines'} ${open
+          .map((l) => l.courtNumber)
+          .join(' and ')}. We're working on it and I'll let you know for sure as soon as I can, well before the match.`
+      : opts.lineCount && opts.lineCount > 0
+        ? `We're fielding all ${opts.lineCount} lines` +
+          (opts.singlesCourts && opts.doublesCourts
+            ? ` (${opts.singlesCourts} singles, ${opts.doublesCourts} doubles).`
+            : '.')
+        : null;
 
   const blocks = [
     greeting,

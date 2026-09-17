@@ -8,6 +8,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { alertIfStepUp } from '@/lib/captain/stepUpAlert';
 
 type PlayerRow = { id: string; team_id: string; name: string; active: boolean };
 
@@ -87,6 +88,13 @@ export async function POST(req: Request, { params }: { params: { token: string }
     return NextResponse.json({ error: 'That match is no longer scheduled.' }, { status: 400 });
   }
 
+  const { data: before } = await admin
+    .from('captain_availability')
+    .select('status')
+    .eq('match_id', m.id)
+    .eq('player_id', player.id)
+    .maybeSingle();
+
   const { error } = await admin.from('captain_availability').upsert(
     {
       team_id: player.team_id,
@@ -98,6 +106,12 @@ export async function POST(req: Request, { params }: { params: { token: string }
     { onConflict: 'match_id,player_id' },
   );
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // Someone stepping up for a match that's short a line: the captain needs to
+  // hear it now, not find it on the match page later.
+  if (status === 'yes' && (before as { status?: string } | null)?.status !== 'yes') {
+    await alertIfStepUp(player.team_id, m.id, player.id, player.name);
+  }
 
   return NextResponse.json({ ok: true, status });
 }

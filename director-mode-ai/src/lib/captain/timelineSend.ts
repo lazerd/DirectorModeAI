@@ -37,7 +37,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 export const MATCH_COLUMNS =
   'id, team_id, match_at, status, is_home, opponent, location, arrival_note, ' +
   'opposing_captain_name, opposing_captain_phone, availability_poll_sent_at, ' +
-  'nudge_sent_at, lineup_email_sent_at, reminder_sent_at, court_format';
+  'nudge_sent_at, lineup_email_sent_at, reminder_sent_at, court_format, singles_courts, doubles_courts';
 
 type PlayerRow = {
   id: string;
@@ -85,6 +85,9 @@ function infoOf(m: Record<string, unknown>): MatchInfo {
     arrivalNote: (m.arrival_note as string) || null,
     opposingCaptainName: (m.opposing_captain_name as string) || null,
     opposingCaptainPhone: (m.opposing_captain_phone as string) || null,
+    // So a lineup short of the match's lines says which line gets defaulted.
+    singlesCourts: (m.singles_courts as number | null) ?? null,
+    doublesCourts: (m.doubles_courts as number | null) ?? null,
   };
 }
 
@@ -175,7 +178,16 @@ export async function loadTeamEmailContext(
   }
 
   const matchInfo = new Map<string, MatchInfo>();
-  for (const m of matches) matchInfo.set(m.id as string, infoOf(m));
+  const sharedLines = !!leagueSpec(shape?.league_type).multiLine;
+  for (const m of matches) {
+    const info = infoOf(m);
+    // JTT shares its lines across rounds: an unfilled line isn't a default.
+    if (sharedLines) {
+      info.singlesCourts = null;
+      info.doublesCourts = null;
+    }
+    matchInfo.set(m.id as string, info);
+  }
 
   const rosterIds = new Set(roster.map((p) => p.id));
   const counts: TimelineCounts = {

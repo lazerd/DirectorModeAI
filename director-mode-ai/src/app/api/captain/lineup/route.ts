@@ -487,6 +487,10 @@ export async function POST(req: Request) {
       arrivalNote: (match.arrival_note as string) || null,
       opposingCaptainName: (match.opposing_captain_name as string) || null,
       opposingCaptainPhone: (match.opposing_captain_phone as string) || null,
+      // A lineup short of these says which line gets defaulted.
+      // JTT shares its lines across rounds, so an unfilled line isn't a default.
+      singlesCourts: rounds ? null : ((match.singles_courts as number | null) ?? null),
+      doublesCourts: rounds ? null : ((match.doubles_courts as number | null) ?? null),
     };
 
     const payloads = roster

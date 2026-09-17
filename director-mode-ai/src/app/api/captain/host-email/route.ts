@@ -23,6 +23,8 @@ import {
   visitingBodyText,
   defaultVisitingSubject,
   type MatchInfo,
+  type OpenLine,
+  openLines,
 } from '@/lib/captain/emails';
 import { CLUB_TZ, normalizeTimeZone } from '@/lib/captain/clubTime';
 import { leagueSpec } from '@/lib/captain/leagues';
@@ -180,6 +182,39 @@ export async function POST(req: Request) {
   const lineCount =
     ((matchRow.doubles_courts as number) || 0) + ((matchRow.singles_courts as number) || 0);
 
+  // Away, the note says how many lines we're bringing — so it has to read the
+  // saved lineup and availability, not assume a full team.
+  let short: OpenLine[] = [];
+  let playersAvailable: number | null = null;
+  if (!matchRow.is_home && !multiLine) {
+    const [{ data: courts }, { count }] = await Promise.all([
+      admin
+        .from('captain_lineups')
+        .select('court_number, court_type, player1_id, player2_id')
+        .eq('match_id', matchRow.id),
+      admin
+        .from('captain_availability')
+        .select('player_id', { count: 'exact', head: true })
+        .eq('match_id', matchRow.id)
+        .eq('status', 'yes'),
+    ]);
+    type Court = { court_number: number; court_type: 'singles' | 'doubles'; player1_id: string | null; player2_id: string | null };
+    const rows = ((courts as Court[] | null) ?? []).map((c) => ({
+      courtNumber: c.court_number,
+      courtType: c.court_type,
+      // Only whether the court has anyone on it matters here, not who.
+      names: [c.player1_id, c.player2_id].filter(Boolean) as string[],
+    }));
+    // No saved lineup yet says nothing about who is coming, so claim nothing.
+    short = rows.length
+      ? openLines(
+          { singlesCourts: (matchRow.singles_courts as number) ?? 0, doublesCourts: (matchRow.doubles_courts as number) ?? 0 },
+          rows,
+        )
+      : [];
+    playersAvailable = count ?? null;
+  }
+
   /**
    * The default body, fully rendered for THIS match. The captain edits real
    * prose rather than filling slots around a fixed skeleton — match details
@@ -202,6 +237,8 @@ export async function POST(req: Request) {
           lineCount,
           singlesCourts: (matchRow.singles_courts as number) || null,
           doublesCourts: (matchRow.doubles_courts as number) || null,
+          openLines: short,
+          playersAvailable,
           notes: hostNotes || null,
           fromName,
           fromTitle,
