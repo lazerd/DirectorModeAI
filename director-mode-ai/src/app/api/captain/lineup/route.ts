@@ -124,6 +124,8 @@ export async function POST(req: Request) {
           gender: (p.gender as 'M' | 'F' | null) ?? null,
           returnSide: (p.return_side as 'deuce' | 'ad' | null) ?? null,
           courtLimit: (p.court_limit as Player['courtLimit']) ?? null,
+          // JTT: the most lines this player takes in one match, when capped.
+          maxLines: p.max_lines == null ? null : Number(p.max_lines),
           matchesPlayed: booked,
           // false for leagues with no playoffs — requiredMatches returns 0.
           // Measured against booked matches so a player already scheduled into

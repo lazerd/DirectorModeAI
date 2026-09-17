@@ -17,6 +17,7 @@ type Player = {
   gender: 'M' | 'F' | null;
   return_side: 'deuce' | 'ad' | null;
   court_limit: string | null;
+  max_lines: number | null;
   court_note: string | null;
   rating_type: 'computer' | 'self' | 'appeal';
   is_sub: boolean;
@@ -451,6 +452,25 @@ export default function RosterPanel({
                               </select>
                             </div>
                           )}
+                          {/* JTT sheets put a small squad on three lines each.
+                              A cap here holds one player to fewer; the reason is
+                              the captain's business and is not recorded. */}
+                          <div>
+                            <label className="block text-xs text-white/50 mb-1">Max lines / match</label>
+                            <select
+                              defaultValue={p.max_lines == null ? '' : String(p.max_lines)}
+                              onChange={(ev) =>
+                                patch(p.id, { max_lines: ev.target.value ? Number(ev.target.value) : null })
+                              }
+                              className={field}
+                            >
+                              <option value="">No cap</option>
+                              <option value="1">1</option>
+                              <option value="2">2</option>
+                              <option value="3">3</option>
+                              <option value="4">4</option>
+                            </select>
+                          </div>
                           <div>
                             <label className="block text-xs text-white/50 mb-1">Court limit</label>
                             <select

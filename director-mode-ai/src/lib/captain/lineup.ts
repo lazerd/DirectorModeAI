@@ -34,6 +34,11 @@ export type Player = {
   gender?: 'M' | 'F' | null;
   returnSide?: 'deuce' | 'ad' | null;
   courtLimit?: CourtLimit | null;
+  /**
+   * The most lines this player takes in one match, when the captain has capped
+   * them. Null = whatever the sheet needs. JTT only: an adult plays one line.
+   */
+  maxLines?: number | null;
   /** matches already played this season — drives fairness */
   matchesPlayed: number;
   /** true when the player still needs matches to qualify for playoffs */

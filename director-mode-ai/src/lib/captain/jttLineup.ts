@@ -130,6 +130,38 @@ function quotas(
     extra -= take;
     out.set(p.id, base + take);
   }
+
+  /*
+   * A capped player takes fewer lines, and the ones they give up go to whoever
+   * can still take them — otherwise the sheet quietly ends up short and a line
+   * defaults for no reason. Redistribution runs in the same order, so the
+   * result stays deterministic.
+   */
+  let spare = 0;
+  for (const p of order) {
+    const cap = p.maxLines ?? null;
+    if (cap == null) continue;
+    const owed = out.get(p.id) ?? 0;
+    if (owed > cap) {
+      spare += owed - cap;
+      out.set(p.id, cap);
+    }
+  }
+  while (spare > 0) {
+    let placed = false;
+    for (const p of order) {
+      if (spare <= 0) break;
+      const ceiling = Math.min(rules.maxTotal, p.maxLines ?? rules.maxTotal);
+      const owed = out.get(p.id) ?? 0;
+      if (owed < ceiling) {
+        out.set(p.id, owed + 1);
+        spare -= 1;
+        placed = true;
+      }
+    }
+    // Nobody left who can take another line: the rest of the sheet defaults.
+    if (!placed) break;
+  }
   return out;
 }
 

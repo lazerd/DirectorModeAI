@@ -239,6 +239,7 @@ export async function PATCH(req: Request) {
     'gender',
     'return_side',
     'court_limit',
+    'max_lines',
     'notes',
     'is_sub',
     'sort_order',
