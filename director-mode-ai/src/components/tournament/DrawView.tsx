@@ -10,6 +10,7 @@
  */
 
 import { isCompassFormat, buildCompassGroups } from '@/lib/compassLayout';
+import CompassDrawSvg, { compassSizeOf } from './CompassDrawSvg';
 import { buildRoundRobinGrid, type RRCell } from '@/lib/roundRobinGrid';
 import PanScroll from './PanScroll';
 
@@ -203,6 +204,15 @@ export default function DrawView({
           </section>
         )}
       </div>
+    );
+  }
+
+  // Compass draws render as an actual compass — Round 1 in the middle, every
+  // direction flowing outward from it. The stacked-sections view below stays as
+  // a fallback for any draw that isn't a standard 8 or 16.
+  if (isCompassFormat(format) && compassSizeOf(matches)) {
+    return (
+      <CompassDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />
     );
   }
 
