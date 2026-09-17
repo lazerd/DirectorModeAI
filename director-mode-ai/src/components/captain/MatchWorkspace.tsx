@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import MatchNextStep, { matchStage } from '@/components/captain/MatchNextStep';
 import RecapPanel from '@/components/captain/RecapPanel';
 import TopDogPanel from '@/components/captain/TopDogPanel';
@@ -181,12 +182,11 @@ export default function MatchWorkspace({
   const [courts, setCourts] = useState<Court[]>(initialLineup);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [explanation, setExplanation] = useState<Explanation | null>(null);
-  const [showWhy, setShowWhy] = useState(true);
+  const [showWhy, setShowWhy] = useState(false);
   const [handEdited, setHandEdited] = useState(false);
   const [autoSend, setAutoSend] = useState<AutoSend | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [preview, setPreview] = useState<EmailPreview | null>(null);
   const [pendingOnlyMissing, setPendingOnlyMissing] = useState(false);
@@ -349,6 +349,9 @@ export default function MatchWorkspace({
    * work it out. Everything below stays reachable — captains skip steps.
    */
   const lineupFilled = namedInLineup.length;
+  const matchPast = new Date(matchAt).getTime() < Date.now();
+  /** Court scores are saved: the match is history, not a plan. */
+  const scoresIn = initialResults.length > 0;
   const stage = matchStage({
     answered: yes.length + no.length + maybe.length,
     available: yes.length,
@@ -358,11 +361,10 @@ export default function MatchWorkspace({
     confirmed: confirmedNames.length,
     bailed: bailedInLineup.length,
     played: status === 'played',
-    matchPast: new Date(matchAt).getTime() < Date.now(),
-    scoresIn: initialResults.length > 0,
+    matchPast,
+    scoresIn,
     recapSent: !!recapSentAt,
   });
-  const waitingNames = namedInLineup.filter((p) => p.state === 'waiting').map((p) => p.name);
 
   // ---------------------------------------------------------- reaching people
   /**
@@ -400,7 +402,7 @@ export default function MatchWorkspace({
       async (j) => {
         setPreview(null);
         setPendingIds([]);
-        setNote(
+        toast.success(
           `Lineup emailed to ${j.sent as number} ${
             (j.sent as number) === 1 ? 'player' : 'players'
           }. The rest of the team was not emailed again.`,
@@ -422,7 +424,7 @@ export default function MatchWorkspace({
       (j) => {
         const who = j.name as string;
         const court = j.court as string | null;
-        setNote(
+        toast.success(
           state === 'clear'
             ? `Cleared ${who}'s answer — back to no answer yet.`
             : state === 'out'
@@ -480,7 +482,7 @@ export default function MatchWorkspace({
         } else {
           setSmsPreview(null);
           setPendingIds([]);
-          setNote(`Texted ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`);
+          toast.success(`Texted ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`);
         }
       },
     );
@@ -608,7 +610,7 @@ export default function MatchWorkspace({
     setSwapPick(null);
     setDirty(true);
     setHandEdited(true);
-    setNote('Doubles courts reordered by average WTN, strongest pair on court 1. Save to keep it.');
+    toast.success('Doubles courts reordered by average WTN, strongest pair on court 1. Save to keep it.');
   }
 
   async function call(
@@ -619,7 +621,7 @@ export default function MatchWorkspace({
   ) {
     setBusy(action);
     setError(null);
-    setNote(null);
+    
     try {
       const res = await fetch(url, {
         method: 'POST',
@@ -653,6 +655,9 @@ export default function MatchWorkspace({
     const losing = [
       answered.length ? `${answered.length} availability answers` : null,
       courts.length ? 'the saved lineup' : null,
+      // Results go too: they are keyed to court numbers the new lineup may not
+      // have. Say so, because this is the one button that throws away scores.
+      scoresIn ? 'the saved scores' : null,
     ].filter(Boolean);
     const newAt = zonedWallTimeToIso(newDate, timeZone) ?? new Date(newDate).toISOString();
     const ok = window.confirm(
@@ -665,7 +670,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
 
     setBusy('reschedule');
     setError(null);
-    setNote(null);
+    
     try {
       const res = await fetch('/api/captain/matches', {
         method: 'PATCH',
@@ -686,7 +691,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       setCourts([]);
       setDirty(false);
       setRescheduling(false);
-      setNote('Moved. Availability and the lineup were cleared — ask the team again.');
+      toast.success('Moved. Availability and the lineup were cleared — ask the team again.');
       router.refresh();
     } catch {
       setError('Network problem — try again.');
@@ -714,7 +719,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       { team_id: teamId, match_id: matchId, only_missing: pendingOnlyMissing },
       (j) => {
         setPreview(null);
-        setNote(`Asked ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`);
+        toast.success(`Asked ${j.sent as number} ${(j.sent as number) === 1 ? 'player' : 'players'}.`);
       },
     );
 
@@ -736,7 +741,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         setExplanation((j.explanation as Explanation) || null);
         setHandEdited(false);
         setDirty(true);
-        setNote('Draft only — nothing has been emailed. Edit any court, then save.');
+        toast.success('Draft only — nothing has been emailed. Edit any court, then save.');
       },
     );
   };
@@ -769,7 +774,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       setBusy(null);
     }
     if (courts.length) await generate();
-    else setNote(`${n}-court format saved. Generate the lineup when you're ready.`);
+    else toast.success(`${n}-court format saved. Generate the lineup when you're ready.`);
   }
 
   /** Where this match sits on the season timeline, so the page can say whether the automation will mail it. */
@@ -821,7 +826,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       '/api/captain/timeline/override',
       { team_id: teamId, match_id: matchId, kind: 'lineup', skip },
       async () => {
-        setNote(
+        toast.success(
           skip
             ? 'Automatic sending is off for this lineup — it will only go out when you send it.'
             : 'Automatic sending is back on for this lineup.',
@@ -855,7 +860,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       async () => {
         setDirty(false);
         setHandEdited(false);
-        setNote(savedNote ?? 'Saved as a draft. Players still have not seen it.');
+        toast.success(savedNote ?? 'Saved as a draft. Players still have not seen it.');
         await refreshAutoSend();
         router.refresh();
       },
@@ -864,6 +869,19 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
   const save = () => saveCourts(courts);
 
   // Show the real email first. The button never puts mail in flight.
+  /**
+   * What the NEXT banner's button does, per stage.
+   *
+   * The banner named the next action and had no button, so the two jobs done
+   * most — check the lineup, enter the scores — sat two and four screens below
+   * the sentence naming them. Every entry here opens exactly what the section
+   * below would: a preview, the score form, the generator. None of them send.
+   */
+  const jumpTo = (id: string) => {
+    const el = typeof document === 'undefined' ? null : document.getElementById(id);
+    el?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  };
+
   const previewLineup = () =>
     call(
       'send',
@@ -882,7 +900,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       { team_id: teamId, match_id: matchId, kind: 'lineup' },
       async (j) => {
         setPreview(null);
-        setNote(`Lineup emailed to ${j.sent as number} players.`);
+        toast.success(`Lineup emailed to ${j.sent as number} players.`);
         await refreshAutoSend();
         router.refresh();
       },
@@ -901,14 +919,33 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         dropped_player_id: dropped,
       },
       (j) => {
-        setNote(`Asked ${j.asked as number} subs — first to claim gets the spot.`);
+        toast.success(`Asked ${j.asked as number} subs — first to claim gets the spot.`);
         router.refresh();
       },
     );
   };
 
-  const saveResults = (markPlayed: boolean) =>
-    call(
+  const saveResults = (markPlayed: boolean) => {
+    if (markPlayed) {
+      // playedCounts credits every player on the sheet off status='played'
+      // alone, without reading the scores, so a blank court quietly credits two
+      // people with a match they may not have played.
+      const blank = courts.filter(
+        (c) => !defaulted[c.courtNumber] && !(scores[c.courtNumber]?.score ?? '').trim(),
+      ).length;
+      if (
+        blank > 0 &&
+        !window.confirm(
+          `Mark this match played with ${blank} court${blank === 1 ? '' : 's'} unscored?` +
+            `
+
+Everyone on the sheet is credited with a match for playoff eligibility.`,
+        )
+      ) {
+        return;
+      }
+    }
+    return call(
       markPlayed ? 'play' : 'scores',
       '/api/captain/results',
       {
@@ -928,7 +965,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         })),
       },
       (j) => {
-        setNote(
+        toast.success(
           markPlayed
             ? `Match recorded${j.teamResult ? ` — ${j.teamResult as string}` : ''}. Eligibility and partnership records updated.`
             : 'Scores saved.',
@@ -936,6 +973,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         router.refresh();
       },
     );
+  };
 
   /**
    * Whether the results form differs from what is saved. TopDog is filled from
@@ -1056,6 +1094,42 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     }
   };
 
+  /**
+   * The NEXT banner's button, per stage. It opens what the section below would
+   * open — the generator, a preview, the score form — and never sends.
+   */
+  const stageAction: { label: string; onClick: () => void; busy?: boolean } | null = (() => {
+    switch (stage) {
+      case 'poll':
+        return { label: 'Ask the team', onClick: () => sendPoll(false), busy: busy === 'poll' };
+      case 'waiting':
+        return silent.length
+          ? { label: `Nudge the ${silent.length} who haven't replied`, onClick: () => sendPoll(true), busy: busy === 'nudge' }
+          : null;
+      case 'build':
+        return { label: 'Generate the lineup', onClick: generate, busy: busy === 'generate' };
+      case 'send':
+        return { label: 'Preview & send the lineup', onClick: previewLineup, busy: busy === 'send' };
+      case 'confirm':
+        return { label: 'See who has not confirmed', onClick: () => jumpTo('lineup') };
+      case 'bailed':
+        return { label: 'Fill the open spot', onClick: () => jumpTo('lineup') };
+      case 'results':
+        return {
+          label: 'Enter the scores',
+          onClick: () => {
+            setScoring(true);
+            jumpTo('results');
+          },
+        };
+      case 'recap':
+        return { label: 'Write the recap', onClick: () => jumpTo('recap') };
+      default:
+        // ready and done have nothing to do, and a button would invent one.
+        return null;
+    }
+  })();
+
   const labelOf = (c: Court) =>
     `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
 
@@ -1088,6 +1162,10 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         player2Id: from.player2Id,
         player1ConfirmedAt: from.player1ConfirmedAt,
         player2ConfirmedAt: from.player2ConfirmedAt,
+        // Who recorded the yes travels with it, or a confirmation the captain
+        // took by text starts reading as one the player tapped.
+        player1ConfirmedSource: from.player1ConfirmedSource,
+        player2ConfirmedSource: from.player2ConfirmedSource,
         notes: from.notes,
       });
       return cs.map((c) =>
@@ -1097,7 +1175,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     setSwapPick(null);
     setDirty(true);
     setHandEdited(true);
-    setNote(null);
+    
   }
 
   /** Two-click single-player trade: pick one slot, pick another, they exchange. */
@@ -1114,12 +1192,16 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     setCourts((cs) => {
       const read = (c: Court, s: 1 | 2) =>
         s === 1
-          ? { id: c.player1Id, ok: c.player1ConfirmedAt }
-          : { id: c.player2Id, ok: c.player2ConfirmedAt };
-      const write = (c: Court, s: 1 | 2, v: { id: string | null; ok?: string | null }): Court =>
+          ? { id: c.player1Id, ok: c.player1ConfirmedAt, src: c.player1ConfirmedSource }
+          : { id: c.player2Id, ok: c.player2ConfirmedAt, src: c.player2ConfirmedSource };
+      const write = (
+        c: Court,
+        s: 1 | 2,
+        v: { id: string | null; ok?: string | null; src?: string | null },
+      ): Court =>
         s === 1
-          ? { ...c, player1Id: v.id, player1ConfirmedAt: v.ok }
-          : { ...c, player2Id: v.id, player2ConfirmedAt: v.ok };
+          ? { ...c, player1Id: v.id, player1ConfirmedAt: v.ok, player1ConfirmedSource: v.src }
+          : { ...c, player2Id: v.id, player2ConfirmedAt: v.ok, player2ConfirmedSource: v.src };
       const a = cs.find((c) => c.courtNumber === from.courtNumber);
       const b = cs.find((c) => c.courtNumber === courtNumber);
       if (!a || !b) return cs;
@@ -1136,7 +1218,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
     setSwapPick(null);
     setDirty(true);
     setHandEdited(true);
-    setNote(null);
+    
   }
 
   function setSlot(courtNumber: number, slot: 1 | 2, playerId: string | null) {
@@ -1493,6 +1575,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           lineupFilled,
           bailed: bailedInLineup.length,
         }}
+        action={stageAction}
       />
 
       {/* ---------------------------------------------------------- availability */}
@@ -1510,9 +1593,11 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                   : `Nudge the ${silent.length} who haven't replied`}
               </button>
             )}
-            <button onClick={() => setRescheduling((v) => !v)} disabled={!!busy} className={ghost}>
-              {rescheduling ? 'Cancel' : 'Move this match'}
-            </button>
+            {!scoresIn && (
+              <button onClick={() => setRescheduling((v) => !v)} disabled={!!busy} className={ghost}>
+                {rescheduling ? 'Cancel' : 'Move this match'}
+              </button>
+            )}
           </div>
         </div>
 
@@ -1528,7 +1613,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                 value={newDate}
                 onChange={(e) => setNewDate(e.target.value)}
                 style={{ color: '#ffffff' }}
-                className="px-3 py-2 rounded-lg bg-[#001820] border border-white/10 focus:border-[#D3FB52]/50 focus:outline-none text-sm"
+                className="px-3 py-2 rounded-lg bg-[#001820] border border-white/10 focus:border-[#D3FB52]/50 focus:outline-none text-base md:text-sm [color-scheme:dark]"
               />
               <button onClick={reschedule} disabled={!!busy} className={primary}>
                 {busy === 'reschedule' ? 'Moving…' : 'Move this match'}
@@ -1544,7 +1629,35 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           in one place and decoding chip colours in another. Now the question
           and the answer are in the same column.
         */}
-        <div className="mt-4 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {/*
+          The counts are the part a captain reads every time; the name lists are
+          the part he reads while building a lineup. Once the lineup has gone out
+          the lists were still 17 names of "Out" tall, in a grid that stretched
+          the 1-name column to match — over a phone screen of section between the
+          header and the lineup. Counts stay, names fold away, and the nudge
+          button and the "somebody told you" recorder stay outside the fold
+          because they are what he uses right up to match morning.
+        */}
+        <details open={!lineupSent} className="mt-4">
+          <summary className="cursor-pointer list-none rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-3">
+            <span className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-sm">
+              {[
+                { n: yes.length, label: 'available', tone: '#D3FB52' },
+                { n: maybe.length, label: 'maybe', tone: '#fbbf24' },
+                { n: no.length, label: 'out', tone: '#f87171' },
+                { n: silent.length, label: 'no answer', tone: '#94a3b8' },
+              ].map((x) => (
+                <span key={x.label}>
+                  <span className="font-semibold" style={{ color: x.tone }}>
+                    {x.n}
+                  </span>{' '}
+                  <span className="text-white/50">{x.label}</span>
+                </span>
+              ))}
+              <span className="ml-auto text-xs text-white/40">names</span>
+            </span>
+          </summary>
+          <div className="mt-3 grid grid-cols-2 lg:grid-cols-4 gap-3 items-start">
           {[
             { key: 'yes', label: 'Available', rows: yes, tone: '#D3FB52' },
             { key: 'maybe', label: 'Maybe', rows: maybe, tone: '#fbbf24' },
@@ -1582,7 +1695,8 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
               </div>
             </div>
           ))}
-        </div>
+          </div>
+        </details>
 
         {/*
           Half a team never taps the button. They text, or say it at pickup, or
@@ -1595,8 +1709,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
             Somebody told you instead of tapping?
           </div>
           <p className="text-white/40 text-xs mt-0.5">
-            Record it for them. It counts the same as the button in the email — no lineup needed
-            yet, and you can change it later.
+            Counts the same as the button in their email. You can change it later.
           </p>
           <div className="mt-3 flex flex-wrap items-end gap-2">
             <label className="flex flex-col gap-1">
@@ -1671,6 +1784,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           </div>
         </div>
 
+        {!scoresIn && (
         <p className="text-white/40 text-sm mt-3">
           {jttRules
             ? yes.length >= needed
@@ -1680,6 +1794,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
               ? `Enough to field a lineup (${needed} spots).`
               : `Need ${needed - yes.length} more for a full lineup of ${needed}.`}
         </p>
+        )}
 
         {players.some((p) => !p.hasEmail) && (
           <p className="text-amber-300/70 text-xs mt-3">
@@ -1690,7 +1805,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       </section>
 
       {/* ---------------------------------------------------------------- lineup */}
-      <section>
+      <section id="lineup">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <h2 className="text-xl font-display text-white">Lineup</h2>
           <div className="flex gap-2 flex-wrap">
@@ -1722,7 +1837,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                 ))}
               </div>
             )}
-            <button onClick={generate} disabled={!!busy} className={courts.length ? ghost : primary}>
+            <button onClick={generate} disabled={!!busy} className={courts.length ? ghost : emphasise('build')}>
               {busy === 'generate' ? 'Building…' : courts.length ? 'Regenerate' : 'Generate lineup'}
             </button>
             {/* Only offered when every doubles player has a WTN. A pair with a
@@ -1923,9 +2038,8 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                     </ul>
                   </div>
                 )}
-                <p className="text-white/35 text-xs mt-3">
-                  Each court shows its own reason on the right. Change any player with the dropdowns
-                  — your edits win, and Regenerate starts over from scratch.
+                <p className="text-white/50 text-xs mt-3">
+                  Your edits win; Regenerate starts over.
                 </p>
               </>
             )}
@@ -1956,8 +2070,8 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-red-100/60">
-              Swap someone in below, or use “find a sub” on their court to blast the sub list.
+            <p className="mt-2 text-red-100/80">
+              Their row is open below — swap someone in, or ask the whole roster from that court.
             </p>
           </div>
         )}
@@ -2002,8 +2116,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
 
         {courts.length === 0 && (
           <p className="text-white/40 text-sm mt-3">
-            No lineup yet. Collect availability, then hit Generate — it only proposes a lineup on
-            screen, it does not email anyone.
+            No lineup yet — collect availability, then Generate. Nothing is emailed.
           </p>
         )}
 
@@ -2015,16 +2128,18 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                     swapPick.slot === 1 ? 'player1Id' : 'player2Id'
                   ] ?? null,
                 )} should trade with.`
-              : 'Use ↑ ↓ to move a whole line, or ⇄ to trade two players. Nothing is emailed until you save and send.'}
+              : '↑ ↓ moves a whole line · ⇄ trades two players'}
           </p>
         )}
 
-        {/* Says why the dropdowns are short — otherwise a missing name reads as a bug. */}
-        <p className="text-xs text-white/35 mt-1">
-          Each dropdown lists only players who said yes or maybe,{' '}
-          {equalPlay ? 'least-used first' : 'strongest first'}. Someone who answered no, or never
-          answered, is not offered — record their answer above and they show up.
-        </p>
+        {/* Says why the dropdowns are short — otherwise a missing name reads as
+            a bug. One line: the rest of the old paragraph repeated the section
+            above it. */}
+        {courts.length > 0 && (
+          <p className="text-xs text-white/50 mt-1">
+            Dropdowns list only players who said yes or maybe, {equalPlay ? 'least-used' : 'strongest'} first.
+          </p>
+        )}
 
         <div className="mt-3 space-y-2">
           {displayCourts.map((c, i) => (
@@ -2066,7 +2181,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                           aria-label={
                             n ? `Flip ${labelOf(c)} with ${labelOf(n)}` : `${labelOf(c)} cannot move`
                           }
-                          className="w-6 h-6 rounded-md border border-white/10 text-white/50 text-xs leading-none hover:text-[#D3FB52] hover:border-[#D3FB52]/40 disabled:opacity-20 disabled:hover:text-white/50 disabled:hover:border-white/10"
+                          className="w-10 h-10 md:w-6 md:h-6 rounded-md border border-white/10 text-white/60 text-sm md:text-xs leading-none hover:text-[#D3FB52] hover:border-[#D3FB52]/40 disabled:opacity-20 disabled:hover:text-white/60 disabled:hover:border-white/10"
                         >
                           {dir === -1 ? '↑' : '↓'}
                         </button>
@@ -2127,7 +2242,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                             }
                             aria-pressed={picked}
                             aria-label={`Swap ${nameOf(pid)} on ${labelOf(c)}`}
-                            className={`w-8 h-9 shrink-0 rounded-lg border text-sm ${
+                            className={`w-11 h-11 md:w-8 md:h-9 shrink-0 rounded-lg border text-sm ${
                               picked
                                 ? 'bg-[#D3FB52] text-[#001820] border-[#D3FB52]'
                                 : swapPick
@@ -2141,7 +2256,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                             value={pid ?? ''}
                             onChange={(e) => setSlot(c.courtNumber, slot, e.target.value || null)}
                             aria-label={`Court ${c.courtNumber} player ${slot}`}
-                            className="flex-1 px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-white text-sm focus:border-[#D3FB52]/50 focus:outline-none"
+                            className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-white text-base md:text-sm focus:border-[#D3FB52]/50 focus:outline-none"
                           >
                             <option value="">— empty —</option>
                             {/* Only people who said yes or maybe reach this list,
@@ -2167,7 +2282,6 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                                         ? ' ✗'
                                         : ''}
                                   {p.availabilityNote ? ` (${p.availabilityNote})` : ''}
-                                  {` — ${loadLabel(p)}`}
                                 </option>
                               ));
                             })()}
@@ -2190,7 +2304,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                             </span>
                           ) : (
                             pid && (
-                              <span className="text-white/25 text-xs shrink-0">no answer yet</span>
+                              <span className="text-white/50 text-xs shrink-0">no answer yet</span>
                             )
                           )}
                         </div>
@@ -2206,10 +2320,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                         {pid && (() => {
                           const p = players.find((x) => x.id === pid);
                           return p ? (
-                            <p
-                              className="mt-1 pl-10 text-white/30 text-xs"
-                              title="Lineups counts every saved sheet plus this one; played counts matches that have happened."
-                            >
+                            <p className="mt-1 pl-10 text-white/60 text-xs">
                               {loadLabel(p)}
                             </p>
                           ) : null;
@@ -2229,7 +2340,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                             {!bailed && (
                               <button
                                 onClick={() => setRowMenu(rowOpen ? null : rowKey)}
-                                className="text-white/25 hover:text-white/70 text-xs underline"
+                                className="text-white/60 hover:text-white text-xs underline"
                               >
                                 {rowOpen ? 'hide actions' : 'actions'}
                               </button>
@@ -2343,29 +2454,37 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         </div>
 
         {/* ------------------------------------------------------ equal play */}
+        {/*
+          The spread line answers the question; the 24 bars are the evidence for
+          it. Both were always open — 80% of a phone screen between the lineup
+          and the scores, on every visit, including matches already played. The
+          summary stays permanently visible (and amber when uneven, because that
+          is what a bench conversation needs); the bars are one tap away.
+        */}
         {equalPlayRoster.length > 0 && (
-          <div className="mt-5 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
-            <div className="flex items-baseline justify-between gap-3 flex-wrap">
-              <h3 className="text-white/70 text-sm font-semibold">Equal play</h3>
-              <span
-                className={`text-xs ${spread <= 1 ? 'text-[#D3FB52]/80' : 'text-amber-300/90'}`}
-              >
-                {spread <= 1
-                  ? `Spread ${spread} — even`
-                  : `Spread ${spread} — ${trailingNames} on ${minLineups}`}
+          <details className="mt-5 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
+            <summary className="cursor-pointer list-none">
+              <span className="flex items-baseline justify-between gap-3 flex-wrap">
+                <span className="text-white/70 text-sm font-semibold">Equal play</span>
+                <span
+                  className={`text-xs ${spread <= 1 ? 'text-[#D3FB52]/80' : 'text-amber-300/90'}`}
+                >
+                  {spread <= 1
+                    ? `Spread ${spread} — even`
+                    : `Spread ${spread} — ${trailingNames} on ${minLineups}`}
+                </span>
               </span>
-            </div>
-            <p className="text-white/35 text-xs mt-1">
-              Lineups counts every saved sheet for the season <em>plus the one on screen</em>, so it
-              moves as you swap. Played counts matches that have actually happened — defaulted
-              courts don’t count, nobody played them.
-            </p>
+            </summary>
 
-            <div className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-wide text-white/25">
+            <div className="mt-3 flex items-center gap-2 text-[10px] uppercase tracking-wide text-white/40">
               <span className="flex-1" />
               <span className="w-12 text-right">lineups</span>
               <span className="w-12 text-right">played</span>
             </div>
+            <p className="text-white/40 text-[11px] mt-1">
+              Lineups includes this sheet, so it moves as you swap. Defaulted courts don’t count as
+              played.
+            </p>
             <div className="mt-1 grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-1.5">
               {equalPlayRoster.map((p) => (
                 <div key={p.id} className="flex items-center gap-2 text-xs">
@@ -2400,11 +2519,11 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                   >
                     {p.lineups}
                   </span>
-                  <span className="w-12 text-right tabular-nums text-white/30">{p.played}</span>
+                  <span className="w-12 text-right tabular-nums text-white/40">{p.played}</span>
                 </div>
               ))}
             </div>
-          </div>
+          </details>
         )}
 
         {dirty && courts.length > 0 && (
@@ -2415,8 +2534,14 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
       </section>
 
       {/* --------------------------------------------------------------- results */}
-      {courts.length > 0 && (
-        <section>
+      {/*
+        Gated on the match having HAPPENED, not on a lineup existing. Saving a
+        draft ten days out used to grow a Results heading and a dimmed TopDog
+        card whose own text said "save the scores first"; and a match scored
+        from a paper card with no saved lineup could reach neither.
+      */}
+      {(matchPast || status === 'played' || initialResults.length > 0) && (
+        <section id="results">
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <h2 className="text-xl font-display text-white">
               Results
@@ -2507,7 +2632,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                           placeholder={c.courtType === 'doubles' ? 'vs their players: Jane Smith / Ann Lee' : 'vs their player'}
                           aria-label={`Opponents on court ${c.courtNumber}`}
                           style={INPUT_COLOR}
-                          className="mt-1.5 block w-full max-w-sm px-2.5 py-1.5 rounded-lg bg-[#001820] border border-white/10 placeholder-white/25 text-xs focus:border-[#D3FB52]/50 focus:outline-none"
+                          className="mt-1.5 block w-full max-w-sm px-2.5 py-2 rounded-lg bg-[#001820] border border-white/10 placeholder-white/45 text-sm md:text-xs focus:border-[#D3FB52]/50 focus:outline-none"
                         />
                       </div>
                       <input
@@ -2516,7 +2641,10 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                         disabled={!!defaulted[c.courtNumber]}
                         placeholder="6-4, 6-3"
                         aria-label={`Score for court ${c.courtNumber}`}
-                        className="w-32 px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-white placeholder-white/25 text-sm focus:border-[#D3FB52]/50 focus:outline-none disabled:opacity-40"
+                        // Digits with a keypad, but still typed as text: a
+                        // score needs a hyphen and a comma.
+                        inputMode="numeric"
+                        className="w-32 px-3 py-2.5 md:py-2 rounded-lg bg-[#001820] border border-white/10 text-white placeholder-white/45 text-base md:text-sm focus:border-[#D3FB52]/50 focus:outline-none disabled:opacity-40"
                       />
                       {/* Defaulting sets the win/loss for the team but takes the
                           match away from the two players on the court. */}
@@ -2524,7 +2652,14 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                         onClick={() => {
                           const next = defaulted[c.courtNumber] ? null : 'them';
                           setDefaulted((d) => ({ ...d, [c.courtNumber]: next }));
+                          // Defaulting decides the point; un-defaulting must
+                          // hand the win/loss back rather than leave W lit on a
+                          // court nobody has scored.
                           if (next) setScore(c.courtNumber, { won: true });
+                          else
+                            setScore(c.courtNumber, {
+                              won: initialResults.find((r) => r.courtNumber === c.courtNumber)?.won ?? null,
+                            });
                         }}
                         title={
                           defaulted[c.courtNumber]
@@ -2567,7 +2702,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                               setScore(c.courtNumber, { won: s.won === o.val ? null : o.val })
                             }
                             aria-pressed={s.won === o.val}
-                            className={`w-10 py-2 rounded-lg text-sm font-semibold border ${
+                            className={`w-12 py-3 md:w-10 md:py-2 rounded-lg text-sm font-semibold border ${
                               s.won === o.val
                                 ? o.val
                                   ? 'bg-[#D3FB52] text-[#001820] border-[#D3FB52]'
@@ -2583,12 +2718,40 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
                   );
                 })}
               </div>
+
+              {/*
+                Courtside the score boxes are five screens down and Save is at
+                the top of the section, so typing a card meant scrolling back up
+                to keep it. Phone only: the desktop toolbar is already in view.
+              */}
+              <div className="md:hidden sticky bottom-0 -mx-1 mt-3 flex gap-2 border-t border-white/10 bg-[#001820]/95 px-1 py-3 backdrop-blur">
+                <button onClick={() => saveResults(false)} disabled={!!busy} className={`${ghost} flex-1`}>
+                  {busy === 'scores' ? 'Saving…' : 'Save scores'}
+                </button>
+                <button
+                  onClick={() => saveResults(true)}
+                  disabled={!!busy}
+                  className={`${primary} flex-1`}
+                >
+                  {busy === 'play' ? 'Recording…' : status === 'played' ? 'Update result' : 'Save & mark played'}
+                </button>
+              </div>
             </>
           )}
 
-          {/* The one email that goes out AFTER a match. Hidden until there are
-              saved scores to recap — the scoreboard is built from the database,
-              not from the unsaved form above. */}
+        </section>
+      )}
+
+      {/*
+        Recap and TopDog live OUTSIDE the results gate, on saved scores alone.
+        Inside it they vanished with the lineup rows — a match scored from a
+        paper card, or one whose lineup was cleared by a reschedule, could not
+        be recapped or posted while the banner still asked for both.
+      */}
+      {initialResults.length > 0 && (
+        <section id="recap" className="space-y-4">
+          {/* The one email that goes out AFTER a match. The scoreboard is built
+              from the database, not from the form above. */}
           <RecapPanel
             matchId={matchId}
             hasResults={initialResults.length > 0}
@@ -2613,11 +2776,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
           {error}
         </p>
       )}
-      {note && (
-        <p className="rounded-xl bg-[#D3FB52]/10 border border-[#D3FB52]/30 text-[#D3FB52] p-3 text-sm">
-          {note}
-        </p>
-      )}
+
     </div>
   );
 }

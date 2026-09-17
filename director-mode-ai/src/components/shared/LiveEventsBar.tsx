@@ -54,6 +54,8 @@ const HIDDEN = [
   '/terms',
   '/privacy',
   '/captainmode',
+  // CaptainMode is a working tool, not a place to advertise club events at.
+  '/captain',
   '/invite',
   '/join',
   '/event',

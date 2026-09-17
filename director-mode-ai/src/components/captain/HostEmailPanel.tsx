@@ -152,7 +152,9 @@ export default function HostEmailPanel({
           host_notes: notes,
           body: emailBody,
           subject,
-          save_notes: true,
+          // captain_teams.host_notes is OUR venue blurb. Away, this panel's
+          // notes field is about THEIR club, so saving it wiped ours.
+          save_notes: isHome,
         }),
       });
       const j = await res.json();

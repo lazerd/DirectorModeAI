@@ -57,13 +57,23 @@ export default function HostNotePanel({
   matchId,
   opponent,
   lineupSent,
+  detailsOnMatch,
   hostUpdateSentAt,
+  timeZone,
 }: {
   teamId: string;
   matchId: string;
   opponent: string | null;
   lineupSent: boolean;
+  /**
+   * The match already carries the host's arrival note. `applied` is session
+   * state, so after a reload the only way to send those details to the playing
+   * eight used to disappear.
+   */
+  detailsOnMatch: boolean;
   hostUpdateSentAt: string | null;
+  /** The club's IANA zone: a bare toLocaleString() prints UTC on Vercel. */
+  timeZone: string;
 }) {
   const router = useRouter();
   const [notes, setNotes] = useState<Note[]>([]);
@@ -257,7 +267,15 @@ export default function HostNotePanel({
               <button onClick={() => act(n, 'apply')} disabled={!!busy || !draft} className={primary}>
                 {busy === n.id ? 'Saving…' : 'Apply to this match'}
               </button>
-              <button onClick={() => act(n, 'dismiss')} disabled={!!busy} className={ghost}>
+              <button
+                onClick={() => {
+                  // Dismissing is permanent: the list only ever returns pending
+                  // notes, so a mis-tap loses the host's details for good.
+                  if (window.confirm('Dismiss this note? It will not come back.')) act(n, 'dismiss');
+                }}
+                disabled={!!busy}
+                className={ghost}
+              >
                 Dismiss
               </button>
             </div>
@@ -271,13 +289,15 @@ export default function HostNotePanel({
         </p>
       )}
 
-      {lineupSent && (applied || sentAt) && (
+      {lineupSent && (applied || sentAt || detailsOnMatch) && (
         <div className="mt-3 rounded-lg border border-white/10 p-3">
           <p className="text-sm text-white/70">
             {applied
               ? 'The lineup email already went out without these details.'
               : 'Match details were sent to the lineup.'}
-            {sentAt ? ` Sent ${new Date(sentAt).toLocaleString()}.` : ''}
+            {sentAt
+              ? ` Sent ${new Intl.DateTimeFormat('en-US', { timeZone, dateStyle: 'medium', timeStyle: 'short' }).format(new Date(sentAt))}.`
+              : ''}
           </p>
           <button onClick={() => notify(false)} disabled={!!busy} className={`${ghost} mt-2`}>
             {busy === 'preview' ? 'Building…' : sentAt ? 'Send the details again' : 'Send them to the players in the lineup'}

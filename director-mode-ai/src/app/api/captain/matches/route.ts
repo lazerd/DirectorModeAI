@@ -101,9 +101,12 @@ export async function PATCH(req: Request) {
       .eq('team_id', ctx.teamId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Availability and lineup were for the old date — start clean.
+    // Availability, lineup and any scores were for the old date — start clean.
+    // Results were left behind before, keyed to court numbers the new lineup
+    // may not even have.
     await ctx.db.from('captain_availability').delete().eq('match_id', body.match_id);
     await ctx.db.from('captain_lineups').delete().eq('match_id', body.match_id);
+    await ctx.db.from('captain_results').delete().eq('match_id', body.match_id);
     await ctx.db
       .from('captain_sub_requests')
       .update({ status: 'cancelled' })

@@ -159,31 +159,6 @@ export default async function MatchPage({
         {match.location ? ` · ${match.location}` : ''}
       </p>
 
-      {/* Hosting a visiting team: one tap to send them the venue note. Renders
-          only for home matches - an away match is someone else's hosting job. */}
-      <div className="mt-5">
-        <HostEmailPanel
-          matchId={params.matchId}
-          isHome={!!match.is_home}
-          opponent={(match.opponent as string) || null}
-          sentAt={(match.host_email_sent_at as string) || null}
-          timeZone={timeZone}
-        />
-      </div>
-
-      {/* Away: the host club's own details (warm-up, check-in, parking), pasted
-          or forwarded, applied to the fields the players' emails print. */}
-      {!match.is_home && (
-        <div className="mt-5">
-          <HostNotePanel
-            teamId={team.id}
-            matchId={params.matchId}
-            opponent={(match.opponent as string) || null}
-            lineupSent={!!match.lineup_email_sent_at}
-            hostUpdateSentAt={(match.host_update_sent_at as string) || null}
-          />
-        </div>
-      )}
 
       <MatchWorkspace
         teamId={team.id}
@@ -228,6 +203,55 @@ export default async function MatchPage({
         timeZone={timeZone}
       />
 
+      {/*
+        The other club, in one place, BELOW the team's own work.
+        Both panels read and write the same opposing-captain fields, and on an
+        away match the first tappable thing on the page used to be an email to
+        another club — a once-per-match errand sitting above the lineup.
+      */}
+      <details className="mt-8 rounded-2xl border border-white/[0.08] bg-[#002838] p-4">
+        <summary className="cursor-pointer list-none">
+          <span className="flex flex-wrap items-baseline justify-between gap-2">
+            <span className="text-white font-medium">
+              {match.is_home ? 'Hosting ' : ''}
+              {(match.opponent as string) || 'the other club'}
+            </span>
+            <span className="text-xs text-white/40">
+              {[
+                match.opposing_captain_name ? (match.opposing_captain_name as string) : null,
+                match.host_email_sent_at ? 'emailed' : 'not emailed yet',
+                !match.is_home && match.arrival_note ? 'details received' : null,
+              ]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
+          </span>
+        </summary>
+
+        <div className="mt-4 space-y-4">
+          <HostEmailPanel
+            matchId={params.matchId}
+            isHome={!!match.is_home}
+            opponent={(match.opponent as string) || null}
+            sentAt={(match.host_email_sent_at as string) || null}
+            timeZone={timeZone}
+          />
+
+          {/* Away: the host club's own details (warm-up, check-in, parking),
+              pasted or forwarded, applied to the fields players' emails print. */}
+          {!match.is_home && (
+            <HostNotePanel
+              teamId={team.id}
+              matchId={params.matchId}
+              opponent={(match.opponent as string) || null}
+              lineupSent={!!match.lineup_email_sent_at}
+              detailsOnMatch={!!(match.arrival_note as string | null)}
+              hostUpdateSentAt={(match.host_update_sent_at as string) || null}
+              timeZone={timeZone}
+            />
+          )}
+        </div>
+      </details>
     </div>
   );
 }

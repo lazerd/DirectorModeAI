@@ -256,6 +256,9 @@ export function payloadsFor(
   const courts = ctx.courts.get(matchId) || [];
   const teamName = ctx.team.name;
 
+  // An EMPTY array means "these players" with nobody in it — not "everyone".
+  // Treating it as no filter is how a modal that said 1 recipient could mail 24.
+  if (onlyPlayerIds && onlyPlayerIds.length === 0) return [];
   const only = onlyPlayerIds?.length ? new Set(onlyPlayerIds) : null;
   const audience = only ? ctx.roster.filter((p) => only.has(p.id)) : ctx.roster;
 
