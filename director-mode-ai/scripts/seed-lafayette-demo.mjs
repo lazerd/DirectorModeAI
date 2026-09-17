@@ -221,16 +221,19 @@ async function main() {
       meta: { seed: SEED_TAG, ...(extra.meta ?? {}) },
     });
   };
+  /*
+   * Only what the CLUB runs — clinics, the junior program, a lesson, the Sunday
+   * mixer. Invented member groups came out (2026-09-17): Lafayette's court
+   * booking is live to the public at $24/hr, and a demo group sitting on courts
+   * 1–2 every weekday morning and 1–4 on Saturday was blocking the exact hours
+   * a real member would book. Fake data must never take a real court.
+   */
   for (let n = 0; n < 14; n += 1) {
     const d = ymdIn(n);
     const w = dow(d);
-    if (w >= 1 && w <= 5) {
-      for (const c of [1, 2]) hold(d, c, '07:00', '08:30', 'member', 'Early doubles');
-      hold(d, 9, '12:00', '13:00', 'lesson', 'Private lesson');
-    }
+    if (w >= 1 && w <= 5) hold(d, 9, '12:00', '13:00', 'lesson', 'Private lesson');
     if (w === 1 || w === 3) for (const c of [3, 4, 5]) hold(d, c, '09:00', '10:30', 'lesson', 'Adult clinic');
     if (w === 2 || w === 4) for (const c of [6, 7, 8]) hold(d, c, '15:30', '17:00', 'camp', 'After-school juniors');
-    if (w === 6) for (const c of [1, 2, 3, 4]) hold(d, c, '08:00', '10:00', 'member', 'Saturday men’s doubles');
     if (w === 0) for (const c of [5, 6]) hold(d, c, '09:00', '11:00', 'event', 'Sunday mixer');
   }
   const nextDow = (want) => {
