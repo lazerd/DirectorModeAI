@@ -22,6 +22,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { Trophy, Crown, Medal, Users, Clock, CheckCircle2, Shield } from 'lucide-react';
 import CompassDrawSvg from '@/components/tournament/CompassDrawSvg';
+import DrawSheetLens from '@/components/tournament/DrawSheetLens';
 import { adaptLeagueCompass } from '@/lib/leagueCompassAdapter';
 
 export type BracketEntry = {
@@ -127,7 +128,9 @@ function CompassSection({
     const sheetEntries = new Map(sheet.entries.map((e) => [e.id, e]));
     return (
       <div className="bg-white rounded-xl p-4 overflow-hidden">
-        <CompassDrawSvg matches={sheet.matches} entryById={sheetEntries} revealAllSeeds />
+        <DrawSheetLens>
+          <CompassDrawSvg matches={sheet.matches} entryById={sheetEntries} revealAllSeeds />
+        </DrawSheetLens>
       </div>
     );
   }

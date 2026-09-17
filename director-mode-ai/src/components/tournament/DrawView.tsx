@@ -12,6 +12,7 @@
 import { isCompassFormat, buildCompassGroups } from '@/lib/compassLayout';
 import CompassDrawSvg, { compassSizeOf } from './CompassDrawSvg';
 import BracketDrawSvg, { layoutBracket } from './BracketDrawSvg';
+import DrawSheetLens from './DrawSheetLens';
 import { buildRoundRobinGrid, type RRCell } from '@/lib/roundRobinGrid';
 import PanScroll from './PanScroll';
 
@@ -213,7 +214,9 @@ export default function DrawView({
   // a fallback for any draw that isn't a standard 8 or 16.
   if (isCompassFormat(format) && compassSizeOf(matches)) {
     return (
-      <CompassDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />
+      <DrawSheetLens>
+        <CompassDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />
+      </DrawSheetLens>
     );
   }
 
@@ -277,7 +280,11 @@ export default function DrawView({
   // Feed-in formats (FMLC/FFIC) inject players mid-bracket, so layoutBracket
   // returns null for them and they keep the column view below.
   if (format.startsWith('single-elim') && layoutBracket(matches)) {
-    return <BracketDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />;
+    return (
+      <DrawSheetLens>
+        <BracketDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />
+      </DrawSheetLens>
+    );
   }
 
   // Generic elimination bracket (FMLC / FFIC, and anything unrecognised).
