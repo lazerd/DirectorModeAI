@@ -67,6 +67,7 @@ export type Violation =
   | 'too_long'
   | 'no_ask'
   | 'sales_speak'
+  | 'named_us'
   | 'no_name'
   | 'no_club'
   | 'invented_fact'
@@ -79,6 +80,7 @@ export const VIOLATION_TEXT: Record<Violation, string> = {
   too_long: `ran over ${MAX_WORDS} words`,
   no_ask: 'never offered to build them one',
   sales_speak: 'used a salesy phrase we have banned',
+  named_us: 'named one of us, our club or our town',
   no_name: "did not use the contact's first name",
   no_club: 'never named the club',
   invented_fact: 'invented something about the club',
@@ -130,6 +132,26 @@ const SALES_SPEAK = [
   /\bI help \w+ clubs\b/i,
 ];
 
+/**
+ * Us, by name or by place.
+ *
+ * Both reps run racquet programs at clubs of their own, so a cold letter
+ * carrying either name — or a town narrow enough to identify the employer —
+ * is a conflict of interest sitting in a stranger's inbox. Rossmoor and
+ * Lafayette are fine: those are the clubs we BUILT for, and naming a reference
+ * is the point.
+ */
+const OURSELVES = [
+  /\bDarrin\b/i,
+  /\bCohen\b/i,
+  /\bKevin\b/i,
+  /\bCarey\b/i,
+  /\bOrinda\b/i,
+  /\bEast Bay\b/i,
+  /\bSleepy Hollow\b/i,
+  /\bWalnut Creek\b/i,
+];
+
 /** Things a model adds that turn a note back into a campaign. */
 const MARKUP = [/\[[^\]]+\]\([^)]+\)/, /^\s*[*-]\s+/m, /\*\*/, /^#{1,6}\s/m, /https?:\/\//i];
 
@@ -160,6 +182,7 @@ export function validate(body: string, facts: ClubFacts): Violation[] {
   const offersToShow = /\b(?:send you the link|send it to you|send you a link|link to it|have a look|look at it|see it)\b/i.test(text);
   if (!offersToBuild || !offersToShow) out.push('no_ask');
   if (SALES_SPEAK.some((re) => re.test(text))) out.push('sales_speak');
+  if (OURSELVES.some((re) => re.test(text))) out.push('named_us');
   if (facts.firstName && !new RegExp(`\\b${escapeRe(facts.firstName)}\\b`, 'i').test(text)) out.push('no_name');
   if (facts.club && !clubMentioned(text, facts.club)) out.push('no_club');
   if (INVENTED.some((re) => re.test(text))) out.push('invented_fact');
@@ -247,7 +270,9 @@ export function whyLine(facts: ClubFacts, opts: { kind: 'intro' | 'followup'; da
 const SYSTEM = [
   'You write one short cold email at a time, from a tennis director in California to a person at another racquet club.',
   '',
-  'Who is writing: he is the tennis director at a club in Orinda, California. Not a software person — he started building this because he was spending Sunday nights making draw sheets in Excel and answering forty texts about who was playing at nine. It turned into the club\'s own website, court sign-ups, members finding each other a fourth, captain tools for league teams, and a QR code on the fence so nobody argues about whose court it is.',
+  'Who is writing: someone who runs a tennis program at a club. Not a software person — he started building this because he was spending Sunday nights making draw sheets in Excel and answering forty texts about who was playing at nine. It turned into the club\'s own website, court sign-ups, members finding each other a fourth, captain tools for league teams, and a QR code on the fence so nobody argues about whose court it is.',
+  '',
+  'ANONYMITY, and this one is not negotiable: the writer and his partner both hold jobs at clubs, so the letter names NO person, NO town, NO employer and NO club of their own. Never write "I run tennis at <place>", never name a city or a region they are in, never sign a personal name. "A club" and "our club" are as specific as it gets. A signature is added after you.',
   '',
   'The story he can tell, and it is true: last month he built one for a club of 200 players in their seventies and eighties who run everything off a whiteboard and a paper sign-in sheet at the kiosk. Their tournament director had been nursing the same pairings spreadsheet for years. Watching him press one button and get his round sheets was the most fun the sender has had doing this. Lafayette Tennis Club has one too. He built both before anyone paid him anything.',
   '',
@@ -265,6 +290,7 @@ const SYSTEM = [
   '- Plain text. No markdown, no bullet points, no bold, no links, no URLs.',
   '- No subject-line clichés: no "Quick question", no "Following up", no "Touching base", no all-caps, no emoji, no exclamation marks.',
   '- Do not list features. Name two or three of the things above at most, in a sentence, because they happen to be the ones that fit.',
+  '- Never name the writer, his club, his town or his region. Not "Orinda", not "the East Bay", not "Darrin", not "Kevin". "A club in California" is already too specific — say "our club".',
   '- Write like a person typing an email between lessons, not like marketing. Contractions. Short sentences. No "I hope this finds you well", no "I wanted to reach out", no "solutions", no "streamline", no "leverage", no "excited to".',
   '',
   'Call write_email exactly once.',

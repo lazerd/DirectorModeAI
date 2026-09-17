@@ -95,7 +95,7 @@ describe('sendCrmEmail', () => {
     expect(ledger(inserts)[0].row).toMatchObject({
       status: 'sent',
       to_email: CONTACT.email,
-      reply_to: 'Darrin Cohen <darrinjco@gmail.com>',
+      reply_to: 'ClubMode <hello@clubmode.ai>',
       subject: 'A question about Rossmoor Tennis Club',
       message_id: 'msg_1',
       template_slug: 'intro-warm',
@@ -122,7 +122,7 @@ describe('sendCrmEmail', () => {
     expect(payload.clubSlug).toBeUndefined();
     expect(payload.billToUserId).toBeUndefined();
     expect(payload.from).toContain('@mail.clubmode.ai');
-    expect(payload.replyTo).toBe('Darrin Cohen <darrinjco@gmail.com>');
+    expect(payload.replyTo).toBe('ClubMode <hello@clubmode.ai>');
   });
 
   /* ----------------------------------------------------- the important one */

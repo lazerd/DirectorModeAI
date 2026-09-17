@@ -47,11 +47,13 @@ export function firstNameOf(fullName: string | null | undefined): string {
   return (usable[0] ?? words[0] ?? '').trim();
 }
 
-export function mergeValuesFor(org: Org, contact: Contact, repName: string): MergeValues {
+export function mergeValuesFor(org: Org, contact: Contact, _repName: string): MergeValues {
   return {
     first_name: firstNameOf(contact.full_name),
     club: org.name,
-    rep_name: repName,
+    // Not the rep: a template that says "{{rep_name}}" renders the team name,
+    // so no letter carries a personal name. See CRM_SIGNER.
+    rep_name: CRM_SIGNER,
     demo_url: org.demo_url ?? '',
     next_step: org.next_step ?? '',
   };
@@ -99,13 +101,16 @@ export function signatureFor(opts: {
   replyTo: string;
   postalAddress: string;
 }): string {
+  // The signer is the team, not the rep: opts.repName still decides who the
+  // CRM shows as the sender internally, but the recipient sees one name.
+  const replyAddress = opts.replyTo.match(/<([^>]+)>/)?.[1] ?? opts.replyTo;
   return [
     '--',
-    opts.repName,
+    CRM_SIGNER,
     'ClubMode',
-    opts.replyTo,
+    replyAddress,
     '',
-    "Tell me to stop and I won't write again.",
+    "Tell us to stop and we won't write again.",
     opts.postalAddress,
   ].join('\n');
 }
@@ -225,7 +230,20 @@ export function compose(input: ComposeInput): Composed {
  */
 export const CRM_FROM = process.env.CRM_FROM_EMAIL || 'ClubMode Sales <sales@mail.clubmode.ai>';
 
-/** The rep's own address, so a reply lands in their inbox and nowhere else. */
-export function replyToFor(repName: string, repEmail: string): string {
-  return repName && repName !== repEmail ? `${repName} <${repEmail}>` : repEmail;
+/**
+ * Replies go to the company, never to a person.
+ *
+ * Both reps hold tennis jobs at clubs, and a sales letter carrying their own
+ * name and personal address is a conflict of interest waiting to be noticed —
+ * Kevin asked outright for his name and address to be nowhere near these
+ * (2026-09-17). So every message is signed by the founding team and answered at
+ * one shared address, which is forwarded to whoever is reading that week.
+ */
+export const CRM_REPLY_TO = process.env.CRM_REPLY_TO_EMAIL || 'ClubMode <hello@clubmode.ai>';
+
+/** What the letter signs itself, in place of a person's name. */
+export const CRM_SIGNER = process.env.CRM_SIGNER_NAME || 'The ClubMode Founding Team';
+
+export function replyToFor(_repName: string, _repEmail: string): string {
+  return CRM_REPLY_TO;
 }

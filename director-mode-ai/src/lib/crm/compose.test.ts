@@ -80,7 +80,7 @@ describe('renderTemplate', () => {
     const values = mergeValuesFor(ORG, CONTACT, 'Darrin Cohen');
     const out = renderTemplate('{{first_name}} at {{club}}, from {{rep_name}}: {{demo_url}}', values);
     expect(out.text).toBe(
-      'Mary at Rossmoor Tennis Club, from Darrin Cohen: https://clubmode.ai/demo/abc123',
+      'Mary at Rossmoor Tennis Club, from The ClubMode Founding Team: https://clubmode.ai/demo/abc123',
     );
     expect(out.missing).toEqual([]);
   });
@@ -117,10 +117,11 @@ describe('signatureFor', () => {
       replyTo: 'darrinjco@gmail.com',
       postalAddress: '1 Main St, Walnut Creek, CA 94595',
     });
-    expect(sig).toContain('Darrin Cohen');
+    expect(sig).toContain('The ClubMode Founding Team');
+    expect(sig).not.toContain('Darrin');
     expect(sig).toContain('ClubMode');
     expect(sig).toContain('darrinjco@gmail.com');
-    expect(sig).toContain("Tell me to stop and I won't write again.");
+    expect(sig).toContain("Tell us to stop and we won't write again.");
     expect(sig).toContain('1 Main St, Walnut Creek, CA 94595');
   });
 });
@@ -133,7 +134,7 @@ describe('compose', () => {
     expect(out.subject).toBe('A quick question about Rossmoor Tennis Club');
     expect(out.text).toContain('Hi Mary,');
     expect(out.text).toContain('https://clubmode.ai/demo/abc123');
-    expect(out.text).toContain("Tell me to stop and I won't write again.");
+    expect(out.text).toContain("Tell us to stop and we won't write again.");
     expect(out.text).toContain('1 Main St, Walnut Creek, CA 94595');
   });
 

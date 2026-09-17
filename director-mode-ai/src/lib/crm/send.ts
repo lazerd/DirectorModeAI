@@ -134,7 +134,8 @@ export async function sendCrmEmail(args: SendArgs): Promise<SendOutcome> {
     org: args.org,
     contact: args.contact,
     repName: args.repName,
-    replyTo: args.repEmail,
+    // The shared address, never the rep's own — see CRM_REPLY_TO.
+    replyTo,
     subject: args.subject,
     body: args.body,
     postalAddress: postalAddress(),

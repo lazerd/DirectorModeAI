@@ -162,7 +162,7 @@ describe('what goes on the wire', () => {
   it('replies to the rep who approved it', async () => {
     await sendQueued(fakeDb({}), ROW, { resend });
     const arg = safeResendSend.mock.calls[0][1] as { replyTo: string };
-    expect(arg.replyTo).toBe('darrinjco@gmail.com');
+    expect(arg.replyTo).toBe('ClubMode <hello@clubmode.ai>');
   });
 
   it('passes NO club scoping, so the demo guard cannot claim it', async () => {
@@ -177,7 +177,7 @@ describe('what goes on the wire', () => {
     await sendQueued(fakeDb({}), ROW, { resend });
     const arg = safeResendSend.mock.calls[0][1] as { html: string };
     expect(arg.html).toContain('1572 Hillgrade Ave');
-    expect(arg.html).toContain("Tell me to stop and I won't write again.");
+    expect(arg.html).toContain("Tell us to stop and we won't write again.");
   });
 
   it('refuses outright with no postal address configured', async () => {

@@ -152,12 +152,15 @@ export async function sendQueued(
     };
   }
 
+  // The company answers, not the rep: both of them have day jobs at clubs and
+  // neither name belongs on a sales letter. replyToFor() returns the shared
+  // address whatever it is handed; compose() signs with CRM_SIGNER.
   const replyTo = replyToFor('', row.rep_email);
   const built = compose({
     org: o,
     contact: c,
     repName: repNameFrom(row.rep_email),
-    replyTo: row.rep_email,
+    replyTo,
     subject: row.subject,
     body: row.body,
     postalAddress: postalAddress(),
