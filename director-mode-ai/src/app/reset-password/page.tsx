@@ -16,15 +16,45 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('');
   const [hasRecoverySession, setHasRecoverySession] = useState<boolean | null>(null);
 
-  // Supabase parses the recovery token from the URL hash automatically when
-  // the auth client initializes. Confirm we actually have a session before
-  // letting the user set a new password — otherwise updateUser would silently
-  // do nothing or fail with a confusing error.
+  /*
+   * Take the token out of the URL ourselves rather than trusting the client to.
+   *
+   * A recovery link from `generateLink` comes back through Supabase's /verify
+   * endpoint as an IMPLICIT grant: the tokens arrive in the URL *hash*
+   * (#access_token=…&type=recovery). The browser client is on the PKCE flow and
+   * looks for `?code=`, so it left the hash alone, getSession() found nothing,
+   * and everybody with a perfectly valid link was told "Reset link invalid"
+   * (Kevin Carey, first sign-in, 2026-09-17). Handle both shapes: the hash
+   * tokens by hand, `?code=` by exchange, and fall back to an existing session.
+   */
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setHasRecoverySession(Boolean(session));
-    });
+    let alive = true;
+
+    const start = async () => {
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const access_token = hash.get('access_token');
+      const refresh_token = hash.get('refresh_token');
+      const code = new URLSearchParams(window.location.search).get('code');
+
+      if (access_token && refresh_token) {
+        const { error: setErr } = await supabase.auth.setSession({ access_token, refresh_token });
+        // The tokens are single-use and should not sit in history or a copied URL.
+        window.history.replaceState(null, '', window.location.pathname);
+        if (alive) setHasRecoverySession(!setErr);
+        if (!setErr) return;
+      } else if (code) {
+        const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+        window.history.replaceState(null, '', window.location.pathname);
+        if (alive) setHasRecoverySession(!exErr);
+        if (!exErr) return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (alive) setHasRecoverySession(Boolean(session));
+    };
+
+    void start();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
@@ -34,7 +64,10 @@ export default function ResetPasswordPage() {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => {
+      alive = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
