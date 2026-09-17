@@ -239,7 +239,9 @@ export async function POST(req: Request) {
           doublesCourts: (matchRow.doubles_courts as number) || null,
           openLines: short,
           playersAvailable,
-          notes: hostNotes || null,
+          // NOT the team's hosting blurb: that describes OUR club's parking and
+          // warmup courts, and it was going out to the club hosting US.
+          notes: null,
           fromName,
           fromTitle,
         },

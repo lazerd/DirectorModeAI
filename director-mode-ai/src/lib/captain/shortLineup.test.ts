@@ -84,3 +84,17 @@ describe('stepUpAlertEmail', () => {
     expect(e.html).toContain('Doubles 4 (two more players needed)');
   });
 });
+
+describe('visitingBodyText — the away note is about THEIR club', () => {
+  const opts = { teamName: 'Sleepy Hollow', opposingCaptainName: 'Colleen McClure', lineCount: 4, doublesCourts: 4 };
+
+  it('asks about warmup courts when the host has not said', () => {
+    expect(visitingBodyText(MATCH, opts)).toContain('Are there warmup courts available');
+  });
+
+  it('thanks them instead once their arrival note is on the match', () => {
+    const text = visitingBodyText({ ...MATCH, arrivalNote: 'Warm-up courts at 9. Check in at the front desk.' }, opts);
+    expect(text).toContain('Thanks for sending the arrival details');
+    expect(text).not.toContain('Are there warmup courts available');
+  });
+});

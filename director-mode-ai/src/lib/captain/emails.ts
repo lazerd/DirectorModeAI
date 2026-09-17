@@ -1180,8 +1180,11 @@ export function visitingBodyText(
     `Just confirming ${opts.teamName} for ${when}${opts.venue ? ` at ${opts.venue}` : ''}.`,
     lines,
     // The question that is never answered anywhere, and that decides what time
-    // eight people set their alarms for.
-    'Are there warmup courts available beforehand, and what time would you like us there?',
+    // eight people set their alarms for — unless the host has already told us,
+    // in which case asking again reads like nobody opened their email.
+    m.arrivalNote?.trim()
+      ? 'Thanks for sending the arrival details — I have passed them on to our players.'
+      : 'Are there warmup courts available beforehand, and what time would you like us there?',
     (opts.notes || '').trim(),
     "Let me know if anything changes at your end and I'll do the same.",
     'Thanks!',
