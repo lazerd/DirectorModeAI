@@ -1458,7 +1458,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                           onChange={(e) => setSubNote(e.target.value)}
                           placeholder="reason — injured, away…"
                           style={INPUT_COLOR}
-                          className="mt-2 w-full px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-sm focus:border-[#D3FB52]/50 focus:outline-none"
+                          className="mt-2 w-full px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-base md:text-sm focus:border-[#D3FB52]/50 focus:outline-none"
                         />
                       )}
                     </span>
@@ -1719,7 +1719,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                 onChange={(e) => setTellWho(e.target.value)}
                 aria-label="Player who told you"
                 style={INPUT_COLOR}
-                className="px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-sm focus:border-[#D3FB52]/50 focus:outline-none min-w-[13rem]"
+                className="px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-base md:text-sm focus:border-[#D3FB52]/50 focus:outline-none min-w-[13rem]"
               >
                 <option value="">Choose a player…</option>
                 {[...players]
@@ -1746,7 +1746,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
               placeholder="note — doubles only, arriving late…"
               aria-label="Note on their answer"
               style={INPUT_COLOR}
-              className="px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-sm focus:border-[#D3FB52]/50 focus:outline-none flex-1 min-w-[12rem]"
+              className="px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-base md:text-sm focus:border-[#D3FB52]/50 focus:outline-none flex-1 min-w-[12rem]"
             />
 
             <div className="flex flex-wrap gap-2">

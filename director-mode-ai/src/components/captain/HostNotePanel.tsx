@@ -199,7 +199,7 @@ export default function HostNotePanel({
             rows={7}
             placeholder="Paste the whole email here, names and all."
             style={INPUT}
-            className="w-full px-3 py-2 rounded-lg border border-white/10 placeholder-white/25 text-sm focus:border-[#D3FB52]/50 focus:outline-none"
+            className="w-full px-3 py-2 rounded-lg border border-white/10 placeholder-white/45 text-base md:text-sm focus:border-[#D3FB52]/50 focus:outline-none"
           />
           <div className="mt-2 flex gap-2">
             <button onClick={read} disabled={text.trim().length < 20 || !!busy} className={primary}>
