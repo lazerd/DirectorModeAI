@@ -8,7 +8,14 @@ import TopDogPanel from '@/components/captain/TopDogPanel';
 import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 import { lineupAsText } from '@/lib/captain/lineupText';
-import { JTT_COURT_FORMATS, leagueSpec, roundClashes, roundsByCourt } from '@/lib/captain/leagues';
+import {
+  JTT_COURT_FORMATS,
+  exhibitionByRound,
+  exhibitionRows,
+  leagueSpec,
+  roundClashes,
+  roundsByCourt,
+} from '@/lib/captain/leagues';
 import { lineupPrintHtml } from '@/lib/captain/lineupPrint';
 import { shrinkImage } from '@/lib/captain/shrinkImage';
 import { isoToZonedWallTime, zonedWallTimeToIso } from '@/lib/captain/clubTime';
@@ -300,6 +307,17 @@ export default function MatchWorkspace({
     : courts;
 
   const nameOf = (id: string | null) => (id ? players.find((p) => p.id === id)?.name ?? '—' : '—');
+  /**
+   * JTT at home: the extra court beside the match courts. Each round, whoever
+   * is on the sheet but not on a line that round plays an exhibition there, so
+   * nobody who came stands and watches. Derived from the sheet, never saved.
+   */
+  const exhibitionOf =
+    format != null && isHome
+      ? new Map(exhibitionByRound(courts, format).map((r) => [r.round, r.playerIds]))
+      : null;
+  const exhibitionExtra =
+    format != null && isHome ? exhibitionRows(courts, format, (id) => nameOf(id)) : [];
 
   /**
    * Only bails that still matter: someone who withdrew and has since been
@@ -501,7 +519,8 @@ export default function MatchWorkspace({
       location,
       arrivalNote,
       timeZone,
-      courts: courts.map((c) => ({
+      courts: [
+        ...courts.map((c) => ({
         courtNumber: c.courtNumber,
         courtType: c.courtType,
         round: roundOf?.get(c.courtNumber) ?? null,
@@ -509,6 +528,8 @@ export default function MatchWorkspace({
           .concat(c.courtType === 'doubles' ? [c.player2Id] : [])
           .map((id) => nameOf(id)),
       })),
+        ...exhibitionExtra,
+      ],
     });
 
   /**
@@ -534,7 +555,8 @@ export default function MatchWorkspace({
         courtFormat: format,
         draft: dirty,
         timeZone,
-        courts: courts.map((c) => ({
+        courts: [
+          ...courts.map((c) => ({
           courtNumber: c.courtNumber,
           courtType: c.courtType,
           round: roundOf?.get(c.courtNumber) ?? null,
@@ -542,6 +564,8 @@ export default function MatchWorkspace({
             .concat(c.courtType === 'doubles' ? [c.player2Id] : [])
             .map((id) => nameOf(id)),
         })),
+          ...exhibitionExtra,
+        ],
       }),
     );
     w.document.close();
@@ -2449,6 +2473,27 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                   })}
               </div>
             </div>
+              {/* JTT at home: after a round's last line, who is on the
+                  exhibition court that round — everyone not on a scored line. */}
+              {exhibitionOf &&
+                roundOf?.get(c.courtNumber) != null &&
+                (i === displayCourts.length - 1 ||
+                  roundOf.get(displayCourts[i + 1].courtNumber) !== roundOf.get(c.courtNumber)) &&
+                (() => {
+                  const ids = exhibitionOf.get(roundOf.get(c.courtNumber)!) ?? [];
+                  if (!ids.length) return null;
+                  return (
+                    <div className="mt-2 rounded-xl border border-dashed border-[#D3FB52]/30 bg-[#D3FB52]/[0.04] p-4">
+                      <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                        <span className="text-white/50 text-xs uppercase tracking-wide">
+                          Exhibition court
+                        </span>
+                        <span className="text-white/40 text-[11px]">not scored · off a line this round</span>
+                      </div>
+                      <p className="mt-1.5 text-white text-sm">{ids.map((id) => nameOf(id)).join(', ')}</p>
+                    </div>
+                  );
+                })()}
             </div>
           ))}
         </div>

@@ -13,7 +13,8 @@ import { CLUB_TZ } from './clubTime';
 
 export type PrintCourt = {
   courtNumber: number;
-  courtType: 'singles' | 'doubles';
+  /** 'exhibition' = JTT home: the unscored extra court for whoever is off that round. */
+  courtType: 'singles' | 'doubles' | 'exhibition';
   names: string[];
   /** JTT: the round this line is played in. Adds a Round column when set. */
   round?: number | null;
@@ -40,7 +41,9 @@ const ESC: Record<string, string> = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ESC[c]);
 
 const lineLabel = (c: PrintCourt) =>
-  `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
+  c.courtType === 'exhibition'
+    ? 'Exhibition court'
+    : `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
 
 /** A complete HTML document that prints itself on load. */
 export function lineupPrintHtml(input: PrintLineupInput): string {
@@ -57,7 +60,8 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
   }).format(new Date(input.matchAt));
 
   const byRound = input.courts.some((c) => c.round);
-  const typeOrder = (c: PrintCourt) => (c.courtType === 'singles' ? 0 : 1);
+  const typeOrder = (c: PrintCourt) =>
+    c.courtType === 'singles' ? 0 : c.courtType === 'doubles' ? 1 : 2;
   const courts = [...input.courts].sort((a, b) =>
     byRound
       ? (a.round ?? 99) - (b.round ?? 99) || typeOrder(a) - typeOrder(b) || a.courtNumber - b.courtNumber
@@ -68,17 +72,24 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
   const span = new Map<number, number>();
   for (const c of courts) if (c.round) span.set(c.round, (span.get(c.round) ?? 0) + 1);
   const printedRound = new Set<number>();
+  const roundCellFor = (c: PrintCourt) => {
+    if (byRound && c.round && !printedRound.has(c.round)) {
+      printedRound.add(c.round);
+      return `<td class="round" rowspan="${span.get(c.round)}">Round ${c.round}</td>`;
+    }
+    return byRound && !c.round ? '<td class="round"></td>' : '';
+  };
 
   const rows = courts
     .map((c) => {
       const names = c.names.filter((n) => n && n !== '—');
-      let roundCell = '';
-      if (byRound && c.round && !printedRound.has(c.round)) {
-        printedRound.add(c.round);
-        roundCell = `<td class="round" rowspan="${span.get(c.round)}">Round ${c.round}</td>`;
-      } else if (byRound && !c.round) {
-        roundCell = '<td class="round"></td>';
+      if (c.courtType === 'exhibition') {
+        // Not on the scorecard: no opponents to write in, no score to record.
+        return `<tr class="exh">${roundCellFor(c)}<td class="line">${lineLabel(c)}</td><td class="names">${names
+          .map(esc)
+          .join(', ')}</td><td class="opp muted">exhibition</td><td class="score muted">not scored</td></tr>`;
       }
+      const roundCell = roundCellFor(c);
       // Blank write-in lines for whoever the other captain puts out — one per
       // player on that line, so a doubles pair has room for both names.
       const writeIns = (c.courtType === 'doubles' ? 2 : 1);

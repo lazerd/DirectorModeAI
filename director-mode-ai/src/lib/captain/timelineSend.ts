@@ -30,7 +30,7 @@ import {
   type TimelineEvent,
 } from './timeline';
 import { withSecondContact, recipientRows } from './teamContacts';
-import { DEFAULT_JTT_COURT_FORMAT, leagueSpec, roundsByCourt } from './leagues';
+import { DEFAULT_JTT_COURT_FORMAT, exhibitionRows, leagueSpec, roundsByCourt } from './leagues';
 import { resolveTeamTimeZone } from './clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
@@ -290,13 +290,31 @@ export function payloadsFor(
       )
     : null;
 
+  // JTT at home: whoever is off in a round plays the exhibition court.
+  const exhibition =
+    fmt && info.isHome
+      ? exhibitionRows(
+          courts.map((c) => ({
+            courtNumber: c.court_number,
+            courtType: c.court_type,
+            player1Id: c.player1_id,
+            player2Id: c.player2_id,
+          })),
+          fmt,
+          (id) => nameOf(id),
+        )
+      : [];
+
   if (kind === 'lineup') {
-    const rows: LineupRow[] = courts.map((c) => ({
-      courtNumber: c.court_number,
-      courtType: c.court_type,
-      names: [nameOf(c.player1_id)].concat(c.court_type === 'doubles' ? [nameOf(c.player2_id)] : []),
-      round: rounds?.get(c.court_number) ?? null,
-    }));
+    const rows: LineupRow[] = [
+      ...courts.map((c) => ({
+        courtNumber: c.court_number,
+        courtType: c.court_type,
+        names: [nameOf(c.player1_id)].concat(c.court_type === 'doubles' ? [nameOf(c.player2_id)] : []),
+        round: rounds?.get(c.court_number) ?? null,
+      })),
+      ...exhibition,
+    ];
     const playing = new Set(
       courts.flatMap((c) => [c.player1_id, c.player2_id]).filter(Boolean) as string[],
     );
@@ -319,11 +337,20 @@ export function payloadsFor(
           a.court_number - b.court_number,
       );
     if (!mine.length) return null;
-    return mine
-      .map((c) => {
-        const r = rounds?.get(c.court_number);
-        return `${c.court_type === 'singles' ? 'Singles' : 'Doubles'} ${c.court_number}${r ? ` (round ${r})` : ''}`;
-      })
+    const lines = mine.map((c) => {
+      const r = rounds?.get(c.court_number);
+      return {
+        round: r ?? 0,
+        text: `${c.court_type === 'singles' ? 'Singles' : 'Doubles'} ${c.court_number}${r ? ` (round ${r})` : ''}`,
+      };
+    });
+    const me = nameOf(pid);
+    for (const x of exhibition) {
+      if (x.names.includes(me)) lines.push({ round: x.round, text: `Exhibition court (round ${x.round})` });
+    }
+    return lines
+      .sort((a, b) => a.round - b.round)
+      .map((l) => l.text)
       .join(', ');
   };
   return audience

@@ -15,7 +15,8 @@ import { CLUB_TZ } from './clubTime';
 
 export type TextLineupCourt = {
   courtNumber: number;
-  courtType: 'singles' | 'doubles';
+  /** 'exhibition' = JTT home: the unscored extra court for whoever is off that round. */
+  courtType: 'singles' | 'doubles' | 'exhibition';
   names: string[];
   /** JTT: which round the line is played in. Groups the post by round when set. */
   round?: number | null;
@@ -56,7 +57,9 @@ function whenLine(matchAt: string, timeZone?: string): string {
 }
 
 const courtLabel = (c: TextLineupCourt) =>
-  `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
+  c.courtType === 'exhibition'
+    ? 'Exhibition court'
+    : `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
 
 /**
  * Plain text, no markdown. WhatsApp, Messages and every group chat render
@@ -78,7 +81,8 @@ export function lineupAsText(input: TextLineupInput): string {
   if (played.length) {
     lines.push('');
     lines.push('LINEUP');
-    const line = (c: TextLineupCourt) => `${courtLabel(c)}: ${c.names.filter(Boolean).join(' / ')}`;
+    const line = (c: TextLineupCourt) =>
+      `${courtLabel(c)}: ${c.names.filter(Boolean).join(c.courtType === 'exhibition' ? ', ' : ' / ')}`;
     if (played.some((c) => c.round)) {
       // JTT: parents want to know WHEN their kid is on, not just which line.
       const rounds = [...new Set(played.map((c) => c.round ?? 0))].sort((a, b) => a - b);

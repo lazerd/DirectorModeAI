@@ -24,6 +24,9 @@ import {
 import { generateJttLineup } from '@/lib/captain/jttLineup';
 import {
   DEFAULT_JTT_COURT_FORMAT,
+  EXHIBITION_SEATS,
+  exhibitionRows,
+  homeSquadMax,
   jttRoundPlan,
   roundPlanText,
   roundsByCourt,
@@ -183,10 +186,19 @@ export async function POST(req: Request) {
      * more say yes, the generator picks who sits, so it needs to know how many
      * OTHER upcoming dates each child can make and when each one signed up.
      */
-    const squadMax = multiLine
-      ? ((team as Record<string, unknown>).max_players as number | null) ??
-        rosterWindow({ singles: singlesCourts, doubles: doublesCourts }, multiLine).idealMax
-      : 0;
+    /*
+     * At HOME the team brings everyone who fits: the match courts in the
+     * quietest round plus the exhibition court beside them, so a child who is
+     * off a line that round plays an exhibition instead of watching. The
+     * "most players to bring" setting is about away trips and does not apply.
+     */
+    const isHome = !!match.is_home;
+    const squadMax = !multiLine
+      ? 0
+      : isHome
+        ? homeSquadMax(courtFormat, singlesCourts, doublesCourts)
+        : ((team as Record<string, unknown>).max_players as number | null) ??
+          rosterWindow({ singles: singlesCourts, doubles: doublesCourts }, multiLine).idealMax;
     let squad: { max: number; otherYes: Record<string, number>; joinedAt: Record<string, string> } | null =
       null;
     if (multiLine && available.length > squadMax) {
@@ -226,6 +238,7 @@ export async function POST(req: Request) {
           rules: multiLine,
           courtFormat,
           squad,
+          exhibition: isHome,
           partnerPrefs,
           neverPairs,
           pairHistory: history,
@@ -271,11 +284,20 @@ export async function POST(req: Request) {
         `${courtFormat}-court format — ${roundPlanText(jttRoundPlan(courtFormat, singles, doubles), singles)}. Nobody is on two lines in the same round.`,
       );
     }
+    if (multiLine && isHome) {
+      summary.push(
+        `Home match, so everyone who said yes comes (up to ${squadMax}) and nobody waits: each round, whoever is not on a scored line plays an exhibition on the extra court beside the match courts. The exhibition is not on the scorecard. Lines were shared out first — fewest matches so far get the extra line.`,
+      );
+    }
     if (result.sitting?.length) {
       summary.push(
-        `The team brings ${squadMax} at most, so ${result.sitting
-          .map((s) => nameOf(s.id) ?? 'someone')
-          .join(', ')} ${result.sitting.length === 1 ? 'sits' : 'sit'} this one. Who plays: fewest matches so far first, then whoever can make the fewest other dates, then whoever signed up first. Change the max under team settings.`,
+        isHome
+          ? `${squadMax} is the most the match courts plus a ${EXHIBITION_SEATS}-player exhibition court can hold in one round, so ${result.sitting
+              .map((s) => nameOf(s.id) ?? 'someone')
+              .join(', ')} ${result.sitting.length === 1 ? 'sits' : 'sit'} this one. Who plays: fewest matches so far first, then whoever can make the fewest other dates, then whoever signed up first.`
+          : `The team brings ${squadMax} at most, so ${result.sitting
+              .map((s) => nameOf(s.id) ?? 'someone')
+              .join(', ')} ${result.sitting.length === 1 ? 'sits' : 'sit'} this one. Who plays: fewest matches so far first, then whoever can make the fewest other dates, then whoever signed up first. Change the max under team settings.`,
       );
     }
 
@@ -473,6 +495,23 @@ export async function POST(req: Request) {
       ),
       round: rounds?.get(l.court_number as number) ?? null,
     }));
+    // JTT at home: whoever is off in a round plays the exhibition court.
+    if (rounds && match.is_home) {
+      rows.push(
+        ...exhibitionRows(
+          lineRows.map((l) => ({
+            courtNumber: l.court_number as number,
+            courtType: l.court_type as 'singles' | 'doubles',
+            player1Id: (l.player1_id as string | null) ?? null,
+            player2Id: (l.player2_id as string | null) ?? null,
+          })),
+          (match.court_format as number | null) ??
+            (team.court_format as number | null) ??
+            DEFAULT_JTT_COURT_FORMAT,
+          (id) => nameOf(id),
+        ),
+      );
+    }
 
     const playing = new Set(
       ((lineups as Record<string, unknown>[]) || [])

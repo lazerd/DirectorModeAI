@@ -268,6 +268,84 @@ export function roundClashes(
   return [...seen.values()].filter((h) => h.courtNumbers.length > 1);
 }
 
+/**
+ * JTT at HOME: one extra court beside the match courts for an exhibition, so
+ * nobody who came stands and watches (Darrin, 12U, 2026-09-20).
+ *
+ * An away match brings at most 6 — past that somebody drives there for a
+ * single short set. At home the drive is not the problem, waiting is, and the
+ * 4th court solves it: every round, whoever is not on a scored line plays an
+ * exhibition on it. It holds a doubles, so home brings as many as fill the
+ * match courts in the quietest round plus four — 8 in the 3-court format
+ * (every round seats 4 on the match courts), 7 in the 2-court (3 per round).
+ */
+export const EXHIBITION_SEATS = 4;
+
+export function homeSquadMax(
+  courtFormat: number | null | undefined,
+  singles: number,
+  doubles: number,
+): number {
+  const plan = jttRoundPlan(courtFormat, singles, doubles);
+  if (!plan.length) return EXHIBITION_SEATS;
+  const perRound = Math.min(...plan.map((r) => r.singles.length + r.doubles.length * 2));
+  return perRound + EXHIBITION_SEATS;
+}
+
+/**
+ * Who is on the exhibition court in each round: every child on the sheet who
+ * is not on a scored line that round. Worked out from the sheet, never stored,
+ * so a swap on the match page moves the exhibition with it and a saved sheet
+ * reads back the same. Names in sheet order (lowest court first).
+ */
+export function exhibitionByRound(
+  courts: (SheetLine & { player1Id: string | null; player2Id: string | null })[],
+  courtFormat: number | null | undefined,
+): { round: number; playerIds: string[] }[] {
+  const rounds = roundsByCourt(courts, courtFormat);
+  const sorted = [...courts].sort((a, b) => a.courtNumber - b.courtNumber);
+  const squad: string[] = [];
+  for (const c of sorted) {
+    for (const id of [c.player1Id, c.player2Id]) if (id && !squad.includes(id)) squad.push(id);
+  }
+  const roundNums = [...new Set(rounds.values())].sort((a, b) => a - b);
+  return roundNums
+    .map((round) => {
+      const on = new Set<string>();
+      for (const c of courts) {
+        if (rounds.get(c.courtNumber) !== round) continue;
+        if (c.player1Id) on.add(c.player1Id);
+        if (c.player2Id) on.add(c.player2Id);
+      }
+      return { round, playerIds: squad.filter((id) => !on.has(id)) };
+    })
+    .filter((r) => r.playerIds.length > 0);
+}
+
+/** An exhibition-court row, in the shape the email, printout and group text all take. */
+export type ExhibitionRow = {
+  courtNumber: number;
+  courtType: 'exhibition';
+  names: string[];
+  round: number;
+};
+
+export const EXHIBITION_LABEL = 'Exhibition court';
+
+/** One row per round for whoever is on the exhibition court. Callers gate on home. */
+export function exhibitionRows(
+  courts: (SheetLine & { player1Id: string | null; player2Id: string | null })[],
+  courtFormat: number | null | undefined,
+  nameOf: (id: string) => string,
+): ExhibitionRow[] {
+  return exhibitionByRound(courts, courtFormat).map((r) => ({
+    courtNumber: 0,
+    courtType: 'exhibition',
+    names: r.playerIds.map(nameOf),
+    round: r.round,
+  }));
+}
+
 /** "Round 1: Singles 1, Singles 2, Doubles 5 · Round 2: …" — numbered the way the sheet shows them. */
 export function roundPlanText(plan: JttRound[], singlesCount: number): string {
   return plan

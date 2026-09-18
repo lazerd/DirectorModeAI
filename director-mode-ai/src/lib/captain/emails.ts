@@ -280,14 +280,21 @@ export function preseasonIntakeEmail(
 
 export type LineupRow = {
   courtNumber: number;
-  courtType: 'singles' | 'doubles';
+  /** 'exhibition' = JTT home: the unscored 4th court for whoever is off that round. */
+  courtType: 'singles' | 'doubles' | 'exhibition';
   names: string[];
   /** JTT: the round the line is played in. Groups the table by round when set. */
   round?: number | null;
 };
 
 const lineupLineLabel = (row: LineupRow) =>
-  `${row.courtType === 'singles' ? 'Singles' : 'Doubles'} ${row.courtNumber}`;
+  row.courtType === 'exhibition'
+    ? 'Exhibition court'
+    : `${row.courtType === 'singles' ? 'Singles' : 'Doubles'} ${row.courtNumber}`;
+
+/** Singles, then doubles, then the exhibition court, within a round. */
+const rowTypeRank = (row: LineupRow) =>
+  row.courtType === 'singles' ? 0 : row.courtType === 'doubles' ? 1 : 2;
 
 /**
  * Lineup, 7 days out. Goes to the WHOLE team so nobody has to ask whether
@@ -312,7 +319,7 @@ export function lineupEmail(
     ? [...rows].sort(
         (a, b) =>
           (a.round ?? 99) - (b.round ?? 99) ||
-          (a.courtType === b.courtType ? 0 : a.courtType === 'singles' ? -1 : 1) ||
+          rowTypeRank(a) - rowTypeRank(b) ||
           a.courtNumber - b.courtNumber,
       )
     : rows;
@@ -334,7 +341,7 @@ export function lineupEmail(
         <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;white-space:nowrap;color:#64748b;font-size:13px">
           ${lineupLineLabel(row)}
         </td>
-        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:15px">${row.names.join(' / ')}</td>
+        <td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-size:15px">${row.names.join(row.courtType === 'exhibition' ? ', ' : ' / ')}</td>
       </tr>`;
   }
 
@@ -344,7 +351,10 @@ export function lineupEmail(
    * people saying yes would save it. JTT shares its lines across rounds, so a
    * missing row there isn't a defaulted line — adult sheets only.
    */
-  const open = byRound ? [] : openLines(m, rows);
+  const scored = rows.filter(
+    (row): row is LineupRow & { courtType: 'singles' | 'doubles' } => row.courtType !== 'exhibition',
+  );
+  const open = byRound ? [] : openLines(m, scored);
   const nonEmpty = rows.filter((row) => hasPlayers(row.names));
   if (open.length && nonEmpty.length !== rows.length) {
     table = '';

@@ -78,6 +78,13 @@ export type JttLineupInput = {
    * child who can come to everything loses least by sitting — then whoever
    * signed up first.
    */
+  /**
+   * Home match with an exhibition court beside the match courts. Everyone the
+   * squad cap lets in comes — the cap is the caller's (homeSquadMax) — and
+   * whoever is off a scored line in a round plays the exhibition, so a child
+   * on one line is not a child who drove over to watch.
+   */
+  exhibition?: boolean;
   squad?: {
     max: number;
     /** Other upcoming dates each child has said yes to. */
@@ -436,7 +443,9 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
       .map((s) => input.available.find((p) => p.id === s.id)?.name ?? 'someone')
       .join(', ');
     warnings.push(
-      `${input.available.length} said yes — bringing ${cap} so nobody drives there for one short set. Sitting: ${names}. To sit someone else instead, mark them Out and Regenerate.`,
+      input.exhibition
+        ? `${input.available.length} said yes — ${cap} is the most the match courts plus the exhibition court hold in a round. Sitting: ${names}. To sit someone else instead, mark them Out and Regenerate.`
+        : `${input.available.length} said yes — bringing ${cap} so nobody drives there for one short set. Sitting: ${names}. To sit someone else instead, mark them Out and Regenerate.`,
     );
   }
 
@@ -446,7 +455,9 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
       `${available.length} available: ${empty} of the ${shape.lines} lines can't be covered and will be defaulted. ${shape.fillsSheet} players covers the whole sheet.`,
     );
   }
-  if (available.length > shape.idealMax) {
+  // At home the extra players aren't short-changed: they play the exhibition
+  // court every round they are off a line. Said in the summary, not as a warning.
+  if (available.length > shape.idealMax && !input.exhibition) {
     warnings.push(
       `${available.length} available for ${shape.slots} slots — past ${shape.idealMax}, some players only get one line.`,
     );
