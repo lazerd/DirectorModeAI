@@ -337,7 +337,7 @@ export default function MatchWorkspace({
    * the slot but read as a roll-call, so flatten them here rather than making a
    * captain scan eight dropdowns for a badge.
    */
-  const namedInLineup = courts.flatMap((c) =>
+  const namedInSlots = courts.flatMap((c) =>
     ([1, 2] as const)
       .filter((slot) => slot === 1 || c.courtType === 'doubles')
       .map((slot) => {
@@ -363,6 +363,27 @@ export default function MatchWorkspace({
       })
       .filter(Boolean as unknown as (v: unknown) => boolean),
   ) as RollCallRow[];
+
+  /**
+   * One row per PERSON, not per line. A JTT child is on two or three lines,
+   * and counting slots read "0 of 12 confirmed · waiting on Maya, Ella, …,
+   * Maya, Ella" for a six-child sheet. Their lines are joined into one court
+   * label; confirming is per person already (one tap covers every line).
+   */
+  const namedInLineup: RollCallRow[] = [];
+  for (const r of namedInSlots) {
+    const seen = namedInLineup.find((x) => x.playerId === r.playerId);
+    if (!seen) {
+      namedInLineup.push({ ...r });
+      continue;
+    }
+    seen.court = `${seen.court}, ${r.court}`;
+    if (r.state === 'out' || (r.state === 'in' && seen.state === 'waiting')) {
+      seen.state = r.state;
+      seen.at = r.at;
+      seen.byCaptain = r.byCaptain;
+    }
+  }
 
   const confirmedNames = namedInLineup.filter((p) => p.state === 'in');
 
