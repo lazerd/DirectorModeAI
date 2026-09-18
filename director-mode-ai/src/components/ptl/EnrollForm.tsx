@@ -22,11 +22,13 @@ type Props = {
   seasonName: string;
   entryCents: number;
   isDemo: boolean;
+  /** Gendered-line seasons must know which draw you enter. Open ones don't ask. */
+  needsGender: boolean;
 };
 
 const NTRP_OPTIONS = ['5.0', '5.5', '6.0', '6.5', '7.0'];
 
-export default function EnrollForm({ seasonSlug, seasonName, entryCents, isDemo }: Props) {
+export default function EnrollForm({ seasonSlug, seasonName, entryCents, isDemo, needsGender }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ composite: number; demo?: boolean; notice?: string } | null>(null);
@@ -49,6 +51,7 @@ export default function EnrollForm({ seasonSlug, seasonName, entryCents, isDemo 
           homeClub: form.get('homeClub'),
           ntrp: form.get('ntrp'),
           wtn: form.get('wtn') || null,
+          gender: form.get('gender') || null,
         }),
       });
       const body = await res.json();
@@ -130,6 +133,13 @@ export default function EnrollForm({ seasonSlug, seasonName, entryCents, isDemo 
           with a partner. Captains build the rosters at a live snake draft, which is what keeps every
           team balanced and stops anyone assembling a super-team.
         </p>
+        {needsGender && (
+          <p className="mt-3 leading-relaxed text-white/60">
+            Teams are <strong className="text-white">men and women together</strong>. You&rsquo;ll
+            only ever play your own draw — men&rsquo;s singles and doubles, women&rsquo;s singles and
+            doubles — and if a meeting finishes level, a mixed doubles decides it.
+          </p>
+        )}
       </div>
 
       <p className="mt-6 text-sm text-white/50">
@@ -174,9 +184,24 @@ export default function EnrollForm({ seasonSlug, seasonName, entryCents, isDemo 
           </Field>
         </div>
 
-        <Field id="ptl-club" label="Home club" hint="Where you usually play. It doesn't affect the draft.">
-          <input id="ptl-club" name="homeClub" className={INPUT} placeholder="Sleepy Hollow" />
-        </Field>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <Field id="ptl-club" label="Home club" hint="Where you usually play. It doesn't affect the draft.">
+            <input id="ptl-club" name="homeClub" className={INPUT} placeholder="Sleepy Hollow" />
+          </Field>
+          {needsGender && (
+            <Field
+              id="ptl-gender"
+              label="Which draw"
+              hint="Teams are mixed. Men play men, women play women, and mixed doubles decides a tie."
+            >
+              <select id="ptl-gender" name="gender" required defaultValue="" className={INPUT}>
+                <option value="" disabled className="bg-[#0B0F14]">Choose one</option>
+                <option value="m" className="bg-[#0B0F14]">Men&rsquo;s</option>
+                <option value="f" className="bg-[#0B0F14]">Women&rsquo;s</option>
+              </select>
+            </Field>
+          )}
+        </div>
 
         <div className="grid gap-6 sm:grid-cols-2">
           <Field id="ptl-ntrp" label="NTRP" hint="PTL is 5.0 and above.">

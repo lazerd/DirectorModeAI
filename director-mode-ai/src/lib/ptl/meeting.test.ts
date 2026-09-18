@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { parseGames, resolveMeeting, type LineInput, type ShootoutInput } from './meeting';
+import {
+  courtsForFormat,
+  linesForFormat,
+  parseGames,
+  resolveMeeting,
+  type LineInput,
+  type ShootoutInput,
+} from './meeting';
 
 const line = (
   lineType: 'singles' | 'doubles',
@@ -152,5 +159,133 @@ describe('resolveMeeting', () => {
   it('walkovers still resolve at level 1 with no games recorded', () => {
     const o = resolveMeeting([line('singles', 'away', 0, 0), line('doubles', 'away', 0, 0)]);
     expect(o).toMatchObject({ state: 'decided', winner: 'away', level: 1 });
+  });
+});
+
+// ============================================================
+// The gendered four-line format: M/W singles, M/W doubles, and a
+// mixed doubles that only decides a 2-2.
+// ============================================================
+
+const g = (
+  lineKind: 'mens_singles' | 'womens_singles' | 'mens_doubles' | 'womens_doubles' | 'mixed_doubles',
+  winner: 'home' | 'away' | null,
+  homeGames = 8,
+  awayGames = 5,
+  isDecider = false,
+): LineInput => ({
+  lineType: lineKind.includes('singles') ? 'singles' : 'doubles',
+  lineKind,
+  isDecider,
+  winner,
+  homeGames: winner ? (winner === 'home' ? homeGames : awayGames) : null,
+  awayGames: winner ? (winner === 'home' ? awayGames : homeGames) : null,
+});
+
+const FOUR = (w: Array<'home' | 'away' | null>) => [
+  g('mens_singles', w[0]),
+  g('womens_singles', w[1]),
+  g('mens_doubles', w[2]),
+  g('womens_doubles', w[3]),
+];
+
+describe('linesForFormat', () => {
+  it('open_two plays a singles and a doubles', () => {
+    const l = linesForFormat('open_two');
+    expect(l).toHaveLength(2);
+    expect(l.some((x) => x.isDecider)).toBe(false);
+  });
+
+  it('gendered_four plays four counted lines plus a mixed decider', () => {
+    const l = linesForFormat('gendered_four');
+    expect(l.filter((x) => !x.isDecider)).toHaveLength(4);
+    const decider = l.find((x) => x.isDecider);
+    expect(decider?.lineKind).toBe('mixed_doubles');
+  });
+
+  it('the gendered format needs eight courts, the open one four', () => {
+    expect(courtsForFormat('gendered_four')).toBe(8);
+    expect(courtsForFormat('open_two')).toBe(4);
+  });
+});
+
+describe('resolveMeeting — gendered four with a mixed decider', () => {
+  const mixed = (lines: LineInput[]) => resolveMeeting(lines, [], 'mixed');
+
+  it('names the gendered lines still outstanding', () => {
+    const o = mixed(FOUR(['home', null, 'away', null]));
+    expect(o.state).toBe('awaiting_lines');
+    if (o.state === 'awaiting_lines') {
+      expect(o.missing).toEqual(["women's singles", "women's doubles"]);
+    }
+  });
+
+  it('will not decide on a 1-0 while three lines are still out', () => {
+    const o = mixed([g('mens_singles', 'home')]);
+    expect(o.state).toBe('awaiting_lines');
+  });
+
+  it('3-1 is decided on lines, no decider needed', () => {
+    const o = mixed(FOUR(['home', 'home', 'away', 'home']));
+    expect(o).toMatchObject({ state: 'decided', winner: 'home', level: 1 });
+    if (o.state === 'decided') expect(o.because).toContain('3-1');
+  });
+
+  it('4-0 says so', () => {
+    const o = mixed(FOUR(['away', 'away', 'away', 'away']));
+    expect(o).toMatchObject({ state: 'decided', winner: 'away', level: 1 });
+    if (o.state === 'decided') expect(o.because).toContain('all 4');
+  });
+
+  it('2-2 asks for the mixed doubles rather than counting games', () => {
+    // Home has far more games; the format must ignore that and play the mixed.
+    const lines = [
+      g('mens_singles', 'home', 8, 0),
+      g('womens_singles', 'home', 8, 0),
+      g('mens_doubles', 'away', 8, 7),
+      g('womens_doubles', 'away', 8, 7),
+    ];
+    const o = mixed(lines);
+    expect(o.state).toBe('awaiting_decider');
+    if (o.state === 'awaiting_decider') expect(o.because).toContain('mixed doubles');
+  });
+
+  it('the mixed doubles settles it', () => {
+    const o = mixed([...FOUR(['home', 'home', 'away', 'away']), g('mixed_doubles', 'away', 8, 3, true)]);
+    expect(o).toMatchObject({ state: 'decided', winner: 'away', level: 2 });
+    if (o.state === 'decided') expect(o.because).toContain('mixed doubles');
+  });
+
+  it('the decider is not counted toward the 2-2 it exists to break', () => {
+    // Without exclusion these five lines would read 3-2 and never reach mixed.
+    const o = mixed([...FOUR(['home', 'home', 'away', 'away']), g('mixed_doubles', 'home', 8, 3, true)]);
+    expect(o).toMatchObject({ state: 'decided', winner: 'home', level: 2 });
+    if (o.state === 'decided') {
+      expect(o.homeLines).toBe(2);
+      expect(o.awayLines).toBe(2);
+    }
+  });
+
+  it('an unplayed decider on a 2-2 keeps the meeting open', () => {
+    const o = mixed([...FOUR(['home', 'away', 'home', 'away']), g('mixed_doubles', null, 0, 0, true)]);
+    expect(o.state).toBe('awaiting_decider');
+  });
+
+  it('never returns a tie', () => {
+    const cases: LineInput[][] = [
+      FOUR(['home', 'home', 'home', 'away']),
+      FOUR(['away', 'away', 'home', 'away']),
+      [...FOUR(['home', 'away', 'home', 'away']), g('mixed_doubles', 'home', 8, 6, true)],
+    ];
+    for (const lines of cases) {
+      const o = mixed(lines);
+      expect(o.state).toBe('decided');
+      if (o.state === 'decided') expect(['home', 'away']).toContain(o.winner);
+    }
+  });
+
+  it('leaves the original two-line cascade untouched', () => {
+    const o = resolveMeeting([line('singles', 'home', 8, 2), line('doubles', 'away', 4, 8)]);
+    expect(o).toMatchObject({ state: 'decided', level: 2 });
   });
 });

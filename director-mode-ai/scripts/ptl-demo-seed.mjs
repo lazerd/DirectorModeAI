@@ -142,25 +142,29 @@ async function scaffold({ slug, name, status, note, seedKind, teamCount, rosterS
      RETURNING id`,
     [
       name, slug, status, rosterSize, pickSeconds, note, seedKind,
-      'A 5.0+ drafted-team league built around a three-hour night.',
-      'Players enroll individually. Captains draft balanced rosters at a live snake draft. '
-      + 'A division of four plays a full round robin in one night — you face all three rivals, '
-      + 'every match rating-counted, the whole season grid published on day one.',
+      'A 5.0+ drafted-team league of men and women, decided in a single session.',
+      'Players enroll individually and captains draft balanced rosters of men and women at a live '
+      + 'snake draft. A division of four plays a full round robin in one session — four lines at '
+      + 'once, you face all three rivals, and a 2-2 goes to a mixed doubles.',
     ],
   );
   const seasonId = season.id;
 
+  /*
+   * Two divisions of four, not three. Eight teams is the format's own answer to
+   * the binding constraint: four lines played at once needs eight courts a
+   * site, and the roster needs four women as well as four men.
+   */
   const divisions = [];
   for (const [tier, dName, code, nightly, finals, dow] of [
-    [1, 'Premier', 'PREM', 30000, 60000, 3],
-    [2, 'Championship', 'CHMP', 20000, 40000, 2],
-    [3, 'Challenger', 'CHAL', 10000, 20000, 4],
+    [1, 'Premier', 'PREM', 30000, 60000, 6],
+    [2, 'Challenger', 'CHAL', 15000, 30000, 0],
   ]) {
     const { rows: [d] } = await db.query(
       `INSERT INTO ptl_divisions
          (season_id, name, short_code, tier, nightly_prize_cents, finals_prize_cents,
-          day_of_week, start_time, end_time)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'18:00','21:00') RETURNING id`,
+          day_of_week, start_time, end_time, line_format, tiebreak_mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'09:00','12:00','gendered_four','mixed') RETURNING id`,
       [seasonId, dName, code, tier, nightly, finals, dow],
     );
     divisions.push({ id: d.id, name: dName, tier });
@@ -183,6 +187,13 @@ async function scaffold({ slug, name, status, note, seedKind, teamCount, rosterS
     teams.push({ id: t.id, token: t.team_token, name: tName, code });
   }
 
+  await db.query(
+    `UPDATE ptl_seasons
+        SET category = 'mixed', min_men = $2, min_women = $2, courts_per_division = 8
+      WHERE id = $1`,
+    [seasonId, Math.floor(rosterSize / 2)],
+  );
+
   const poolSize = teamCount * rosterSize + spare;
   const names = makeNamePool(poolSize);
   const entries = [];
@@ -194,8 +205,8 @@ async function scaffold({ slug, name, status, note, seedKind, teamCount, rosterS
     const { rows: [e] } = await db.query(
       `INSERT INTO ptl_entries
          (season_id, name, email, phone, home_club, ntrp, utr, wtn, composite_score,
-          rating_source, rating_confidence, status, payment_status, player_token)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'utr+ntrp','high','confirmed',$10,$11)
+          rating_source, rating_confidence, status, payment_status, player_token, gender)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'utr+ntrp','high','confirmed',$10,$11,$12)
        RETURNING id`,
       [
         seasonId, names[i],
@@ -206,9 +217,12 @@ async function scaffold({ slug, name, status, note, seedKind, teamCount, rosterS
         composite,
         rnd() < 0.8 ? 'paid' : 'unpaid',
         token(),
+        // Half and half: the format needs as many women as men, which is the
+        // single biggest question the real field has to answer.
+        i % 2 === 0 ? 'm' : 'f',
       ],
     );
-    entries.push({ id: e.id, name: names[i], composite });
+    entries.push({ id: e.id, name: names[i], composite, gender: i % 2 === 0 ? 'm' : 'f' });
   }
 
   // A season still taking entries has no captains and no draft yet — creating
@@ -325,7 +339,7 @@ async function seedSeasonPlay(ctx, { weeksPlayed, weeksTotal }) {
         `INSERT INTO ptl_nights
            (division_id, week_no, play_date, start_time, end_time, site_name, site_address,
             courts, is_finals, status)
-         VALUES ($1,$2,$3,'18:00','21:00',$4,$5,4,$6,$7) RETURNING id`,
+         VALUES ($1,$2,$3,'09:00','12:00',$4,$5,8,$6,$7) RETURNING id`,
         [div.id, week, playDate.toISOString().slice(0, 10), siteName, siteAddr,
          week === weeksTotal, played ? 'complete' : 'scheduled'],
       );
@@ -350,18 +364,16 @@ async function seedSeasonPlay(ctx, { weeksPlayed, weeksTotal }) {
           if (!played) {
             [homeLines, awayLines, homeGames, awayGames, result, level] = [0, 0, 0, 0, 'pending', null];
           } else if (showcase) {
-            // 1-1 on lines, level on games — decided on combined tiebreak points.
-            [homeLines, awayLines, homeGames, awayGames, result, level] = [1, 1, 11, 11, 'away', 4];
+            // 2-2 on lines — goes to the mixed doubles, which is level 2 here.
+            [homeLines, awayLines, homeGames, awayGames, result, level] = [2, 2, 26, 26, 'away', 2];
           } else {
             const homeWins = rnd() < 0.5;
-            const sweep = rnd() < 0.45;
-            homeLines = homeWins ? (sweep ? 2 : 1) : (sweep ? 0 : 1);
-            awayLines = 2 - homeLines;
-            const margin = Math.floor(between(1, 6));
-            homeGames = homeWins ? 12 + margin : 12 - margin;
-            awayGames = homeWins ? 12 - margin : 12 + margin;
-            result = homeWins ? 'home' : 'away';
-            level = sweep ? 1 : 2;
+            homeLines = homeWins ? (rnd() < 0.4 ? 4 : 3) : (rnd() < 0.4 ? 0 : 1);
+            awayLines = 4 - homeLines;
+            homeGames = homeLines * 8 + awayLines * 5;
+            awayGames = homeLines * 5 + awayLines * 8;
+            result = homeLines > awayLines ? 'home' : 'away';
+            level = 1;
           }
 
           const { rows: [meeting] } = await db.query(
@@ -373,26 +385,45 @@ async function seedSeasonPlay(ctx, { weeksPlayed, weeksTotal }) {
              homeGames, awayGames, homeLines, awayLines, level, played ? 'complete' : 'pending'],
           );
 
-          for (const [i, lineType] of ['singles', 'doubles'].entries()) {
-            const lineHomeGames = played ? Math.round(homeGames / 2) + (i === 0 ? homeGames % 2 : 0) : null;
-            const lineAwayGames = played ? Math.round(awayGames / 2) + (i === 0 ? awayGames % 2 : 0) : null;
-            const lineWinner = !played
+          /*
+           * Four counted lines plus the mixed decider, which only gets a score
+           * when the four finish level. Kept in step with linesForFormat() in
+           * src/lib/ptl/meeting.ts — the resolver reads these rows back.
+           */
+          const KINDS = [
+            ['singles', 'mens_singles', false],
+            ['singles', 'womens_singles', false],
+            ['doubles', 'mens_doubles', false],
+            ['doubles', 'womens_doubles', false],
+            ['doubles', 'mixed_doubles', true],
+          ];
+          for (const [i, [lineType, lineKind, isDecider]] of KINDS.entries()) {
+            // The decider is only played when the four counted lines are level.
+            const deciderPlayed = played && isDecider && homeLines === 2;
+            const scored = played && (!isDecider || deciderPlayed);
+
+            const lineWinner = !scored
               ? null
-              : homeLines === 2 ? 'home'
-              : awayLines === 2 ? 'away'
-              : i === 0 ? 'home' : 'away';
+              : isDecider
+                ? (result === 'home' ? 'home' : 'away')
+                : i < homeLines ? 'home' : 'away';
+
+            const lineHomeGames = scored ? (lineWinner === 'home' ? 8 : 5) : null;
+            const lineAwayGames = scored ? (lineWinner === 'home' ? 5 : 8) : null;
+
             await db.query(
               `INSERT INTO ptl_lines
-                 (meeting_id, line_type, score, home_games, away_games, winner, court_label,
-                  score_token, status, reported_at)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                 (meeting_id, line_type, line_kind, is_decider, score, home_games, away_games,
+                  winner, court_label, score_token, status, reported_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
               [
-                meeting.id, lineType,
-                played ? `${lineHomeGames >= lineAwayGames ? '4-2 4-3' : '2-4 3-4'}` : null,
+                meeting.id, lineType, lineKind, isDecider,
+                scored ? (lineWinner === 'home' ? '4-2 4-3' : '2-4 3-4') : null,
                 lineHomeGames, lineAwayGames, lineWinner,
-                `Court ${round * 2 + i + 1}`, token(),
-                played ? 'complete' : 'pending',
-                played ? new Date().toISOString() : null,
+                isDecider ? 'Centre court' : `Court ${round * 4 + i + 1}`,
+                token(),
+                scored ? 'complete' : 'pending',
+                scored ? new Date().toISOString() : null,
               ],
             );
           }
@@ -423,8 +454,8 @@ async function seedSeasonDemo() {
     status: 'running',
     note: 'Sample season — built for the USTA NorCal 5.0+ sub-committee.',
     seedKind: 'season',
-    teamCount: 12,
-    rosterSize: 9,
+    teamCount: 8,
+    rosterSize: 8,
     pickSeconds: 90,
     spare: 14,
   });
@@ -436,7 +467,7 @@ async function seedSeasonDemo() {
 
   const { rows: [{ count }] } = await db.query(
     `SELECT count(*) FROM ptl_roster WHERE season_id=$1`, [ctx.seasonId]);
-  console.log(`  12 teams · 3 divisions · ${count} drafted · 5 nights, 3 played`);
+  console.log(`  8 teams · 2 divisions · ${count} drafted · 5 sessions, 3 played`);
   return ctx;
 }
 
@@ -448,8 +479,8 @@ async function seedDraftDemo() {
     status: 'drafting',
     note: 'Live draft room — pick a player and watch the board move.',
     seedKind: 'draft',
-    teamCount: 12,
-    rosterSize: 9,
+    teamCount: 8,
+    rosterSize: 8,
     // A long clock on purpose: a visitor reading the page must not have the
     // draft auto-pick out from under them while they work out what it is.
     pickSeconds: 600,

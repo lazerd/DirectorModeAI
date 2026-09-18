@@ -98,6 +98,17 @@ export default async function EnrollPage({
     );
   }
 
+  // Only a season whose format actually uses gendered lines asks the question.
+  const { data: fmt } = await getSupabaseAdmin()
+    .from('ptl_seasons')
+    .select('min_men, min_women, category')
+    .eq('id', season.id)
+    .maybeSingle();
+  const needsGender =
+    ((fmt as any)?.min_men ?? 0) > 0
+    || ((fmt as any)?.min_women ?? 0) > 0
+    || (fmt as any)?.category === 'mixed';
+
   return (
     <>
       {season.is_demo && <DemoRibbon note={season.demo_note} />}
@@ -106,6 +117,7 @@ export default async function EnrollPage({
         seasonName={season.name}
         entryCents={season.entry_cents}
         isDemo={season.is_demo}
+        needsGender={needsGender}
       />
     </>
   );

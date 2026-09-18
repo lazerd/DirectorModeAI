@@ -18,10 +18,13 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   parseGames,
   resolveMeeting,
+  type LineFormat,
   type LineInput,
+  type LineKind,
   type MeetingOutcome,
   type ShootoutInput,
   type ShootoutKind,
+  type TiebreakMode,
 } from './meeting';
 
 export type NightMeeting = {
@@ -37,6 +40,8 @@ export type NightMeeting = {
   lines: Array<{
     id: string;
     line_type: 'singles' | 'doubles';
+    line_kind: LineKind;
+    is_decider: boolean;
     score: string | null;
     home_games: number | null;
     away_games: number | null;
@@ -72,6 +77,8 @@ export type NightView = {
 function toLineInputs(lines: NightMeeting['lines']): LineInput[] {
   return lines.map((l) => ({
     lineType: l.line_type,
+    lineKind: l.line_kind,
+    isDecider: l.is_decider,
     winner: l.winner,
     homeGames: l.home_games,
     awayGames: l.away_games,
@@ -99,7 +106,7 @@ export async function getNightByToken(token: string): Promise<NightView | null> 
 
   const { data: division } = await db
     .from('ptl_divisions')
-    .select('id, name, season_id')
+    .select('id, name, season_id, line_format, tiebreak_mode')
     .eq('id', n.division_id)
     .maybeSingle();
   if (!division) return null;
@@ -132,7 +139,7 @@ export async function getNightByToken(token: string): Promise<NightView | null> 
     meetingIds.length
       ? db
           .from('ptl_lines')
-          .select('id, meeting_id, line_type, score, home_games, away_games, winner, court_label, status')
+          .select('id, meeting_id, line_type, line_kind, is_decider, score, home_games, away_games, winner, court_label, status')
           .in('meeting_id', meetingIds)
           .order('line_type', { ascending: true })
       : Promise.resolve({ data: [] as any[] }),
@@ -159,7 +166,12 @@ export async function getNightByToken(token: string): Promise<NightView | null> 
       away_games: m.away_games,
       lines,
       shootouts,
-      outcome: resolveMeeting(toLineInputs(lines), toShootoutInputs(shootouts)),
+      outcome: resolveMeeting(
+        toLineInputs(lines),
+        toShootoutInputs(shootouts),
+        ((division as any).tiebreak_mode as TiebreakMode) ?? 'cascade',
+        ((division as any).line_format as LineFormat) ?? 'open_two',
+      ),
     };
   });
 
@@ -194,16 +206,40 @@ export async function getNightByToken(token: string): Promise<NightView | null> 
 export async function recomputeMeeting(meetingId: string): Promise<MeetingOutcome> {
   const db = getSupabaseAdmin();
 
+  /*
+   * The division's format has to come along. Resolving without it silently
+   * falls back to the two-line cascade, which on a gendered meeting would
+   * count the mixed decider as a fifth line and settle a 2-2 that was supposed
+   * to go to it.
+   */
+  const { data: meeting } = await db
+    .from('ptl_meetings')
+    .select('division_id')
+    .eq('id', meetingId)
+    .maybeSingle();
+  const { data: division } = meeting
+    ? await db
+        .from('ptl_divisions')
+        .select('line_format, tiebreak_mode')
+        .eq('id', (meeting as any).division_id)
+        .maybeSingle()
+    : { data: null };
+
+  const mode = (((division as any)?.tiebreak_mode as TiebreakMode) ?? 'cascade');
+  const format = (((division as any)?.line_format as LineFormat) ?? 'open_two');
+
   const [{ data: lines }, { data: shootouts }] = await Promise.all([
     db
       .from('ptl_lines')
-      .select('line_type, winner, home_games, away_games')
+      .select('line_type, line_kind, is_decider, winner, home_games, away_games')
       .eq('meeting_id', meetingId),
     db.from('ptl_shootouts').select('kind, home_pts, away_pts').eq('meeting_id', meetingId),
   ]);
 
   const lineInputs: LineInput[] = ((lines as any[]) || []).map((l) => ({
     lineType: l.line_type,
+    lineKind: l.line_kind,
+    isDecider: l.is_decider,
     winner: l.winner,
     homeGames: l.home_games,
     awayGames: l.away_games,
@@ -214,7 +250,7 @@ export async function recomputeMeeting(meetingId: string): Promise<MeetingOutcom
     awayPts: s.away_pts,
   }));
 
-  const outcome = resolveMeeting(lineInputs, shootoutInputs);
+  const outcome = resolveMeeting(lineInputs, shootoutInputs, mode, format);
 
   if (outcome.state === 'decided') {
     await db
@@ -232,16 +268,17 @@ export async function recomputeMeeting(meetingId: string): Promise<MeetingOutcom
   } else {
     // Not decided: clear any previous verdict rather than leaving a stale one.
     // A corrected score that un-decides a meeting must un-decide the table too.
-    const homeGames = lineInputs.reduce((n, l) => n + (l.homeGames ?? 0), 0);
-    const awayGames = lineInputs.reduce((n, l) => n + (l.awayGames ?? 0), 0);
+    const counted = lineInputs.filter((l) => !l.isDecider);
+    const homeGames = counted.reduce((n, l) => n + (l.homeGames ?? 0), 0);
+    const awayGames = counted.reduce((n, l) => n + (l.awayGames ?? 0), 0);
     await db
       .from('ptl_meetings')
       .update({
         result: 'pending',
         home_games: homeGames,
         away_games: awayGames,
-        home_lines_won: lineInputs.filter((l) => l.winner === 'home').length,
-        away_lines_won: lineInputs.filter((l) => l.winner === 'away').length,
+        home_lines_won: counted.filter((l) => l.winner === 'home').length,
+        away_lines_won: counted.filter((l) => l.winner === 'away').length,
         decided_at_level: null,
         status: outcome.state === 'awaiting_lines' && homeGames + awayGames === 0 ? 'pending' : 'live',
       })

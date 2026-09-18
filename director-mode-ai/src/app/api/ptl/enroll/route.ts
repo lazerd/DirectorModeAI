@@ -59,6 +59,8 @@ export async function POST(request: Request) {
     const homeClub = clampText(body.homeClub, 120);
     const ntrp = clampNumber(body.ntrp, 2.0, 7.0);
     const wtn = clampNumber(body.wtn, 1, 40);
+    const genderRaw = clampText(body.gender, 8)?.toLowerCase();
+    const gender = genderRaw === 'm' || genderRaw === 'f' ? genderRaw : null;
 
     if (!seasonSlug) return NextResponse.json({ error: 'Missing season.' }, { status: 400 });
     if (!name) return NextResponse.json({ error: 'Your name is required.' }, { status: 400 });
@@ -73,7 +75,7 @@ export async function POST(request: Request) {
 
     const { data: season } = await db
       .from('ptl_seasons')
-      .select('id, name, slug, status, entry_cents, enroll_opens_at, enroll_closes_at, is_demo, rating_floor, category')
+      .select('id, name, slug, status, entry_cents, enroll_opens_at, enroll_closes_at, is_demo, rating_floor, category, min_men, min_women')
       .eq('slug', seasonSlug)
       .maybeSingle();
 
@@ -96,6 +98,20 @@ export async function POST(request: Request) {
           error: `${s.name} is a ${Number(s.rating_floor).toFixed(1)} and above league. `
             + 'If your rating is on its way up, email the commissioner.',
         },
+        { status: 400 },
+      );
+    }
+
+    /*
+     * Gender is required only when the season's format actually needs it — a
+     * gendered-line season cannot seat someone it can't assign to a line, and
+     * the draft's roster minimums are counted from this. An open season never
+     * asks, so nobody is made to answer a question that has no consequence.
+     */
+    const needsGender = s.min_men > 0 || s.min_women > 0 || s.category === 'mixed';
+    if (needsGender && !gender) {
+      return NextResponse.json(
+        { error: 'This season plays gendered lines, so we need to know which draw you enter.' },
         { status: 400 },
       );
     }
@@ -142,6 +158,7 @@ export async function POST(request: Request) {
         composite_score: rating.composite,
         rating_source: rating.source,
         rating_confidence: rating.confidence,
+        gender,
         flag_discrepancy: rating.flagDiscrepancy,
         status: 'confirmed',
         payment_status: 'unpaid',

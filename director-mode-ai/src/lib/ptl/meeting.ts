@@ -1,46 +1,65 @@
 /**
- * PTL meeting resolution — the five-level cascade.
+ * PTL meeting resolution.
  *
- * A meeting is one team against another inside a night: exactly two lines,
- * 1 singles + 1 doubles, played side by side on two courts. Deciding it is not
- * "count the lines won", because with two lines a 1-1 split is the single most
- * common result. The proposal's cascade:
+ * A meeting is one team against another inside a session. PTL runs it in two
+ * shapes, and this file decides both:
  *
- *   1. Win both lines                 → meeting win
- *   2. Split 1-1                      → total games won decides
- *   3. Games tied                     → singles and doubles each play a 7-point
- *                                       tiebreak; win both, win the meeting
- *   4. Those two tiebreaks split      → combined points across them decides
- *                                       (two races to 7 = a combined race to 14)
- *   5. Combined points also tied      → the singles players play a 2-of-3
- *                                       point tiebreak
+ *   OPEN TWO       1 singles + 1 doubles, 4 courts for a four-team night.
+ *                  Two lines means a 1-1 split is the commonest result there
+ *                  is, so it falls into a five-rung cascade: total games, then
+ *                  a pair of 7-point tiebreaks, then combined points, then a
+ *                  2-of-3 decider between the singles players.
  *
- * Level 4 needs no extra tennis — it reads the points already on the board from
- * level 3, which is why it is "(race to 14)" rather than another thing to play.
- * Levels 3 and 5 DO need extra tennis, and that is the part software usually
- * gets wrong: it silently picks a winner while two pairs are standing on court
- * waiting to be told what happens next. So `resolveMeeting` never invents a
- * result. When it needs points that nobody has played yet it says exactly which
- * ones, and the match-night screen asks for them.
+ *   GENDERED FOUR  Men's and women's singles, men's and women's doubles, all
+ *                  four at once across 4 courts — so a four-team night needs
+ *                  8. Men never play women. At 2-2 a MIXED DOUBLES decides it,
+ *                  which is the moment the league gets remembered for.
+ *
+ * The decider is a LINE, not a tiebreak: it has a score, a court, four players
+ * and a winner like any other match. It carries `isDecider` so it is excluded
+ * from the count that produces the 2-2 in the first place.
+ *
+ * What both shapes share, and the reason this file is pure: a meeting is never
+ * resolved by whoever happens to be typing. Nothing here invents a winner. When
+ * the result depends on tennis nobody has played yet, it says exactly which
+ * tennis, and waits.
  */
 
 export type Side = 'home' | 'away';
 export type LineType = 'singles' | 'doubles';
 
+export type LineKind =
+  | 'open'
+  | 'mens_singles'
+  | 'womens_singles'
+  | 'mens_doubles'
+  | 'womens_doubles'
+  | 'mixed_doubles';
+
+/** How a meeting that finishes level on lines gets settled. */
+export type TiebreakMode = 'cascade' | 'mixed';
+
+/** Which set of lines a division plays. */
+export type LineFormat = 'open_two' | 'gendered_four';
+
 /** A played line. `winner` null means it has not been reported yet. */
 export type LineInput = {
   lineType: LineType;
+  /** Defaults to 'open' — the original ungendered two-line format. */
+  lineKind?: LineKind;
+  /** The mixed doubles that only happens if the counted lines finish level. */
+  isDecider?: boolean;
   winner: Side | null;
   homeGames: number | null;
   awayGames: number | null;
 };
 
 /**
- * Extra points played to break a tie.
- *   tb7_singles / tb7_doubles — level 3, first to 7
- *   points23                  — level 5, the singles pair, 2 of 3 points
- * There is deliberately no 'race14' kind: level 4 is computed from the two
- * level-3 tiebreaks, not played separately.
+ * Extra POINTS played to break a tie, in the cascade format only.
+ *   tb7_singles / tb7_doubles — first to 7
+ *   points23                  — the singles pair, 2 of 3 points
+ * There is deliberately no 'race14': combined points is arithmetic on the two
+ * 7-point tiebreaks, not another thing to play.
  */
 export type ShootoutKind = 'tb7_singles' | 'tb7_doubles' | 'points23';
 
@@ -51,10 +70,12 @@ export type ShootoutInput = {
 };
 
 export type MeetingOutcome =
-  /** Both lines aren't in yet. */
-  | { state: 'awaiting_lines'; missing: LineType[] }
-  /** Tennis needs to be played before this can be decided. */
+  /** Lines still to be reported. `missing` names them. */
+  | { state: 'awaiting_lines'; missing: string[] }
+  /** Points have to be played before this can be decided. */
   | { state: 'awaiting_shootout'; needs: ShootoutKind[]; level: 3 | 5; because: string }
+  /** A mixed doubles has to be played before this can be decided. */
+  | { state: 'awaiting_decider'; because: string }
   /** Settled. */
   | {
       state: 'decided';
@@ -67,13 +88,28 @@ export type MeetingOutcome =
       because: string;
     };
 
+const LABEL: Record<LineKind, string> = {
+  open: 'line',
+  mens_singles: "men's singles",
+  womens_singles: "women's singles",
+  mens_doubles: "men's doubles",
+  womens_doubles: "women's doubles",
+  mixed_doubles: 'mixed doubles',
+};
+
+/** What to call a line that hasn't been reported. */
+function nameOf(line: LineInput): string {
+  const kind = line.lineKind ?? 'open';
+  return kind === 'open' ? line.lineType : LABEL[kind];
+}
+
 /**
  * Total games from a written score.
  *
- * Accepts the shapes people actually type courtside — "4-2 4-1", "4-2,4-1",
+ * Accepts the shapes people type courtside — "4-2 4-1", "4-2,4-1",
  * "4-2 3-5 7-3" — splitting on spaces, commas and semicolons alike. A trailing
- * bracketed tiebreak ("4-2 3-5 [10-7]") is ignored for games, because a match
- * tiebreak is not games and counting it would distort the level-2 comparison.
+ * bracketed tiebreak ("4-2 3-5 [10-7]") is ignored for games: a match tiebreak
+ * is not games, and counting it would distort the comparison it feeds.
  */
 export function parseGames(score: string | null | undefined): [number, number] {
   let home = 0;
@@ -96,32 +132,77 @@ const winnerOf = (h: number, a: number): Side | null => (h > a ? 'home' : a > h 
  * Decide a meeting, or say precisely what is still needed to decide it.
  *
  * Pure: no database, no clock, no I/O. Everything the match-night screen and
- * the standings both depend on lives here so they can never disagree.
+ * the standings both depend on lives here, so the two can never disagree.
  */
-export function resolveMeeting(lines: LineInput[], shootouts: ShootoutInput[] = []): MeetingOutcome {
-  const singles = lines.find((l) => l.lineType === 'singles');
-  const doubles = lines.find((l) => l.lineType === 'doubles');
+export function resolveMeeting(
+  lines: LineInput[],
+  shootouts: ShootoutInput[] = [],
+  mode: TiebreakMode = 'cascade',
+  format: LineFormat = mode === 'mixed' ? 'gendered_four' : 'open_two',
+): MeetingOutcome {
+  // The decider is excluded from the count — it exists to break the tie the
+  // count produces, so including it would resolve the meeting it was called for.
+  const counted = lines.filter((l) => !l.isDecider);
+  const decider = lines.find((l) => l.isDecider);
 
-  const missing: LineType[] = [];
-  if (!singles || !singles.winner) missing.push('singles');
-  if (!doubles || !doubles.winner) missing.push('doubles');
+  /*
+   * Check against the lines the FORMAT calls for, not just the ones handed in.
+   * Counting only what is present looks equivalent and is not: a meeting with
+   * one line reported and one still out would read as 1-0 and declare a winner
+   * while a match was still on court. An absent line is as unfinished as an
+   * unreported one.
+   */
+  const expected = linesForFormat(format).filter((l) => !l.isDecider);
+  const missing: string[] = [];
+  for (const want of expected) {
+    const got = counted.find(
+      (l) => l.lineType === want.lineType && (l.lineKind ?? 'open') === want.lineKind,
+    );
+    if (!got || !got.winner) missing.push(nameOf(got ?? (want as LineInput)));
+  }
   if (missing.length) return { state: 'awaiting_lines', missing };
 
-  const both = [singles!, doubles!];
-  const homeLines = both.filter((l) => l.winner === 'home').length;
-  const awayLines = both.filter((l) => l.winner === 'away').length;
-  const homeGames = both.reduce((n, l) => n + (l.homeGames ?? 0), 0);
-  const awayGames = both.reduce((n, l) => n + (l.awayGames ?? 0), 0);
+  const homeLines = counted.filter((l) => l.winner === 'home').length;
+  const awayLines = counted.filter((l) => l.winner === 'away').length;
+  const homeGames = counted.reduce((n, l) => n + (l.homeGames ?? 0), 0);
+  const awayGames = counted.reduce((n, l) => n + (l.awayGames ?? 0), 0);
 
   const base = { homeLines, awayLines, homeGames, awayGames } as const;
 
-  // ---- Level 1: won both lines ----
-  if (homeLines === 2 || awayLines === 2) {
-    const winner: Side = homeLines === 2 ? 'home' : 'away';
-    return { state: 'decided', winner, level: 1, ...base, because: 'Won both lines' };
+  // ---- Level 1: won more lines ----
+  const byLines = winnerOf(homeLines, awayLines);
+  if (byLines) {
+    const won = Math.max(homeLines, awayLines);
+    const lost = Math.min(homeLines, awayLines);
+    return {
+      state: 'decided',
+      winner: byLines,
+      level: 1,
+      ...base,
+      because: lost === 0 ? `Won all ${won} lines` : `Won the lines ${won}-${lost}`,
+    };
   }
 
-  // ---- Level 2: 1-1, total games ----
+  // ---- Level on lines. How that gets settled depends on the format. ----
+
+  if (mode === 'mixed') {
+    if (!decider || !decider.winner) {
+      return {
+        state: 'awaiting_decider',
+        because:
+          `Level at ${homeLines}-${awayLines} — it goes to a mixed doubles`,
+      };
+    }
+    return {
+      state: 'decided',
+      winner: decider.winner,
+      level: 2,
+      ...base,
+      because: 'Level on lines, won the mixed doubles decider',
+    };
+  }
+
+  // ---- Cascade, level 2: total games ----
   const byGames = winnerOf(homeGames, awayGames);
   if (byGames) {
     return {
@@ -129,7 +210,7 @@ export function resolveMeeting(lines: LineInput[], shootouts: ShootoutInput[] = 
       winner: byGames,
       level: 2,
       ...base,
-      because: `Split 1-1, won on total games ${Math.max(homeGames, awayGames)}-${Math.min(homeGames, awayGames)}`,
+      because: `Split ${homeLines}-${awayLines}, won on total games ${Math.max(homeGames, awayGames)}-${Math.min(homeGames, awayGames)}`,
     };
   }
 
@@ -144,7 +225,7 @@ export function resolveMeeting(lines: LineInput[], shootouts: ShootoutInput[] = 
       state: 'awaiting_shootout',
       needs: needTb,
       level: 3,
-      because: `Split 1-1 and games are level at ${homeGames}-${awayGames} — both courts play a 7-point tiebreak`,
+      because: `Split ${homeLines}-${awayLines} and games are level at ${homeGames}-${awayGames} — both courts play a 7-point tiebreak`,
     };
   }
 
@@ -171,8 +252,8 @@ export function resolveMeeting(lines: LineInput[], shootouts: ShootoutInput[] = 
   }
 
   // ---- Level 5: still level, the singles pair plays 2 of 3 points ----
-  const decider = shootouts.find((s) => s.kind === 'points23');
-  if (!decider) {
+  const dec = shootouts.find((s) => s.kind === 'points23');
+  if (!dec) {
     return {
       state: 'awaiting_shootout',
       needs: ['points23'],
@@ -181,8 +262,8 @@ export function resolveMeeting(lines: LineInput[], shootouts: ShootoutInput[] = 
     };
   }
 
-  const byDecider = winnerOf(decider.homePts, decider.awayPts);
-  if (!byDecider) {
+  const byDec = winnerOf(dec.homePts, dec.awayPts);
+  if (!byDec) {
     // 2-of-3 points cannot end level. Someone mistyped it; ask again rather
     // than record a tie the format does not have.
     return {
@@ -195,14 +276,43 @@ export function resolveMeeting(lines: LineInput[], shootouts: ShootoutInput[] = 
 
   return {
     state: 'decided',
-    winner: byDecider,
+    winner: byDec,
     level: 5,
     ...base,
-    because: `Decided on the 2-of-3 point tiebreak ${decider.homePts}-${decider.awayPts}`,
+    because: `Decided on the 2-of-3 point tiebreak ${dec.homePts}-${dec.awayPts}`,
   };
 }
 
-/** Convenience for the match-night screen: has this meeting anything left to do? */
+/** Convenience for the match-night screen: is there anything left to do? */
 export function meetingIsComplete(o: MeetingOutcome): o is Extract<MeetingOutcome, { state: 'decided' }> {
   return o.state === 'decided';
+}
+
+/** The lines a division's format calls for, in the order they're played. */
+export function linesForFormat(format: LineFormat): Array<{
+  lineType: LineType;
+  lineKind: LineKind;
+  isDecider: boolean;
+}> {
+  if (format === 'gendered_four') {
+    return [
+      { lineType: 'singles', lineKind: 'mens_singles', isDecider: false },
+      { lineType: 'singles', lineKind: 'womens_singles', isDecider: false },
+      { lineType: 'doubles', lineKind: 'mens_doubles', isDecider: false },
+      { lineType: 'doubles', lineKind: 'womens_doubles', isDecider: false },
+      // Created up front but only played, and only counted, on a 2-2.
+      { lineType: 'doubles', lineKind: 'mixed_doubles', isDecider: true },
+    ];
+  }
+  return [
+    { lineType: 'singles', lineKind: 'open', isDecider: false },
+    { lineType: 'doubles', lineKind: 'open', isDecider: false },
+  ];
+}
+
+/** Courts a division needs for one night, given its format. */
+export function courtsForFormat(format: LineFormat): number {
+  // Two meetings run at once in a four-team round robin, so it is lines x 2.
+  // The decider reuses a court that has just finished.
+  return format === 'gendered_four' ? 8 : 4;
 }
