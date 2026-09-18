@@ -65,6 +65,14 @@ const MESSAGES: Record<string, { status: number; message: string }> = {
   PTL_DRAFT_SLOTS_INCOMPLETE: { status: 409, message: 'Every team needs a draft slot before the draft can run.' },
   PTL_NOTHING_TO_DRAFT: { status: 409, message: 'Every roster is already full.' },
   PTL_POOL_EMPTY: { status: 409, message: 'No players left in the pool.' },
+  PTL_ROSTER_MINIMUM: {
+    status: 409,
+    message: 'Your remaining picks are all spoken for — you still have a minimum to meet.',
+  },
+  PTL_ENTRY_NO_GENDER: {
+    status: 409,
+    message: "That player hasn't said which draw they enter, so they can't be placed on a line yet.",
+  },
 };
 
 export function draftError(err: unknown): { status: number; message: string; code: string } {

@@ -226,6 +226,159 @@ try {
        SELECT entry_id FROM ptl_roster WHERE season_id=$1 GROUP BY entry_id HAVING count(*) > 1
      ) x`, [seasonId]);
   ok('no player is on two rosters', dupes === 0, `${dupes} duplicated`);
+
+  // ---------- 9. roster minimums ----------
+  // A gendered season needs as many women as men on a roster. The rule: take
+  // anyone until your remaining picks are exactly what your minimums still
+  // require, then only what you need. This is the check that stops a captain
+  // drafting eight men and turning up unable to field a meeting.
+  //
+  // Roster of 6 with minimums of 2 and 2 leaves two picks of genuine slack, so
+  // the test can watch the constraint switch on rather than starting inside it.
+  console.log('');
+  console.log('-- roster minimums --');
+
+  const { rows: [gs] } = await db.query(
+    `INSERT INTO ptl_seasons (name, slug, status, roster_size, pick_seconds,
+                              category, min_men, min_women)
+     VALUES ('PTL Gender Check', $1, 'drafting', 6, 90, 'mixed', 2, 2) RETURNING id`,
+    [`${SLUG}-gender`]);
+  const gSeason = gs.id;
+
+  const gTeams = [];
+  for (let i = 1; i <= 2; i++) {
+    const { rows: [t] } = await db.query(
+      `INSERT INTO ptl_teams (season_id, name, short_code, team_token, draft_slot)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+      [gSeason, `G${i}`, `G${i}`, `${SLUG}-g-${i}`, i]);
+    gTeams.push(t.id);
+  }
+
+  const men = [];
+  const women = [];
+  for (let i = 0; i < 20; i++) {
+    const gender = i % 2 === 0 ? 'm' : 'f';
+    const { rows: [e] } = await db.query(
+      `INSERT INTO ptl_entries (season_id, name, email, ntrp, composite_score, status, player_token, gender)
+       VALUES ($1,$2,$3,5.0,$4,'confirmed',$5,$6) RETURNING id`,
+      [gSeason, `${gender === 'm' ? 'Man' : 'Woman'} ${i}`, `g${i}@${SLUG}.test`, 12 - i * 0.1,
+       `${SLUG}-g-p-${i}`, gender]);
+    (gender === 'm' ? men : women).push(e.id);
+  }
+
+  const { rows: [gd] } = await db.query(
+    `INSERT INTO ptl_drafts (season_id, pick_seconds, rounds) VALUES ($1, 90, 6) RETURNING id`,
+    [gSeason]);
+  const gDraft = gd.id;
+  await db.query(`SELECT ptl_start_draft($1)`, [gDraft]);
+
+  const needs = async (team) =>
+    (await db.query(`SELECT ptl_roster_needs($1) n`, [team])).rows[0].n;
+  const onClock = async () =>
+    (await db.query(`SELECT ptl_draft_state($1) s`, [gDraft])).rows[0].s.on_the_clock_team_id;
+
+  // Feed whoever is on the clock a man, until G1 has three of them. Asking who
+  // is up rather than assuming the snake order keeps the test honest.
+  const takenMen = new Set();
+  let nextMan = 0;
+  while ((await needs(gTeams[0])).men < 2) {
+    const team = await onClock();
+    const m = men[nextMan++];
+    await db.query(`SELECT ptl_make_pick($1,$2,$3)`, [gDraft, team, m]);
+    takenMen.add(m);
+  }
+
+  let n = await needs(gTeams[0]);
+  ok('with slack left, a roster is not yet constrained',
+    n.must_take === null && n.slots_left > n.men_needed + n.women_needed, JSON.stringify(n));
+
+  // Fill G1 with men until the constraint binds.
+  while ((await needs(gTeams[0])).must_take === null) {
+    const team = await onClock();
+    const m = men[nextMan++];
+    await db.query(`SELECT ptl_make_pick($1,$2,$3)`, [gDraft, team, m]);
+  }
+
+  n = await needs(gTeams[0]);
+  ok('the constraint switches on when the remaining picks are exactly what is owed',
+    n.must_take === 'f' && n.women_needed === n.slots_left, JSON.stringify(n));
+
+  // Wait for G1's turn, then try another man.
+  while ((await onClock()) !== gTeams[0]) {
+    await db.query(`SELECT ptl_make_pick($1,$2,$3)`, [gDraft, await onClock(), women[0]]).catch(async () => {
+      await db.query(`SELECT ptl_make_pick($1,$2,$3)`, [gDraft, await onClock(), men[nextMan++]]);
+    });
+  }
+
+  try {
+    await db.query(`SELECT ptl_make_pick($1,$2,$3)`, [gDraft, gTeams[0], men[nextMan]]);
+    ok('a captain cannot draft past the roster minimum', false, 'the pick was allowed');
+  } catch (e) {
+    ok('a captain cannot draft past the roster minimum', code(e) === 'PTL_ROSTER_MINIMUM', code(e));
+  }
+
+  const freeWoman = women.find((w) => w !== women[0]);
+  await db.query(`SELECT ptl_make_pick($1,$2,$3)`, [gDraft, gTeams[0], freeWoman]);
+  ok('the pick the minimum requires is accepted', true);
+
+  // Auto-pick must obey it too: queue a locked team nothing but men.
+  let locked = null;
+  for (const t of gTeams) {
+    const ns = await needs(t);
+    if (ns.must_take === 'f' && ns.slots_left > 0) { locked = t; break; }
+  }
+  if (locked) {
+    const spare = men.slice(nextMan + 1, nextMan + 3);
+    for (const [i, m] of spare.entries()) {
+      await db.query(
+        `INSERT INTO ptl_draft_queue (draft_id, team_id, entry_id, rank) VALUES ($1,$2,$3,$4)`,
+        [gDraft, locked, m, i + 1]);
+    }
+    while ((await onClock()) !== locked) {
+      const team = await onClock();
+      const ns = await needs(team);
+      const pool = ns.must_take === 'f' ? women : men;
+      const pick = pool.find(async () => true);
+      await db.query(
+        `SELECT ptl_make_pick($1,$2,(
+            SELECT e.id FROM ptl_entries e
+             WHERE e.season_id=$3 AND e.status='confirmed'
+               AND NOT EXISTS (SELECT 1 FROM ptl_roster r WHERE r.season_id=$3 AND r.entry_id=e.id)
+               AND ptl_gender_allowed($2, e.gender)
+             ORDER BY e.composite_score DESC LIMIT 1))`,
+        [gDraft, team, gSeason]);
+      void pick;
+    }
+    await db.query(`UPDATE ptl_drafts SET current_deadline_at = NOW() - INTERVAL '1 second' WHERE id=$1`, [gDraft]);
+    await db.query(`SELECT ptl_tick($1)`, [gDraft]);
+    const { rows: [autoGender] } = await db.query(
+      `SELECT e.gender FROM ptl_draft_picks p JOIN ptl_entries e ON e.id = p.entry_id
+        WHERE p.draft_id=$1 ORDER BY p.pick_no DESC LIMIT 1`, [gDraft]);
+    ok('auto-pick skips an all-male queue when women are owed', autoGender.gender === 'f', autoGender.gender);
+  }
+
+  // Run it out and check every roster is legal.
+  for (let guard = 0; guard < 60; guard++) {
+    const { rows: [{ ptl_draft_state: st }] } = await db.query(`SELECT ptl_draft_state($1)`, [gDraft]);
+    if (st.status === 'complete') break;
+    await db.query(`UPDATE ptl_drafts SET current_deadline_at = NOW() - INTERVAL '1 second' WHERE id=$1`, [gDraft]);
+    await db.query(`SELECT ptl_tick($1)`, [gDraft]);
+  }
+  const { rows: comp } = await db.query(
+    `SELECT t.short_code,
+            count(*) FILTER (WHERE e.gender='m')::int m,
+            count(*) FILTER (WHERE e.gender='f')::int f
+       FROM ptl_teams t
+       JOIN ptl_roster r ON r.team_id = t.id
+       JOIN ptl_entries e ON e.id = r.entry_id
+      WHERE t.season_id=$1 GROUP BY t.short_code ORDER BY t.short_code`, [gSeason]);
+  ok('every finished roster meets both minimums',
+    comp.length === 2 && comp.every((c) => c.m >= 2 && c.f >= 2),
+    comp.map((c) => `${c.short_code}:${c.m}M/${c.f}F`).join(' '));
+
+  await db.query(`DELETE FROM ptl_seasons WHERE id=$1`, [gSeason]);
+
+
 } finally {
   if (seasonId) await db.query(`DELETE FROM ptl_seasons WHERE id=$1`, [seasonId]);
   await db.end();

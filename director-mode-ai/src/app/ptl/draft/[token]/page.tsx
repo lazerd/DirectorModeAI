@@ -14,6 +14,7 @@
 import { notFound } from 'next/navigation';
 import DraftRoom from '@/components/ptl/DraftRoom';
 import { DemoRibbon } from '@/components/ptl/DemoRibbon';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   getAvailablePool,
   getDraftState,
@@ -40,11 +41,14 @@ export default async function DraftRoomPage({
   const state = await getDraftState(draftId);
   if (!state) notFound();
 
-  const [picks, teams, pool, queue] = await Promise.all([
+  const [picks, teams, pool, queue, needsRes] = await Promise.all([
     getPicks(draftId),
     getTeams(season.id),
     getAvailablePool(season.id),
     getQueue(draftId, team.id),
+    // Same shape the refetch returns, so the first paint already knows what
+    // the roster owes rather than flashing an unconstrained pool.
+    getSupabaseAdmin().rpc('ptl_roster_needs', { p_team: team.id }),
   ]);
 
   return (
@@ -57,6 +61,7 @@ export default async function DraftRoomPage({
         rosterSize={season.roster_size}
         initial={{
           state,
+          needs: (needsRes as any)?.data ?? null,
           picks,
           teams: teams.map((t) => ({
             id: t.id,

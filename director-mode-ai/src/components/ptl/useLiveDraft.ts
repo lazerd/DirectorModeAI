@@ -61,9 +61,23 @@ export type DraftPick = {
   composite: number | null;
 };
 
+/** What a roster still owes under the season's gender minimums. */
+export type RosterNeeds = {
+  roster_size: number;
+  drafted: number;
+  slots_left: number;
+  men: number;
+  women: number;
+  men_needed: number;
+  women_needed: number;
+  /** null until it binds; then 'm', 'f', or 'either_needed'. */
+  must_take: 'm' | 'f' | 'either_needed' | null;
+};
+
 export type PoolPlayer = {
   id: string;
   name: string;
+  gender: 'm' | 'f' | null;
   home_club: string | null;
   ntrp: number | null;
   utr: number | null;
@@ -74,6 +88,7 @@ export type PoolPlayer = {
 
 export type DraftSnapshot = {
   state: DraftState;
+  needs?: RosterNeeds | null;
   picks: DraftPick[];
   teams: DraftTeam[];
   pool: PoolPlayer[];

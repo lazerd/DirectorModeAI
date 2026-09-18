@@ -26,7 +26,30 @@ import {
   useLiveDraft,
   type DraftSnapshot,
   type PoolPlayer,
+  type RosterNeeds,
 } from './useLiveDraft';
+
+/**
+ * Could this roster still meet its minimums after taking a player of this
+ * gender? Mirrors ptl_gender_allowed() in the database.
+ *
+ * The database is the authority — a pick that slips past this is refused there.
+ * This exists so a captain sees WHY a name is unavailable before tapping it,
+ * rather than tapping and bouncing off an error with the clock running.
+ */
+function allowsGender(needs: RosterNeeds | null | undefined, gender: 'm' | 'f' | null): boolean {
+  if (!needs) return true;
+  const minMen = needs.men_needed + needs.men;
+  const minWomen = needs.women_needed + needs.women;
+  if (minMen === 0 && minWomen === 0) return true;
+  // A season with minimums cannot seat someone who hasn't said which draw.
+  if (!gender) return false;
+  const afterMen = needs.men + (gender === 'm' ? 1 : 0);
+  const afterWomen = needs.women + (gender === 'f' ? 1 : 0);
+  const stillNeeded =
+    Math.max(0, minMen - afterMen) + Math.max(0, minWomen - afterWomen);
+  return stillNeeded <= needs.slots_left - 1;
+}
 
 type Props = {
   token: string;
@@ -127,6 +150,9 @@ export default function DraftRoom({ token, teamName, seasonName, rosterSize, ini
 
   const rosterCount = yourPicks.length;
   const clockLow = remaining != null && remaining <= 15;
+  const needs = snap.needs ?? null;
+  const gendered = !!needs && needs.men_needed + needs.women_needed + needs.men + needs.women > 0
+    && (needs.men_needed > 0 || needs.women_needed > 0 || needs.must_take !== null);
 
   return (
     <div className="mx-auto max-w-6xl px-5 pb-20 pt-8">
@@ -203,6 +229,19 @@ export default function DraftRoom({ token, teamName, seasonName, rosterSize, ini
         )}
       </div>
 
+      {needs && needs.must_take && live && (
+        <p className="mt-3 rounded-sm border border-amber-400/40 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          <strong className="font-bold">
+            {needs.must_take === 'either_needed'
+              ? `Every pick you have left is spoken for — ${needs.men_needed} more men and ${needs.women_needed} more women.`
+              : needs.must_take === 'f'
+                ? `You need ${needs.women_needed} more ${needs.women_needed === 1 ? 'woman' : 'women'}, and you have ${needs.slots_left} ${needs.slots_left === 1 ? 'pick' : 'picks'} left.`
+                : `You need ${needs.men_needed} more ${needs.men_needed === 1 ? 'man' : 'men'}, and you have ${needs.slots_left} ${needs.slots_left === 1 ? 'pick' : 'picks'} left.`}
+          </strong>{' '}
+          Everyone else is greyed out until that&rsquo;s covered.
+        </p>
+      )}
+
       {!yourPick && live && queued.length === 0 && (
         <p className="mt-3 text-sm text-amber-300/90">
           Queue some players below. If your clock runs out, we take the top name still available —
@@ -241,10 +280,19 @@ export default function DraftRoom({ token, teamName, seasonName, rosterSize, ini
           />
 
           <ul className="mt-4 divide-y divide-white/[0.07]">
-            {visible.slice(0, 120).map((p) => (
-              <li key={p.id} className="flex items-center gap-3 py-2.5">
+            {visible.slice(0, 120).map((p) => {
+              const fits = allowsGender(needs, p.gender);
+              return (
+              <li key={p.id} className={`flex items-center gap-3 py-2.5 ${fits ? '' : 'opacity-40'}`}>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-semibold">{p.name}</p>
+                  <p className="truncate font-semibold">
+                    {p.name}
+                    {gendered && p.gender && (
+                      <span className="ml-2 text-[10px] font-bold uppercase tracking-wider text-white/40">
+                        {p.gender === 'm' ? 'M' : 'W'}
+                      </span>
+                    )}
+                  </p>
                   <p className="truncate text-xs text-white/45">
                     {p.home_club || 'Unattached'}
                     {p.ntrp != null && <> · NTRP {p.ntrp}</>}
@@ -267,13 +315,15 @@ export default function DraftRoom({ token, teamName, seasonName, rosterSize, ini
                 </button>
                 <button
                   onClick={() => draft(p.id, p.name)}
-                  disabled={!yourPick || busy === p.id}
+                  disabled={!yourPick || busy === p.id || !fits}
+                  title={fits ? undefined : 'Your remaining picks are needed to meet a roster minimum.'}
                   className="shrink-0 rounded-sm bg-teal-400 px-3 py-1.5 text-xs font-bold text-[#06231F] transition-colors hover:bg-teal-300 disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/35"
                 >
                   {busy === p.id ? '…' : 'Draft'}
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
 
           {visible.length > 120 && (
@@ -291,7 +341,9 @@ export default function DraftRoom({ token, teamName, seasonName, rosterSize, ini
           <div className="flex gap-2 border-b border-white/10 pb-2">
             {([
               ['queue', `My queue (${queued.length})`],
-              ['roster', `My team (${rosterCount})`],
+              ['roster', needs && gendered
+                ? `My team (${needs.men}M / ${needs.women}W)`
+                : `My team (${rosterCount})`],
               ['board', 'Board'],
             ] as const).map(([key, label]) => (
               <button

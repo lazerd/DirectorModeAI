@@ -18,6 +18,7 @@ import {
   getTeamByToken,
   getTeams,
 } from '@/lib/ptl/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { clampText } from '@/lib/ptl/guard';
 
 export const dynamic = 'force-dynamic';
@@ -62,8 +63,20 @@ export async function GET(request: Request) {
     teamId ? getAvailablePool(seasonId) : Promise.resolve([]),
   ]);
 
+  /*
+   * What this captain's roster still owes. Sent with the snapshot so the draft
+   * room can say "you still need 2 women" and grey out the picks that would
+   * break it, rather than letting someone tap a name and bounce off an error.
+   */
+  let needs = null;
+  if (teamId) {
+    const { data } = await getSupabaseAdmin().rpc('ptl_roster_needs', { p_team: teamId });
+    needs = data ?? null;
+  }
+
   return NextResponse.json({
     state,
+    needs,
     picks,
     teams: teams.map((t) => ({
       id: t.id,

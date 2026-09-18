@@ -309,6 +309,7 @@ export async function getPicks(draftId: string): Promise<PtlPick[]> {
 export type PtlPoolPlayer = {
   id: string;
   name: string;
+  gender: 'm' | 'f' | null;
   home_club: string | null;
   ntrp: number | null;
   utr: number | null;
@@ -331,7 +332,7 @@ export async function getAvailablePool(seasonId: string): Promise<PtlPoolPlayer[
 
   const { data } = await db
     .from('ptl_entries')
-    .select('id, name, home_club, ntrp, utr, wtn, composite_score, rating_confidence')
+    .select('id, name, gender, home_club, ntrp, utr, wtn, composite_score, rating_confidence')
     .eq('season_id', seasonId)
     .eq('status', 'confirmed')
     .order('composite_score', { ascending: false, nullsFirst: false });
@@ -341,6 +342,7 @@ export async function getAvailablePool(seasonId: string): Promise<PtlPoolPlayer[
     .map((e) => ({
       id: e.id,
       name: e.name,
+      gender: e.gender ?? null,
       home_club: e.home_club,
       ntrp: e.ntrp,
       utr: e.utr,
