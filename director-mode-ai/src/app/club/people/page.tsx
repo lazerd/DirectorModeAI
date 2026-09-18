@@ -21,7 +21,7 @@ type Person = {
   role_label: string;
   joined_at: string;
   booking_page: { connected: boolean; live: boolean } | null;
-  captainmode: 'none' | 'comped' | 'paying' | 'active';
+  captainmode: 'none' | 'comped' | 'paying' | 'active' | 'included';
 };
 type Invite = {
   id: string;
@@ -37,7 +37,7 @@ type Captain = {
   captain_role: string;
   teams: string[];
   in_club: boolean;
-  captainmode: 'none' | 'comped' | 'paying' | 'active';
+  captainmode: 'none' | 'comped' | 'paying' | 'active' | 'included';
 };
 type Payload = {
   captains: Captain[];
@@ -359,6 +359,8 @@ export default function ClubPeoplePage() {
                   )}
                   {c.captainmode === 'paying' ? (
                     <span className="ml-auto text-[12.5px] text-white/40">CaptainMode · paying</span>
+                  ) : c.captainmode === 'included' ? (
+                    <span className="ml-auto text-[12.5px] text-[#D3FB52]/80">CaptainMode · included</span>
                   ) : c.captainmode === 'comped' ? (
                     <button
                       onClick={() => comp(c.user_id, false, c.name)}
@@ -442,6 +444,8 @@ function PeopleList({
               {/* CaptainMode is billed per captain, so it is given here. */}
               {p.captainmode === 'paying' ? (
                 <span className="text-[12.5px] text-white/40">CaptainMode · paying</span>
+              ) : p.captainmode === 'included' ? (
+                <span className="text-[12.5px] text-[#D3FB52]/80">CaptainMode · included</span>
               ) : p.captainmode === 'comped' ? (
                 <button
                   onClick={() => onComp(p.user_id, false, p.name)}

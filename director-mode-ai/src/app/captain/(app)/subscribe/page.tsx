@@ -63,7 +63,9 @@ export default async function SubscribePage() {
       {access.active ? (
         <div className="mt-8 rounded-2xl border border-[#D3FB52]/30 bg-[#D3FB52]/[0.07] p-6">
           <div className="text-[#D3FB52] font-semibold text-lg">
-            {access.paidPlansComingSoon
+            {access.includedBy
+              ? `CaptainMode is included with ${access.includedBy.clubName}'s ClubMode plan`
+              : access.paidPlansComingSoon
               ? 'Paid plans are coming soon — you keep access in the meantime'
               : access.onTrial
                 ? `Your trial is running — ${access.trialDaysLeft} ${
@@ -71,7 +73,7 @@ export default async function SubscribePage() {
                   } left`
                 : 'Your subscription is active'}
           </div>
-          {!access.paidPlansComingSoon && !access.onTrial && (
+          {!access.includedBy && !access.paidPlansComingSoon && !access.onTrial && (
             <p className="text-white/60 mt-1 text-sm">
               {access.rateType === 'club_linked'
                 ? `Club plan — $${CAPTAIN_CLUB_PRICE_USD}/month`

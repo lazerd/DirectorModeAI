@@ -176,6 +176,7 @@ export default function PricingPage() {
             <Bullet gold>We set up your classes, prices and skip dates</Bullet>
             <Bullet gold>Send changes any time — we batch them weekly</Bullet>
             <Bullet gold>Online class registration and court booking</Bullet>
+            <Bullet gold>CaptainMode free for every one of your team captains</Bullet>
             <Bullet gold>No setup fee &middot; {SITE_SERVICE_MIN_MONTHS}-month minimum</Bullet>
           </ul>
 
@@ -202,7 +203,8 @@ export default function PricingPage() {
               <p className="mt-1 text-white/55 text-sm max-w-xl">
                 A separate tool for the volunteer running a league team: availability polls,
                 lineups, confirmations and last-minute subs. Captains pay for it themselves —
-                no club approval, no line on your budget.
+                no club approval, no line on your budget. Clubs on the custom-site plan get it
+                free for every captain.
               </p>
             </div>
             <Link

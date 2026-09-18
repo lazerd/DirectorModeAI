@@ -10,6 +10,7 @@
  * and because it is bound to one email address and one use, it is not a
  * credential that survives being forwarded.
  */
+import { clubIncludesCaptainMode } from '@/lib/captain/access';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -188,6 +189,8 @@ export async function GET() {
     ),
   );
   const memberIds = new Set(rows.map((r) => r.user_id));
+  // Site-service clubs get CaptainMode for everyone, so there is nothing to comp.
+  const included = await clubIncludesCaptainMode(clubId);
 
   const captains = captainIds.map((id) => {
     const info = captainRoles.get(id)!;
@@ -198,7 +201,11 @@ export async function GET() {
       captain_role: info.role === 'co_captain' ? 'Co-captain' : 'Captain',
       teams: info.teams,
       in_club: memberIds.has(id),
-      captainmode: !sub
+      captainmode: sub?.stripe_subscription_id
+        ? 'paying'
+        : included
+          ? 'included'
+          : !sub
         ? 'none'
         : sub.status === 'comped'
           ? 'comped'
@@ -233,6 +240,8 @@ export async function GET() {
             : null,
           captainmode: (() => {
             const sub = subOf.get(r.user_id);
+            if (sub?.stripe_subscription_id) return 'paying';
+            if (included) return 'included';
             if (!sub) return 'none';
             if (sub.status === 'comped') return 'comped';
             if (sub.stripe_subscription_id) return 'paying';

@@ -72,9 +72,11 @@ export default async function CaptainHome() {
       <p className="text-white/50 mt-1">
         {access.active ? (
           <>
-            {access.rateType === 'club_linked'
-              ? 'Club plan — $10/month'
-              : 'Standalone — $20/month'}{' '}
+            {access.includedBy
+              ? `Included with ${access.includedBy.clubName}'s ClubMode plan`
+              : access.rateType === 'club_linked'
+                ? 'Club plan — $10/month'
+                : 'Standalone — $20/month'}{' '}
             · {owned} of {MAX_TEAMS_PER_CAPTAIN} teams used
           </>
         ) : (
