@@ -179,7 +179,22 @@ function rewritePtlHost(request: NextRequest): NextResponse | null {
   if (host !== ptlHost) return null;
 
   const path = request.nextUrl.pathname;
-  if (path.startsWith('/ptl') || path.startsWith('/api') || path.startsWith('/_next')) return null;
+  if (path.startsWith('/api') || path.startsWith('/_next')) return null;
+
+  /*
+   * Internal links are written as absolute /ptl/... paths, because the app is
+   * also served from the main host. On this hostname that produces
+   * ptl.clubmode.ai/ptl/standings — which works, but puts the prefix back in
+   * the URL bar of the one domain that exists to look like its own product.
+   * So strip it and redirect, once, and every link self-corrects to a clean
+   * URL. No loop: the redirect lands on a bare path, which the rewrite below
+   * handles internally without re-entering middleware.
+   */
+  if (path === '/ptl' || path.startsWith('/ptl/')) {
+    const url = request.nextUrl.clone();
+    url.pathname = path.slice(4) || '/';
+    return NextResponse.redirect(url, 307);
+  }
 
   const url = request.nextUrl.clone();
   url.pathname = path === '/' ? '/ptl' : `/ptl${path}`;
