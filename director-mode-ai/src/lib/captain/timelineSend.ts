@@ -37,7 +37,14 @@ import {
   type MatchCoach,
   type TeamCc,
 } from './teamContacts';
-import { DEFAULT_JTT_COURT_FORMAT, exhibitionRows, leagueSpec, roundsByCourt } from './leagues';
+import {
+  DEFAULT_JTT_COURT_FORMAT,
+  exhibitionRows,
+  leagueSpec,
+  roundsByCourt,
+  singlesFirstInLine,
+} from './leagues';
+import { singlesCounts } from './server';
 import { resolveTeamTimeZone } from './clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
@@ -134,7 +141,7 @@ export async function loadTeamEmailContext(
   ] = await Promise.all([
       db
         .from('captain_players')
-        .select('id, name, email, player_token, contact2_name, contact2_email')
+        .select('id, name, email, player_token, contact2_name, contact2_email, is_sub')
         .eq('team_id', team.id)
         .eq('active', true),
       matchIds.length
@@ -214,12 +221,33 @@ export async function loadTeamEmailContext(
 
   const matchInfo = new Map<string, MatchInfo>();
   const sharedLines = !!leagueSpec(shape?.league_type).multiLine;
+  // JTT: singles on earlier matches, per match with a saved sheet — for the
+  // lineup email's "first in line for singles next match" note.
+  const regulars = ((players as (PlayerRow & { is_sub?: boolean })[]) || [])
+    .filter((p) => !p.is_sub)
+    .map((p) => ({ id: p.id, name: p.name }));
+  const singlesBefore = new Map<string, Record<string, number>>();
+  if (sharedLines) {
+    await Promise.all(
+      matches
+        .filter((m) => (courts.get(m.id as string) || []).length)
+        .map(async (m) => singlesBefore.set(m.id as string, await singlesCounts(db, team.id, m.id as string))),
+    );
+  }
   for (const m of matches) {
     const info = infoOf(m);
     // JTT shares its lines across rounds: an unfilled line isn't a default.
     if (sharedLines) {
       info.singlesCourts = null;
       info.doublesCourts = null;
+      const before = singlesBefore.get(m.id as string);
+      if (before) {
+        info.singlesNextUp = singlesFirstInLine(
+          regulars,
+          before,
+          (courts.get(m.id as string) || []).map((c) => ({ courtType: c.court_type, player1Id: c.player1_id })),
+        );
+      }
     }
     const coach = contacts.find((x) => x.id === (m.match_coach_id as string | null));
     if (coach) {

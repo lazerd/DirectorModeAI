@@ -347,3 +347,51 @@ export async function playedCounts(
 
   return countDistinctMatches(rows as LineupRow[], skip);
 }
+
+/**
+ * JTT: singles lines each child is down for on EARLIER matches this season.
+ *
+ * With 6 children and 4 singles a week, the same four get singles every week
+ * unless something counts them — strength decides, and strength doesn't move.
+ * Sutton played doubles only on 9/20 (14U), so the next sheet should hand her
+ * singles first (Darrin, 2026-09-18).
+ *
+ * Earlier matches only, not every other saved sheet: "who is owed singles at
+ * THIS match" is about what came before it, and a sheet already saved for a
+ * later Sunday must not make this one look already paid.
+ */
+export async function singlesCounts(
+  db: SupabaseClient,
+  teamId: string,
+  matchId: string,
+): Promise<Record<string, number>> {
+  const { data: me } = await db.from('captain_matches').select('match_at').eq('id', matchId).maybeSingle();
+  const at = (me as { match_at: string } | null)?.match_at;
+  if (!at) return {};
+  const { data: earlier } = await db
+    .from('captain_matches')
+    .select('id')
+    .eq('team_id', teamId)
+    .neq('status', 'cancelled')
+    .lt('match_at', at);
+  const ids = ((earlier as { id: string }[]) || []).map((m) => m.id);
+  if (!ids.length) return {};
+  const [{ data: rows }, { data: defaults }] = await Promise.all([
+    db
+      .from('captain_lineups')
+      .select('match_id, court_number, player1_id')
+      .in('match_id', ids)
+      .eq('court_type', 'singles'),
+    db.from('captain_results').select('match_id, court_number').in('match_id', ids).eq('defaulted', true),
+  ]);
+  // A defaulted singles line was never played — it doesn't use up a turn.
+  const skip = new Set(
+    ((defaults as { match_id: string; court_number: number }[]) || []).map((d) => `${d.match_id}:${d.court_number}`),
+  );
+  const out: Record<string, number> = {};
+  for (const r of (rows as { match_id: string; court_number: number; player1_id: string | null }[]) || []) {
+    if (!r.player1_id || skip.has(`${r.match_id}:${r.court_number}`)) continue;
+    out[r.player1_id] = (out[r.player1_id] ?? 0) + 1;
+  }
+  return out;
+}

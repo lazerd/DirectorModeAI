@@ -11,6 +11,7 @@ import {
   capForTeam,
   committedCounts,
   pairRecords,
+  singlesCounts,
   rulesFor,
   styleFor,
 } from '@/lib/captain/server';
@@ -31,6 +32,7 @@ import {
   roundPlanText,
   roundsByCourt,
   rosterWindow,
+  singlesFirstInLine,
 } from '@/lib/captain/leagues';
 import { matchCcRecipients, matchCoachOf, ccPayloads } from '@/lib/captain/teamContacts';
 import { leagueSpec } from '@/lib/captain/leagues';
@@ -110,6 +112,7 @@ export async function POST(req: Request) {
     // nothing is marked played yet, and counting only played matches makes
     // every player look equally rested, which silently disables equal_play.
     const counts = await committedCounts(db, teamId, body.match_id);
+    const singlesSoFar = await singlesCounts(db, teamId, body.match_id);
     const rules = rulesFor(team);
     const history = await pairRecords(db, teamId);
 
@@ -129,6 +132,7 @@ export async function POST(req: Request) {
           courtLimit: (p.court_limit as Player['courtLimit']) ?? null,
           // JTT: the most lines this player takes in one match, when capped.
           maxLines: p.max_lines == null ? null : Number(p.max_lines),
+          singlesPlayed: singlesSoFar[p.id as string] ?? 0,
           matchesPlayed: booked,
           // false for leagues with no playoffs — requiredMatches returns 0.
           // Measured against booked matches so a player already scheduled into
@@ -321,7 +325,16 @@ export async function POST(req: Request) {
       );
     }
 
-    if (singles > 0) {
+    if (singles > 0 && multiLine && style === 'equal_play') {
+      const had = available
+        .filter((p) => (p.singlesPlayed ?? 0) > 0)
+        .map((p) => `${p.name.split(' ')[0]} ${p.singlesPlayed}`);
+      summary.push(
+        `Singles rotate: they went first to whoever has had the fewest singles on earlier matches${
+          had.length ? ` (so far: ${had.join(', ')}; everyone else 0)` : ' (nobody has had any yet, so strongest first)'
+        }, then strongest first. The four are laid out strongest on Singles 1.`,
+      );
+    } else if (singles > 0) {
       summary.push('Singles went first, to the strongest available players who are not marked doubles-only.');
     }
     summary.push(
@@ -533,6 +546,22 @@ export async function POST(req: Request) {
       singlesCourts: rounds ? null : ((match.singles_courts as number | null) ?? null),
       doublesCourts: rounds ? null : ((match.doubles_courts as number | null) ?? null),
     };
+    if (rounds) {
+      const { data: regulars } = await db
+        .from('captain_players')
+        .select('id, name')
+        .eq('team_id', teamId)
+        .eq('active', true)
+        .eq('is_sub', false);
+      info.singlesNextUp = singlesFirstInLine(
+        (regulars as { id: string; name: string }[]) || [],
+        await singlesCounts(db, teamId, body.match_id),
+        lineRows.map((l) => ({
+          courtType: l.court_type as string,
+          player1Id: (l.player1_id as string | null) ?? null,
+        })),
+      );
+    }
     const coach = await matchCoachOf(db, body.match_id);
     if (coach) {
       info.coachName = coach.name;

@@ -39,6 +39,8 @@ export type Player = {
    * them. Null = whatever the sheet needs. JTT only: an adult plays one line.
    */
   maxLines?: number | null;
+  /** JTT: singles lines on earlier matches this season. Fewest gets singles first. */
+  singlesPlayed?: number;
   /** matches already played this season — drives fairness */
   matchesPlayed: number;
   /** true when the player still needs matches to qualify for playoffs */

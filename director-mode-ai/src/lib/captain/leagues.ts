@@ -459,3 +459,25 @@ export function linesPerPlayer(
     canPlay: available >= w.minToPlay,
   };
 }
+
+/**
+ * JTT: who is first in line for singles at the NEXT match — the children with
+ * the fewest singles once this sheet is counted. Printed in the lineup email so
+ * a family whose child plays doubles only this week sees they are up next.
+ *
+ * Empty when everyone is level (nobody is "owed" anything) or nobody has had
+ * singles yet. `before` is singles on earlier matches (singlesCounts).
+ */
+export function singlesFirstInLine(
+  roster: { id: string; name: string }[],
+  before: Record<string, number>,
+  sheet: { courtType: string; player1Id: string | null }[],
+): string[] {
+  if (!roster.length) return [];
+  const now = new Set(sheet.filter((c) => c.courtType === 'singles').map((c) => c.player1Id).filter(Boolean));
+  const total = roster.map((p) => ({ name: p.name, n: (before[p.id] ?? 0) + (now.has(p.id) ? 1 : 0) }));
+  const min = Math.min(...total.map((t) => t.n));
+  const max = Math.max(...total.map((t) => t.n));
+  if (max === min) return [];
+  return total.filter((t) => t.n === min).map((t) => t.name);
+}

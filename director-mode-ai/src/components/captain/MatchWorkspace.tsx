@@ -47,6 +47,8 @@ export type MatchPlayer = {
    * the only version of it a captain can plan against.
    */
   committedElsewhere: number;
+  /** JTT: singles lines on EARLIER matches. The workspace adds this sheet's, live. */
+  singlesBefore?: number;
 };
 
 /** The WTN a doubles court should be ordered on: doubles number, else singles. */
@@ -1374,6 +1376,13 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
     const l = lineupsFor(p);
     const parts = [`${l} lineup${l === 1 ? '' : 's'}`];
     if (p.played > 0) parts.push(`${p.played} played`);
+    if (format != null) {
+      // Singles so far including this sheet — the rotation the generator follows.
+      const s =
+        (p.singlesBefore ?? 0) +
+        (courts.some((c) => c.courtType === 'singles' && c.player1Id === p.id) ? 1 : 0);
+      parts.push(`${s} singles`);
+    }
     return parts.join(' · ');
   };
 

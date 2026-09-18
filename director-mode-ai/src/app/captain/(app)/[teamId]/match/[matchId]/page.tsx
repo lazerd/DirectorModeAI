@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { gateTeam } from '@/lib/captain/access';
-import { committedCounts, playedCounts } from '@/lib/captain/server';
+import { committedCounts, playedCounts, singlesCounts } from '@/lib/captain/server';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
 import HostEmailPanel from '@/components/captain/HostEmailPanel';
 import HostNotePanel from '@/components/captain/HostNotePanel';
@@ -91,9 +91,10 @@ export default async function MatchPage({
    * on screen right now, so the count moves as courts are swapped, before
    * anything is saved.
    */
-  const [played, committed] = await Promise.all([
+  const [played, committed, singlesBefore] = await Promise.all([
     playedCounts(db, params.teamId),
     committedCounts(db, params.teamId, params.matchId),
+    singlesCounts(db, params.teamId, params.matchId),
   ]);
 
   const answers = (avail as { player_id: string; status: string; note: string | null }[]) || [];
@@ -117,6 +118,7 @@ export default async function MatchPage({
     availabilityNote: noteOf(p.id as string),
     played: played[p.id as string] ?? 0,
     committedElsewhere: committed[p.id as string] ?? 0,
+    singlesBefore: singlesBefore[p.id as string] ?? 0,
   }));
 
   // Withdrawals are per-slot in the DB but per-player everywhere the captain

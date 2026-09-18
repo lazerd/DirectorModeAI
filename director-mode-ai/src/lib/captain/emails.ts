@@ -27,6 +27,8 @@ export type MatchInfo = {
   /** Our coach going to this match, when one is named — printed in every email. */
   coachName?: string | null;
   coachPhone?: string | null;
+  /** JTT: first in line for singles next match (singlesFirstInLine). Lineup email only. */
+  singlesNextUp?: string[] | null;
   /** Lines the match is played over. When set, a lineup short of them says so. */
   singlesCourts?: number | null;
   doublesCourts?: number | null;
@@ -300,6 +302,18 @@ const lineupLineLabel = (row: LineupRow) =>
 const rowTypeRank = (row: LineupRow) =>
   row.courtType === 'singles' ? 0 : row.courtType === 'doubles' ? 1 : 2;
 
+/** "Singles rotate… first in line next match: A, B" — JTT, when someone is owed. */
+function singlesNote(names: string[] | null | undefined): string {
+  if (!names?.length) return '';
+  const list =
+    names.length === 1
+      ? names[0]
+      : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return `<p style="font-size:14px;margin:0 0 16px;padding:10px 14px;background:#f8fafc;border-left:3px solid ${BRAND};border-radius:4px">
+    <strong>Singles rotate through the season.</strong> First in line for singles at the next match: ${list}.
+  </p>`;
+}
+
 /**
  * Lineup, 7 days out. Goes to the WHOLE team so nobody has to ask whether
  * they're playing; players who are in it get a Confirm button.
@@ -430,6 +444,7 @@ export function lineupEmail(
       'Here’s the lineup',
       `${introBlock(c, vars)}${shortNotice}${matchLines(m, tz)}
        <table style="width:100%;border-collapse:collapse;margin:12px 0">${table}${openRows}</table>
+       ${singlesNote(m.singlesNextUp)}
        ${confirm}`,
     ),
   };

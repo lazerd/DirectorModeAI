@@ -246,15 +246,23 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
   const courts: CourtAssignment[] = [];
 
   // --------------------------------------------------------------- singles
-  // Strongest first, because that is how a JTT coach orders a sheet, and one
-  // each — no child plays two singles.
+  // Who gets singles: under equal play, whoever has had the FEWEST singles so
+  // far this season — otherwise the strongest four take singles every week and
+  // the rest only ever play doubles. Then strongest first. One each: no child
+  // plays two singles. The chosen four are still laid out strongest on S1.
+  const singlesSoFar = (p: Player) => (style === 'equal_play' ? (p.singlesPlayed ?? 0) : 0);
   const singlesPool = available
     .filter((p) => p.courtLimit !== 'doubles_only' && (left.get(p.id) ?? 0) > 0)
     .sort((a, b) => {
       // A child owed more lines than the doubles can absorb MUST take a
       // singles line, or the quota promised to them is undeliverable.
       const forced = (p: Player) => ((left.get(p.id) ?? 0) > rules.maxDoubles ? 0 : 1);
-      return forced(a) - forced(b) || byStrength(a, b) || a.name.localeCompare(b.name);
+      return (
+        forced(a) - forced(b) ||
+        singlesSoFar(a) - singlesSoFar(b) ||
+        byStrength(a, b) ||
+        a.name.localeCompare(b.name)
+      );
     })
     .slice(0, input.singlesCourts);
 
