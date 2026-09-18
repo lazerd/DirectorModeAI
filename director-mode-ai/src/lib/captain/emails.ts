@@ -771,16 +771,12 @@ export function defaultLinesNote(
   if (min > 0 && singles + doubles > 0) {
     // Written the way one coach tells another, not as a rulebook: the other
     // captain knows JTT; what they don't know is OUR courts and rounds.
+    // Darrin's own wording (2026-09-18): the format in one line, then the ask.
     const f = opts?.courtFormat;
-    const rounds =
-      f === 3 && singles === 4 && doubles === 4
-        ? "We'll have 3 courts, so the match runs in three rounds: two singles and a doubles, then two more singles and a doubles, then the last two doubles."
-        : f === 2 && singles === 4 && doubles === 4
-          ? "We'll have 2 courts, so the match runs in four rounds, each one singles and one doubles."
-          : f
-            ? `We'll have ${f} courts for the match.`
-            : null;
-    return [rounds, 'How many players are you bringing? It helps us plan the afternoon.']
+    return [
+      f ? `We'll be running a ${f}-court format.` : null,
+      "Could you let me know roughly how many players you're bringing?",
+    ]
       .filter(Boolean)
       .join(' ');
   }
@@ -814,22 +810,23 @@ export function hostingBodyText(
     minPlayers?: number | null;
     fromName?: string | null;
     fromTitle?: string | null;
+    fromPhone?: string | null;
   },
   tz?: string,
 ): string {
-  // "Sunday, September 20 at 4:00 pm" — a sentence, not a calendar stamp.
-  const zone = tz || CLUB_TZ;
-  const d = new Date(m.matchAt);
-  const day = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: zone }).format(d);
-  const date = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: zone }).format(d);
-  const time = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: zone })
-    .format(d)
-    .replace(/\s?AM$/, ' am')
-    .replace(/\s?PM$/, ' pm');
+  const when = formatMatchWhen(m.matchAt, tz);
   const greeting = opts.opposingCaptainName?.trim()
     ? `Hi ${opts.opposingCaptainName.trim().split(/\s+/)[0]},`
     : 'Hi there,';
-  const where = [opts.clubName, opts.address].filter(Boolean).join(', ');
+  // JTT: warm-up courts open half an hour before the match (Darrin's note).
+  const warmup =
+    opts.minPlayers && opts.minPlayers > 0
+      ? ` Warm-up courts available at ${new Intl.DateTimeFormat('en-US', {
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZone: tz || CLUB_TZ,
+        }).format(new Date(new Date(m.matchAt).getTime() - 30 * 60_000))}.`
+      : '';
 
   const linesText =
     opts.linesNote !== undefined && opts.linesNote !== null
@@ -843,11 +840,12 @@ export function hostingBodyText(
 
   const blocks = [
     greeting,
-    `We're looking forward to hosting you on ${day}, ${date} at ${time}${where ? ` at ${where}` : ''}.`,
+    `Looking forward to hosting your team ${when}.${warmup}`,
+    [opts.clubName, opts.address].filter(Boolean).join('\n'),
     (opts.hostNotes || '').trim(),
     linesText,
-    `Thanks, and see you ${day}!`,
-    [opts.fromName, opts.fromTitle].filter(Boolean).join('\n'),
+    'Thanks, and see you then!',
+    [opts.fromName, opts.fromTitle, opts.fromPhone].filter(Boolean).join('\n'),
   ].filter((b) => b && b.trim());
 
   return blocks.join('\n\n');

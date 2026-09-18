@@ -29,6 +29,7 @@ import {
 import { CLUB_TZ, normalizeTimeZone } from '@/lib/captain/clubTime';
 import { leagueSpec } from '@/lib/captain/leagues';
 import { ccPayloads, matchCoachOf, withMatchCoach } from '@/lib/captain/teamContacts';
+import { formatPhone, normalizePhone } from '@/lib/captain/phone';
 import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
 
@@ -115,6 +116,21 @@ export async function POST(req: Request) {
   const fromName =
     (body.from_name ?? me?.full_name ?? me?.email?.split('@')[0] ?? '').trim() || null;
   const fromTitle = (body.from_title ?? '').trim() || null;
+  // A number the other captain can call on the day: the sender's own entry in
+  // the team's contacts (profiles carry no phone).
+  let fromPhone: string | null = null;
+  if (me?.email) {
+    const { data: mine } = await admin
+      .from('captain_team_contacts')
+      .select('phone')
+      .eq('team_id', matchRow.team_id)
+      .ilike('email', me.email)
+      .not('phone', 'is', null)
+      .limit(1)
+      .maybeSingle();
+    const raw = (mine as { phone: string | null } | null)?.phone;
+    fromPhone = raw ? formatPhone(normalizePhone(raw)) || raw : null;
+  }
 
   /**
    * Fall back to whatever we already know about this opponent from another
@@ -252,6 +268,7 @@ export async function POST(req: Request) {
           notes: coachLine,
           fromName,
           fromTitle,
+          fromPhone,
         },
         tz,
       )
@@ -275,6 +292,7 @@ export async function POST(req: Request) {
       minPlayers: multiLine?.minToPlay ?? null,
       fromName,
       fromTitle,
+      fromPhone,
     },
     tz,
   );

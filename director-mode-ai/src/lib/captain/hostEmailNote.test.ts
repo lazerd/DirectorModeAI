@@ -9,18 +9,18 @@ import { defaultLinesNote, hostingBodyText } from './emails';
 describe('defaultLinesNote — Junior Team Tennis', () => {
   const jtt = { singlesCourts: 4, doublesCourts: 4, minPlayers: 3 };
 
-  it('says how the rounds run on our courts, in plain words', () => {
-    const note = defaultLinesNote(8, { ...jtt, courtFormat: 3 });
-    expect(note).toContain("We'll have 3 courts, so the match runs in three rounds");
-    expect(note).not.toMatch(/format|scorecard|defaulted/);
+  it("is Darrin's two sentences: the format, then the ask", () => {
+    expect(defaultLinesNote(8, { ...jtt, courtFormat: 3 })).toBe(
+      "We'll be running a 3-court format. Could you let me know roughly how many players you're bringing?",
+    );
   });
 
-  it('asks how many players they are bringing', () => {
-    expect(defaultLinesNote(8, { ...jtt, courtFormat: 2 })).toMatch(/How many players are you bringing\?/);
+  it('never lectures about the scorecard or defaults', () => {
+    expect(defaultLinesNote(8, { ...jtt, courtFormat: 3 })).not.toMatch(/scorecard|defaulted|at least/);
   });
 
   it('still asks when the court count has not been set', () => {
-    expect(defaultLinesNote(8, jtt)).toBe('How many players are you bringing? It helps us plan the afternoon.');
+    expect(defaultLinesNote(8, jtt)).toBe("Could you let me know roughly how many players you're bringing?");
   });
 
   it('never asks an adult captain how many players they are bringing', () => {
@@ -36,7 +36,7 @@ describe('defaultLinesNote — Junior Team Tennis', () => {
 });
 
 describe('hostingBodyText', () => {
-  it('reads like a note from a coach', () => {
+  it("matches Darrin's own version, warm-up and phone included", () => {
     const body = hostingBodyText(
       { id: 'm', matchAt: '2026-09-20T23:00:00Z', isHome: true },
       {
@@ -48,12 +48,19 @@ describe('hostingBodyText', () => {
         doublesCourts: 4,
         minPlayers: 3,
         fromName: 'Darrin Cohen',
+        fromPhone: '(925) 788-8058',
       },
       'America/Los_Angeles',
     );
-    expect(body).toContain(
-      "We're looking forward to hosting you on Sunday, September 20 at 4:00 pm at Sleepy Hollow Swim & Tennis Club, 1 Sunnyside Lane, Orinda, CA, 94563.",
+    expect(body).toBe(
+      [
+        'Hi Adi,',
+        'Looking forward to hosting your team Sun, Sep 20, 4:00 PM. Warm-up courts available at 3:30 PM.',
+        'Sleepy Hollow Swim & Tennis Club\n1 Sunnyside Lane, Orinda, CA, 94563',
+        "We'll be running a 3-court format. Could you let me know roughly how many players you're bringing?",
+        'Thanks, and see you then!',
+        'Darrin Cohen\n(925) 788-8058',
+      ].join('\n\n'),
     );
-    expect(body).toContain('Thanks, and see you Sunday!');
   });
 });

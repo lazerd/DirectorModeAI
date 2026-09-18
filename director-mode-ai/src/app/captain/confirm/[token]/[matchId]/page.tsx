@@ -209,7 +209,23 @@ export default async function ConfirmPage({
         </form>
       )}
 
-      {inLineup && !declined && (
+      {/*
+        Just confirmed? Then the withdraw form is NOT on this screen. On 9/18
+        two parents tapped "Yes — I'll be there", landed here, and within
+        seconds tapped the page's one big button — then labelled "Yes, take me
+        out of this lineup" — pulling Vedica and Shaelyn out and paging the
+        captain. Changing your mind now takes a separate page load.
+      */}
+      {inLineup && !declined && confirmed && searchParams.a !== 'out' && (
+        <p style={{ marginTop: 24, fontSize: 13, color: '#94a3b8' }}>
+          Plans changed later?{' '}
+          <a href={`?a=out`} style={{ color: '#64748b' }}>
+            Tell your captain you can&rsquo;t play
+          </a>
+        </p>
+      )}
+
+      {inLineup && !declined && (!confirmed || searchParams.a === 'out') && (
         <details open={searchParams.a === 'out'} style={{ marginTop: confirmed ? 20 : 10 }}>
           <summary style={summary}>
             {confirmed ? 'Something changed — I can’t play' : '✗ Sorry — I can’t play'}
@@ -234,7 +250,7 @@ export default async function ConfirmPage({
                 style={textarea}
               />
               <button type="submit" style={outButton}>
-                Yes, take me out of this lineup
+                Take {player.name.split(' ')[0]} out of this match
               </button>
             </form>
           </div>
