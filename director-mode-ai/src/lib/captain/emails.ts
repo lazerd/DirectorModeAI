@@ -769,16 +769,24 @@ export function defaultLinesNote(
   const doubles = opts?.doublesCourts ?? 0;
   const min = opts?.minPlayers ?? 0;
   if (min > 0 && singles + doubles > 0) {
-    const courts = opts?.courtFormat
-      ? `We'll be running a ${opts.courtFormat}-court format.`
-      : null;
-    const lines = `The scorecard is ${singles} singles and ${doubles} doubles — ${singles + doubles} lines, played in rounds.`;
-    const numbers = `Could you let me know roughly how many players you're bringing? A team needs at least ${min} to take the court, and any line neither side can cover gets defaulted.`;
-    return [courts, lines, numbers].filter(Boolean).join(' ');
+    // Written the way one coach tells another, not as a rulebook: the other
+    // captain knows JTT; what they don't know is OUR courts and rounds.
+    const f = opts?.courtFormat;
+    const rounds =
+      f === 3 && singles === 4 && doubles === 4
+        ? "We'll have 3 courts, so the match runs in three rounds: two singles and a doubles, then two more singles and a doubles, then the last two doubles."
+        : f === 2 && singles === 4 && doubles === 4
+          ? "We'll have 2 courts, so the match runs in four rounds, each one singles and one doubles."
+          : f
+            ? `We'll have ${f} courts for the match.`
+            : null;
+    return [rounds, 'How many players are you bringing? It helps us plan the afternoon.']
+      .filter(Boolean)
+      .join(' ');
   }
 
   if (!lineCount || lineCount <= 0) return '';
-  return `We've filled all ${lineCount} lines. If you're bringing fewer than ${lineCount} teams, please let us know at your earliest convenience so we can plan the courts.`;
+  return `We've got all ${lineCount} lines covered. If you end up short on any, just let me know so we can plan the courts.`;
 }
 
 /**
@@ -809,10 +817,19 @@ export function hostingBodyText(
   },
   tz?: string,
 ): string {
-  const when = formatMatchWhen(m.matchAt, tz);
+  // "Sunday, September 20 at 4:00 pm" — a sentence, not a calendar stamp.
+  const zone = tz || CLUB_TZ;
+  const d = new Date(m.matchAt);
+  const day = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: zone }).format(d);
+  const date = new Intl.DateTimeFormat('en-US', { month: 'long', day: 'numeric', timeZone: zone }).format(d);
+  const time = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: zone })
+    .format(d)
+    .replace(/\s?AM$/, ' am')
+    .replace(/\s?PM$/, ' pm');
   const greeting = opts.opposingCaptainName?.trim()
     ? `Hi ${opts.opposingCaptainName.trim().split(/\s+/)[0]},`
     : 'Hi there,';
+  const where = [opts.clubName, opts.address].filter(Boolean).join(', ');
 
   const linesText =
     opts.linesNote !== undefined && opts.linesNote !== null
@@ -826,11 +843,10 @@ export function hostingBodyText(
 
   const blocks = [
     greeting,
-    `Looking forward to hosting your team ${when}.`,
-    [opts.clubName, opts.address].filter(Boolean).join('\n'),
+    `We're looking forward to hosting you on ${day}, ${date} at ${time}${where ? ` at ${where}` : ''}.`,
     (opts.hostNotes || '').trim(),
     linesText,
-    'Thanks, and see you then!',
+    `Thanks, and see you ${day}!`,
     [opts.fromName, opts.fromTitle].filter(Boolean).join('\n'),
   ].filter((b) => b && b.trim());
 
