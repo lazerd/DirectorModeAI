@@ -75,6 +75,18 @@ type Parsed = z.infer<typeof ParsedZ>;
  * missing time has to stop the row, not quietly acquire a plausible one:
  * families set alarms by this.
  */
+/**
+ * One key for "the same person" across sources. The roster says "Artem Melnik";
+ * a TennisLink paste says "Melnik, Artem". Without flipping the comma form a
+ * re-paste reads as a stranger, adds a duplicate, and never fills the email.
+ */
+function nameKey(name: string): string {
+  let n = name.trim().toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ');
+  const comma = n.indexOf(',');
+  if (comma > 0) n = `${n.slice(comma + 1).trim()} ${n.slice(0, comma).trim()}`;
+  return n;
+}
+
 function clubTimestamp(date: string, time: string, tz: string): string {
   const hhmm = time.padStart(5, '0');
   return zonedWallTimeToIso(`${date}T${hhmm}`, tz) ?? `${date}T${hhmm}:00Z`;
@@ -107,6 +119,8 @@ Return ONLY JSON matching this shape:
 
 Rules:
 - Extract only what is actually present. Never invent a player, a date, or an email.
+- "name" is "First Last". League sites often print "Last, First" (USTA
+  TennisLink does) — flip it. Keep suffixes and hyphenated names as printed.
 - "rating" is the NTRP number (e.g. 3.5). Use null if the page does not show one.
 - "time" is 24-hour local time. Use null if the page shows no time.
 - YEARS ARE USUALLY MISSING. Most league sites print "Fri, Sep 11" or "Oct 2"
@@ -199,10 +213,12 @@ export async function POST(req: Request) {
 
     const { data: existingPlayers } = await db
       .from('captain_players')
-      .select('name')
+      .select('id, name, email')
       .eq('team_id', teamId);
-    const haveName = new Set(
-      ((existingPlayers as { name: string }[]) || []).map((p) => p.name.trim().toLowerCase()),
+    const byName = new Map(
+      ((existingPlayers as { id: string; name: string; email: string | null }[]) || []).map(
+        (p) => [nameKey(p.name), p],
+      ),
     );
 
     const { data: existingMatches } = await db
@@ -215,8 +231,22 @@ export async function POST(req: Request) {
       ),
     );
 
+    /*
+     * A player already on the roster is never re-added — but a paste is also how
+     * a captain gets emails onto a roster that was loaded without them (NorCal's
+     * public pages hide emails; the captain's own TennisLink view shows them).
+     * So fill a BLANK email from the paste. Never overwrite one: an address the
+     * captain typed beats whatever a league site has on file.
+     */
+    const emailFills = parsed.data.players
+      .map((p) => ({ existing: byName.get(nameKey(p.name)), email: p.email?.trim() || null }))
+      .filter(
+        (x): x is { existing: { id: string; name: string; email: string | null }; email: string } =>
+          !!x.existing && !x.existing.email && !!x.email,
+      );
+
     const newPlayers = parsed.data.players
-      .filter((p) => !haveName.has(p.name.trim().toLowerCase()))
+      .filter((p) => !byName.has(nameKey(p.name)))
       .map((p) => ({
         team_id: teamId,
         name: p.name.trim(),
@@ -260,11 +290,20 @@ export async function POST(req: Request) {
       const { error } = await db.from('captain_matches').insert(newMatches);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
+    for (const f of emailFills) {
+      // .is('email', null) so a concurrent edit by the captain still wins.
+      const { error } = await db
+        .from('captain_players')
+        .update({ email: f.email, updated_at: new Date().toISOString() })
+        .eq('id', f.existing.id)
+        .is('email', null);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
     const unsureHome = parsed.data.matches.filter((m) => m.is_home === null && m.time);
 
     return NextResponse.json({
-      added: { players: newPlayers.length, matches: newMatches.length },
+      added: { players: newPlayers.length, matches: newMatches.length, emails: emailFills.length },
       /*
        * Named, not counted. "2 matches need attention" sends a captain hunting;
        * the dates tell them exactly which rows to open.

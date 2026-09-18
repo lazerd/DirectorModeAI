@@ -144,13 +144,15 @@ export default function ImportPanel({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'Import failed.');
-      const { players, matches } = json.added || {};
+      const { players, matches, emails } = json.added || {};
       setAttention((json.needsAttention as string[]) || []);
       const skipped = (json.skipped?.players ?? 0) + (json.skipped?.matches ?? 0);
       setDone(
         `Added ${players} player${players === 1 ? '' : 's'} and ${matches} match${
           matches === 1 ? '' : 'es'
-        }.` + (skipped ? ` ${skipped} already on the team, left alone.` : ''),
+        }.` +
+          (emails ? ` Filled in ${emails} missing email${emails === 1 ? '' : 's'}.` : '') +
+          (skipped ? ` ${skipped} already on the team, left alone.` : ''),
       );
       setPreview(null);
       setText('');
