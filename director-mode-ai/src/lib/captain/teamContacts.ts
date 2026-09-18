@@ -13,6 +13,7 @@
  * why this only ever copies a TEAM-WIDE send, never a single player's.
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { formatPhone } from './phone';
 
 export type TeamCc = { name: string; email: string; role: string };
 
@@ -132,7 +133,9 @@ export async function matchCoachOf(db: SupabaseClient, matchId: string): Promise
     .select('id, name, email, phone')
     .eq('id', id)
     .maybeSingle();
-  return (c as MatchCoach | null) ?? null;
+  const coach = (c as MatchCoach | null) ?? null;
+  // Stored E.164; emails and the other club read it as (510) 846-8720.
+  return coach ? { ...coach, phone: coach.phone ? formatPhone(coach.phone) : null } : null;
 }
 
 /**
@@ -165,6 +168,10 @@ export function withMatchCoach(
   const taken = new Set(
     [...exclude, ...ccs.map((c) => c.email)].filter(Boolean).map((e) => (e as string).trim().toLowerCase()),
   );
+  const onTeam = ccs.findIndex((c) => c.email.toLowerCase() === key);
+  if (onTeam >= 0) {
+    return ccs.map((c, i) => (i === onTeam ? { ...c, role: 'match coach' } : c));
+  }
   if (taken.has(key)) return ccs;
   return [...ccs, { name: coach.name, email, role: 'match coach' }];
 }

@@ -45,6 +45,7 @@ import {
   singlesFirstInLine,
 } from './leagues';
 import { singlesCounts } from './server';
+import { formatPhone } from './phone';
 import { resolveTeamTimeZone } from './clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
@@ -252,7 +253,7 @@ export async function loadTeamEmailContext(
     const coach = contacts.find((x) => x.id === (m.match_coach_id as string | null));
     if (coach) {
       info.coachName = coach.name;
-      info.coachPhone = coach.phone;
+      info.coachPhone = coach.phone ? formatPhone(coach.phone) : null;
     }
     matchInfo.set(m.id as string, info);
   }
