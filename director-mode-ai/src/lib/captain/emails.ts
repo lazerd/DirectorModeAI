@@ -120,8 +120,19 @@ function shell(title: string, body: string, footer?: string): string {
     <h1 style="font-size:20px;margin:0 0 16px">${title}</h1>
     ${body}
     ${footer ? `<p style="font-size:12px;color:#64748b;margin-top:24px">${footer}</p>` : ''}
+    ${SEE_WHAT_I_SEE}
   </div>`;
 }
+
+/**
+ * The foot of every CaptainMode email: parents and the other clubs' captains
+ * are the people most likely to want this for their own team (Darrin,
+ * 2026-09-18: "a great selling point"). Lands on the public CaptainMode page,
+ * at the real match-page picture.
+ */
+const SEE_WHAT_I_SEE = `<p style="font-size:12px;color:#94a3b8;margin:28px 0 0;padding-top:14px;border-top:1px solid #e2e8f0">
+      Sent with CaptainMode · <a href="https://clubmode.ai/captainmode#see" style="color:#64748b">See what the captain sees &rarr;</a>
+    </p>`;
 
 function button(href: string, label: string, bg: string, color = '#0f172a'): string {
   return `<a href="${href}" style="display:inline-block;padding:14px 22px;margin:4px 6px 4px 0;background:${bg};color:${color};text-decoration:none;border-radius:10px;font-weight:600;font-size:16px">${label}</a>`;
@@ -918,10 +929,8 @@ export function opponentHostingEmail(
    * and one muted line is the most it can be without the email reading as spam
    * rather than a courtesy from a fellow captain.
    */
-  const promo =
-    `<a href="${BASE}/captainmode?ref=match" style="color:#64748b;text-decoration:underline">` +
-    `Captained with CaptainMode</a> — this email, the lineup, and every reminder, ` +
-    `without one group text.`;
+  // The CaptainMode line comes from shell() — the same "See what the captain
+  // sees" foot every CaptainMode email carries.
 
   return {
     to: opts.to,
@@ -936,7 +945,6 @@ export function opponentHostingEmail(
     html: shell(
       m.isHome ? 'Looking forward to hosting you' : 'Confirming our match',
       textToHtml(opts.bodyText),
-      promo,
     ),
   };
 }

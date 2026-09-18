@@ -93,6 +93,31 @@ export default function CaptainModePage() {
         </div>
       </section>
 
+      {/* ========================= SEE WHAT THE CAPTAIN SEES =========================
+          The "see what the captain sees" link at the foot of every CaptainMode
+          email lands here. A real match page (14U JTT, 9/20/26) with every
+          name, email and phone swapped for a stand-in. */}
+      <section id="see" className="scroll-mt-8 border-t border-white/[0.06] px-5 py-16 sm:px-8 sm:py-20">
+        <div className="mx-auto max-w-5xl">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">See what the captain sees</h2>
+            <p className="mt-4 text-[16px] leading-relaxed text-white/55">
+              A real junior match page: the rounds laid out the way they&apos;re played, who has
+              confirmed, the coach going to the match, and the other club&apos;s captains a tap away.
+            </p>
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/captainmode-match-day.jpg"
+            alt="A CaptainMode match page: match header, our coach and the opposing captains, confirmations, and the lineup grouped into rounds"
+            width={2880}
+            height={3000}
+            className="mt-10 w-full rounded-2xl border border-white/10 shadow-[0_30px_80px_-30px_rgba(211,251,82,0.25)]"
+          />
+          <p className="mt-3 text-center text-[12px] text-white/35">Names and contact details are stand-ins.</p>
+        </div>
+      </section>
+
       {/* ========================= BEFORE / AFTER ========================= */}
       <section className="border-t border-white/[0.06] px-5 py-16 sm:px-8 sm:py-20">
         <div className="mx-auto grid max-w-4xl gap-5 md:grid-cols-2">
