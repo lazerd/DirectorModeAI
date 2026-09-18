@@ -34,11 +34,11 @@ const PROBLEMS = [
   },
   {
     gone: 'Expensive, low-reward tournaments',
-    fix: 'Guaranteed matches every night, and the team splits the cost.',
+    fix: 'Guaranteed matches every session, and the team splits the cost.',
   },
   {
     gone: 'Nothing to play for',
-    fix: 'Cash on the line every night, promotion and relegation, and division titles.',
+    fix: 'Cash on the line every session, promotion and relegation, and division titles.',
   },
 ];
 
@@ -59,6 +59,14 @@ export default async function PtlHomePage({
     ? await getStandingsByDivision(season.id)
     : null;
 
+  /*
+   * The page describes the format the season actually plays, rather than
+   * repeating the proposal. A page claiming "one singles and one doubles" over
+   * a season running four gendered lines is the kind of thing a committee
+   * member notices and stops trusting the rest of the page for.
+   */
+  const gendered = divisions.some((d) => d.line_format === 'gendered_four');
+
   const prizePool = divisions.reduce(
     (n, d) => n + d.nightly_prize_cents * 5 + d.finals_prize_cents,
     0,
@@ -77,8 +85,8 @@ export default async function PtlHomePage({
               {season.name} · 5.0 and above
             </p>
             <h1 className="mt-4 text-balance text-4xl font-black leading-[1.05] tracking-tight sm:text-6xl">
-              The competition of a tournament,<br className="hidden sm:block" /> on the schedule of
-              one night.
+              The competition of a tournament,<br className="hidden sm:block" /> in a single
+              session.
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/65">
               {season.blurb}
@@ -126,8 +134,8 @@ export default async function PtlHomePage({
             [String(teams.length || 12), 'Teams'],
             [String(divisions.length || 3), 'Divisions'],
             [String(season.roster_size), 'Per roster'],
-            ['5.0+', 'Rating floor'],
-            ['~3h', 'Per night'],
+            ['5.0+', gendered ? 'Men and women' : 'Rating floor'],
+            ['~3h', 'Per session'],
             [String(season.courts_per_division), 'Courts / division'],
           ].map(([value, label]) => (
             <div key={label} className="py-7">
@@ -138,11 +146,11 @@ export default async function PtlHomePage({
         </dl>
       </section>
 
-      {/* ---------- how a night works ---------- */}
+      {/* ---------- how a session works ---------- */}
       <section className="mx-auto max-w-6xl px-5 py-20">
-        <h2 className="text-3xl font-black tracking-tight sm:text-4xl">How a night works</h2>
+        <h2 className="text-3xl font-black tracking-tight sm:text-4xl">How a session works</h2>
         <p className="mt-4 max-w-2xl text-white/60">
-          Four teams, one division, one night. You face all three rivals — not one opponent and a
+          Four teams, one division, one session. You face all three rivals — not one opponent and a
           drive home.
         </p>
 
@@ -151,18 +159,30 @@ export default async function PtlHomePage({
             {
               n: 'One',
               h: 'A full round robin',
-              p: `A division of four plays every other team in the same evening. Three rounds, two meetings at a time, across ${season.courts_per_division} courts.`,
+              p: `Four teams play every other team in the same session. Three rounds, two meetings at a time, across ${season.courts_per_division} courts.`,
             },
-            {
-              n: 'Two',
-              h: 'One singles, one doubles',
-              p: 'Each meeting is a singles and a doubles played side by side. Best of three Fast4, no-ad, a seven-point tiebreak for a split.',
-            },
-            {
-              n: 'Three',
-              h: 'Standings before you leave',
-              p: 'Win both matches and the meeting is yours. Split it and total games decide — and the table is complete before anyone reaches the car park.',
-            },
+            gendered
+              ? {
+                  n: 'Two',
+                  h: 'Four lines at once',
+                  p: "Men's singles, women's singles, men's doubles and women's doubles, played side by side. Men never play women. Best of three Fast4, no-ad.",
+                }
+              : {
+                  n: 'Two',
+                  h: 'One singles, one doubles',
+                  p: 'Each meeting is a singles and a doubles played side by side. Best of three Fast4, no-ad, a seven-point tiebreak for a split.',
+                },
+            gendered
+              ? {
+                  n: 'Three',
+                  h: 'And if it finishes 2-2',
+                  p: 'A mixed doubles decides it. One man and one woman a side, back on court, the whole meeting riding on it — and the table is complete before anyone reaches the car park.',
+                }
+              : {
+                  n: 'Three',
+                  h: 'Standings before you leave',
+                  p: 'Win both matches and the meeting is yours. Split it and total games decide — and the table is complete before anyone reaches the car park.',
+                },
           ].map((step) => (
             <li key={step.n}>
               <span className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-400">

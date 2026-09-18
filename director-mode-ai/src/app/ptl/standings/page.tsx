@@ -41,6 +41,7 @@ export default async function StandingsPage({
   ]);
 
   const played = [...standings.values()].some((rows) => rows.some((r) => r.played > 0));
+  const gendered = divisions.some((d) => d.line_format === 'gendered_four');
 
   return (
     <>
@@ -56,7 +57,7 @@ export default async function StandingsPage({
           <div className="mt-10 rounded-sm border border-white/10 bg-white/[0.03] px-6 py-10">
             <p className="text-lg font-semibold">No matches played yet.</p>
             <p className="mt-2 text-white/55">
-              Tables fill in the first night. The full grid is already published.
+              Tables fill in after the first session. The full grid is already published.
             </p>
             <Link
               href={`/ptl/schedule?season=${season.slug}`}
@@ -87,7 +88,7 @@ export default async function StandingsPage({
                         currency: 'USD',
                         maximumFractionDigits: 0,
                       })}{' '}
-                      a night ·{' '}
+                      a session ·{' '}
                       {(d.finals_prize_cents / 100).toLocaleString('en-US', {
                         style: 'currency',
                         currency: 'USD',
@@ -194,9 +195,20 @@ export default async function StandingsPage({
             teams that beat each other in a circle still produce one stable table.
           </p>
           <p className="mt-3">
-            A meeting is won by taking both lines. Split them and total games decides; level on
-            games and it goes to a pair of seven-point tiebreaks, then combined points, then a
-            two-of-three point tiebreak between the singles players.
+            {gendered ? (
+              <>
+                A meeting is four lines — men&rsquo;s and women&rsquo;s singles, men&rsquo;s and
+                women&rsquo;s doubles — played at once. Win three and it&rsquo;s yours. Finish{' '}
+                <span className="font-semibold text-white/70">2&ndash;2</span> and a mixed doubles
+                decides it.
+              </>
+            ) : (
+              <>
+                A meeting is won by taking both lines. Split them and total games decides; level on
+                games and it goes to a pair of seven-point tiebreaks, then combined points, then a
+                two-of-three point tiebreak between the singles players.
+              </>
+            )}
           </p>
         </div>
       </div>

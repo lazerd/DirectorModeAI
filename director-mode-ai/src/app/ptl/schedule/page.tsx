@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Schedule — Premier Tennis League',
-  description: 'Every night of the Premier Tennis League season, published up front.',
+  description: 'Every session of the Premier Tennis League season, published up front.',
 };
 
 /**
@@ -63,6 +63,7 @@ export default async function SchedulePage({
   ]);
 
   const teamName = (id: string) => teams.find((t) => t.id === id)?.short_code || '—';
+  const gendered = divisions.some((d) => d.line_format === 'gendered_four');
   const todayIso = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
 
   return (
@@ -75,8 +76,8 @@ export default async function SchedulePage({
         </p>
         <h1 className="mt-3 text-4xl font-black tracking-tight sm:text-5xl">The grid</h1>
         <p className="mt-4 max-w-2xl text-white/60">
-          Every night of the season, published up front. A division of four plays a full round
-          robin in one evening — three rounds, two meetings at a time, across{' '}
+          Every session of the season, published up front. A division of four plays a full round
+          robin in one session — three rounds, two meetings at a time, across{' '}
           {season.courts_per_division} courts.
         </p>
 
@@ -156,13 +157,16 @@ export default async function SchedulePage({
                                         {m.home_games}&ndash;{m.away_games}
                                       </span>
                                       {/* Anything past level 2 is a story, so say so. */}
-                                      {m.decided_at_level != null && m.decided_at_level >= 3 && (
+                                      {m.decided_at_level != null
+                                        && m.decided_at_level >= (gendered ? 2 : 3) && (
                                         <span className="ml-1.5 text-[10px] uppercase tracking-wider text-amber-300/80">
-                                          {m.decided_at_level === 3
-                                            ? 'tiebreaks'
-                                            : m.decided_at_level === 4
-                                              ? 'combined pts'
-                                              : 'decider'}
+                                          {gendered
+                                            ? 'mixed decided it'
+                                            : m.decided_at_level === 3
+                                              ? 'tiebreaks'
+                                              : m.decided_at_level === 4
+                                                ? 'combined pts'
+                                                : 'decider'}
                                         </span>
                                       )}
                                     </>

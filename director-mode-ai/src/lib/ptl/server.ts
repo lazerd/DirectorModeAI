@@ -43,6 +43,8 @@ export type PtlDivision = {
   day_of_week: number | null;
   start_time: string | null;
   end_time: string | null;
+  line_format: 'open_two' | 'gendered_four';
+  tiebreak_mode: 'cascade' | 'mixed';
 };
 
 export type PtlTeam = {
@@ -59,7 +61,7 @@ export type PtlTeam = {
 const SEASON_COLS =
   'id, name, slug, status, entry_cents, roster_size, pick_seconds, courts_per_division, tagline, blurb, enroll_opens_at, enroll_closes_at, is_demo, demo_note';
 const DIVISION_COLS =
-  'id, name, short_code, tier, nightly_prize_cents, finals_prize_cents, day_of_week, start_time, end_time';
+  'id, name, short_code, tier, nightly_prize_cents, finals_prize_cents, day_of_week, start_time, end_time, line_format, tiebreak_mode';
 const TEAM_COLS =
   'id, name, short_code, color, division_id, draft_slot, captain_name, captain_is_playing';
 

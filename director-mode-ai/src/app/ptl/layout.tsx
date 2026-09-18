@@ -21,13 +21,13 @@ import { APP_URL } from '@/lib/appUrl';
 export const metadata: Metadata = {
   title: 'Premier Tennis League',
   description:
-    'A 5.0+ drafted-team league built around a three-hour night. Players enroll individually, '
-    + 'captains draft balanced rosters, and a division of four plays a full round robin in one night.',
+    'A 5.0+ drafted-team league of men and women, decided in a single session. Players enroll individually, '
+    + 'captains draft balanced rosters, and a division of four plays a full round robin in one session.',
   alternates: { canonical: `${APP_URL}/ptl` },
   icons: { icon: '/ptl/icon.svg' },
   openGraph: {
     title: 'Premier Tennis League',
-    description: 'A 5.0+ drafted-team league built around a three-hour night.',
+    description: 'A 5.0+ drafted-team league of men and women, decided in a single session.',
     siteName: 'Premier Tennis League',
   },
 };
