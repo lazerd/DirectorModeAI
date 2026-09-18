@@ -8,7 +8,7 @@
  * action ends in a sentence saying what happened.
  */
 import type { ReactNode } from 'react';
-import { NTRP_LEVELS } from '@/lib/partnerFinder/format';
+import { levelOptions, type LevelScale } from '@/lib/levels';
 
 export const bigBtn =
   'inline-flex min-h-[56px] items-center justify-center gap-2 rounded-2xl px-6 text-xl font-bold transition disabled:opacity-60';
@@ -61,13 +61,21 @@ export function PeopleList({ people }: { people: { name: string; note?: string |
   );
 }
 
-/** Pick an NTRP level. "Not sure" is a real answer and saves nothing. */
+/**
+ * Pick a level. The club's scale decides what the buttons say: NTRP numbers at
+ * a tennis club, the club's own tier names where it plays by name — with the
+ * band underneath in small type, because the name is the answer and the numbers
+ * are only there for anyone who wants them. "Not sure" is a real answer and
+ * saves nothing.
+ */
 export function LevelPicker({
+  scale,
   value,
   onPick,
   busy,
   allowNotSure = false,
 }: {
+  scale: LevelScale;
   value: number | null;
   onPick: (n: number | null) => void;
   busy?: boolean;
@@ -75,20 +83,25 @@ export function LevelPicker({
 }) {
   return (
     <div className="flex flex-wrap gap-2">
-      {NTRP_LEVELS.map((n) => (
+      {levelOptions(scale).map((o) => (
         <button
-          key={n}
+          key={o.value}
           type="button"
           disabled={busy}
-          onClick={() => onPick(n)}
-          aria-pressed={value === n}
-          className={`min-h-[52px] min-w-[72px] rounded-xl border-2 px-4 text-xl font-bold transition ${
-            value === n
+          onClick={() => onPick(o.value)}
+          aria-pressed={value === o.value}
+          className={`min-h-[52px] min-w-[72px] rounded-xl border-2 px-4 py-2 text-xl font-bold transition ${
+            value === o.value
               ? 'border-emerald-700 bg-emerald-700 text-white'
               : 'border-slate-300 bg-white text-slate-800 hover:border-emerald-600'
           }`}
         >
-          {n.toFixed(1)}
+          {o.label}
+          {o.band && (
+            <span className={`block text-sm font-semibold ${value === o.value ? 'text-emerald-50' : 'text-slate-500'}`}>
+              {o.band}
+            </span>
+          )}
         </button>
       ))}
       {allowNotSure && (

@@ -110,12 +110,18 @@ const ACCOUNTS = {
  * one (CourtConnect's level filter, the mixer's strength order). It is carried
  * as a sort key and the club's own words are carried in `notes`, which is what
  * a director reads in PlayerVault.
+ *
+ * THE NAMES THEMSELVES ARE ROWS, in cc_club_level_tiers — seeded by
+ * seed-rossmoor-pickleball.mjs, which is what turns every 2.75 in this file
+ * into the word "Intermediate" on screen. The ratings here must stay the ones
+ * that seed gives its tiers, or a demo member reads as the tier next door.
+ * One decimal place: every rating column is numeric(2,1).
  */
 const LEVELS = {
   novice: { name: 'Novice', rating: 2.0, band: '1.0–2.0' },
-  intermediate: { name: 'Intermediate', rating: 2.75, band: '2.5–3.0' },
-  adv_int: { name: 'Advanced Intermediate', rating: 3.25, band: '3.0+' },
-  advanced: { name: 'Advanced', rating: 4.0, band: '3.0–4.0+' },
+  intermediate: { name: 'Intermediate', rating: 2.8, band: '2.5–3.0' },
+  adv_int: { name: 'Advanced Intermediate', rating: 3.3, band: '3.0–3.5' },
+  advanced: { name: 'Advanced', rating: 4.0, band: '4.0+' },
 };
 
 // ---------------------------------------------------------------- the people

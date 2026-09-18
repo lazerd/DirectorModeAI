@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { trackEvent } from '@/lib/analytics';
 import { ArrowLeft, Search, Save, Plus, Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { TENNIS_SCALE, isTiered, levelOptions, levelScaleFor, levelValue, optionLine, type LevelScale } from '@/lib/levels';
+import { usesDupr } from '@/lib/levels/dupr';
 
 const SPORTS = [
   { value: 'tennis', label: 'Tennis' },
@@ -62,14 +64,38 @@ export default function AddVaultPlayerPage() {
     wtn: '',
     wtn_doubles: '',
     utr_id: '',
+    dupr_id: '',
+    dupr_singles: '',
+    dupr_doubles: '',
     primary_sport: 'tennis',
     membership_status: 'active',
     notes: '',
   });
 
+  /*
+   * What the club calls a level, per sport (lib/levels.ts). A pickleball club
+   * types its people in as Novice and Intermediate, not 2.0 and 3.0 — and a new
+   * player at a one-sport club starts on that sport rather than on tennis.
+   */
+  const [levels, setLevels] = useState<Record<string, LevelScale>>({});
+
   useEffect(() => {
     if (editId) fetchPlayer();
   }, [editId]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/clubs/levels');
+        const json = await res.json();
+        if (json.levels) setLevels(json.levels);
+        const primary = json.sports?.[0];
+        if (!editId && primary) setForm((prev) => (prev.primary_sport === 'tennis' ? { ...prev, primary_sport: primary } : prev));
+      } catch { /* not staff, or no club — the form still works on the default scale */ }
+    })();
+  }, [editId]);
+
+  const scale = levels[form.primary_sport] ?? (form.primary_sport === 'tennis' ? TENNIS_SCALE : levelScaleFor({ sport: form.primary_sport }));
 
   const fetchPlayer = async () => {
     const supabase = createClient();
@@ -93,6 +119,9 @@ export default function AddVaultPlayerPage() {
         wtn: data.wtn?.toString() || '',
         wtn_doubles: data.wtn_doubles?.toString() || '',
         utr_id: data.utr_id || '',
+        dupr_id: data.dupr_id || '',
+        dupr_singles: data.dupr_singles?.toString() || '',
+        dupr_doubles: data.dupr_doubles?.toString() || '',
         primary_sport: data.primary_sport || 'tennis',
         membership_status: data.membership_status || 'active',
         notes: data.notes || '',
@@ -171,6 +200,10 @@ export default function AddVaultPlayerPage() {
       wtn: form.wtn ? parseFloat(form.wtn) : null,
       wtn_doubles: form.wtn_doubles ? parseFloat(form.wtn_doubles) : null,
       utr_id: form.utr_id || null,
+      // Typed in by hand today: there is no DUPR sync (see lib/levels/dupr.ts).
+      dupr_id: form.dupr_id || null,
+      dupr_singles: form.dupr_singles ? parseFloat(form.dupr_singles) : null,
+      dupr_doubles: form.dupr_doubles ? parseFloat(form.dupr_doubles) : null,
       rating_source: form.utr_id ? 'utr_api' : 'manual',
       primary_sport: form.primary_sport,
       membership_status: form.membership_status,
@@ -237,6 +270,9 @@ export default function AddVaultPlayerPage() {
         wtn: '',
         wtn_doubles: '',
         utr_id: '',
+        dupr_id: '',
+        dupr_singles: '',
+        dupr_doubles: '',
         primary_sport: prev.primary_sport,
         membership_status: prev.membership_status,
         notes: '',
@@ -421,17 +457,39 @@ export default function AddVaultPlayerPage() {
         {/* Ratings */}
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="label">NTRP (1.0 - 7.0)</label>
-            <input
-              type="number"
-              className="input"
-              min={1.0}
-              max={7.0}
-              step={0.5}
-              value={form.usta_rating}
-              onChange={e => updateForm('usta_rating', e.target.value)}
-              placeholder="e.g. 4.0"
-            />
+            <label className="label">{isTiered(scale) ? scale.label : `${scale.label} (1.0 - 7.0)`}</label>
+            {/* Where the club plays by name, the names ARE the choices; the
+                number behind one is what gets stored and matched on. */}
+            {isTiered(scale) ? (
+              <select
+                className="input"
+                value={form.usta_rating}
+                onChange={e => updateForm('usta_rating', e.target.value)}
+              >
+                <option value="">Not set yet</option>
+                {levelOptions(scale).map(o => (
+                  <option key={o.value} value={o.value}>{optionLine(o)}</option>
+                ))}
+                {/* A rating that came from somewhere else keeps its number and
+                    shows the tier it reads as, rather than blanking the field. */}
+                {form.usta_rating && !levelOptions(scale).some(o => String(o.value) === form.usta_rating) && (
+                  <option value={form.usta_rating}>
+                    {levelValue(scale, form.usta_rating)} · {form.usta_rating}
+                  </option>
+                )}
+              </select>
+            ) : (
+              <input
+                type="number"
+                className="input"
+                min={1.0}
+                max={7.0}
+                step={0.5}
+                value={form.usta_rating}
+                onChange={e => updateForm('usta_rating', e.target.value)}
+                placeholder="e.g. 4.0"
+              />
+            )}
           </div>
           <div>
             <label className="label">
@@ -499,6 +557,50 @@ export default function AddVaultPlayerPage() {
             />
           </div>
         </div>
+
+        {/* DUPR — pickleball's rating, so it only appears for a pickleball
+            player. Typed in by hand: there is no sync, and getting one needs
+            DUPR partner approval (see src/lib/levels/dupr.ts). Three decimals
+            because that is how DUPR is written and read. */}
+        {usesDupr(scale) && (
+          <div className="grid grid-cols-3 gap-4">
+            <div>
+              <label className="label">Singles DUPR <span className="text-xs text-gray-400">(2.000–8.000)</span></label>
+              <input
+                type="number"
+                className="input"
+                min={2}
+                max={8}
+                step={0.001}
+                value={form.dupr_singles}
+                onChange={e => updateForm('dupr_singles', e.target.value)}
+                placeholder="e.g. 3.412"
+              />
+            </div>
+            <div>
+              <label className="label">Doubles DUPR <span className="text-xs text-gray-400">(2.000–8.000)</span></label>
+              <input
+                type="number"
+                className="input"
+                min={2}
+                max={8}
+                step={0.001}
+                value={form.dupr_doubles}
+                onChange={e => updateForm('dupr_doubles', e.target.value)}
+                placeholder="e.g. 3.586"
+              />
+            </div>
+            <div>
+              <label className="label">DUPR ID</label>
+              <input
+                className="input"
+                value={form.dupr_id}
+                onChange={e => updateForm('dupr_id', e.target.value)}
+                placeholder="Their DUPR number"
+              />
+            </div>
+          </div>
+        )}
 
         {/* Sport & Status */}
         <div className="grid grid-cols-2 gap-4">

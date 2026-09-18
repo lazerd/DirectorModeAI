@@ -59,7 +59,7 @@ export default async function GameLinkPage({ params }: { params: { token: string
   const tz = club.timezone;
   const started = new Date(game.starts_at).getTime() <= Date.now();
 
-  const level = ratingLabel(game.rating_min, game.rating_max);
+  const level = ratingLabel(game.rating_min, game.rating_max, club.levels);
   const rows: [string, string][] = [
     ['When', `${longDay(game.starts_at, tz)}, ${clockLabel(game.starts_at, tz)}`],
     ['How long', durationLabel(game.duration_min)],
@@ -89,6 +89,7 @@ export default async function GameLinkPage({ params }: { params: { token: string
           : []
       }
       myLevel={me.ntrp}
+      scale={club.levels}
     />
   );
 }

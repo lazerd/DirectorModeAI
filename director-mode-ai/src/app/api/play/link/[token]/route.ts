@@ -11,8 +11,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { cancelGame, joinGame, leaveGame } from '@/lib/partnerFinder/actions';
-import { linkByToken, saveSelfRating } from '@/lib/partnerFinder/server';
-import { NTRP_LEVELS } from '@/lib/partnerFinder/format';
+import { linkByToken, loadClub, saveSelfRating } from '@/lib/partnerFinder/server';
+import { isLevelValue } from '@/lib/levels';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -36,7 +36,9 @@ export async function POST(req: Request, { params }: { params: { token: string }
 
   if (body.action === 'level') {
     const n = Number(body.ntrp);
-    if (!(NTRP_LEVELS as readonly number[]).includes(n)) {
+    // The club's own ladder, the same one the page offered them.
+    const club = await loadClub(db, link.club_id);
+    if (!club || !isLevelValue(club.levels, n)) {
       return NextResponse.json({ error: 'Please pick a level from the list.' }, { status: 400 });
     }
     const { data: u } = await db.auth.admin.getUserById(link.user_id);

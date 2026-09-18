@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { isCtxError, requireMember } from '@/lib/partnerFinder/actions';
 import { ensurePrefs, saveSelfRating } from '@/lib/partnerFinder/server';
-import { NTRP_LEVELS } from '@/lib/partnerFinder/format';
+import { isLevelValue } from '@/lib/levels';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,7 +32,9 @@ export async function POST(req: Request) {
   let rating: { saved: boolean; reason?: string } | null = null;
   if (body.ntrp !== undefined) {
     const n = Number(body.ntrp);
-    if (!(NTRP_LEVELS as readonly number[]).includes(n)) {
+    // What counts as a level is the CLUB's ladder: NTRP steps at a tennis club,
+    // the tiers' own ratings where the club plays by name.
+    if (!isLevelValue(club.levels, n)) {
       return NextResponse.json({ error: 'Please pick a level from the list.' }, { status: 400 });
     }
     rating = await saveSelfRating(db, { clubId: club.id, userId: user.id, email: user.email, fullName: user.name, ntrp: n });

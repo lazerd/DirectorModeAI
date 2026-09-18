@@ -19,12 +19,13 @@ import {
   FORMATS,
   FORMAT_LABEL,
   MAX_SPOTS,
-  NTRP_LEVELS,
   durationLabel,
   needsLabel,
   ratingLabel,
   type GameFormat,
 } from '@/lib/partnerFinder/format';
+import { levelOptions, levelValue, optionLine, type LevelScale } from '@/lib/levels';
+import { duprOf, personLevel, usesDupr } from '@/lib/levels/dupr';
 import {
   LevelPicker,
   Notice,
@@ -66,7 +67,21 @@ const TIME_OPTIONS = Array.from({ length: 31 }, (_, i) => {
   return { value, label };
 });
 
-const clamp = (n: number) => Math.min(Math.max(n, NTRP_LEVELS[0]), NTRP_LEVELS[NTRP_LEVELS.length - 1]);
+/* --------------------------------------------------------- level helpers */
+
+/**
+ * A step up or down this club's ladder from wherever a member sits.
+ *
+ * Works on whatever the scale offers — 0.5 apart on NTRP, four named tiers at
+ * Rossmoor Pickleball — so "a level either side of mine" means the same thing
+ * at both, without anyone doing arithmetic on a rating.
+ */
+function step(scale: LevelScale, n: number, by: number): number {
+  const vals = levelOptions(scale).map((o) => o.value);
+  const nearest = vals.reduce((best, v) => (Math.abs(v - n) < Math.abs(best - n) ? v : best), vals[0]);
+  const i = vals.indexOf(nearest);
+  return vals[Math.min(Math.max(i + by, 0), vals.length - 1)];
+}
 
 /* ------------------------------------------------------------------ board */
 
@@ -111,7 +126,7 @@ export default function GamesBoard({ clubId }: { clubId: string }) {
       {msg && <Notice tone={msg.tone}>{msg.text}</Notice>}
 
       {board.me.ntrp == null && !posting && (
-        <LevelPrompt clubId={board.club.id} onSaved={(m) => { say(m); load(); }} />
+        <LevelPrompt clubId={board.club.id} scale={board.levels} onSaved={(m) => { say(m); load(); }} />
       )}
 
       {posting ? (
@@ -180,7 +195,7 @@ export default function GamesBoard({ clubId }: { clubId: string }) {
  * level can't join games that set one, and would otherwise only find out on
  * tapping "I'm in".
  */
-function LevelPrompt({ clubId, onSaved }: { clubId: string; onSaved: (m: Msg) => void }) {
+function LevelPrompt({ clubId, scale, onSaved }: { clubId: string; scale: LevelScale; onSaved: (m: Msg) => void }) {
   const [busy, setBusy] = useState(false);
   const [hidden, setHidden] = useState(false);
   if (hidden) return null;
@@ -190,16 +205,16 @@ function LevelPrompt({ clubId, onSaved }: { clubId: string; onSaved: (m: Msg) =>
     setBusy(true);
     const r = await postJson('/api/play/prefs', { club_id: clubId, ntrp: n });
     setBusy(false);
-    onSaved(r.error ? { tone: 'bad', text: r.error } : { tone: 'good', text: `Thanks. Your level is ${n.toFixed(1)}.` });
+    onSaved(r.error ? { tone: 'bad', text: r.error } : { tone: 'good', text: `Thanks. Your level is ${levelValue(scale, n)}.` });
   }
 
   return (
     <section className="rounded-3xl border-2 border-emerald-300 bg-white p-5 sm:p-6">
       <h2 className="text-2xl font-bold">What&rsquo;s your level?</h2>
       <p className="mb-4 mt-1 text-slate-700">
-        Pick your NTRP rating so we can match you with the right games. You can change it later.
+        Pick your {scale.noun} so we can match you with the right games. You can change it later.
       </p>
-      <LevelPicker value={null} onPick={pick} busy={busy} allowNotSure />
+      <LevelPicker scale={scale} value={null} onPick={pick} busy={busy} allowNotSure />
     </section>
   );
 }
@@ -239,7 +254,8 @@ function GameCard({
   const facts = [
     // A full game already wears the "Full" badge.
     ...(g.status === 'full' ? [] : [needsLabel(g.spotsLeft)]),
-    g.rating ? `Level ${g.rating}` : 'Any level',
+    // "Level 3.0–3.5" where the numbers need naming, "Intermediate" where they don't.
+    g.ratingFact || 'Any level',
     g.duration,
     g.court || 'Court to be decided',
   ];
@@ -379,6 +395,8 @@ function PostForm({
   const tz = board.club.timezone;
   const days = useMemo(() => dayOptions(tz), [tz]);
   const my = board.me.ntrp;
+  const scale = board.levels;
+  const levelChoices = useMemo(() => levelOptions(scale), [scale]);
 
   const [date, setDate] = useState(days[1].value);
   const [time, setTime] = useState('09:00');
@@ -391,12 +409,15 @@ function PostForm({
    * around their own level the moment they choose "Choose a range".
    */
   const [anyLevel, setAnyLevel] = useState(true);
-  const [min, setMin] = useState<number>(3.0);
-  const [max, setMax] = useState<number>(3.5);
+  // Mid-ladder when nothing better is known: 3.0–3.5 on NTRP, the top pair of a
+  // short list of tiers. The poster changes it the moment they open the range.
+  const mid = Math.min(2, levelChoices.length - 1);
+  const [min, setMin] = useState<number>(levelChoices[mid].value);
+  const [max, setMax] = useState<number>(levelChoices[Math.min(mid + 1, levelChoices.length - 1)].value);
   const chooseLevelMode = (v: string) => {
     if (v === 'range' && anyLevel && my != null) {
-      setMin(clamp(my - 0.5));
-      setMax(clamp(my + 0.5));
+      setMin(step(scale, my, -1));
+      setMax(step(scale, my, +1));
     }
     setAnyLevel(v === 'any');
   };
@@ -409,7 +430,7 @@ function PostForm({
 
   const dayLabel = days.find((d) => d.value === date)?.label.replace(/^(Today|Tomorrow), /, '') ?? '';
   const timeLabel = TIME_OPTIONS.find((t) => t.value === time)?.label ?? '';
-  const level = anyLevel ? '' : ratingLabel(min, max);
+  const level = anyLevel ? '' : ratingLabel(min, max, scale);
   const preview = `${dayLabel.split(',')[0]} ${timeLabel} ${FORMAT_LABEL[format]} ${needsLabel(spots)}${level ? ` (${level})` : ''}`;
 
   async function submit() {
@@ -440,8 +461,6 @@ function PostForm({
         : "Your game is posted on the club's board. We didn't find members to email at that level yet, so others can join from the board.",
     );
   }
-
-  const levelOptions = NTRP_LEVELS.map((n) => ({ value: n, label: n.toFixed(1) }));
 
   return (
     <section className="space-y-6 rounded-3xl border-2 border-emerald-200 bg-white p-5 sm:p-7">
@@ -502,16 +521,16 @@ function PostForm({
               <label className="block">
                 <span className="mb-1 block text-base text-slate-600">From</span>
                 <select value={min} onChange={(e) => setMin(Number(e.target.value))} className={selectCls}>
-                  {levelOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                  {levelChoices.map((o) => (
+                    <option key={o.value} value={o.value}>{optionLine(o)}</option>
                   ))}
                 </select>
               </label>
               <label className="block">
                 <span className="mb-1 block text-base text-slate-600">To</span>
                 <select value={max} onChange={(e) => setMax(Number(e.target.value))} className={selectCls}>
-                  {levelOptions.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                  {levelChoices.map((o) => (
+                    <option key={o.value} value={o.value}>{optionLine(o)}</option>
                   ))}
                 </select>
               </label>
@@ -531,7 +550,7 @@ function PostForm({
 
       {my == null && (
         <Field label="And your own level?" hint="Optional. It helps us send you games that suit you.">
-          <LevelPicker value={myLevel} onPick={setMyLevel} allowNotSure />
+          <LevelPicker scale={scale} value={myLevel} onPick={setMyLevel} allowNotSure />
         </Field>
       )}
 
@@ -576,6 +595,15 @@ function Settings({ board, onSaved }: { board: Board; onSaved: (m: Msg) => void 
   const [phone, setPhone] = useState(board.me.phone ?? '');
   const [changingLevel, setChangingLevel] = useState(false);
   const clubRated = board.me.ntrpSource === 'club';
+  const scale = board.levels;
+  /*
+   * A member with a real DUPR reads as that number and cannot change it here:
+   * DUPR comes from results, not from a picker. Everyone else picks from the
+   * club's own ladder, which is the usual case and the only one at a club that
+   * has never heard of DUPR.
+   */
+  const person = { ntrp: board.me.ntrp, dupr_singles: board.me.duprSingles, dupr_doubles: board.me.duprDoubles };
+  const duprRated = usesDupr(scale) && duprOf(person) != null;
 
   async function save(patch: Record<string, unknown>, text: string) {
     setBusy(true);
@@ -592,11 +620,12 @@ function Settings({ board, onSaved }: { board: Board; onSaved: (m: Msg) => void 
       <div>
         <p className="flex min-h-[44px] flex-wrap items-center gap-x-3 text-lg">
           <span>
-            <span className="font-bold">Your level:</span>{' '}
-            {board.me.ntrp != null ? board.me.ntrp.toFixed(1) : 'not set yet'}
+            <span className="font-bold">Your level:</span> {personLevel(scale, person)}
           </span>
-          {clubRated ? (
-            <span className="text-base text-slate-600">set by the club. Ask the tennis staff to change it.</span>
+          {duprRated ? (
+            <span className="text-base text-slate-600">from your DUPR rating.</span>
+          ) : clubRated ? (
+            <span className="text-base text-slate-600">set by the club. Ask {scale.staff} to change it.</span>
           ) : (
             board.me.ntrp != null && (
               <button
@@ -609,15 +638,16 @@ function Settings({ board, onSaved }: { board: Board; onSaved: (m: Msg) => void 
             )
           )}
         </p>
-        {changingLevel && !clubRated && (
+        {changingLevel && !clubRated && !duprRated && (
           <div className="mt-2">
             <LevelPicker
+              scale={scale}
               value={board.me.ntrp}
               busy={busy}
               onPick={(n) => {
                 if (n == null) return;
                 setChangingLevel(false);
-                save({ ntrp: n }, `Saved. Your level is ${n.toFixed(1)}.`);
+                save({ ntrp: n }, `Saved. Your level is ${levelValue(scale, n)}.`);
               }}
             />
           </div>

@@ -30,6 +30,7 @@ export const IMPORT_FIELDS = [
   'date_of_birth',
   'usta_rating',
   'utr_rating',
+  'dupr_rating',
   'primary_sport',
   'membership_level',
   'membership_status',
@@ -50,6 +51,7 @@ export const FIELD_LABEL: Record<ImportField, string> = {
   date_of_birth: 'Date of birth',
   usta_rating: 'NTRP',
   utr_rating: 'UTR',
+  dupr_rating: 'DUPR',
   primary_sport: 'Sport',
   membership_level: 'Membership level',
   membership_status: 'Membership status',
@@ -89,6 +91,9 @@ const ALIASES: Record<ImportField, string[]> = {
   date_of_birth: ['dateofbirth', 'dob', 'birthdate', 'birthday', 'birthdateddmmyyyy'],
   usta_rating: ['ntrp', 'ntrprating', 'ustarating', 'usta', 'rating', 'level', 'ntrplevel'],
   utr_rating: ['utr', 'utrrating', 'utrsingles'],
+  // A club quotes a player's DOUBLES DUPR — club pickleball is doubles — so a
+  // bare "DUPR" column lands in dupr_doubles.
+  dupr_rating: ['dupr', 'duprrating', 'duprdoubles', 'doublesdupr', 'duprdoublesrating'],
   primary_sport: ['sport', 'primarysport'],
   membership_level: ['membershiplevel', 'membershiptype', 'membertype', 'membershipplan', 'plan'],
   membership_status: ['membershipstatus', 'memberstatus', 'status'],
@@ -258,6 +263,8 @@ export type ImportedPlayer = {
   date_of_birth: string;
   usta_rating: string;
   utr_rating: string;
+  /** Pickleball's rating, 2.000–8.000. Read into dupr_doubles. */
+  dupr_rating: string;
   primary_sport: string;
   membership_status: 'active' | 'inactive' | 'guest' | null;
   notes: string;
@@ -304,6 +311,7 @@ export function buildPlayer(cells: string[], mapping: ColumnMapping): ImportedPl
     date_of_birth: normalizeDate(get('date_of_birth')) ?? '',
     usta_rating: get('usta_rating'),
     utr_rating: get('utr_rating'),
+    dupr_rating: get('dupr_rating'),
     primary_sport: SPORT_MAP[get('primary_sport').toLowerCase()] || 'tennis',
     membership_status: status,
     notes,
@@ -327,6 +335,12 @@ export function buildPlayer(cells: string[], mapping: ColumnMapping): ImportedPl
   if (player.utr_rating && (Number.isNaN(utr) || utr < 1 || utr > 16.5)) {
     player.valid = false;
     player.error = `Invalid UTR: ${player.utr_rating}`;
+  }
+  // DUPR's own band. A number outside it is somebody's UTR in the wrong column.
+  const dupr = parseFloat(player.dupr_rating);
+  if (player.dupr_rating && (Number.isNaN(dupr) || dupr < 2 || dupr > 8)) {
+    player.valid = false;
+    player.error = `Invalid DUPR: ${player.dupr_rating}`;
   }
   return player;
 }
@@ -419,6 +433,7 @@ export function vaultColumns(p: ImportedPlayer, mode: 'insert' | 'update'): Reco
     date_of_birth: p.date_of_birth || null,
     usta_rating: p.usta_rating ? parseFloat(p.usta_rating) : null,
     utr_rating: p.utr_rating ? parseFloat(p.utr_rating) : null,
+    dupr_doubles: p.dupr_rating ? parseFloat(p.dupr_rating) : null,
     primary_sport: p.primary_sport || 'tennis',
     membership_status: p.membership_status,
     notes: p.notes || null,

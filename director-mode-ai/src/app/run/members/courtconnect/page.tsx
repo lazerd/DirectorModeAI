@@ -115,7 +115,7 @@ export default async function CourtConnectDirectorPage() {
     findings.push({
       title: `${unrated} of ${roster.length} members have no level on file`,
       detail:
-        'They only hear about games that allow unrated players. Add their NTRP in PlayerVault and they start getting matched.',
+        `They only hear about games that allow unrated players. Add their ${club.levels.inline} in PlayerVault and they start getting matched.`,
       href: '/courtconnect/vault',
       cta: 'Open PlayerVault',
     });
@@ -221,7 +221,7 @@ export default async function CourtConnectDirectorPage() {
                   return (
                     <tr key={g.id} className="border-t border-white/[0.06] align-top">
                       <td className="px-4 py-3 font-medium">{gameTitle(g, tz)}</td>
-                      <td className="px-4 py-3 text-white/70">{ratingLabel(g.rating_min, g.rating_max) || 'Any'}</td>
+                      <td className="px-4 py-3 text-white/70">{ratingLabel(g.rating_min, g.rating_max, club.levels) || 'Any'}</td>
                       <td className="px-4 py-3 text-white/70">{names.get(g.posted_by) ?? 'A member'}</td>
                       <td className="px-4 py-3 text-white/70">
                         {players.length}/{g.spots_needed}

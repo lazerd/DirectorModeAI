@@ -8,6 +8,7 @@
  * rendered without a zone goes out to the whole club as 4pm.
  */
 import { normalizeTimeZone } from '@/lib/captain/clubTime';
+import { TENNIS_SCALE, levelRange, type LevelScale } from '@/lib/levels';
 
 export const FORMATS = ['doubles', 'singles', 'mixed', 'hitting'] as const;
 export type GameFormat = (typeof FORMATS)[number];
@@ -20,9 +21,6 @@ export const FORMAT_LABEL: Record<GameFormat, string> = {
 };
 
 export const DURATIONS = [60, 90, 120] as const;
-
-/** NTRP levels a member can pick. */
-export const NTRP_LEVELS = [2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0] as const;
 
 /** Most spots a post may ask for. */
 export const MAX_SPOTS = 3;
@@ -50,14 +48,19 @@ export function firstName(full: string | null | undefined): string {
   return (full || '').trim().split(/\s+/)[0] || 'there';
 }
 
-const lvl = (n: number | string) => Number(n).toFixed(1);
-
-/** "3.0–3.5", "3.5+", "up to 3.0", or "" for any level. */
-export function ratingLabel(min: number | string | null, max: number | string | null): string {
-  if (min != null && max != null) return Number(min) === Number(max) ? lvl(min) : `${lvl(min)}–${lvl(max)}`;
-  if (min != null) return `${lvl(min)}+`;
-  if (max != null) return `up to ${lvl(max)}`;
-  return '';
+/**
+ * "3.0–3.5", "3.5+", "up to 3.0" — or the tier names the range covers at a club
+ * that plays by name ("Intermediate to Advanced"). "" means any level.
+ *
+ * The scale comes from the club (see lib/levels.ts); without one this is the
+ * NTRP wording every club had before tiers existed.
+ */
+export function ratingLabel(
+  min: number | string | null,
+  max: number | string | null,
+  scale: LevelScale = TENNIS_SCALE,
+): string {
+  return levelRange(scale, min, max);
 }
 
 /** "needs 1 player" / "needs 2 players". */
@@ -132,7 +135,7 @@ export function gameTitle(g: Pick<GameSummary, 'starts_at' | 'format'>, tz: stri
  * The non-identifying one-liner: "Tue Sep 22 · 9:00am doubles · needs 1 · 3.0–3.5".
  * Safe for a signed-out visitor — no names, no note, no court.
  */
-export function publicLine(g: GameSummary, spotsLeft: number, tz: string): string {
-  const r = ratingLabel(g.rating_min, g.rating_max);
+export function publicLine(g: GameSummary, spotsLeft: number, tz: string, scale: LevelScale = TENNIS_SCALE): string {
+  const r = ratingLabel(g.rating_min, g.rating_max, scale);
   return [gameTitle(g, tz), `needs ${spotsLeft}`, r].filter(Boolean).join(' · ');
 }

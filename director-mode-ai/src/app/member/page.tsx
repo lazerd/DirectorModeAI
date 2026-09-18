@@ -8,6 +8,7 @@ import { TOURNAMENT_FORMATS } from '@/lib/eventCategory';
 import { resolveClubTimeZone, normalizeTimeZone } from '@/lib/captain/clubTime';
 import { publicOpenGames } from '@/lib/partnerFinder/server';
 import { publicLine } from '@/lib/partnerFinder/format';
+import { clubLevelScale } from '@/lib/clubLevels';
 import {
   CalendarDays, LayoutGrid, GraduationCap, User, ArrowRight, Trophy, Ticket, MapPin,
   ClipboardList, Handshake,
@@ -80,7 +81,7 @@ export default async function MemberHome() {
 
   const { data: club } = await admin
     .from('cc_clubs')
-    .select('id, name, slug, owner_id, logo_url, city, state, timezone')
+    .select('id, name, slug, owner_id, logo_url, city, state, timezone, sports')
     .eq('id', membership.club_id)
     .maybeSingle();
   if (!club) redirect('/');
@@ -205,6 +206,8 @@ export default async function MemberHome() {
    */
   const openGames = (await publicOpenGames(admin, club.id)).slice(0, 3);
   const clubTz = normalizeTimeZone(club.timezone);
+  // Levels read in this club's own words: a pickleball club never sees NTRP.
+  const levels = await clubLevelScale(admin, club);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -294,7 +297,7 @@ export default async function MemberHome() {
                 href="/member/games"
                 className="flex min-h-[56px] items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-lg hover:border-emerald-400 transition-colors"
               >
-                <span className="font-semibold">{publicLine(g, g.spots_left, clubTz)}</span>
+                <span className="font-semibold">{publicLine(g, g.spots_left, clubTz, levels)}</span>
                 <span className="shrink-0 font-semibold text-emerald-700">See game →</span>
               </Link>
             ))}
