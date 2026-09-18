@@ -88,7 +88,7 @@ function details(g: Game, club: Club, posterShort?: string): string {
     ['How long', durationLabel(g.duration_min)],
     ['Game', formatWord(g)],
   ];
-  const level = ratingLabel(g.rating_min, g.rating_max);
+  const level = ratingLabel(g.rating_min, g.rating_max, club.levels);
   if (level) rows.push(['Level', level]);
   rows.push(['Court', g.court ? esc(g.court) : 'To be decided']);
   if (posterShort) rows.push(['Posted by', esc(posterShort)]);
@@ -125,7 +125,7 @@ export function inviteEmail(
   opts: { to: string; name: string | null; poster: string; token: string; stopToken: string | null; spotsLeft: number },
 ): GameMessage {
   const tz = club.timezone;
-  const level = ratingLabel(g.rating_min, g.rating_max);
+  const level = ratingLabel(g.rating_min, g.rating_max, club.levels);
   const line = `${headline(g, tz)} ${needsLabel(opts.spotsLeft)}${level ? ` (${level})` : ''}`;
   const body = `
     <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, a game at the club needs players.</p>

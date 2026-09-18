@@ -18,6 +18,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { publicOpenGames, resolvePlayingClub } from '@/lib/partnerFinder/server';
 import { publicLine } from '@/lib/partnerFinder/format';
+import { clubLevelScale } from '@/lib/clubLevels';
 import GamesBoard from '@/components/partnerFinder/GamesBoard';
 
 export const dynamic = 'force-dynamic';
@@ -74,6 +75,9 @@ export default async function ClubPlayPage({ params }: { params: Promise<{ slug:
   }
 
   const games = await publicOpenGames(getSupabaseAdmin(), club.id);
+  // A visitor reads the level the way this club's members do — NTRP at a tennis
+  // club, the club's own tier names where it plays by name.
+  const levels = await clubLevelScale(getSupabaseAdmin(), club);
   const next = encodeURIComponent(`/c/${club.slug}/play`);
 
   return (
@@ -123,7 +127,7 @@ export default async function ClubPlayPage({ params }: { params: Promise<{ slug:
               className="rounded-2xl border px-5 py-4 text-xl font-semibold"
               style={{ borderColor: tint(theme.ink, 0.12), background: theme.surface }}
             >
-              {publicLine(g, g.spots_left, club.timezone)}
+              {publicLine(g, g.spots_left, club.timezone, levels)}
             </li>
           ))}
         </ul>

@@ -14,6 +14,7 @@ import {
   secondaryBtn,
 } from '@/components/partnerFinder/ui';
 import { needsLabel } from '@/lib/partnerFinder/format';
+import { levelValue, type LevelScale } from '@/lib/levels';
 
 type Props = {
   token: string;
@@ -29,6 +30,8 @@ type Props = {
   imIn: boolean;
   group: { name: string; note: string | null; phone: string | null }[];
   myLevel: number | null;
+  /** What this club calls a level — see lib/levels.ts. */
+  scale: LevelScale;
 };
 
 type Outcome = { ok: boolean; result: string; message: string; error?: string };
@@ -62,7 +65,7 @@ export default function LinkClient(p: Props) {
     if (r.error) return setNotice({ tone: 'bad', text: r.error });
     setLevel(n);
     setAskLevel(false);
-    setNotice({ tone: 'good', text: `Thanks. We'll send you games for ${n.toFixed(1)} players.` });
+    setNotice({ tone: 'good', text: `Thanks. We'll send you games for ${levelValue(p.scale, n)} players.` });
   }
 
   const closedText =
@@ -134,7 +137,7 @@ export default function LinkClient(p: Props) {
             <h2 className="text-2xl font-bold">One quick question</h2>
             <p className="mt-1 text-lg text-slate-700">What&rsquo;s your level? We use it to send you games that suit you.</p>
             <div className="mt-4">
-              <LevelPicker value={level} onPick={saveLevel} busy={busy} allowNotSure />
+              <LevelPicker scale={p.scale} value={level} onPick={saveLevel} busy={busy} allowNotSure />
             </div>
           </section>
         )}

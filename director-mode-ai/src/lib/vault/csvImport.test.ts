@@ -31,6 +31,7 @@ describe('fieldForHeader', () => {
     expect(fieldForHeader('Full Name')).toBe('full_name');
     expect(fieldForHeader('Email Address')).toBe('email');
     expect(fieldForHeader('NTRP Rating')).toBe('usta_rating');
+    expect(fieldForHeader('DUPR')).toBe('dupr_rating');
     expect(fieldForHeader('Birth Date')).toBe('date_of_birth');
     expect(fieldForHeader('User ID')).toBeNull();
   });
@@ -142,5 +143,25 @@ describe('membership status and columns', () => {
     expect(update).toMatchObject({ full_name: 'Avery Quill', membership_status: 'active' });
     const insert = vaultColumns(p, 'insert');
     expect(insert).toMatchObject({ rating_source: 'manual', primary_sport: 'tennis', usta_rating: null });
+  });
+});
+
+describe('a pickleball club typing DUPR in', () => {
+  const file = 'name,email,sport,dupr\nRae Ortiz,rae@example.com,pickleball,3.412\n';
+
+  it('reads a DUPR column into the doubles rating', () => {
+    const rows = parseCSV(file);
+    const d = detectMapping(rows[0]);
+    const [p] = buildPlayers(rows, d.mapping, d.hasHeader);
+    expect(p).toMatchObject({ full_name: 'Rae Ortiz', primary_sport: 'pickleball', dupr_rating: '3.412', valid: true });
+    expect(vaultColumns(p, 'insert')).toMatchObject({ dupr_doubles: 3.412 });
+  });
+
+  it('refuses a number outside DUPR\'s band — that is a UTR in the wrong column', () => {
+    const rows = parseCSV('name,email,dupr\nRae Ortiz,rae@example.com,9.5\n');
+    const d = detectMapping(rows[0]);
+    const [p] = buildPlayers(rows, d.mapping, d.hasHeader);
+    expect(p.valid).toBe(false);
+    expect(p.error).toContain('DUPR');
   });
 });

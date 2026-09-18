@@ -15,6 +15,8 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { normalizeTimeZone } from '@/lib/captain/clubTime';
 import { pickPrimaryClub, type Membership } from '@/lib/clubRoles';
+import { clubLevelScale } from '@/lib/clubLevels';
+import { levelFact, type LevelScale } from '@/lib/levels';
 import {
   FORMAT_LABEL,
   isFormat,
@@ -50,7 +52,22 @@ export type Game = {
   created_at: string;
 };
 
-export type Club = { id: string; name: string; slug: string; timezone: string; owner_id: string };
+/**
+ * A club, with the scale its members read levels on. `levels` rides along on
+ * the club because everything that shows a level already has one — the board,
+ * the emails, the emailed-link page, the director's table — and threading a
+ * scale through each of them separately is how one of them gets forgotten and
+ * shows a pickleball club an NTRP decimal.
+ */
+export type Club = {
+  id: string;
+  name: string;
+  slug: string;
+  timezone: string;
+  owner_id: string;
+  sports: string[];
+  levels: LevelScale;
+};
 
 export type RosterRow = {
   user_id: string;
@@ -64,6 +81,9 @@ export type RosterRow = {
   share_phone: boolean;
   phone: string | null;
   stop_token: string | null;
+  /** Pickleball's own rating, where a member has one. Shown, never matched on. */
+  dupr_singles: number | null;
+  dupr_doubles: number | null;
 };
 
 export const GAME_COLS =
@@ -83,12 +103,18 @@ function toGame(row: Record<string, unknown>): Game {
 export async function loadClub(db: Db, clubId: string): Promise<Club | null> {
   const { data } = await db
     .from('cc_clubs')
-    .select('id, name, slug, timezone, owner_id')
+    .select('id, name, slug, timezone, owner_id, sports')
     .eq('id', clubId)
     .maybeSingle();
   if (!data) return null;
-  const c = data as Club;
-  return { ...c, timezone: normalizeTimeZone(c.timezone) };
+  const c = data as Omit<Club, 'levels'>;
+  const sports = c.sports ?? ['tennis'];
+  return {
+    ...c,
+    sports,
+    timezone: normalizeTimeZone(c.timezone),
+    levels: await clubLevelScale(db, { id: c.id, sports }),
+  };
 }
 
 export async function loadGame(db: Db, gameId: string): Promise<Game | null> {
@@ -129,7 +155,12 @@ export async function resolvePlayingClub(
 export async function clubRoster(db: Db, clubId: string, userId?: string): Promise<RosterRow[]> {
   const { data, error } = await db.rpc('pf_member_roster', { p_club: clubId, p_user: userId ?? null });
   if (error) throw new Error(`pf_member_roster: ${error.message}`);
-  return ((data as RosterRow[] | null) ?? []).map((r) => ({ ...r, ntrp: num(r.ntrp) }));
+  return ((data as RosterRow[] | null) ?? []).map((r) => ({
+    ...r,
+    ntrp: num(r.ntrp),
+    dupr_singles: num(r.dupr_singles),
+    dupr_doubles: num(r.dupr_doubles),
+  }));
 }
 
 export async function memberRow(db: Db, clubId: string, userId: string): Promise<RosterRow | null> {
@@ -268,7 +299,10 @@ export type BoardGame = {
   duration: string;
   spotsNeeded: number;
   spotsLeft: number;
+  /** The level as a member says it: "3.0–3.5" or "Intermediate". "" = any level. */
   rating: string;
+  /** The same thing as a fact on a card: "Level 3.0–3.5", or just "Intermediate". */
+  ratingFact: string;
   includeUnrated: boolean;
   court: string | null;
   note: string | null;
@@ -283,11 +317,17 @@ export type BoardGame = {
 
 export type Board = {
   club: { id: string; name: string; slug: string; timezone: string };
+  /** What this club calls a level, and the tiers if it plays by name. */
+  levels: LevelScale;
   me: {
     id: string;
     name: string | null;
+    /** The number everything matches on. */
     ntrp: number | null;
     ntrpSource: RosterRow['ntrp_source'];
+    /** Pickleball's rating, where they have one — what the board SHOWS instead. */
+    duprSingles: number | null;
+    duprDoubles: number | null;
     notifyGames: boolean;
     sharePhone: boolean;
     phone: string | null;
@@ -379,7 +419,8 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
       duration: durationLabel(g.duration_min),
       spotsNeeded: g.spots_needed,
       spotsLeft: Math.max(g.spots_needed - ids.length, 0),
-      rating: ratingLabel(g.rating_min, g.rating_max),
+      rating: ratingLabel(g.rating_min, g.rating_max, club.levels),
+      ratingFact: levelFact(club.levels, g.rating_min, g.rating_max),
       includeUnrated: g.include_unrated,
       court: g.court,
       note: g.note,
@@ -395,11 +436,14 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
   const games = [...all.values()];
   return {
     club: { id: club.id, name: club.name, slug: club.slug, timezone: tz },
+    levels: club.levels,
     me: {
       id: userId,
       name: me?.full_name ?? null,
       ntrp: myNtrp,
       ntrpSource: me?.ntrp_source ?? null,
+      duprSingles: me?.dupr_singles ?? null,
+      duprDoubles: me?.dupr_doubles ?? null,
       notifyGames: prefs?.notify_games ?? true,
       sharePhone: prefs?.share_phone ?? false,
       phone: prefs?.phone ?? null,

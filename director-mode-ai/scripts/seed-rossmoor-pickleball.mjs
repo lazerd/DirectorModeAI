@@ -444,6 +444,35 @@ const RATES = [
 ];
 
 /**
+ * The club's four levels, as the club publishes them.
+ *
+ * These ARE the level names members read everywhere in ClubMode — the
+ * CourtConnect board, the picker, the club site, PlayerVault. Nothing shows
+ * them a decimal. lib/levels.ts renders them; cc_club_level_tiers stores them;
+ * this is where the facts live.
+ *
+ *   rating  the number stored when a member picks the tier. CourtConnect
+ *           matches on numbers, so every tier needs one — these are the same
+ *           four the demo members and demo games already carry (see
+ *           seed-rossmoor-pickleball-demo.mjs). ONE DECIMAL PLACE: every
+ *           rating column in ClubMode is numeric(2,1), so a 2.75 here would be
+ *           stored as 2.8 and no longer match the tier a member picked.
+ *   min     the lowest number that READS as this tier. The next tier's min is
+ *           this one's ceiling, so no rating can fall between two names.
+ *   max     the top of the band the CLUB publishes, shown as quiet grey text
+ *           beside the name. Null on Advanced, which reads "4.0+".
+ *
+ * Moving up is not a number changing: a member asks a trainer, works a skills
+ * sheet, drills, and is evaluated by the Training Committee.
+ */
+const LEVEL_TIERS = [
+  { name: 'Novice', rating: 2.0, min_rating: 1.0, max_rating: 2.0 },
+  { name: 'Intermediate', rating: 2.8, min_rating: 2.5, max_rating: 3.0 },
+  { name: 'Advanced Intermediate', rating: 3.3, min_rating: 3.0, max_rating: 3.5 },
+  { name: 'Advanced', rating: 4.0, min_rating: 4.0, max_rating: null },
+];
+
+/**
  * The courts.
  *
  * The six INDOOR courts are the club's future and are numbered 1–6, so the
@@ -555,6 +584,24 @@ async function main() {
     .upsert({ club_id: clubId, ...SITE }, { onConflict: 'club_id' });
   if (siteErr) throw siteErr;
   console.log('Seeded site content (draft, large text)');
+
+  // ----------------------------------------------------------------- levels
+  // Upsert by position so a re-run renames a tier instead of adding a fifth;
+  // cc_club_level_tiers is UNIQUE (club_id, sport, position).
+  {
+    const { error } = await db.from('cc_club_level_tiers').upsert(
+      LEVEL_TIERS.map((t, i) => ({
+        ...t,
+        club_id: clubId,
+        sport: 'pickleball',
+        position: i,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: 'club_id,sport,position' },
+    );
+    if (error) throw error;
+    console.log(`Seeded ${LEVEL_TIERS.length} level tiers (${LEVEL_TIERS.map((t) => t.name).join(', ')})`);
+  }
 
   // ----------------------------------------------------------------- courts
   // Upsert by number so a re-run corrects a name or a surface instead of

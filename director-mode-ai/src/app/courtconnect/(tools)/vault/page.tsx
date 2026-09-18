@@ -8,6 +8,8 @@ import { createClient } from '@/lib/supabase/client';
 
 import { originOr } from '@/lib/appUrl';
 import { doublesWtn, formatWtn } from '@/lib/ratings/wtn';
+import { TENNIS_SCALE, levelScaleFor, type LevelScale } from '@/lib/levels';
+import { duprOf, personLevel } from '@/lib/levels/dupr';
 
 /**
  * The number to show for a player: their doubles WTN when they have one, else
@@ -55,6 +57,9 @@ type VaultPlayer = {
   /** World Tennis Number — LOWER is stronger, the opposite way to NTRP and UTR. */
   wtn: number | null;
   wtn_doubles: number | null;
+  /** Pickleball's own rating, 2.000–8.000. Shown in place of a tier name. */
+  dupr_singles: number | null;
+  dupr_doubles: number | null;
   primary_sport: string;
   membership_status: string;
   cc_player_id: string | null;
@@ -64,6 +69,7 @@ type VaultPlayer = {
 
 // A person with a login account in this club (may or may not have a roster row).
 type Member = { userId: string; role: string; isStaff: boolean; isOwner: boolean; name: string; email: string | null };
+type Club = { name: string; join_code: string };
 type Account = { userId: string; role: string; isStaff: boolean; isOwner: boolean };
 // A unified row: a roster player, a member account, or both (matched by email).
 type Row = VaultPlayer & { _account: Account | null; _memberOnly?: boolean };
@@ -99,7 +105,11 @@ const ROLE_LABEL: Record<string, string> = {
 export default function PlayerVaultPage() {
   const [players, setPlayers] = useState<VaultPlayer[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [club, setClub] = useState<{ name: string; join_code: string } | null>(null);
+  const [club, setClub] = useState<Club | null>(null);
+  // What this club calls a level, per sport — see lib/levels.ts. Read from its
+  // own endpoint because /api/clubs/members answers the OWNER only, and a
+  // director or coach reading the roster needs the club's words just as much.
+  const [levels, setLevels] = useState<{ sports: string[]; levels: Record<string, LevelScale> }>({ sports: [], levels: {} });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sportFilter, setSportFilter] = useState('');
@@ -118,6 +128,7 @@ export default function PlayerVaultPage() {
 
   useEffect(() => {
     loadMembers();
+    loadLevels();
   }, []);
 
   const fetchPlayers = async () => {
@@ -147,6 +158,14 @@ export default function PlayerVaultPage() {
       setClub(json.club || null);
       setMembers(json.members || []);
     } catch { /* no club / not staff — vault still works as a plain roster */ }
+  };
+
+  const loadLevels = async () => {
+    try {
+      const res = await fetch('/api/clubs/levels');
+      const json = await res.json();
+      if (json.levels) setLevels({ sports: json.sports || [], levels: json.levels });
+    } catch { /* no club — the list reads on the default scale */ }
   };
 
   const joinUrl = club ? `${originOr()}/join/${club.join_code}` : '';
@@ -201,7 +220,8 @@ export default function PlayerVaultPage() {
     .filter((m) => !m.email || !rosterEmails.has(m.email.toLowerCase()))
     .map((m) => ({
       id: `member:${m.userId}`, full_name: m.name, email: m.email, phone: null, gender: null, age: null,
-      usta_rating: null, utr_singles: null, utr_doubles: null, wtn: null, wtn_doubles: null, primary_sport: 'tennis',
+      usta_rating: null, utr_singles: null, utr_doubles: null, wtn: null, wtn_doubles: null,
+      dupr_singles: null, dupr_doubles: null, primary_sport: 'tennis',
       membership_status: 'active', cc_player_id: null, notes: null, created_at: '',
       _account: { userId: m.userId, role: m.role, isStaff: m.isStaff, isOwner: m.isOwner }, _memberOnly: true,
     }));
@@ -277,6 +297,14 @@ export default function PlayerVaultPage() {
   };
 
   const sportLabel = (sport: string) => sport.replace('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  /*
+   * The column heading and the sort menu follow the club's primary sport; a
+   * row follows its OWN sport, which is the more specific answer at a club
+   * that plays two. Until the club loads, the words every club had before
+   * tiers existed.
+   */
+  const clubScale = levels.levels[levels.sports[0] ?? 'tennis'] ?? TENNIS_SCALE;
+  const scaleFor = (sport: string) => levels.levels[sport] ?? levelScaleFor({ sport });
   const genderLabel = (g: string | null) => (!g ? '' : g === 'non_binary' ? 'NB' : g.charAt(0).toUpperCase());
   const roleIcon = (r: string) =>
     r === 'owner' || r === 'director' ? <Crown className="h-3.5 w-3.5 text-yellow-500" />
@@ -370,8 +398,8 @@ export default function PlayerVaultPage() {
               <option value="age_asc">Age (youngest → oldest)</option>
             </optgroup>
             <optgroup label="Ratings">
-              <option value="ntrp_desc">NTRP (high → low)</option>
-              <option value="ntrp_asc">NTRP (low → high)</option>
+              <option value="ntrp_desc">{clubScale.label} (high → low)</option>
+              <option value="ntrp_asc">{clubScale.label} (low → high)</option>
               <option value="utr_singles_desc">Singles UTR (high → low)</option>
               <option value="utr_singles_asc">Singles UTR (low → high)</option>
               <option value="utr_doubles_desc">Doubles UTR (high → low)</option>
@@ -435,7 +463,7 @@ export default function PlayerVaultPage() {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Sport</th>
-                <th>NTRP</th>
+                <th>{clubScale.label}</th>
                 <th>Singles UTR</th>
                 <th>Doubles UTR</th>
                 <th title="World Tennis Number — lower is stronger">WTN</th>
@@ -476,7 +504,13 @@ export default function PlayerVaultPage() {
                   <td>
                     {player._memberOnly ? <span className="text-gray-500 text-sm">—</span> : <span className="badge badge-courtconnect text-xs">{sportLabel(player.primary_sport)}</span>}
                   </td>
-                  <td className="text-sm">{player.usta_rating || '—'}</td>
+                  <td className="text-sm">
+                    {/* A DUPR where there is one, the club's own word for the
+                        number otherwise — see lib/levels/dupr.ts. */}
+                    {player.usta_rating == null && duprOf(player) == null
+                      ? '—'
+                      : personLevel(scaleFor(player.primary_sport), player)}
+                  </td>
                   <td className="text-sm">{player.utr_singles || '—'}</td>
                   <td className="text-sm" title="World Tennis Number — lower is stronger">
                     {formatWtn(wtnOf(player))}

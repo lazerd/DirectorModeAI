@@ -20,6 +20,7 @@ import {
   type ImportField,
   type ImportedPlayer,
 } from '@/lib/vault/csvImport';
+import { TENNIS_SCALE, levelScaleFor, levelValue, type LevelScale } from '@/lib/levels';
 
 const EXPECTED_HEADERS = ['name', 'email', 'phone', 'gender', 'age', 'ntrp', 'utr', 'sport', 'notes'];
 
@@ -49,6 +50,20 @@ export default function CSVImportPage() {
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<{ summary: string; failed: number } | null>(null);
   const [fileName, setFileName] = useState('');
+  // What the club calls a level, per sport — see lib/levels.ts.
+  const [levels, setLevels] = useState<Record<string, LevelScale>>({});
+  const [sports, setSports] = useState<string[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/clubs/levels');
+        const json = await res.json();
+        if (json.levels) setLevels(json.levels);
+        if (json.sports) setSports(json.sports);
+      } catch { /* not staff, or no club — the preview reads on the default scale */ }
+    })();
+  }, []);
 
   const reset = () => {
     setRows([]);
@@ -207,6 +222,16 @@ export default function CSVImportPage() {
   const sportLabel = (sport: string) =>
     sport.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
 
+  /*
+   * The FILE's columns keep their own names — `ntrp` is what the header says
+   * and what a director's export will be called. What the club is shown is its
+   * own word for a level (lib/levels.ts), so a pickleball club previews Novice
+   * and Intermediate, not 2.0 and 2.75.
+   */
+  const clubScale = levels[sports[0] ?? 'tennis'] ?? TENNIS_SCALE;
+  const scaleFor = (sport: string) => levels[sport] ?? levelScaleFor({ sport });
+  const fieldLabel = (f: ImportField) => (f === 'usta_rating' ? clubScale.label : FIELD_LABEL[f]);
+
   const statusOf = (p: ImportedPlayer) => {
     if (!p.valid) return 'fix';
     if (!p.email) return includeNoEmail ? 'new' : 'skip';
@@ -259,7 +284,7 @@ export default function CSVImportPage() {
               ))}
             </div>
             <p className="text-white/30 text-xs mt-2">
-              Gender: M/F/NB. Sport: tennis, pickleball, padel, squash, badminton, racquetball, table tennis. NTRP: 1.0-7.0. UTR: 1-16.5.
+              Gender: M/F/NB. Sport: tennis, pickleball, padel, squash, badminton, racquetball, table tennis. The <span className="font-mono">ntrp</span> column takes 1.0-7.0. UTR: 1-16.5. A <span className="font-mono">dupr</span> column is read too (pickleball, 2.000-8.000).
             </p>
           </div>
 
@@ -331,7 +356,7 @@ export default function CSVImportPage() {
                         >
                           <option value="">Don&apos;t import</option>
                           {IMPORT_FIELDS.map((f) => (
-                            <option key={f} value={f}>{FIELD_LABEL[f]}</option>
+                            <option key={f} value={f}>{fieldLabel(f)}</option>
                           ))}
                         </select>
                       </td>
@@ -407,7 +432,7 @@ export default function CSVImportPage() {
                     <th>Email</th>
                     <th>Phone</th>
                     <th>Gender</th>
-                    <th>NTRP</th>
+                    <th>{clubScale.label}</th>
                     <th>Sport</th>
                     <th>Membership</th>
                     <th className="w-8"></th>
@@ -434,7 +459,7 @@ export default function CSVImportPage() {
                         <td className="text-white/50">{player.email || '—'}</td>
                         <td className="text-white/50">{player.phone || '—'}</td>
                         <td className="text-white/50">{player.gender ? player.gender.charAt(0).toUpperCase() : '—'}</td>
-                        <td>{player.usta_rating || '—'}</td>
+                        <td>{player.usta_rating ? levelValue(scaleFor(player.primary_sport), player.usta_rating) : '—'}</td>
                         <td className="text-white/50">{sportLabel(player.primary_sport)}</td>
                         <td className="text-white/50 max-w-[240px] truncate" title={player.notes}>
                           {player.membership_status ?? (player.notes ? 'in notes' : '—')}

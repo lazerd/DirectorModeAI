@@ -16,17 +16,19 @@ import { zonedWallTimeToIso } from '@/lib/captain/clubTime';
 import { isCtxError, requireMember } from '@/lib/partnerFinder/actions';
 import { inviteMembers } from '@/lib/partnerFinder/notify';
 import { loadGame, saveSelfRating } from '@/lib/partnerFinder/server';
-import { DAILY_POST_LIMIT, MAX_RECIPIENTS, MAX_SPOTS, NTRP_LEVELS, isFormat } from '@/lib/partnerFinder/format';
+import { DAILY_POST_LIMIT, MAX_RECIPIENTS, MAX_SPOTS, isFormat } from '@/lib/partnerFinder/format';
+import { isLevelValue, type LevelScale } from '@/lib/levels';
 import { background } from '@/lib/partnerFinder/background';
 import { isDemoClub } from '@/lib/demo/server';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const level = (v: unknown): number | null => {
+/** A level off the club's own ladder, null for "any", or NaN for anything else. */
+const level = (v: unknown, scale: LevelScale): number | null => {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
-  return (NTRP_LEVELS as readonly number[]).includes(n) ? n : NaN;
+  return isLevelValue(scale, n) ? n : NaN;
 };
 
 const ERRORS: Record<string, string> = {
@@ -61,8 +63,8 @@ export async function POST(req: Request) {
   if (!Number.isInteger(spots) || spots < 1 || spots > MAX_SPOTS) {
     return NextResponse.json({ error: `You can ask for 1 to ${MAX_SPOTS} players.` }, { status: 400 });
   }
-  const min = level(body.rating_min);
-  const max = level(body.rating_max);
+  const min = level(body.rating_min, club.levels);
+  const max = level(body.rating_max, club.levels);
   if (Number.isNaN(min) || Number.isNaN(max) || (min != null && max != null && min > max)) {
     return NextResponse.json({ error: 'Please check the level range.' }, { status: 400 });
   }
@@ -70,7 +72,7 @@ export async function POST(req: Request) {
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : '';
 
   // A member telling us their level for the first time, on the way past.
-  const mine = level(body.my_ntrp);
+  const mine = level(body.my_ntrp, club.levels);
   if (mine != null && !Number.isNaN(mine)) {
     await saveSelfRating(db, { clubId: club.id, userId: user.id, email: user.email, fullName: user.name, ntrp: mine });
   }
