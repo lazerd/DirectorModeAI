@@ -9,6 +9,7 @@
  * card and presses Submit themselves. Posting to a league is an outward
  * submission and is never done on anyone's behalf.
  */
+import { lineNames } from './leagues';
 
 export type TopDogLink = { host: string; matchId: string };
 
@@ -127,8 +128,9 @@ export function buildFillPayload(input: {
   }).format(new Date(input.matchAt));
 
   const ordered = [...input.courts].sort((a, b) => a.courtNumber - b.courtNumber);
+  const lineLabels = lineNames(ordered);
   const lines = ordered.map((c) => {
-    const label = `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
+    const label = lineLabels.get(c.courtNumber) ?? `Line ${c.courtNumber}`;
     const need = c.courtType === 'singles' ? 1 : 2;
     const names = c.players.slice(0, need);
     while (names.length < need) names.push(null);

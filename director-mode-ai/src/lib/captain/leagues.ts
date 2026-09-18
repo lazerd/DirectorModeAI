@@ -353,7 +353,7 @@ export function roundPlanText(plan: JttRound[], singlesCount: number): string {
       (r, i) =>
         `Round ${i + 1}: ${[
           ...r.singles.map((n) => `Singles ${n}`),
-          ...r.doubles.map((n) => `Doubles ${singlesCount + n}`),
+          ...r.doubles.map((n) => `Doubles ${n}`),
         ].join(', ')}`,
     )
     .join(' · ');
@@ -480,4 +480,33 @@ export function singlesFirstInLine(
   const max = Math.max(...total.map((t) => t.n));
   if (max === min) return [];
   return total.filter((t) => t.n === min).map((t) => t.name);
+}
+
+/**
+ * What a line is CALLED: Singles 1–4 and Doubles 1–4, never "Doubles 5".
+ *
+ * Court numbers are one sequence across the sheet (singles first, then
+ * doubles), which is fine as a key but wrong as a name: Darrin, 2026-09-18,
+ * "singles 1-4 and doubles 1-4 NOT doubles 5-8". Every place that prints a
+ * line goes through one of these two.
+ *
+ * lineNames — when the whole sheet is at hand: numbered by place within type.
+ * lineName  — when only one row is (a player's own line): its court number
+ *             minus the singles lines ahead of it.
+ */
+export function lineNames(courts: { courtNumber: number; courtType: string }[]): Map<number, string> {
+  const out = new Map<number, string>();
+  for (const type of ['singles', 'doubles'] as const) {
+    courts
+      .filter((c) => c.courtType === type)
+      .sort((a, b) => a.courtNumber - b.courtNumber)
+      .forEach((c, i) => out.set(c.courtNumber, `${type === 'singles' ? 'Singles' : 'Doubles'} ${i + 1}`));
+  }
+  return out;
+}
+
+export function lineName(courtType: string, courtNumber: number, singlesCount: number | null | undefined): string {
+  if (courtType === 'singles') return `Singles ${courtNumber}`;
+  const s = singlesCount ?? 0;
+  return `Doubles ${courtNumber > s ? courtNumber - s : courtNumber}`;
 }

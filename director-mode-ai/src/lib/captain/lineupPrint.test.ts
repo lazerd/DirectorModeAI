@@ -31,8 +31,8 @@ describe('the printable lineup', () => {
   it('groups lines by round, singles before doubles, and says the format', () => {
     expect(html).toContain('<th>Round</th>');
     expect(html.indexOf('Round 1')).toBeLessThan(html.indexOf('Round 2'));
-    expect(html.indexOf('Singles 1')).toBeLessThan(html.indexOf('Doubles 5'));
-    expect(html.indexOf('Doubles 5')).toBeLessThan(html.indexOf('Singles 2'));
+    expect(html.indexOf('Singles 1')).toBeLessThan(html.indexOf('Doubles 1'));
+    expect(html.indexOf('Doubles 1')).toBeLessThan(html.indexOf('Singles 2'));
     expect(html).toContain('2-court format');
   });
 

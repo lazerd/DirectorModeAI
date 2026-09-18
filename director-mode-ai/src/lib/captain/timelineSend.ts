@@ -43,6 +43,7 @@ import {
   leagueSpec,
   roundsByCourt,
   singlesFirstInLine,
+  lineNames,
 } from './leagues';
 import { singlesCounts } from './server';
 import { formatPhone } from './phone';
@@ -429,6 +430,7 @@ function playerPayloadsFor(
 
   // reminder
   // Every line the player is on — a JTT child can have three — with its round.
+  const sheetNames = lineNames(courts.map((c) => ({ courtNumber: c.court_number, courtType: c.court_type })));
   const courtFor = (pid: string) => {
     const mine = courts
       .filter((x) => x.player1_id === pid || x.player2_id === pid)
@@ -442,7 +444,7 @@ function playerPayloadsFor(
       const r = rounds?.get(c.court_number);
       return {
         round: r ?? 0,
-        text: `${c.court_type === 'singles' ? 'Singles' : 'Doubles'} ${c.court_number}${r ? ` (round ${r})` : ''}`,
+        text: `${sheetNames.get(c.court_number) ?? `Line ${c.court_number}`}${r ? ` (round ${r})` : ''}`,
       };
     });
     const me = nameOf(pid);

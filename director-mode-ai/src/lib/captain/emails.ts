@@ -7,6 +7,7 @@
  */
 import { sendBilledEmails, type SafeSendResult } from '@/lib/email';
 import { CLUB_TZ } from './clubTime';
+import { lineName, lineNames } from './leagues';
 import { googleCalendarUrl, matchEvent } from './calendar';
 
 import { APP_URL } from '@/lib/appUrl';
@@ -34,7 +35,7 @@ export type MatchInfo = {
   doublesCourts?: number | null;
 };
 
-export type OpenLine = { courtType: 'singles' | 'doubles'; courtNumber: number };
+export type OpenLine = { courtType: 'singles' | 'doubles'; courtNumber: number; label?: string };
 
 const hasPlayers = (names: string[]) => names.some((n) => n && n !== '—');
 
@@ -62,20 +63,21 @@ export function openLines(
     let missing = Math.max(0, want - filled);
     for (const r of ofType.filter((x) => !hasPlayers(x.names)).sort((a, b) => a.courtNumber - b.courtNumber)) {
       if (!missing) break;
-      out.push({ courtType: type, courtNumber: r.courtNumber });
+      out.push({ courtType: type, courtNumber: r.courtNumber, label: lineName(type, r.courtNumber, m.singlesCourts) });
       missing--;
     }
     for (let n = 1; missing > 0 && n < 100; n++) {
       if (used.has(n)) continue;
       used.add(n);
-      out.push({ courtType: type, courtNumber: n });
+      out.push({ courtType: type, courtNumber: n, label: lineName(type, n, m.singlesCourts) });
       missing--;
     }
   }
   return out;
 }
 
-export const openLineLabel = (l: OpenLine) => `${l.courtType === 'singles' ? 'Singles' : 'Doubles'} ${l.courtNumber}`;
+export const openLineLabel = (l: OpenLine) =>
+  l.label ?? `${l.courtType === 'singles' ? 'Singles' : 'Doubles'} ${l.courtNumber}`;
 
 /** "Doubles 4", "Doubles 3 and Doubles 4". */
 export function openLinesText(lines: OpenLine[]): string {
@@ -293,10 +295,12 @@ export type LineupRow = {
   round?: number | null;
 };
 
-const lineupLineLabel = (row: LineupRow) =>
-  row.courtType === 'exhibition'
-    ? 'Exhibition court'
-    : `${row.courtType === 'singles' ? 'Singles' : 'Doubles'} ${row.courtNumber}`;
+/** Labels from the whole sheet: Singles 1–4, Doubles 1–4 (see lineNames). */
+const lineupLabeller = (rows: LineupRow[]) => {
+  const names = lineNames(rows.filter((r) => r.courtType !== 'exhibition'));
+  return (row: LineupRow) =>
+    row.courtType === 'exhibition' ? 'Exhibition court' : (names.get(row.courtNumber) ?? `Line ${row.courtNumber}`);
+};
 
 /** Singles, then doubles, then the exhibition court, within a round. */
 const rowTypeRank = (row: LineupRow) =>
@@ -332,6 +336,7 @@ export function lineupEmail(
    * know WHEN their child is on, not just which line. Adult sheets have no
    * rounds and keep the plain court list.
    */
+  const lineupLineLabel = lineupLabeller(rows);
   const byRound = rows.some((row) => row.round);
   const ordered = byRound
     ? [...rows].sort(
@@ -975,6 +980,7 @@ export function matchRecapEmail(
   const accent =
     opts.outcome === 'win' ? BRAND : opts.outcome === 'loss' ? '#fca5a5' : '#7dd3fc';
 
+  const recapNames = lineNames(opts.courts);
   const rows = opts.courts
     .map((c) => {
       const mine = c.playerIds.includes(r.playerId);
@@ -988,7 +994,7 @@ export function matchRecapEmail(
       return `
       <tr${mine ? ` style="background:#f8fafc"` : ''}>
         <td style="padding:9px 12px 9px 10px;border-bottom:1px solid #e2e8f0;white-space:nowrap;color:#64748b;font-size:12px">
-          ${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}
+          ${recapNames.get(c.courtNumber) ?? `Line ${c.courtNumber}`}
         </td>
         <td style="padding:9px 12px;border-bottom:1px solid #e2e8f0;font-size:15px${mine ? ';font-weight:700' : ''}">
           ${escapeHtml(c.names.join(' / '))}${mine ? ' <span style="color:#64748b;font-weight:400;font-size:12px">(you)</span>' : ''}

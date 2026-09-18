@@ -18,6 +18,7 @@
  */
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
+import { matchLineNames } from '@/lib/captain/server';
 
 type Body = {
   team_id?: string;
@@ -90,7 +91,7 @@ export async function POST(req: Request) {
 
   if (row) {
     const slot = row.player1_id === body.player_id ? 1 : 2;
-    court = `${row.court_type === 'singles' ? 'Singles' : 'Doubles'} ${row.court_number}`;
+    court = (await matchLineNames(db, body.match_id)).get(row.court_number) ?? `Line ${row.court_number}`;
 
     const patch: Record<string, unknown> =
       state === 'in'

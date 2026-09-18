@@ -13,6 +13,7 @@ import {
   exhibitionByRound,
   exhibitionRows,
   leagueSpec,
+  lineNames,
   roundClashes,
   roundsByCourt,
 } from '@/lib/captain/leagues';
@@ -295,6 +296,8 @@ export default function MatchWorkspace({
 
   /** Which round each line is played in, and anyone booked on two lines at once. */
   const roundOf = format != null ? roundsByCourt(courts, format) : null;
+  /** Singles 1–4, Doubles 1–4 — never the raw court number "Doubles 5". */
+  const sheetNames = lineNames(courts);
   const clashes = format != null ? roundClashes(courts, format) : [];
 
   /**
@@ -352,7 +355,7 @@ export default function MatchWorkspace({
           name: nameOf(pid),
           email: player?.email ?? null,
           phone: player?.phone ?? null,
-          court: `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`,
+          court: sheetNames.get(c.courtNumber) ?? `Line ${c.courtNumber}`,
           state: bail ? ('out' as const) : ok ? ('in' as const) : ('waiting' as const),
           at: bail ? bail.at : ok,
           // A yes the captain typed in is a weaker fact than one the player
@@ -1182,8 +1185,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
     }
   })();
 
-  const labelOf = (c: Court) =>
-    `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
+  const labelOf = (c: Court) => sheetNames.get(c.courtNumber) ?? `Line ${c.courtNumber}`;
 
   /** A line only ever trades with its own kind — doubles never lands on a singles court. */
   const peersOf = (c: Court) =>
@@ -2699,7 +2701,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                       className="flex items-center gap-3 flex-wrap rounded-xl border border-white/[0.08] bg-[#002838] p-3"
                     >
                       <div className="text-white/50 text-xs uppercase tracking-wide w-24 shrink-0">
-                        {c.courtType === 'singles' ? 'Singles' : 'Doubles'} {c.courtNumber}
+                        {sheetNames.get(c.courtNumber) ?? `Line ${c.courtNumber}`}
                       </div>
                       <div className="text-white text-sm flex-1 min-w-[10rem]">
                         {nameOf(c.player1Id)}

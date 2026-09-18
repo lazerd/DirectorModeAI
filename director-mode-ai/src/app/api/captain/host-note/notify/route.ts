@@ -14,6 +14,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { hostUpdateEmail, sendAll, type MatchInfo, type Recipient } from '@/lib/captain/emails';
 import { recipientRows, withSecondContact } from '@/lib/captain/teamContacts';
 import { CreditLimitError, creditLimitResponse } from '@/lib/email';
+import { lineNames } from '@/lib/captain/leagues';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,8 +56,10 @@ export async function POST(req: Request) {
   ]);
 
   const courtOf = new Map<string, string>();
-  for (const c of (courts as { court_number: number; court_type: string; player1_id: string | null; player2_id: string | null }[]) ?? []) {
-    const label = `${c.court_type === 'singles' ? 'Singles' : 'Doubles'} ${c.court_number}`;
+  const sheet = (courts as { court_number: number; court_type: string; player1_id: string | null; player2_id: string | null }[]) ?? [];
+  const sheetNames = lineNames(sheet.map((c) => ({ courtNumber: c.court_number, courtType: c.court_type })));
+  for (const c of sheet) {
+    const label = sheetNames.get(c.court_number) ?? `Line ${c.court_number}`;
     for (const pid of [c.player1_id, c.player2_id]) if (pid && !courtOf.has(pid)) courtOf.set(pid, label);
   }
   const playing = ((players as Player[] | null) ?? []).filter((p) => courtOf.has(p.id) && p.email);

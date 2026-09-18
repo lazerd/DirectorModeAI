@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { googleCalendarUrl, matchEvent } from '@/lib/captain/calendar';
 import { CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
 import type { MatchInfo } from '@/lib/captain/emails';
+import { matchLineNames } from '@/lib/captain/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -111,9 +112,10 @@ export default async function ConfirmPage({
   const declined = lines.some(
     (x) => !!(mine(x) === 1 ? x.player1_declined_at : x.player2_declined_at),
   );
+  const sheetNames = await matchLineNames(admin, params.matchId);
   const court = inLineup
     ? lines
-        .map((x) => `${x.court_type === 'singles' ? 'Singles' : 'Doubles'} ${x.court_number}`)
+        .map((x) => sheetNames.get(x.court_number) ?? `Line ${x.court_number}`)
         .join(', ')
     : null;
 

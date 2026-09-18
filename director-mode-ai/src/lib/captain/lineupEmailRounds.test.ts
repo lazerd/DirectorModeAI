@@ -35,14 +35,14 @@ describe('the lineup email, for a JTT sheet', () => {
     const at = (s: string) => html.indexOf(s);
     expect(at('Round 1')).toBeGreaterThan(-1);
     expect(at('Round 1')).toBeLessThan(at('Singles 1'));
-    expect(at('Doubles 5')).toBeLessThan(at('Round 2'));
+    expect(at('Doubles 1')).toBeLessThan(at('Round 2'));
     expect(at('Round 2')).toBeLessThan(at('Singles 3'));
-    expect(at('Doubles 6')).toBeLessThan(at('Round 3'));
-    expect(at('Round 3')).toBeLessThan(at('Doubles 7'));
+    expect(at('Doubles 2')).toBeLessThan(at('Round 3'));
+    expect(at('Round 3')).toBeLessThan(at('Doubles 3'));
   });
 
   it("names every one of the child's lines, with its round", () => {
-    expect(html).toContain('Singles 2 (round 1), Doubles 6 (round 2), Doubles 8 (round 3)');
+    expect(html).toContain('Singles 2 (round 1), Doubles 2 (round 2), Doubles 4 (round 3)');
   });
 });
 

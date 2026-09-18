@@ -12,6 +12,7 @@
  * group post states the lineup; confirming stays in the 1:1 email and text.
  */
 import { CLUB_TZ } from './clubTime';
+import { lineNames } from './leagues';
 
 export type TextLineupCourt = {
   courtNumber: number;
@@ -58,10 +59,11 @@ function whenLine(matchAt: string, timeZone?: string): string {
   return `${day} at ${time}`;
 }
 
-const courtLabel = (c: TextLineupCourt) =>
-  c.courtType === 'exhibition'
-    ? 'Exhibition court'
-    : `${c.courtType === 'singles' ? 'Singles' : 'Doubles'} ${c.courtNumber}`;
+const labeller = (courts: TextLineupCourt[]) => {
+  const names = lineNames(courts.filter((c) => c.courtType !== 'exhibition'));
+  return (c: TextLineupCourt) =>
+    c.courtType === 'exhibition' ? 'Exhibition court' : (names.get(c.courtNumber) ?? `Line ${c.courtNumber}`);
+};
 
 /**
  * Plain text, no markdown. WhatsApp, Messages and every group chat render
@@ -80,6 +82,7 @@ export function lineupAsText(input: TextLineupInput): string {
   if (input.coachName) lines.push(`Coach at the match: ${input.coachName}`);
   lines.push(input.arrivalNote?.trim() || DEFAULT_ARRIVAL);
 
+  const courtLabel = labeller(input.courts);
   const played = input.courts.filter((c) => c.names.some((n) => n && n !== '—'));
   if (played.length) {
     lines.push('');

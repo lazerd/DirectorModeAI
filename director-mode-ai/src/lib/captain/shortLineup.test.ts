@@ -24,12 +24,12 @@ const ROBYN = { playerId: 'p2', name: 'Robyn Rogin', email: 'r@example.com', tok
 
 describe('openLines', () => {
   it('finds Doubles 4 when three of four doubles courts are filled', () => {
-    expect(openLines(MATCH, ROWS)).toEqual([{ courtType: 'doubles', courtNumber: 4 }]);
+    expect(openLines(MATCH, ROWS)).toEqual([{ courtType: 'doubles', courtNumber: 4, label: 'Doubles 4' }]);
   });
 
   it('counts a saved court with nobody on it as open, keeping its number', () => {
     expect(openLines(MATCH, [...ROWS, { courtNumber: 4, courtType: 'doubles', names: ['—', '—'] }])).toEqual([
-      { courtType: 'doubles', courtNumber: 4 },
+      { courtType: 'doubles', courtNumber: 4, label: 'Doubles 4' },
     ]);
   });
 
@@ -69,7 +69,7 @@ describe('visitingBodyText — short a line', () => {
       opposingCaptainName: 'Colleen McClure',
       lineCount: 4,
       doublesCourts: 4,
-      openLines: [{ courtType: 'doubles', courtNumber: 4 }],
+      openLines: [{ courtType: 'doubles', courtNumber: 4, label: 'Doubles 4' }],
       playersAvailable: 6,
     });
     expect(text).toContain('we only have 6 players available, so we may need to default line 4');
@@ -79,7 +79,7 @@ describe('visitingBodyText — short a line', () => {
 
 describe('stepUpAlertEmail', () => {
   it('names who stepped up and what is still short', () => {
-    const e = stepUpAlertEmail('d@example.com', 'Fall B2/B3', MATCH, 'Robyn Rogin', [{ courtType: 'doubles', courtNumber: 4 }], 'team1');
+    const e = stepUpAlertEmail('d@example.com', 'Fall B2/B3', MATCH, 'Robyn Rogin', [{ courtType: 'doubles', courtNumber: 4, label: 'Doubles 4' }], 'team1');
     expect(e.subject).toContain('Robyn Rogin can play');
     expect(e.html).toContain('Doubles 4 (two more players needed)');
   });

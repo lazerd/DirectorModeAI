@@ -222,7 +222,7 @@ describe('matchRecapEmail', () => {
     expect(email.html).toContain('Robyn Rogin / Cara Cole');
     expect(email.html).toContain('6-4, 6-3');
     expect(email.html).toContain('Bea Brooks / Dee Dunn');
-    expect(email.html).toContain('Singles 2');
+    expect(email.html).toContain('Singles 1'); // the one singles line, whatever its court number
   });
 
   it('shows a defaulted court as a default instead of an empty score', () => {

@@ -9,6 +9,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendAll, withdrawalAlertEmail, type MatchInfo } from './emails';
 import { CLUB_TZ_EMBED, clubTimeZoneOf } from './clubTime';
 import { matchCoachOf } from './teamContacts';
+import { matchLineNames } from './server';
 
 export type Answer = 'in' | 'out';
 
@@ -93,8 +94,9 @@ export async function applyAnswer(
 
   if (inLineup) {
     // "Singles 4, Doubles 5, Doubles 7" — one answer covers every line they're on.
+    const sheetNames = await matchLineNames(admin, matchId);
     court = lines
-      .map((l) => `${l.court_type === 'singles' ? 'Singles' : 'Doubles'} ${l.court_number}`)
+      .map((l) => sheetNames.get(l.court_number) ?? `Line ${l.court_number}`)
       .join(', ');
 
     for (const lineup of lines) {

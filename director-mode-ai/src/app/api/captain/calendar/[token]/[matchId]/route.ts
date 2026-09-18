@@ -12,6 +12,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { buildIcs, matchEvent } from '@/lib/captain/calendar';
 import type { MatchInfo } from '@/lib/captain/emails';
 import { CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
+import { matchLineNames } from '@/lib/captain/server';
 
 type Ctx = { params: { token: string; matchId: string } };
 
@@ -62,9 +63,10 @@ export async function GET(_req: Request, { params }: Ctx) {
   };
 
   const lines = (lineupRow as { court_number: number; court_type: string }[] | null) ?? [];
+  const sheetNames = await matchLineNames(admin, params.matchId);
   const court = lines.length
     ? lines
-        .map((l) => `${l.court_type === 'singles' ? 'Singles' : 'Doubles'} ${l.court_number}`)
+        .map((l) => sheetNames.get(l.court_number) ?? `Line ${l.court_number}`)
         .join(', ')
     : null;
 

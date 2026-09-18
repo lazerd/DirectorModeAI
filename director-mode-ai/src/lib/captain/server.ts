@@ -13,6 +13,7 @@ import {
   type PairRecord,
 } from './lineup';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { lineNames } from './leagues';
 
 export type CaptainCtx = {
   userId: string;
@@ -394,4 +395,15 @@ export async function singlesCounts(
     out[r.player1_id] = (out[r.player1_id] ?? 0) + 1;
   }
   return out;
+}
+
+/** Line names for one match's whole sheet — Singles 1–4, Doubles 1–4 (lineNames). */
+export async function matchLineNames(db: SupabaseClient, matchId: string): Promise<Map<number, string>> {
+  const { data } = await db.from('captain_lineups').select('court_number, court_type').eq('match_id', matchId);
+  return lineNames(
+    ((data as { court_number: number; court_type: string }[]) || []).map((r) => ({
+      courtNumber: r.court_number,
+      courtType: r.court_type,
+    })),
+  );
 }
