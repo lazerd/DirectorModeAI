@@ -21,7 +21,7 @@
  */
 import { NextResponse } from 'next/server';
 import { bad, isCrmAuthError, requireCrm, text } from '@/lib/crm/server';
-import { BLOCK_MESSAGE, compose, mergeValuesFor, renderTemplate } from '@/lib/crm/compose';
+import { BLOCK_MESSAGE, compose, mergeValuesFor, renderTemplate, replyToFor } from '@/lib/crm/compose';
 import { postalAddress } from '@/lib/crm/send';
 import { loadScheduled } from '@/lib/crm/load';
 import { checkLocalSchedule } from '@/lib/crm/schedule';
@@ -69,7 +69,8 @@ export async function POST(req: Request) {
     org: org as unknown as Org,
     contact: person,
     repName: ctx.repName,
-    replyTo: ctx.repEmail,
+    // The shared address, never the rep's own — see the note in api/crm/send.
+    replyTo: replyToFor(ctx.repName, ctx.repEmail),
     subject: text(body.subject, 300) ?? '',
     body: text(body.body, 20_000) ?? '',
     postalAddress: postalAddress(),

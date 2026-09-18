@@ -51,7 +51,10 @@ export async function POST(req: Request) {
     org: org as unknown as Org,
     contact: contact as unknown as Contact,
     repName: ctx.repName,
-    replyTo: ctx.repEmail,
+    // The signature prints whatever lands here, so it must be the shared
+    // address. Passing the rep's own put Kevin's personal email under "The
+    // ClubMode Founding Team" in every draft (caught 2026-09-17).
+    replyTo,
     subject,
     body: message,
     postalAddress: postalAddress(),
