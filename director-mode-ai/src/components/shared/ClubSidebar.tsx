@@ -125,6 +125,11 @@ const PUBLIC_PREFIXES = [
   '/verify-email',
   '/forgot-password',
   '/reset-password',
+  // --- Premier Tennis League. A standalone product with its own shell and
+  // its own crest; none of the ClubMode chrome belongs on it. Covers the
+  // captain draft rooms and the projected board too, which is the one that
+  // really matters — a director rail on a wall-projected draft board.
+  '/ptl',
   // --- tokenized player pages. '/enter' was a dead entry: the real route is
   // /tournaments/[slug]/enter, so the rail was rendering over score entry.
   '/tournaments/player',

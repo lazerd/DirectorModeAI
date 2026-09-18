@@ -42,6 +42,10 @@ const PUBLIC = [
   '/leagues/confirm-partner', '/quads/match', '/quads/player', '/swim-family',
   '/captain/availability', '/captain/intake', '/captain/claim', '/captain/confirm',
   '/pathway/p', '/pathway/curriculum', '/book', '/join', '/event', '/nps',
+  // Premier Tennis League. A standalone product — a bubble offering to help
+  // with "events, courts, leagues, billing" on a league site is an advert for
+  // a different product, and on the projected draft board it is a bug.
+  '/ptl',
   // Club-owned public websites. "Ask ClubMode" on a club's own homepage tells
   // their visitors whose software it is, which is not the club's to give away.
   '/c',

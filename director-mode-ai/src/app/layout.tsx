@@ -41,9 +41,13 @@ export default function RootLayout({
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        {/* Barlow superfamily — used by the canvas-rendered results card */}
+        {/* Barlow superfamily — used by the canvas-rendered results card.
+            Archivo — the Premier Tennis League crest and its pages. It has to
+            be loaded here rather than in the /ptl layout because the crest
+            draws its monogram as SVG <text>, and an SVG that falls back to
+            Arial mid-render visibly reflows the band on the shield. */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:wght@800;900&family=Barlow+Semi+Condensed:wght@600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700;800&family=Barlow+Condensed:wght@800;900&family=Barlow+Semi+Condensed:wght@600;700&family=Archivo:wght@400;500;600;700;800;900&display=swap"
           rel="stylesheet"
         />
       </head>

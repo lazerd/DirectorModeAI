@@ -154,11 +154,48 @@ function isDemoBlockedAdminPath(request: NextRequest): boolean {
   return true;
 }
 
+/**
+ * Serve the Premier Tennis League from its own hostname.
+ *
+ * ptl.clubmode.ai/standings is rewritten to /ptl/standings — a REWRITE, not a
+ * redirect, so the visitor never sees a /ptl prefix or gets bounced onto the
+ * ClubMode domain. PTL is meant to read as its own product, and a URL that
+ * flips hosts mid-click undoes that in one glance.
+ *
+ * Deliberately inert until PTL_HOST is set, so merging and deploying this
+ * changes nothing:
+ *
+ *     PTL_HOST=ptl.clubmode.ai
+ *
+ * /api, /_next and anything already under /ptl pass through untouched: the API
+ * routes are shared, the asset paths are absolute, and double-prefixing /ptl
+ * would 404 every page on the site.
+ */
+function rewritePtlHost(request: NextRequest): NextResponse | null {
+  const ptlHost = process.env.PTL_HOST?.toLowerCase();
+  if (!ptlHost) return null;
+
+  const host = request.headers.get('host')?.toLowerCase().split(':')[0];
+  if (host !== ptlHost) return null;
+
+  const path = request.nextUrl.pathname;
+  if (path.startsWith('/ptl') || path.startsWith('/api') || path.startsWith('/_next')) return null;
+
+  const url = request.nextUrl.clone();
+  url.pathname = path === '/' ? '/ptl' : `/ptl${path}`;
+  return NextResponse.rewrite(url);
+}
+
 export async function middleware(request: NextRequest) {
   // Runs before anything else: no Supabase round-trip, and no session cookie
   // written against a host we are trying to retire.
   const legacy = redirectLegacyHost(request);
   if (legacy) return legacy;
+
+  // Before any session work: a PTL page has no use for a ClubMode auth cookie,
+  // and the rewrite has to happen before routing decides what this path is.
+  const ptl = rewritePtlHost(request);
+  if (ptl) return ptl;
 
   /*
    * `?embed=1` on a club's public page. Layouts get no searchParams, so the
@@ -264,6 +301,14 @@ export async function middleware(request: NextRequest) {
      * they would also skip the login redirect every other tool gives them.
      */
     '/crm',
+    /*
+     * The PTL commissioner console. Only this one path — the rest of /ptl is
+     * deliberately public, and the captain draft rooms at /ptl/draft/<token>
+     * are tokenized precisely so a captain at another club never needs an
+     * account. A startsWith('/ptl') rule would bounce them to /login on draft
+     * night, which is the worst possible moment to discover it.
+     */
+    '/ptl/admin',
   ];
   /*
    * Public pages that live UNDER a protected prefix.

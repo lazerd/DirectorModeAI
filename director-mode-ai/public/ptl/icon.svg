@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 138" width="120" height="138">
+  <!--
+    PTL favicon. Standalone so it can be referenced from metadata, which cannot
+    reach a React component.
+
+    The embedded media query is the point: a favicon sits on a tab strip the
+    browser paints, and an ink shield on a dark tab strip is an invisible
+    favicon. SVG favicons honour prefers-color-scheme in Chrome and Firefox, so
+    the ink lifts to near-white in dark mode and the mark survives both.
+
+    Kept to the shield alone — the wordmark is illegible at 16px and only makes
+    the shape harder to recognise.
+  -->
+  <style>
+    .ink { fill: #10151F; }
+    .stroke-ink { stroke: #10151F; }
+    .field { fill: #FFFFFF; }
+    .accent { fill: #0F766E; }
+    @media (prefers-color-scheme: dark) {
+      .ink { fill: #E9EEF2; }
+      .stroke-ink { stroke: #E9EEF2; }
+      .field { fill: #0B0F14; }
+      .accent { fill: #2DD4BF; }
+    }
+  </style>
+
+  <defs>
+    <clipPath id="s">
+      <path d="M16 10 H104 V68 C104 98 83 117 60 127 C37 117 16 98 16 68 Z"/>
+    </clipPath>
+    <g id="r">
+      <ellipse cx="0" cy="-31" rx="17" ry="21" fill="none" stroke="currentColor" stroke-width="5"/>
+      <path d="M-10 -12 L-5 2 M10 -12 L5 2" fill="none" stroke="currentColor" stroke-width="4.5" stroke-linecap="round"/>
+      <rect x="-4.2" y="0" width="8.4" height="22" rx="3" fill="currentColor"/>
+      <rect x="-6" y="16" width="12" height="8" rx="2.5" fill="currentColor"/>
+    </g>
+  </defs>
+
+  <g clip-path="url(#s)">
+    <rect class="ink" x="16" y="10" width="88" height="118"/>
+    <rect class="accent" x="38" y="10" width="15" height="118"/>
+    <rect class="accent" x="67" y="10" width="15" height="118"/>
+    <g style="color:#FFFFFF">
+      <use href="#r" transform="translate(60 46) rotate(-40) scale(0.68)"/>
+      <use href="#r" transform="translate(60 46) rotate(40) scale(0.68)"/>
+    </g>
+  </g>
+
+  <path class="stroke-ink" d="M16 10 H104 V68 C104 98 83 117 60 127 C37 117 16 98 16 68 Z"
+        fill="none" stroke-width="5"/>
+  <rect class="ink" x="10" y="62" width="100" height="27"/>
+  <text class="field" x="60" y="82" text-anchor="middle"
+        font-family="Archivo, Helvetica Neue, Arial, sans-serif"
+        font-weight="900" font-size="22" letter-spacing="1">PTL</text>
+</svg>
