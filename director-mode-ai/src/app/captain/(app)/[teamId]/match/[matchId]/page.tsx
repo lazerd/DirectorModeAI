@@ -6,9 +6,12 @@ import { committedCounts, playedCounts } from '@/lib/captain/server';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
 import HostEmailPanel from '@/components/captain/HostEmailPanel';
 import HostNotePanel from '@/components/captain/HostNotePanel';
+import MatchCoachPicker, { type CoachOption } from '@/components/captain/MatchCoachPicker';
 import { resolveClubTimeZone } from '@/lib/captain/clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { DEFAULT_JTT_COURT_FORMAT, leagueSpec } from '@/lib/captain/leagues';
+import { pickOpponentRow } from '@/lib/captain/opponentMatch';
+import { formatPhone, normalizePhone } from '@/lib/captain/phone';
 
 export const dynamic = 'force-dynamic';
 
@@ -137,6 +140,53 @@ export default async function MatchPage({
       DEFAULT_JTT_COURT_FORMAT)
     : null;
 
+  /*
+   * The opposing captain (and co-captain), for the header. What is typed on
+   * the match wins field by field; the league-contacts directory fills the
+   * rest, matched the same way the host email matches it.
+   */
+  const { data: oppRows } = await getSupabaseAdmin()
+    .from('captain_opponents')
+    .select('opponent, captain_name, captain_email, captain_phone, cocaptain_name, cocaptain_email, cocaptain_phone')
+    .eq('team_id', params.teamId);
+  const dir = pickOpponentRow(
+    (match.opponent as string) || null,
+    (oppRows as {
+      opponent: string | null;
+      captain_name: string | null;
+      captain_email: string | null;
+      captain_phone: string | null;
+      cocaptain_name: string | null;
+      cocaptain_email: string | null;
+      cocaptain_phone: string | null;
+    }[]) || [],
+  );
+  // Our side: the team's contacts, for the "coach at this match" picker.
+  const { data: contactRows } = await getSupabaseAdmin()
+    .from('captain_team_contacts')
+    .select('id, name, role, email, phone')
+    .eq('team_id', params.teamId)
+    .order('name');
+  const coachOptions = ((contactRows as CoachOption[]) || []).map((c) => ({
+    ...c,
+    phone: c.phone ? formatPhone(normalizePhone(c.phone)) || c.phone : null,
+  }));
+
+  const oppContacts = [
+    {
+      role: 'Their captain',
+      name: (match.opposing_captain_name as string | null) || dir?.captain_name || null,
+      email: (match.opposing_captain_email as string | null) || dir?.captain_email || null,
+      phone: (match.opposing_captain_phone as string | null) || dir?.captain_phone || null,
+    },
+    {
+      role: 'Co-captain',
+      name: dir?.cocaptain_name || null,
+      email: dir?.cocaptain_email || null,
+      phone: dir?.cocaptain_phone || null,
+    },
+  ].filter((c) => c.name || c.email || c.phone);
+
   return (
     <div className="p-6 md:p-10 max-w-5xl">
       <Link href={`/captain/${team.id}`} className="text-white/40 text-sm hover:text-white">
@@ -158,6 +208,49 @@ export default async function MatchPage({
         {(match.opponent as string) || 'TBD'} · {match.is_home ? 'Home' : 'Away'}
         {match.location ? ` · ${match.location}` : ''}
       </p>
+
+      {/* Who to call on match day — ours and theirs — in reach without
+          opening the email panel. */}
+      <div className="mt-3 flex flex-wrap gap-2">
+        <MatchCoachPicker
+          teamId={team.id}
+          matchId={params.matchId}
+          options={coachOptions}
+          initialId={(match.match_coach_id as string | null) ?? null}
+        />
+          {oppContacts.map((c) => {
+            const e164 = normalizePhone(c.phone);
+            return (
+              <div
+                key={c.role}
+                className="rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-2.5 text-sm"
+              >
+                <div className="text-white/40 text-[11px] uppercase tracking-wide">{c.role}</div>
+                <div className="text-white font-medium">{c.name || '—'}</div>
+                <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1">
+                  {c.email && (
+                    <a href={`mailto:${c.email}`} className="text-[#D3FB52]/90 hover:text-[#D3FB52] break-all">
+                      {c.email}
+                    </a>
+                  )}
+                  {c.phone &&
+                    (e164 ? (
+                      <>
+                        <a href={`tel:${e164}`} className="text-[#D3FB52]/90 hover:text-[#D3FB52]">
+                          {formatPhone(e164)}
+                        </a>
+                        <a href={`sms:${e164}`} className="text-white/60 hover:text-white underline">
+                          text
+                        </a>
+                      </>
+                    ) : (
+                      <span className="text-white/70">{c.phone}</span>
+                    ))}
+                </div>
+              </div>
+            );
+          })}
+      </div>
 
 
       <MatchWorkspace
@@ -196,6 +289,7 @@ export default async function MatchPage({
         teamName={team.name}
         opponent={(match.opponent as string) || null}
         isHome={!!match.is_home}
+        coachName={coachOptions.find((c) => c.id === match.match_coach_id)?.name ?? null}
         location={(match.location as string) || null}
         arrivalNote={(match.arrival_note as string) || null}
         jttCourtFormat={jttCourtFormat}

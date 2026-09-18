@@ -6,7 +6,9 @@
  */
 import { NextResponse } from 'next/server';
 import {
-  teamCcRecipients,
+  matchCcRecipients,
+  matchCoachOf,
+  withMatchCoach,
   ccPayloads,
   withSecondContact,
   recipientRows,
@@ -78,6 +80,11 @@ export async function POST(req: Request) {
     opponent: (match.opponent as string) || null,
     location: (match.location as string) || null,
   };
+  const coach = await matchCoachOf(db, body.match_id);
+  if (coach) {
+    info.coachName = coach.name;
+    info.coachPhone = coach.phone;
+  }
 
   const kind = body.only_missing ? 'nudge' : 'poll';
   const [{ data: settingRows }, { data: ovRow }] = await Promise.all([
@@ -119,9 +126,10 @@ export async function POST(req: Request) {
   // Show, then send — same builder, same data, so the preview is the real thing.
   // A nudge chases non-responders; copying the coaches on every chase is noise,
   // so only the full team send carries them.
+  // The coach at this match is copied either way — they need the headcount.
   const ccs = body.only_missing
-    ? []
-    : await teamCcRecipients(ctx.db, ctx.teamId, payloads.map((p) => p.to));
+    ? withMatchCoach([], await matchCoachOf(ctx.db, body.match_id), payloads.map((p) => p.to))
+    : await matchCcRecipients(ctx.db, ctx.teamId, body.match_id, payloads.map((p) => p.to));
   const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];
 
   if (body.preview) {

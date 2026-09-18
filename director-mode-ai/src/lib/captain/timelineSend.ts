@@ -29,7 +29,14 @@ import {
   type TimelineCounts,
   type TimelineEvent,
 } from './timeline';
-import { withSecondContact, recipientRows } from './teamContacts';
+import {
+  ccPayloads,
+  recipientRows,
+  withMatchCoach,
+  withSecondContact,
+  type MatchCoach,
+  type TeamCc,
+} from './teamContacts';
 import { DEFAULT_JTT_COURT_FORMAT, exhibitionRows, leagueSpec, roundsByCourt } from './leagues';
 import { resolveTeamTimeZone } from './clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -37,7 +44,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 export const MATCH_COLUMNS =
   'id, team_id, match_at, status, is_home, opponent, location, arrival_note, ' +
   'opposing_captain_name, opposing_captain_phone, availability_poll_sent_at, ' +
-  'nudge_sent_at, lineup_email_sent_at, reminder_sent_at, court_format, singles_courts, doubles_courts';
+  'nudge_sent_at, lineup_email_sent_at, reminder_sent_at, court_format, singles_courts, doubles_courts, ' +
+  'match_coach_id';
 
 type PlayerRow = {
   id: string;
@@ -73,6 +81,10 @@ export type TeamEmailContext = {
   roundFormat: Map<string, number>;
   /** The club's IANA zone — every time in every email is written in it. */
   timeZone: string;
+  /** Contacts flagged "on team emails" — they get a copy of every team-wide send. */
+  teamCcs: TeamCc[];
+  /** The coach named for each match, copied on every email about it. */
+  matchCoach: Map<string, MatchCoach>;
 };
 
 function infoOf(m: Record<string, unknown>): MatchInfo {
@@ -118,6 +130,7 @@ export async function loadTeamEmailContext(
     { data: ovRows },
     { data: teamShape },
     timeZone,
+    { data: contactRows },
   ] = await Promise.all([
       db
         .from('captain_players')
@@ -150,7 +163,29 @@ export async function loadTeamEmailContext(
       // Admin, not `db`: the preview (RLS-scoped) and the cron (admin) must
       // resolve the same zone or the preview stops being the send.
       resolveTeamTimeZone(getSupabaseAdmin(), team.id),
+      db
+        .from('captain_team_contacts')
+        .select('id, name, email, phone, role, on_emails')
+        .eq('team_id', team.id)
+        .order('sort_order')
+        .order('name'),
     ]);
+
+  type ContactRow = MatchCoach & { role: string; on_emails: boolean };
+  const contacts = (contactRows as ContactRow[] | null) ?? [];
+  const teamCcs: TeamCc[] = [];
+  const seenCc = new Set<string>();
+  for (const c of contacts) {
+    const email = (c.email || '').trim();
+    if (!c.on_emails || !email || seenCc.has(email.toLowerCase())) continue;
+    seenCc.add(email.toLowerCase());
+    teamCcs.push({ name: c.name, email, role: c.role });
+  }
+  const matchCoach = new Map<string, MatchCoach>();
+  for (const m of matches) {
+    const c = contacts.find((x) => x.id === (m.match_coach_id as string | null));
+    if (c) matchCoach.set(m.id as string, c);
+  }
 
   const shape = teamShape as { league_type: string | null; court_format: number | null } | null;
   const roundFormat = new Map<string, number>();
@@ -185,6 +220,11 @@ export async function loadTeamEmailContext(
     if (sharedLines) {
       info.singlesCourts = null;
       info.doublesCourts = null;
+    }
+    const coach = contacts.find((x) => x.id === (m.match_coach_id as string | null));
+    if (coach) {
+      info.coachName = coach.name;
+      info.coachPhone = coach.phone;
     }
     matchInfo.set(m.id as string, info);
   }
@@ -221,7 +261,27 @@ export async function loadTeamEmailContext(
     counts,
     roundFormat,
     timeZone,
+    teamCcs,
+    matchCoach,
   };
+}
+
+/**
+ * Who gets a copy of a team-wide send for this match. The poll, lineup and
+ * reminder go to everyone on team emails plus the match coach; a nudge (the
+ * chase to non-responders) only to the match coach, who is the one needing
+ * the headcount. A targeted send copies nobody — it is about one player.
+ */
+function ccsFor(
+  kind: EmailKind,
+  ctx: TeamEmailContext,
+  matchId: string,
+  playerAddresses: string[],
+): TeamCc[] {
+  const base = kind === 'nudge' ? [] : ctx.teamCcs;
+  const taken = new Set(playerAddresses.map((e) => e.trim().toLowerCase()));
+  const team = base.filter((c) => !taken.has(c.email.toLowerCase()));
+  return withMatchCoach(team, ctx.matchCoach.get(matchId) ?? null, playerAddresses);
 }
 
 /** Team default merged with this match's exception — the override wins. */
@@ -237,6 +297,18 @@ export function customFor(setting: ResolvedSetting, ov: OverrideRow | null): Ema
  * there is nobody to send to or the lineup it depends on does not exist yet.
  */
 export function payloadsFor(
+  kind: EmailKind,
+  ctx: TeamEmailContext,
+  matchId: string,
+  onlyPlayerIds?: string[] | null,
+): { to: string; subject: string; html: string }[] {
+  const players = playerPayloadsFor(kind, ctx, matchId, onlyPlayerIds);
+  if (onlyPlayerIds?.length || !players.length) return players;
+  const ccs = ccsFor(kind, ctx, matchId, players.map((p) => p.to));
+  return [...players, ...ccPayloads(players[0], ccs, ctx.team.name)];
+}
+
+function playerPayloadsFor(
   kind: EmailKind,
   ctx: TeamEmailContext,
   matchId: string,
@@ -369,6 +441,25 @@ export function payloadsFor(
  * lists are shown side by side in the preview and must never disagree.
  */
 export function recipientsFor(
+  kind: EmailKind,
+  ctx: TeamEmailContext,
+  matchId: string,
+  onlyPlayerIds?: string[] | null,
+): { name: string; email: string | null }[] {
+  const players = playerRecipientsFor(kind, ctx, matchId, onlyPlayerIds);
+  // Same rule as payloadsFor: copies only when the players' send is non-empty.
+  if (onlyPlayerIds?.length || !playerPayloadsFor(kind, ctx, matchId, onlyPlayerIds).length) return players;
+  const addresses = players.map((p) => p.email).filter(Boolean) as string[];
+  return [
+    ...players,
+    ...ccsFor(kind, ctx, matchId, addresses).map((c) => ({
+      name: `${c.name} · ${c.role === 'match coach' ? 'coach at this match' : 'copy'}`,
+      email: c.email,
+    })),
+  ];
+}
+
+function playerRecipientsFor(
   kind: EmailKind,
   ctx: TeamEmailContext,
   matchId: string,

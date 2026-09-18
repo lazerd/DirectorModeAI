@@ -32,7 +32,7 @@ import {
   roundsByCourt,
   rosterWindow,
 } from '@/lib/captain/leagues';
-import { teamCcRecipients, ccPayloads } from '@/lib/captain/teamContacts';
+import { matchCcRecipients, matchCoachOf, ccPayloads } from '@/lib/captain/teamContacts';
 import { leagueSpec } from '@/lib/captain/leagues';
 import { resolveAvailability } from '@/lib/captain/availability';
 import { answersByPlayer, rowsWithAnswers, answerTally } from '@/lib/captain/lineupSave';
@@ -533,6 +533,11 @@ export async function POST(req: Request) {
       singlesCourts: rounds ? null : ((match.singles_courts as number | null) ?? null),
       doublesCourts: rounds ? null : ((match.doubles_courts as number | null) ?? null),
     };
+    const coach = await matchCoachOf(db, body.match_id);
+    if (coach) {
+      info.coachName = coach.name;
+      info.coachPhone = coach.phone;
+    }
 
     const payloads = roster
       .filter((p) => !!p.email)
@@ -552,9 +557,10 @@ export async function POST(req: Request) {
 
     // The coaching staff gets the lineup too — arguably the email they most
     // need, since they are the ones running the match.
-    const ccs = await teamCcRecipients(
+    const ccs = await matchCcRecipients(
       db,
       ctx.teamId,
+      body.match_id,
       payloads.map((p) => p.to),
     );
     const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];

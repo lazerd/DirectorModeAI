@@ -29,6 +29,8 @@ export type PrintLineupInput = {
   arrivalNote?: string | null;
   /** JTT: courts played at once. Printed so the other captain can check it. */
   courtFormat?: number | null;
+  /** Our coach going to this match, when one is named. */
+  coachName?: string | null;
   courts: PrintCourt[];
   /** Unsaved edits on screen — say so on the paper. */
   draft?: boolean;
@@ -106,6 +108,7 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
   const meta = [
     where,
     input.courtFormat ? `${input.courtFormat}-court format` : null,
+    input.coachName ? `Coach: ${esc(input.coachName)}` : null,
   ]
     .filter(Boolean)
     .join(' · ');

@@ -24,6 +24,9 @@ export type MatchInfo = {
   arrivalNote?: string | null;
   opposingCaptainName?: string | null;
   opposingCaptainPhone?: string | null;
+  /** Our coach going to this match, when one is named — printed in every email. */
+  coachName?: string | null;
+  coachPhone?: string | null;
   /** Lines the match is played over. When set, a lineup short of them says so. */
   singlesCourts?: number | null;
   doublesCourts?: number | null;
@@ -187,6 +190,7 @@ function matchLines(m: MatchInfo, tz?: string): string {
     m.opposingCaptainName
       ? `Opposing captain: ${m.opposingCaptainName}${m.opposingCaptainPhone ? ` · ${m.opposingCaptainPhone}` : ''}`
       : null,
+    m.coachName ? `Our coach at the match: ${m.coachName}${m.coachPhone ? ` · ${m.coachPhone}` : ''}` : null,
   ].filter(Boolean);
   return `
     <p style="font-size:16px;margin:0 0 8px">${bits.join(' · ')}</p>

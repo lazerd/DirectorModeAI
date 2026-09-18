@@ -19,7 +19,7 @@
  */
 import { NextResponse } from 'next/server';
 import {
-  teamCcRecipients,
+  matchCcRecipients,
   ccPayloads,
   withSecondContact,
   recipientRows,
@@ -183,9 +183,10 @@ export async function POST(req: Request) {
 
   // The result goes to the coaching staff as well — they were there.
   const payloads = ctx.roster.flatMap((p) => withSecondContact(buildFor(p), p.contact2_email));
-  const ccs = await teamCcRecipients(
+  const ccs = await matchCcRecipients(
     db,
     teamId,
+    body.match_id,
     payloads.map((p) => p.to),
   );
   const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];

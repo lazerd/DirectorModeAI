@@ -131,6 +131,7 @@ export default function MatchWorkspace({
   teamName,
   opponent,
   isHome,
+  coachName = null,
   location,
   arrivalNote,
   jttCourtFormat,
@@ -168,6 +169,8 @@ export default function MatchWorkspace({
   teamName: string;
   opponent: string | null;
   isHome: boolean;
+  /** Our coach going to this match — printed on the sheet and the group text. */
+  coachName?: string | null;
   location: string | null;
   arrivalNote: string | null;
   /**
@@ -518,6 +521,7 @@ export default function MatchWorkspace({
       isHome,
       location,
       arrivalNote,
+      coachName,
       timeZone,
       courts: [
         ...courts.map((c) => ({
@@ -552,6 +556,7 @@ export default function MatchWorkspace({
         isHome,
         location,
         arrivalNote,
+        coachName,
         courtFormat: format,
         draft: dirty,
         timeZone,

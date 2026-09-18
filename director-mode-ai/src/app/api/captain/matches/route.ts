@@ -129,10 +129,22 @@ export async function PATCH(req: Request) {
     // Courts played at once (JTT: 2 or 3) — decides which lines share a round.
     'court_format',
     'status',
+    // The coach going to this match — one of the team's own contacts, or null.
+    'match_coach_id',
   ];
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
   for (const k of allowed) {
     if (body.patch && k in body.patch) patch[k] = body.patch[k];
+  }
+  // A contact id from another team would put a stranger on this match's emails.
+  if (patch.match_coach_id) {
+    const { data: contact } = await ctx.db
+      .from('captain_team_contacts')
+      .select('id')
+      .eq('id', patch.match_coach_id as string)
+      .eq('team_id', ctx.teamId)
+      .maybeSingle();
+    if (!contact) return NextResponse.json({ error: 'That coach is not on this team.' }, { status: 400 });
   }
 
   const { error } = await ctx.db

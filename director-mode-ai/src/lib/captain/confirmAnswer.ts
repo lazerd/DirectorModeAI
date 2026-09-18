@@ -8,6 +8,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendAll, withdrawalAlertEmail, type MatchInfo } from './emails';
 import { CLUB_TZ_EMBED, clubTimeZoneOf } from './clubTime';
+import { matchCoachOf } from './teamContacts';
 
 export type Answer = 'in' | 'out';
 
@@ -191,6 +192,9 @@ async function alertCaptains(
         userIds.map(async (id) => (await admin.auth.admin.getUserById(id)).data?.user?.email || null),
       )
     ).filter(Boolean) as string[];
+    // The coach going to this match has to know who is not coming.
+    const coach = await matchCoachOf(admin, matchId);
+    if (coach?.email?.trim()) emails.push(coach.email.trim());
     if (!emails.length) return;
 
     const info: MatchInfo = {
@@ -204,7 +208,7 @@ async function alertCaptains(
       opposingCaptainPhone: (m.opposing_captain_phone as string) || null,
     };
 
-    const to = Array.from(new Set(emails));
+    const to = Array.from(new Map(emails.map((e) => [e.toLowerCase(), e])).values());
     const results = await sendAll(
       team.captain_user_id,
       to.map((addr) => ({

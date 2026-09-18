@@ -28,6 +28,7 @@ import {
 } from '@/lib/captain/emails';
 import { CLUB_TZ, normalizeTimeZone } from '@/lib/captain/clubTime';
 import { leagueSpec } from '@/lib/captain/leagues';
+import { ccPayloads, matchCoachOf, withMatchCoach } from '@/lib/captain/teamContacts';
 import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
 
@@ -179,6 +180,13 @@ export async function POST(req: Request) {
 
   const multiLine = leagueSpec(team.league_type as string).multiLine;
 
+  // Our coach going to this match: named to the other captain on an away
+  // match (who to look for), and copied on whatever is sent.
+  const coach = await matchCoachOf(admin, matchRow.id as string);
+  const coachLine = coach
+    ? `${coach.name} will be coaching our team at the match${coach.phone ? ` — ${coach.phone}` : ''}.`
+    : null;
+
   const lineCount =
     ((matchRow.doubles_courts as number) || 0) + ((matchRow.singles_courts as number) || 0);
 
@@ -241,7 +249,7 @@ export async function POST(req: Request) {
           playersAvailable,
           // NOT the team's hosting blurb: that describes OUR club's parking and
           // warmup courts, and it was going out to the club hosting US.
-          notes: null,
+          notes: coachLine,
           fromName,
           fromTitle,
         },
@@ -330,6 +338,17 @@ export async function POST(req: Request) {
   } catch (e) {
     if (e instanceof CreditLimitError) return creditLimitResponse(e);
     throw e;
+  }
+
+  // The coach at this match gets a copy of what the other club was told.
+  // Best-effort: the email that matters has already gone.
+  const coachCc = withMatchCoach([], coach, [email.to]);
+  if (coachCc.length) {
+    try {
+      await sendBilledEmails(ctx.userId, ccPayloads({ subject: email.subject, html: email.html }, coachCc, team.name as string));
+    } catch (e) {
+      console.error('host-email coach copy failed', e);
+    }
   }
 
   await admin

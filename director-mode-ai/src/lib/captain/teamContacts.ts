@@ -115,3 +115,56 @@ export function ccPayloads(
       sample.html,
   }));
 }
+
+export type MatchCoach = { id: string; name: string; email: string | null; phone: string | null };
+
+/** The coach named for this match (captain_matches.match_coach_id), if any. */
+export async function matchCoachOf(db: SupabaseClient, matchId: string): Promise<MatchCoach | null> {
+  const { data: m } = await db
+    .from('captain_matches')
+    .select('match_coach_id')
+    .eq('id', matchId)
+    .maybeSingle();
+  const id = (m as { match_coach_id: string | null } | null)?.match_coach_id;
+  if (!id) return null;
+  const { data: c } = await db
+    .from('captain_team_contacts')
+    .select('id, name, email, phone')
+    .eq('id', id)
+    .maybeSingle();
+  return (c as MatchCoach | null) ?? null;
+}
+
+/**
+ * The team's copy list for ONE match: everyone on team emails, plus the coach
+ * going to this match even if they are not on team emails — they are the one
+ * standing at the courts, so every email about this match reaches them.
+ */
+export async function matchCcRecipients(
+  db: SupabaseClient,
+  teamId: string,
+  matchId: string,
+  exclude: (string | null | undefined)[] = [],
+): Promise<TeamCc[]> {
+  const [team, coach] = await Promise.all([
+    teamCcRecipients(db, teamId, exclude),
+    matchCoachOf(db, matchId),
+  ]);
+  return withMatchCoach(team, coach, exclude);
+}
+
+/** Adds the match coach to a copy list unless they are already on it. */
+export function withMatchCoach(
+  ccs: TeamCc[],
+  coach: MatchCoach | null,
+  exclude: (string | null | undefined)[] = [],
+): TeamCc[] {
+  const email = (coach?.email || '').trim();
+  if (!coach || !email) return ccs;
+  const key = email.toLowerCase();
+  const taken = new Set(
+    [...exclude, ...ccs.map((c) => c.email)].filter(Boolean).map((e) => (e as string).trim().toLowerCase()),
+  );
+  if (taken.has(key)) return ccs;
+  return [...ccs, { name: coach.name, email, role: 'match coach' }];
+}

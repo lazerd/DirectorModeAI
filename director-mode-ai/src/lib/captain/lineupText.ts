@@ -30,6 +30,8 @@ export type TextLineupInput = {
   location?: string | null;
   /** The captain's own arrival wording, when they have set one. */
   arrivalNote?: string | null;
+  /** Our coach going to this match, when one is named. */
+  coachName?: string | null;
   courts: TextLineupCourt[];
   timeZone?: string;
 };
@@ -75,6 +77,7 @@ export function lineupAsText(input: TextLineupInput): string {
 
   const where = input.location || (input.isHome ? 'Home' : 'Away');
   lines.push(`${input.isHome ? 'Home' : 'Away'} — ${where}`);
+  if (input.coachName) lines.push(`Coach at the match: ${input.coachName}`);
   lines.push(input.arrivalNote?.trim() || DEFAULT_ARRIVAL);
 
   const played = input.courts.filter((c) => c.names.some((n) => n && n !== '—'));
