@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  buildDeskBoard, bucketOfTopDog, expectedMinutes, observationFor, toIsoDate,
+  buildDeskBoard, bucketOfTopDog, checkedInAt, expectedMinutes, observationFor, toIsoDate,
   type Assignment,
 } from './desk';
 import { DEFAULT_LENGTHS, type Observation } from './board';
@@ -218,5 +218,50 @@ describe('toIsoDate', () => {
     expect(toIsoDate('9/19/2026')).toBe('2026-09-19');
     expect(toIsoDate('12/1/2026')).toBe('2026-12-01');
     expect(toIsoDate('nonsense')).toBeNull();
+  });
+});
+
+describe('check-in', () => {
+  const base = {
+    courts: ['1', '2'],
+    completedIds: [] as string[],
+    boardDate: DAY,
+    now: NOW,
+    lengths: DEFAULT_LENGTHS,
+    assignments: [] as Assignment[],
+  };
+
+  it('is complete only when both players are in, at the later time', () => {
+    expect(checkedInAt(undefined)).toBeNull();
+    expect(checkedInAt({ a: iso(9, 0) })).toBeNull();
+    expect(checkedInAt({ a: iso(9, 5), b: iso(9, 1) })).toBe(iso(9, 5));
+  });
+
+  it('puts checked-in pairs first, in the order they completed', () => {
+    const early = m({ slot24: '09:30' });
+    const second = m({ slot24: '09:30' });
+    const first = m({ slot24: '09:30' });
+    const board = buildDeskBoard({
+      ...base,
+      matches: [early, second, first],
+      checkIns: {
+        [first.id]: { a: iso(9, 1), b: iso(9, 2) },
+        [second.id]: { a: iso(9, 0), b: iso(9, 10) },
+        [early.id]: { a: iso(8, 50) }, // only one of them here
+      },
+    });
+    expect(board.waiting.map((w) => w.id)).toEqual([first.id, second.id, early.id]);
+    expect(board.waiting[0].checkedIn).toBe(true);
+    expect(board.waiting[2].checkedIn).toBe(false);
+  });
+
+  it('lets a checked-in match take an open court before its slot', () => {
+    const later = m({ slot: '2:00pm', slot24: '14:00' });
+    const board = buildDeskBoard({
+      ...base,
+      matches: [later],
+      checkIns: { [later.id]: { a: iso(9, 50), b: iso(9, 55) } },
+    });
+    expect(board.waiting[0].estimatedStart).toBe('10:00');
   });
 });

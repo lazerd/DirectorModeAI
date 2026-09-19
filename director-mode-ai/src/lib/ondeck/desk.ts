@@ -31,6 +31,25 @@ const MIN_SAMPLE = 3;
 /** A court already past its expected finish is about to free up, not stuck. */
 const IMMINENT_MIN = 2;
 
+/**
+ * Who has shown up for a match, as ISO timestamps. A side that is missing
+ * has not checked in.
+ */
+export interface CheckIn {
+  a?: string;
+  b?: string;
+}
+
+/**
+ * When a match became playable: the moment its SECOND player checked in.
+ * Null until both are here. This is the queue key — first pair complete is
+ * first pair out, whatever the order of play says.
+ */
+export function checkedInAt(ci: CheckIn | undefined): string | null {
+  if (!ci?.a || !ci?.b) return null;
+  return ci.a > ci.b ? ci.a : ci.b;
+}
+
 /** One court, as the desk sees it. */
 export interface Assignment {
   court: string;
@@ -106,6 +125,8 @@ export interface DeskBoardOptions {
   assignments: Assignment[];
   /** Matches the desk has already taken a score for. */
   completedIds: string[];
+  /** Check-ins by match id. */
+  checkIns?: Record<string, CheckIn>;
   lengths?: MatchLengths;
   observations?: Observation[];
   /** The day the schedule is for, as TopDog spells it ("9/19/2026"). */
@@ -164,16 +185,23 @@ export function buildDeskBoard(opts: DeskBoardOptions): WaitBoard {
   }
 
   // --- the queue ----------------------------------------------------------
-  // Order on the sheet is the order the desk works through: published time
-  // first, then the order the draw prints them in.
+  // Both players checked in beats everything: those go out in the order they
+  // became complete. Everyone else waits in order-of-play order — published
+  // time first, then the order the draw prints them in.
+  const checkIns = opts.checkIns ?? {};
   const sheetOrder = new Map(opts.matches.map((m, i) => [m.id, i]));
   const queue = opts.matches
     .filter((m) => m.ready && !busyMatchIds.has(m.id) && !done.has(m.id))
-    .sort((a, b) =>
-      a.slot24 === b.slot24
+    .sort((a, b) => {
+      const ca = checkedInAt(checkIns[a.id]);
+      const cb = checkedInAt(checkIns[b.id]);
+      if (ca && cb) return ca.localeCompare(cb);
+      if (ca) return -1;
+      if (cb) return 1;
+      return a.slot24 === b.slot24
         ? (sheetOrder.get(a.id)! - sheetOrder.get(b.id)!)
-        : a.slot24.localeCompare(b.slot24)
-    );
+        : a.slot24.localeCompare(b.slot24);
+    });
 
   const day = (() => {
     const iso = toIsoDate(opts.boardDate);
@@ -216,8 +244,10 @@ export function buildDeskBoard(opts: DeskBoardOptions): WaitBoard {
     }
 
     // A match cannot start before the time it is published for, however
-    // empty the club is.
-    const startMs = Math.max(bestFree, published ?? bestFree);
+    // empty the club is — unless both players are already standing at the
+    // desk, in which case the next open court is theirs.
+    const here = !!checkedInAt(checkIns[m.id]);
+    const startMs = here ? bestFree : Math.max(bestFree, published ?? bestFree);
     const lengthMin = expected[bucketOfTopDog(m)];
     freeAt.set(bestCourt, startMs + lengthMin * MS_PER_MIN);
 
@@ -242,6 +272,7 @@ export function buildDeskBoard(opts: DeskBoardOptions): WaitBoard {
       onSchedule: !published || startMs <= published + MS_PER_MIN,
       isNext: false,
       delayMin: round5(delay),
+      checkedIn: here,
     });
   }
 

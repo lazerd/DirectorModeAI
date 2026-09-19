@@ -29,7 +29,7 @@ import {
   eventIdFor, scoreEntryUrl, type DivisionLink,
 } from '@/lib/ondeck/topdogResults';
 import {
-  buildDeskBoard, observationFor, type Assignment,
+  buildDeskBoard, checkedInAt, observationFor, type Assignment, type CheckIn,
 } from '@/lib/ondeck/desk';
 import { DEFAULT_LENGTHS, type MatchLengths, type Observation } from '@/lib/ondeck/board';
 import { pickVoice, speak, stopSpeaking, reportToDeskText } from '@/lib/ondeck/speech';
@@ -61,9 +61,27 @@ interface DeskState {
   assignments: Assignment[];
   completedIds: string[];
   observations: Observation[];
+  /** Who has shown up, by match id. */
+  checkIns: Record<string, CheckIn>;
 }
 
-const EMPTY_STATE: DeskState = { assignments: [], completedIds: [], observations: [] };
+const EMPTY_STATE: DeskState = { assignments: [], completedIds: [], observations: [], checkIns: {} };
+
+/** A court that went on this much later than its slot was probably loaded late. */
+const LATE_LOAD_MIN = 10;
+
+/** "HH:MM" on the same calendar day as `day`, as an ISO timestamp. */
+function isoAt(hhmm: string, day: Date): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(day);
+  d.setHours(h, m || 0, 0, 0);
+  return d.toISOString();
+}
+
+/** "8:04 AM" from an ISO timestamp. */
+function clockOf(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
 
 interface LogLine { at: string; text: string; kind: 'call' | 'info' | 'error' }
 
@@ -209,6 +227,7 @@ export default function TopDogDeskClient() {
       courts,
       assignments: state.assignments,
       completedIds: state.completedIds,
+      checkIns: state.checkIns,
       lengths,
       observations: state.observations,
       boardDate: schedule.date,
@@ -230,6 +249,23 @@ export default function TopDogDeskClient() {
   const queue = useMemo(
     () => matches.filter((m) => m.ready && !busyMatchIds.has(m.id) && !doneIds.has(m.id)),
     [matches, busyMatchIds, doneIds]
+  );
+
+  /**
+   * Both players here, in the order the pair became complete. This is the
+   * list "Send next" works from: first pair checked in is first pair out.
+   */
+  const checkedIn = useMemo(
+    () => queue
+      .filter((m) => checkedInAt(state.checkIns[m.id]))
+      .sort((a, b) => checkedInAt(state.checkIns[a.id])!.localeCompare(checkedInAt(state.checkIns[b.id])!)),
+    [queue, state.checkIns]
+  );
+
+  /** Everyone else, in order-of-play order. */
+  const awaiting = useMemo(
+    () => queue.filter((m) => !checkedInAt(state.checkIns[m.id])),
+    [queue, state.checkIns]
   );
 
   /** Still waiting on a result from an earlier round. */
@@ -255,6 +291,52 @@ export default function TopDogDeskClient() {
   }, [addLog, voice]);
 
   // --- desk actions -------------------------------------------------------
+  /** Tap a name: that player is here. Tap again: they are not. */
+  const toggleCheckIn = useCallback((m: TopDogMatch, side: 'a' | 'b') => {
+    const current = state.checkIns[m.id] ?? {};
+    const next: CheckIn = { ...current, [side]: current[side] ? undefined : new Date().toISOString() };
+    if (!(current.a && current.b) && next.a && next.b) {
+      addLog(`Checked in: ${m.playerA} v ${m.playerB}, ready to go on`, 'info');
+    }
+    setState((s) => ({ ...s, checkIns: { ...s.checkIns, [m.id]: next } }));
+  }, [state.checkIns, addLog]);
+
+  /** Correct when a court actually went on; the desk is often loaded late. */
+  const setStartTime = useCallback((court: string, hhmm: string) => {
+    if (!/^\d{2}:\d{2}$/.test(hhmm)) return;
+    setState((s) => ({
+      ...s,
+      assignments: s.assignments.map((a) =>
+        a.court === court ? { ...a, startedAt: isoAt(hhmm, new Date(a.startedAt)) } : a
+      ),
+    }));
+  }, []);
+
+  /**
+   * Courts whose start is well after their match's slot: the tell for
+   * "the kids went out at 8, I only typed it in at 8:40".
+   */
+  const lateLoaded = useMemo(() => state.assignments.filter((a) => {
+    const m = byId.get(a.matchId);
+    if (!m?.slot24) return false;
+    const started = new Date(a.startedAt);
+    const slot = new Date(isoAt(m.slot24, started));
+    return started.getTime() - slot.getTime() > LATE_LOAD_MIN * 60_000;
+  }), [state.assignments, byId]);
+
+  const startAllOnSchedule = useCallback(() => {
+    const fix = new Set(lateLoaded.map((a) => a.court));
+    setState((s) => ({
+      ...s,
+      assignments: s.assignments.map((a) => {
+        const m = byId.get(a.matchId);
+        if (!fix.has(a.court) || !m?.slot24) return a;
+        return { ...a, startedAt: isoAt(m.slot24, new Date(a.startedAt)) };
+      }),
+    }));
+    addLog(`Start times set to the scheduled slot on ${fix.size} court${fix.size === 1 ? '' : 's'}`, 'info');
+  }, [lateLoaded, byId, addLog]);
+
   const assign = useCallback((match: TopDogMatch, court: string) => {
     setState((s) => ({
       ...s,
@@ -283,6 +365,7 @@ export default function TopDogDeskClient() {
     setState((s) => {
       const obs = match ? observationFor(match, assignment.startedAt) : null;
       return {
+        ...s,
         assignments: s.assignments.filter((a) => a.court !== court),
         completedIds: s.completedIds.includes(assignment.matchId)
           ? s.completedIds
@@ -378,6 +461,86 @@ export default function TopDogDeskClient() {
       }
     })();
   }, [board, schedule]);
+
+  // --- one match in the queue --------------------------------------------
+  function renderQueueRow(m: TopDogMatch, isNext: boolean) {
+    const row = board?.waiting.find((w) => w.id === m.id);
+    const ci = state.checkIns[m.id] ?? {};
+
+    const nameButton = (side: 'a' | 'b', name: string) => {
+      const at = ci[side];
+      return (
+        <button
+          style={at ? S.nameIn : S.nameOut}
+          onClick={() => toggleCheckIn(m, side)}
+          title={at ? `Checked in ${clockOf(at)}; tap to undo` : 'Tap when this player checks in'}
+        >
+          <span style={at ? S.tickIn : S.tickOut}>{at ? '✓' : '○'}</span>
+          {name}
+          {at && <span style={S.inTime}>{clockOf(at)}</span>}
+        </button>
+      );
+    };
+
+    // Page only whoever is missing; the player already at the desk
+    // doesn't need their name read out.
+    const missingA = ci.a ? '' : m.playerA;
+    const missingB = ci.b ? '' : m.playerB;
+
+    return (
+      <div key={m.id} style={{ ...S.queueCard, ...(isNext ? S.queueCardNext : {}) }}>
+        <div style={S.slotChip}>{m.slot}</div>
+        <div style={S.matchBody}>
+          <div style={S.nameRow}>
+            {nameButton('a', m.playerA)}
+            <span style={S.vs}>v</span>
+            {nameButton('b', m.playerB)}
+          </div>
+          <div style={S.meta}>
+            {m.event} · {m.round}
+            {row && row.ahead > 0 && ` · ${row.ahead} ahead`}
+            {row?.estimatedStart && ` · on about ${pretty(row.estimatedStart)}`}
+          </div>
+        </div>
+
+        <div style={S.queueButtons}>
+          {picking === m.id ? (
+            <>
+              {freeCourts.length === 0 && <span style={S.muted}>No court open</span>}
+              {freeCourts.map((c) => (
+                <button key={c} style={S.courtPick} onClick={() => assign(m, c)}>{c}</button>
+              ))}
+              <button style={S.smallGhost} onClick={() => setPicking(null)}>✕</button>
+            </>
+          ) : (
+            <>
+              <button
+                style={S.assignButton}
+                onClick={() => {
+                  // One open court is not a choice worth making.
+                  if (freeCourts.length === 1) assign(m, freeCourts[0]);
+                  else setPicking(m.id);
+                }}
+                disabled={freeCourts.length === 0}
+                title={freeCourts.length === 0 ? 'Every court is busy' : 'Put this match on a court and call it'}
+              >
+                Court ▸
+              </button>
+              {(missingA || missingB) && (
+                <button
+                  style={S.smallButton}
+                  title="Call whoever has not checked in to the desk"
+                  onClick={() => say(reportToDeskText(missingA, missingB))}
+                >
+                  🔔
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // --- arming -------------------------------------------------------------
   if (!armed) {
@@ -518,6 +681,17 @@ export default function TopDogDeskClient() {
 
       {/* ---- courts ------------------------------------------------------ */}
       <h2 style={S.h2}>Courts</h2>
+      {lateLoaded.length > 0 && (
+        <div style={S.fixBanner}>
+          <span>
+            {lateLoaded.length} court{lateLoaded.length === 1 ? '' : 's'} logged well after the scheduled time.
+            If they went on at their slot, fix it so the wait times are right.
+          </span>
+          <button style={S.fixButton} onClick={startAllOnSchedule}>
+            They started on time
+          </button>
+        </div>
+      )}
       <div style={S.courtGrid}>
         {courts.map((court) => {
           const a = occupied.get(court);
@@ -530,12 +704,16 @@ export default function TopDogDeskClient() {
               <div key={court} style={S.courtFree}>
                 <div style={S.courtNum}>{court}</div>
                 <div style={S.courtOpen}>Open</div>
-                {queue.length > 0 ? (
-                  <button style={S.sendButton} onClick={() => assign(queue[0], court)}>
+                {checkedIn.length > 0 ? (
+                  <button
+                    style={S.sendButton}
+                    onClick={() => assign(checkedIn[0], court)}
+                    title={`${checkedIn[0].playerA} v ${checkedIn[0].playerB}`}
+                  >
                     Send next ▸
                   </button>
                 ) : (
-                  <span style={S.muted}>Nothing ready</span>
+                  <span style={S.muted}>No one checked in</span>
                 )}
               </div>
             );
@@ -548,7 +726,15 @@ export default function TopDogDeskClient() {
                 <div style={S.players}>{m.playerA} <span style={S.vs}>v</span> {m.playerB}</div>
                 <div style={S.meta}>{m.event} · {m.round}</div>
                 <div style={S.meta}>
-                  on at {pretty(new Date(startMs).toTimeString().slice(0, 5))} · {elapsed} min
+                  on at{' '}
+                  <input
+                    type="time"
+                    value={new Date(startMs).toTimeString().slice(0, 5)}
+                    onChange={(e) => setStartTime(court, e.target.value)}
+                    style={S.timeInput}
+                    title="When this match actually started"
+                  />
+                  {' '}· {elapsed} min
                 </div>
               </div>
               <div style={S.courtButtons}>
@@ -577,61 +763,17 @@ export default function TopDogDeskClient() {
 
       {/* ---- the queue --------------------------------------------------- */}
       <h2 style={S.h2}>
-        Ready to go on ({queue.length})
+        Checked in, ready to go on ({checkedIn.length})
         {freeCourts.length > 0 && <span style={S.muted}> · {freeCourts.length} court{freeCourts.length === 1 ? '' : 's'} open</span>}
       </h2>
-      {queue.length === 0 && <p style={S.muted}>Nothing is ready — every match is out, scored, or waiting on an earlier result.</p>}
+      {checkedIn.length === 0 && (
+        <p style={S.muted}>Nobody is fully checked in. Tap each player&apos;s name below as they arrive.</p>
+      )}
+      {checkedIn.map((m, i) => renderQueueRow(m, i === 0))}
 
-      {queue.map((m, i) => {
-        const row = board?.waiting.find((w) => w.id === m.id);
-        return (
-          <div key={m.id} style={{ ...S.queueCard, ...(i === 0 ? S.queueCardNext : {}) }}>
-            <div style={S.slotChip}>{m.slot}</div>
-            <div style={S.matchBody}>
-              <div style={S.players}>{m.playerA} <span style={S.vs}>v</span> {m.playerB}</div>
-              <div style={S.meta}>
-                {m.event} · {m.round}
-                {row && row.ahead > 0 && ` · ${row.ahead} ahead`}
-                {row?.estimatedStart && ` · on about ${pretty(row.estimatedStart)}`}
-              </div>
-            </div>
-
-            <div style={S.queueButtons}>
-              {picking === m.id ? (
-                <>
-                  {freeCourts.length === 0 && <span style={S.muted}>No court open</span>}
-                  {freeCourts.map((c) => (
-                    <button key={c} style={S.courtPick} onClick={() => assign(m, c)}>{c}</button>
-                  ))}
-                  <button style={S.smallGhost} onClick={() => setPicking(null)}>✕</button>
-                </>
-              ) : (
-                <>
-                  <button
-                    style={S.assignButton}
-                    onClick={() => {
-                      // One open court is not a choice worth making.
-                      if (freeCourts.length === 1) assign(m, freeCourts[0]);
-                      else setPicking(m.id);
-                    }}
-                    disabled={freeCourts.length === 0}
-                    title={freeCourts.length === 0 ? 'Every court is busy' : 'Put this match on a court and call it'}
-                  >
-                    Court ▸
-                  </button>
-                  <button
-                    style={S.smallButton}
-                    title="Call these players to the desk without giving them a court"
-                    onClick={() => say(reportToDeskText(m.playerA, m.playerB))}
-                  >
-                    🔔
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        );
-      })}
+      <h2 style={S.h2}>Waiting for check-in ({awaiting.length})</h2>
+      {awaiting.length === 0 && <p style={S.muted}>Every match with both players known is checked in or on court.</p>}
+      {awaiting.map((m) => renderQueueRow(m, false))}
 
       {/* ---- not yet decided --------------------------------------------- */}
       <h2 style={S.h2}>Waiting on a result ({undecided.length})</h2>
@@ -732,6 +874,15 @@ const S: Record<string, React.CSSProperties> = {
   sendButton: { padding: '8px 12px', borderRadius: 8, border: '1px solid #16a34a', background: '#fff', color: '#166534', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   scoreButton: { padding: '8px 12px', borderRadius: 8, border: 0, background: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
 
+  fixBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '10px 14px', marginBottom: 10, borderRadius: 10, background: '#fef3c7', color: '#92400e', fontSize: 13.5 },
+  fixButton: { padding: '8px 14px', borderRadius: 8, border: 0, background: '#92400e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
+  timeInput: { padding: '1px 4px', borderRadius: 6, border: '1px solid #bbf7d0', background: '#fff', color: '#111827', fontSize: 12.5 },
+  nameRow: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  nameOut: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#111827', cursor: 'pointer', fontWeight: 600, fontSize: 15 },
+  nameIn: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, border: '1px solid #16a34a', background: '#dcfce7', color: '#14532d', cursor: 'pointer', fontWeight: 700, fontSize: 15 },
+  tickOut: { color: '#9ca3af', fontWeight: 400 },
+  tickIn: { color: '#16a34a' },
+  inTime: { color: '#15803d', fontWeight: 500, fontSize: 11.5 },
   queueCard: { display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, border: '1px solid #e5e7eb', marginBottom: 6, background: '#fff' },
   queueCardNext: { borderColor: '#fbbf24', background: '#fffbeb' },
   queueButtons: { display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' },

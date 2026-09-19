@@ -103,6 +103,8 @@ export interface WaitRow {
   isNext: boolean;
   /** Minutes later than the published time. 0 when running to schedule. */
   delayMin: number;
+  /** Both players have checked in at the desk (TopDog desk only). */
+  checkedIn?: boolean;
 }
 
 export interface CourtRow {
