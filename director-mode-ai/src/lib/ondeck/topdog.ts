@@ -173,6 +173,11 @@ export function parseMatchLine(html: string): {
   return { event, round, playerA, playerB, winner, defaulted, score };
 }
 
+/** "BYE", "Bye", "-BYE-", "(bye)" — how TopDog shows a withdrawn slot. */
+export function isBye(name: string): boolean {
+  return /^\W*bye\W*$/i.test(name.trim());
+}
+
 function nameKey(name: string): string {
   return name.toLowerCase().replace(/[^a-z]/g, '');
 }
@@ -264,12 +269,18 @@ export function parseSchedule(html: string, tournamentId: string): TopDogSchedul
         // A line with no event and no players is table padding (&nbsp;).
         if (!event && !playerA && !playerB) return;
 
-        const completed = defaulted || !!winner || !!score;
+        // A withdrawn player is renamed "BYE" in the draw. That match will
+        // never be played: the other player simply advances. Treated as
+        // finished so it never asks for a check-in or a court.
+        const bye = isBye(playerA) || isBye(playerB);
+        const completed = defaulted || !!winner || !!score || bye;
+        const byeWinner = bye ? (isBye(playerA) ? playerB : playerA) || null : null;
         matches.push({
           id: matchId(date, slot24, event, round, playerA, playerB, tbdSeen),
-          slot, slot24, court, event, round, playerA, playerB, winner, defaulted,
+          slot, slot24, court, event, round, playerA, playerB,
+          winner: winner ?? byeWinner, defaulted,
           completed,
-          ...(score ? { score } : {}),
+          ...(score ? { score } : bye ? { score: 'BYE' } : {}),
           ready: !!playerA && !!playerB && !completed,
           legacyId: `${date}|${slot24}|${col}|${idx}|${event}|${round}`,
         });

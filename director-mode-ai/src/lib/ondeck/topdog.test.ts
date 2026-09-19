@@ -3,7 +3,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import {
   parseSchedule, parseMatchLine, slotTo24, spokenName, spokenRound,
-  spokenEvent, announcementText, diffForAnnouncement, scheduleUrl,
+  spokenEvent, announcementText, diffForAnnouncement, scheduleUrl, isBye,
   type TopDogMatch,
 } from './topdog';
 
@@ -240,5 +240,37 @@ describe('match identity', () => {
     expect(m.completed).toBe(true);
     expect(m.ready).toBe(false);
     expect(m.score).toBe('6-2,6-1');
+  });
+});
+
+describe('byes', () => {
+  function sheet(line: string): string {
+    return `<h2>T</h2><select><option value="9/20/2026" selected>Sun</option></select>
+      <table class="table table-striped">
+        <tr><td></td><td>Unknown Court</td></tr>
+        <tr><td>8:00am</td><td class="matches">${line}&nbsp;</td></tr>
+      </table>`;
+  }
+
+  it('recognises the ways TopDog writes a bye', () => {
+    expect(isBye('BYE')).toBe(true);
+    expect(isBye('Bye')).toBe(true);
+    expect(isBye('-BYE-')).toBe(true);
+    expect(isBye('Byers Smith')).toBe(false);
+    expect(isBye('')).toBe(false);
+  });
+
+  it('never offers a match against a bye for check-in or a court', () => {
+    const [m] = parseSchedule(sheet("Boys' 12 Singles Consol Semis Kiran Liu vs. BYE"), '1715').matches;
+    expect(m.ready).toBe(false);
+    expect(m.completed).toBe(true);
+    expect(m.winner).toBe('Kiran Liu');
+    expect(m.score).toBe('BYE');
+  });
+
+  it('handles the bye on either side', () => {
+    const [m] = parseSchedule(sheet("Boys' 12 Singles Consol Semis BYE vs. Kiran Liu"), '1715').matches;
+    expect(m.ready).toBe(false);
+    expect(m.winner).toBe('Kiran Liu');
   });
 });
