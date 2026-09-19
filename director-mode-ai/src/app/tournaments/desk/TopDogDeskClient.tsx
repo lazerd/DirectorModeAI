@@ -68,6 +68,18 @@ interface DeskState {
    * match while the players walk back to report.
    */
   awaiting: AwaitingScore[];
+  /**
+   * Where each desk-scored match was when it was scored in, so it can be put
+   * back on court exactly as it was — same court, same start time — and the
+   * timing it contributed taken back out.
+   */
+  scoredFrom?: Record<string, ScoredFrom>;
+}
+
+interface ScoredFrom {
+  court: string;
+  startedAt: string;
+  observation: Observation | null;
 }
 
 interface AwaitingScore {
@@ -473,6 +485,10 @@ export default function TopDogDeskClient() {
           ? s.completedIds
           : [...s.completedIds, assignment.matchId],
         observations: obs ? [...s.observations, obs] : s.observations,
+        scoredFrom: {
+          ...(s.scoredFrom ?? {}),
+          [assignment.matchId]: { court, startedAt: assignment.startedAt, observation: obs },
+        },
       };
     });
 
@@ -516,6 +532,9 @@ export default function TopDogDeskClient() {
         awaiting: (s.awaiting ?? []).filter((w) => w.matchId !== matchId),
         completedIds: s.completedIds.includes(matchId) ? s.completedIds : [...s.completedIds, matchId],
         observations: obs ? [...s.observations, obs] : s.observations,
+        scoredFrom: held
+          ? { ...(s.scoredFrom ?? {}), [matchId]: { court: held.court, startedAt: held.startedAt, observation: obs } }
+          : s.scoredFrom,
       };
     });
     if (match) {
@@ -604,9 +623,40 @@ export default function TopDogDeskClient() {
     addLog(`Court ${court} cleared (no score recorded)`, 'info');
   }, [addLog]);
 
-  const undoScore = useCallback((matchId: string) => {
-    setState((s) => ({ ...s, completedIds: s.completedIds.filter((id) => id !== matchId) }));
-  }, []);
+  /**
+   * Scored in by mistake: put the match back on the court it came off, with
+   * its original start time, and take back the timing it contributed. If
+   * that court has since been given to another match, the next open court;
+   * if every court is busy, back into the queue.
+   */
+  const restoreScored = useCallback((matchId: string, court: string | null) => {
+    setState((s) => {
+      const from = s.scoredFrom?.[matchId];
+      let observations = s.observations;
+      if (from?.observation) {
+        const i = observations.findIndex(
+          (o) => o.bucket === from.observation!.bucket && o.minutes === from.observation!.minutes
+        );
+        if (i >= 0) observations = [...observations.slice(0, i), ...observations.slice(i + 1)];
+      }
+      const scoredFrom = { ...(s.scoredFrom ?? {}) };
+      delete scoredFrom[matchId];
+      return {
+        ...s,
+        completedIds: s.completedIds.filter((id) => id !== matchId),
+        observations,
+        scoredFrom,
+        assignments: court
+          ? [
+              ...s.assignments.filter((a) => a.court !== court && a.matchId !== matchId),
+              { court, matchId, startedAt: from?.startedAt ?? new Date().toISOString() },
+            ]
+          : s.assignments,
+      };
+    });
+    const m = byId.get(matchId);
+    if (m) addLog(`${m.playerA} v ${m.playerB} ${court ? `back on court ${court}` : 'back in the queue'}`, 'info');
+  }, [byId, addLog]);
 
   // --- publish the public board ------------------------------------------
   useEffect(() => {
@@ -1106,11 +1156,23 @@ export default function TopDogDeskClient() {
               {m.winner && ` · ${m.winner} won`}
             </div>
           </div>
-          {doneIds.has(m.id) && !m.completed && (
-            <button style={S.smallGhost} onClick={() => undoScore(m.id)} title="Put this match back in the queue">
-              undo
-            </button>
-          )}
+          {doneIds.has(m.id) && !m.completed && (() => {
+            // TopDog-scored matches aren't offered: TopDog would just free
+            // the court again on the next poll.
+            const from = state.scoredFrom?.[m.id];
+            const target = from && !occupied.has(from.court) ? from.court : freeCourts[0] ?? null;
+            return (
+              <button
+                style={S.editButton}
+                onClick={() => restoreScored(m.id, target)}
+                title={target
+                  ? `Scored in by mistake? Back on court ${target}${from ? `, started ${clockOf(from.startedAt)}` : ''}`
+                  : 'Every court is busy: back into the queue'}
+              >
+                {target ? `Back on court ${target}` : 'Back to queue'}
+              </button>
+            );
+          })()}
         </div>
       ))}
 
