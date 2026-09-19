@@ -8,6 +8,7 @@
  *          is how captains end up with a lineup of people who can't come.
  */
 import { NextResponse } from 'next/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { defaultCourts } from '@/lib/captain/leagues';
 
@@ -136,6 +137,40 @@ export async function PATCH(req: Request) {
   for (const k of allowed) {
     if (body.patch && k in body.patch) patch[k] = body.patch[k];
   }
+  /*
+   * 'self' = the signed-in captain is coaching this match. The picker offers
+   * them even when they aren't in the team's contacts (Darrin, 12U, 9/18:
+   * "my name isn't listed"), so make that contact row now. It's off team
+   * emails; being the match coach already copies them on this match.
+   */
+  if (patch.match_coach_id === 'self') {
+    const admin = getSupabaseAdmin();
+    const { data: u } = await admin.auth.admin.getUserById(ctx.userId);
+    const email = u?.user?.email?.trim() || null;
+    const { data: prof } = await admin.from('profiles').select('full_name').eq('id', ctx.userId).maybeSingle();
+    const name = (prof as { full_name: string | null } | null)?.full_name?.trim() || email?.split('@')[0] || 'Captain';
+    const { data: existing } = email
+      ? await admin
+          .from('captain_team_contacts')
+          .select('id')
+          .eq('team_id', ctx.teamId)
+          .ilike('email', email)
+          .limit(1)
+          .maybeSingle()
+      : { data: null };
+    let id = (existing as { id: string } | null)?.id ?? null;
+    if (!id) {
+      const { data: made, error: mkErr } = await admin
+        .from('captain_team_contacts')
+        .insert({ team_id: ctx.teamId, name, email, role: 'coach', on_emails: false })
+        .select('id')
+        .single();
+      if (mkErr) return NextResponse.json({ error: mkErr.message }, { status: 500 });
+      id = (made as { id: string }).id;
+    }
+    patch.match_coach_id = id;
+  }
+
   // A contact id from another team would put a stranger on this match's emails.
   if (patch.match_coach_id) {
     const { data: contact } = await ctx.db
@@ -143,8 +178,10 @@ export async function PATCH(req: Request) {
       .select('id')
       .eq('id', patch.match_coach_id as string)
       .eq('team_id', ctx.teamId)
+      .in('role', ['coach', 'captain'])
       .maybeSingle();
-    if (!contact) return NextResponse.json({ error: 'That coach is not on this team.' }, { status: 400 });
+    // Only a coach can coach a match — never a team parent.
+    if (!contact) return NextResponse.json({ error: 'Pick one of the team’s coaches.' }, { status: 400 });
   }
 
   const { error } = await ctx.db

@@ -5,11 +5,12 @@
  * courts. Shown at the top of the match page whether or not any email has gone
  * out, because it is the first thing anyone asks on match day.
  *
- * Picks from the team's own contacts (Team page → contacts), so the name,
- * email and phone live in one place. Once named, the coach is copied on every
+ * Picks from the team's COACHES only (Team page → contacts, role coach) —
+ * team parents are never a match's coach. The name, email and phone live in
+ * one place. Once named, the coach is copied on every
  * email about this match — see matchCcRecipients.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
@@ -36,6 +37,8 @@ export default function MatchCoachPicker({
   const [id, setId] = useState<string | null>(initialId);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Picking "you" creates a contact with a real id; follow it after the refresh.
+  useEffect(() => setId(initialId), [initialId]);
   const coach = options.find((o) => o.id === id) ?? null;
 
   async function choose(next: string | null) {
@@ -59,11 +62,7 @@ export default function MatchCoachPicker({
     }
   }
 
-  // Coaches first, then everyone else on the contact list.
-  const sorted = [...options].sort(
-    (a, b) =>
-      (a.role === 'coach' ? 0 : 1) - (b.role === 'coach' ? 0 : 1) || a.name.localeCompare(b.name),
-  );
+  const sorted = [...options].sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="rounded-xl border border-[#D3FB52]/30 bg-[#D3FB52]/[0.06] px-4 py-2.5 text-sm">
@@ -85,7 +84,7 @@ export default function MatchCoachPicker({
         </div>
       ) : options.length === 0 ? (
         <p className="text-white/60 text-xs mt-1">
-          Add the coach under contacts on the team page first, then pick them here.
+          Add the coach under contacts on the team page (role: coach), then pick them here.
         </p>
       ) : (
         <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -100,7 +99,6 @@ export default function MatchCoachPicker({
             {sorted.map((o) => (
               <option key={o.id} value={o.id}>
                 {o.name}
-                {o.role && o.role !== 'coach' ? ` (${o.role.replace('_', ' ')})` : ''}
               </option>
             ))}
           </select>

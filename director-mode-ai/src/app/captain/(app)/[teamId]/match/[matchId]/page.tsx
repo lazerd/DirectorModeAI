@@ -163,16 +163,30 @@ export default async function MatchPage({
       cocaptain_phone: string | null;
     }[]) || [],
   );
-  // Our side: the team's contacts, for the "coach at this match" picker.
+  // Our side: the team's COACHES, for the "coach at this match" picker. Team
+  // parents are contacts too, but they can't coach a match (Darrin, 9/18).
   const { data: contactRows } = await getSupabaseAdmin()
     .from('captain_team_contacts')
     .select('id, name, role, email, phone')
     .eq('team_id', params.teamId)
+    .in('role', ['coach', 'captain'])
     .order('name');
-  const coachOptions = ((contactRows as CoachOption[]) || []).map((c) => ({
+  const coachOptions: CoachOption[] = ((contactRows as CoachOption[]) || []).map((c) => ({
     ...c,
     phone: c.phone ? formatPhone(normalizePhone(c.phone)) || c.phone : null,
   }));
+  // The captain themself is always a choice, even before they're a contact —
+  // picking "you" creates the contact (see PATCH /api/captain/matches).
+  const myEmail = (user.email || '').toLowerCase();
+  if (myEmail && !coachOptions.some((c) => (c.email || '').toLowerCase() === myEmail)) {
+    const { data: prof } = await getSupabaseAdmin()
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .maybeSingle();
+    const me = (prof as { full_name: string | null } | null)?.full_name?.trim() || user.email!.split('@')[0];
+    coachOptions.unshift({ id: 'self', name: `${me} (you)`, role: 'coach', email: user.email ?? null, phone: null });
+  }
 
   const oppContacts = [
     {
