@@ -694,19 +694,22 @@ export default function TopDogDeskClient() {
 }
 
 const S: Record<string, React.CSSProperties> = {
-  wrap: { maxWidth: 1180, margin: '0 auto', padding: '20px 16px 60px', fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif', color: '#111827' },
-  gate: { maxWidth: 520, margin: '12vh auto', textAlign: 'center' },
+  // The desk sits inside ClubMode's dark shell, but this page is read at
+  // arm's length in daylight by someone holding a clipboard — so it paints
+  // its own light surface rather than inheriting a dark one.
+  wrap: { maxWidth: 1180, margin: '0 auto', padding: '20px 20px 60px', minHeight: '100vh', background: '#fff', color: '#111827', fontFamily: 'system-ui, -apple-system, Segoe UI, sans-serif' },
+  gate: { maxWidth: 520, margin: '0 auto', padding: '12vh 0', textAlign: 'center' },
   gateText: { color: '#6b7280', marginBottom: 28 },
   gateHint: { color: '#9ca3af', fontSize: 13, marginTop: 18 },
   bigButton: { fontSize: 20, fontWeight: 700, padding: '18px 34px', borderRadius: 12, border: 0, background: '#16a34a', color: '#fff', cursor: 'pointer' },
   headerRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' },
   headerActions: { display: 'flex', gap: 8 },
-  h1: { fontSize: 24, margin: '0 0 4px', lineHeight: 1.2 },
+  h1: { fontSize: 24, margin: '0 0 4px', lineHeight: 1.2, color: '#111827' },
   h2: { fontSize: 15, textTransform: 'uppercase', letterSpacing: '.06em', color: '#6b7280', margin: '28px 0 10px' },
   status: { display: 'flex', alignItems: 'center', gap: 8, color: '#6b7280', fontSize: 13 },
   dot: { width: 9, height: 9, borderRadius: '50%', display: 'inline-block' },
   controls: { display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 14, padding: '12px 0', borderTop: '1px solid #e5e7eb', borderBottom: '1px solid #e5e7eb' },
-  label: { fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 6 },
+  label: { fontSize: 13, color: '#374151', display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' },
   select: { padding: '6px 8px', borderRadius: 6, border: '1px solid #d1d5db', color: '#111827', background: '#fff' },
   textInput: { padding: '6px 8px', borderRadius: 6, border: '1px solid #d1d5db', width: 200, color: '#111827', background: '#fff' },
   numInput: { padding: '6px 8px', borderRadius: 6, border: '1px solid #d1d5db', width: 70, color: '#111827', background: '#fff' },
