@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseSchedule, scheduleUrl } from '@/lib/ondeck/topdog';
-import { mergeResults, parseResults, resultsUrl } from '@/lib/ondeck/topdogResults';
+import { mergeResults, missingLiveMatches, parseResults, resultsUrl } from '@/lib/ondeck/topdogResults';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,12 +75,23 @@ export async function GET(request: NextRequest) {
     ? parseResults(resultsHtml)
     : { divisions: [], results: [] };
 
+  // A match TopDog has a score for is finished, whatever the order of play
+  // still shows — this is what lets the desk open a court by itself.
+  const matches = mergeResults(schedule.matches, results);
+
+  // The one thing that must never happen: a match TopDog still lists as
+  // "Scheduled" missing from the desk. mergeResults is built so it can't;
+  // this says so loudly in the logs and the response if it ever does.
+  const missing = missingLiveMatches(matches, results);
+  if (missing.length) {
+    console.error('[ondeck/topdog] live matches hidden from the desk', missing);
+  }
+
   return NextResponse.json(
     {
       ...schedule,
-      // A match TopDog has a score for is finished, whatever the order of
-      // play still shows — this is what lets the desk open a court by itself.
-      matches: mergeResults(schedule.matches, results),
+      matches,
+      missingLive: missing,
       divisions,
       resultsAvailable: resultsHtml !== null,
       sourceUrl: url,

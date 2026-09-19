@@ -149,9 +149,12 @@ export function parseMatchLine(html: string): {
   text = text.replace(/\(default\)/gi, '').trim();
 
   // Once a result is in, TopDog appends it to the line: "Jason Lee (6-2,6-1)".
-  // Left in place it becomes part of the second player's name.
+  // Left in place it becomes part of the second player's name. It has to
+  // look like a set score (a digit, a dash, a digit): anything else in
+  // brackets — a seed "(1)", a club "(SHSTC)" — is not a result, and reading
+  // it as one would hide a match that hasn't been played.
   let score: string | null = null;
-  const trailing = text.match(/\s*\(([^()]*\d[^()]*)\)\s*$/);
+  const trailing = text.match(/\s*\(([^()]*\d+\s*-\s*\d+[^()]*)\)\s*$/);
   if (trailing) {
     score = trailing[1].trim();
     text = text.slice(0, trailing.index).trim();
@@ -206,6 +209,17 @@ function matchId(
   return `${bucket}|tbd${n}`;
 }
 
+/**
+ * If TopDog ever prints the same match twice, both lines must stay on the
+ * desk. Two matches sharing an id would collapse into one everywhere the desk
+ * looks a match up, and the other would silently disappear.
+ */
+function uniqueId(id: string, seen: Map<string, number>): string {
+  const n = seen.get(id) ?? 0;
+  seen.set(id, n + 1);
+  return n === 0 ? id : `${id}|dup${n}`;
+}
+
 /** Rows of the schedule table, each already split into its `<td>` contents. */
 function tableRows(html: string): string[][] {
   const table = html.match(/<table[^>]*class="[^"]*table-striped[^"]*"[^>]*>([\s\S]*?)<\/table>/i);
@@ -253,6 +267,7 @@ export function parseSchedule(html: string, tournamentId: string): TopDogSchedul
 
   const matches: TopDogMatch[] = [];
   const tbdSeen = new Map<string, number>();
+  const idsSeen = new Map<string, number>();
   for (const cells of rows.slice(1)) {
     const slot = stripTags(cells[0] ?? '');
     const slot24 = slotTo24(slot);
@@ -276,7 +291,7 @@ export function parseSchedule(html: string, tournamentId: string): TopDogSchedul
         const completed = defaulted || !!winner || !!score || bye;
         const byeWinner = bye ? (isBye(playerA) ? playerB : playerA) || null : null;
         matches.push({
-          id: matchId(date, slot24, event, round, playerA, playerB, tbdSeen),
+          id: uniqueId(matchId(date, slot24, event, round, playerA, playerB, tbdSeen), idsSeen),
           slot, slot24, court, event, round, playerA, playerB,
           winner: winner ?? byeWinner, defaulted,
           completed,

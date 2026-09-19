@@ -127,25 +127,68 @@ function matchKey(division: string, round: string, a: string, b: string): string
 }
 
 /**
- * Fold the results page into the schedule: anything TopDog has a score for
- * is finished, whatever the schedule still shows.
+ * Fold the results page into the schedule. The results page is the one that
+ * carries an explicit status for every match, so where it has a row for this
+ * exact match (division + round + both players) it is the final word:
  *
- * A match with a blank side cannot be joined and is left alone — two
- * unstarted matches in the same round would otherwise both key on " | ".
+ *   a score  -> finished, with that score
+ *   "Scheduled" -> NOT finished, whatever the schedule page's bold or
+ *                  brackets seemed to say
+ *
+ * The second rule is the safety net. The only failure that really hurts a
+ * tournament is a match that hasn't been played disappearing from the desk,
+ * and every way the schedule page can be misread ends there. With a row that
+ * says "Scheduled", a misread can no longer hide a live match.
+ *
+ * A match with no row on the results page keeps what the schedule said. A
+ * match with a blank side is never joined — two unstarted matches in the
+ * same round would otherwise key alike. A BYE stays finished: TopDog lists
+ * it as "Scheduled" because it will never be played.
  */
 export function mergeResults(matches: TopDogMatch[], results: MatchResult[]): TopDogMatch[] {
-  const scored = new Map<string, MatchResult>();
+  const rows = new Map<string, MatchResult>();
   for (const r of results) {
-    if (!r.done || !r.playerA || !r.playerB) continue;
-    scored.set(matchKey(r.division, r.round, r.playerA, r.playerB), r);
+    if (!r.playerA || !r.playerB) continue;
+    const key = matchKey(r.division, r.round, r.playerA, r.playerB);
+    const prior = rows.get(key);
+    // Two rows for one match: a result beats "Scheduled".
+    if (!prior || (r.done && !prior.done)) rows.set(key, r);
   }
-  if (!scored.size) return matches;
+  if (!rows.size) return matches;
 
   return matches.map((m) => {
-    if (!m.playerA || !m.playerB || m.completed) return m;
-    const hit = scored.get(matchKey(m.event, m.round, m.playerA, m.playerB));
-    if (!hit) return m;
-    return { ...m, completed: true, ready: false, score: hit.score };
+    if (!m.playerA || !m.playerB) return m;
+    const row = rows.get(matchKey(m.event, m.round, m.playerA, m.playerB));
+    if (!row) return m;
+
+    if (row.done) {
+      return { ...m, completed: true, ready: false, score: m.score ?? row.score };
+    }
+    if (m.completed && m.score !== 'BYE') {
+      // The schedule page looked finished; the results page says it isn't.
+      return { ...m, completed: false, ready: true, winner: null, defaulted: false, score: undefined };
+    }
+    return m;
+  });
+}
+
+/**
+ * Every playable match the results page lists as "Scheduled" must be on the
+ * desk as playable. Returns the ones that aren't — empty is the only correct
+ * answer. Used by the tests against real TopDog pages, and by the desk API to
+ * say so out loud if it ever isn't.
+ */
+export function missingLiveMatches(matches: TopDogMatch[], results: MatchResult[]): MatchResult[] {
+  const byKey = new Map(matches
+    .filter((m) => m.playerA && m.playerB)
+    .map((m) => [matchKey(m.event, m.round, m.playerA, m.playerB), m]));
+  return results.filter((r) => {
+    if (r.done || !r.playerA || !r.playerB) return false;
+    if (/^\W*bye\W*$/i.test(r.playerA) || /^\W*bye\W*$/i.test(r.playerB)) return false;
+    const m = byKey.get(matchKey(r.division, r.round, r.playerA, r.playerB));
+    // Not on this day's sheet at all is fine (another day); on it but not
+    // playable is the bug.
+    return !!m && !m.ready;
   });
 }
 
