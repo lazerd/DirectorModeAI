@@ -63,17 +63,9 @@ interface DeskState {
   observations: Observation[];
   /** Who has shown up, by match id. */
   checkIns: Record<string, CheckIn>;
-  /**
-   * Matches whose late start Darrin has confirmed is real (the tournament
-   * was running behind), so the "logged late?" banner stops asking.
-   */
-  timesConfirmed?: string[];
 }
 
 const EMPTY_STATE: DeskState = { assignments: [], completedIds: [], observations: [], checkIns: {} };
-
-/** A court that went on this much later than its slot was probably loaded late. */
-const LATE_LOAD_MIN = 10;
 
 /** "HH:MM" on the same calendar day as `day`, as an ISO timestamp. */
 function isoAt(hhmm: string, day: Date): string {
@@ -349,38 +341,6 @@ export default function TopDogDeskClient() {
       ),
     }));
   }, []);
-
-  /**
-   * Courts whose start is well after their match's slot: the tell for
-   * "the kids went out at 8, I only typed it in at 8:40".
-   */
-  const lateLoaded = useMemo(() => state.assignments.filter((a) => {
-    const m = byId.get(a.matchId);
-    if (!m?.slot24) return false;
-    if (state.timesConfirmed?.includes(a.matchId)) return false;
-    const started = new Date(a.startedAt);
-    const slot = new Date(isoAt(m.slot24, started));
-    return started.getTime() - slot.getTime() > LATE_LOAD_MIN * 60_000;
-  }), [state.assignments, state.timesConfirmed, byId]);
-
-  /** The late starts are real: stop asking about these matches. */
-  const keepActualTimes = useCallback(() => {
-    const ids = lateLoaded.map((a) => a.matchId);
-    setState((s) => ({ ...s, timesConfirmed: [...(s.timesConfirmed ?? []), ...ids] }));
-  }, [lateLoaded]);
-
-  const startAllOnSchedule = useCallback(() => {
-    const fix = new Set(lateLoaded.map((a) => a.court));
-    setState((s) => ({
-      ...s,
-      assignments: s.assignments.map((a) => {
-        const m = byId.get(a.matchId);
-        if (!fix.has(a.court) || !m?.slot24) return a;
-        return { ...a, startedAt: isoAt(m.slot24, new Date(a.startedAt)) };
-      }),
-    }));
-    addLog(`Start times set to the scheduled slot on ${fix.size} court${fix.size === 1 ? '' : 's'}`, 'info');
-  }, [lateLoaded, byId, addLog]);
 
   /**
    * Put a match on a court. Always silent: Darrin calls players to the desk
@@ -801,23 +761,6 @@ export default function TopDogDeskClient() {
 
       {/* ---- courts ------------------------------------------------------ */}
       <h2 style={S.h2}>Courts</h2>
-      {lateLoaded.length > 0 && (
-        <div style={S.fixBanner}>
-          <span>
-            {lateLoaded.length === 1 ? 'Court ' : 'Courts '}
-            {lateLoaded.map((a) => a.court).join(', ')} went on well after the scheduled time.
-            Running behind, or did you just log it late?
-          </span>
-          <span style={S.editRow}>
-            <button style={S.keepButton} onClick={keepActualTimes}>
-              Keep actual times
-            </button>
-            <button style={S.fixButton} onClick={startAllOnSchedule}>
-              They started on time
-            </button>
-          </span>
-        </div>
-      )}
       <div style={S.courtGrid}>
         {courts.map((court) => {
           const a = occupied.get(court);
@@ -1080,9 +1023,6 @@ const S: Record<string, React.CSSProperties> = {
   moveBusy: { width: 36, height: 36, borderRadius: 8, border: '1px solid #d1d5db', background: '#f3f4f6', color: '#6b7280', cursor: 'pointer', fontWeight: 800 },
   placeSelect: { padding: '6px 8px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#111827', fontSize: 12.5, maxWidth: 260 },
   clearButton: { padding: '6px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', cursor: 'pointer', fontSize: 12.5 },
-  fixBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '10px 14px', marginBottom: 10, borderRadius: 10, background: '#fef3c7', color: '#92400e', fontSize: 13.5 },
-  keepButton: { padding: '8px 14px', borderRadius: 8, border: '1px solid #92400e', background: '#fff', color: '#92400e', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
-  fixButton: { padding: '8px 14px', borderRadius: 8, border: 0, background: '#92400e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   timeInput: { padding: '1px 4px', borderRadius: 6, border: '1px solid #bbf7d0', background: '#fff', color: '#111827', fontSize: 12.5 },
   nameRow: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
   nameOut: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#111827', cursor: 'pointer', fontWeight: 600, fontSize: 15 },
