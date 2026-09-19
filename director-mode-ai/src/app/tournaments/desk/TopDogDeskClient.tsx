@@ -63,9 +63,24 @@ interface DeskState {
   observations: Observation[];
   /** Who has shown up, by match id. */
   checkIns: Record<string, CheckIn>;
+  /**
+   * Off court, score not in yet. The court is already free for the next
+   * match while the players walk back to report.
+   */
+  awaiting: AwaitingScore[];
 }
 
-const EMPTY_STATE: DeskState = { assignments: [], completedIds: [], observations: [], checkIns: {} };
+interface AwaitingScore {
+  matchId: string;
+  /** The court they came off, so a mis-tap can put them straight back. */
+  court: string;
+  startedAt: string;
+  offAt: string;
+}
+
+const EMPTY_STATE: DeskState = {
+  assignments: [], completedIds: [], observations: [], checkIns: {}, awaiting: [],
+};
 
 /** "HH:MM" on the same calendar day as `day`, as an ISO timestamp. */
 function isoAt(hhmm: string, day: Date): string {
@@ -226,7 +241,7 @@ export default function TopDogDeskClient() {
       matches,
       courts,
       assignments: state.assignments,
-      completedIds: state.completedIds,
+      completedIds: [...state.completedIds, ...(state.awaiting ?? []).map((w) => w.matchId)],
       checkIns: state.checkIns,
       lengths,
       observations: state.observations,
@@ -276,9 +291,16 @@ export default function TopDogDeskClient() {
   const doneIds = useMemo(() => new Set(state.completedIds), [state.completedIds]);
 
   /** Ready to go out: both names known, not on court, not scored. */
+  const awaitingIds = useMemo(
+    () => new Set((state.awaiting ?? []).map((w) => w.matchId)),
+    [state.awaiting]
+  );
+
   const queue = useMemo(
-    () => matches.filter((m) => m.ready && !busyMatchIds.has(m.id) && !doneIds.has(m.id)),
-    [matches, busyMatchIds, doneIds]
+    () => matches.filter(
+      (m) => m.ready && !busyMatchIds.has(m.id) && !doneIds.has(m.id) && !awaitingIds.has(m.id)
+    ),
+    [matches, busyMatchIds, doneIds, awaitingIds]
   );
 
   /**
@@ -422,6 +444,21 @@ export default function TopDogDeskClient() {
    * The result itself still has to go into TopDog, so the scoring page opens
    * alongside. Nothing here writes to TopDog.
    */
+  /**
+   * Straight to TopDog's batch form for the match's division, preselected —
+   * TopDog's own dropdown is there if the guess is wrong (a main draw and its
+   * consolation share a name).
+   */
+  const openScoring = useCallback((match: TopDogMatch) => {
+    const eventId = eventIdFor(match, schedule?.divisions ?? []);
+    window.open(
+      eventId
+        ? scoreEntryUrl(eventId)
+        : `https://sleepyhollowswimtennis.topdoglive.com/pages/tournaments/matches_list.asp?idevent=0&t=${TOURNAMENT_ID}`,
+      'topdog-scoring'
+    );
+  }, [schedule]);
+
   const scoreIn = useCallback((court: string, openTopDog = true) => {
     const assignment = occupied.get(court);
     if (!assignment) return;
@@ -442,19 +479,83 @@ export default function TopDogDeskClient() {
     if (match) {
       addLog(`Court ${court} open — ${match.playerA} v ${match.playerB} scored in`, 'info');
     }
-    if (openTopDog && match) {
-      // Straight to the batch form for that division, with the division
-      // preselected — TopDog's own dropdown is there if the guess is wrong
-      // (a main draw and its consolation share a name).
-      const eventId = eventIdFor(match, schedule?.divisions ?? []);
-      window.open(
-        eventId
-          ? scoreEntryUrl(eventId)
-          : `https://sleepyhollowswimtennis.topdoglive.com/pages/tournaments/matches_list.asp?idevent=0&t=${TOURNAMENT_ID}`,
-        'topdog-scoring'
-      );
+    if (openTopDog && match) openScoring(match);
+  }, [occupied, byId, addLog, openScoring]);
+
+  /**
+   * The match is over but the score isn't in: take it off the court so the
+   * next match can go on, and hold it until the players report. Timed here,
+   * at the real finish, not whenever the score finally arrives.
+   */
+  const offCourt = useCallback((court: string) => {
+    const assignment = occupied.get(court);
+    if (!assignment) return;
+    const match = byId.get(assignment.matchId);
+    const offAt = new Date();
+    setState((s) => {
+      const obs = match ? observationFor(match, assignment.startedAt, offAt) : null;
+      return {
+        ...s,
+        assignments: s.assignments.filter((a) => a.court !== court),
+        awaiting: [
+          ...(s.awaiting ?? []).filter((w) => w.matchId !== assignment.matchId),
+          { matchId: assignment.matchId, court, startedAt: assignment.startedAt, offAt: offAt.toISOString() },
+        ],
+        observations: obs ? [...s.observations, obs] : s.observations,
+      };
+    });
+    setEditing(null);
+    if (match) addLog(`Court ${court} open — ${match.playerA} v ${match.playerB} off court, awaiting score`, 'info');
+  }, [occupied, byId, addLog]);
+
+  /** The players reported: done, and off to TopDog to enter it. */
+  const scoreInAwaiting = useCallback((matchId: string) => {
+    const match = byId.get(matchId);
+    setState((s) => ({
+      ...s,
+      awaiting: (s.awaiting ?? []).filter((w) => w.matchId !== matchId),
+      completedIds: s.completedIds.includes(matchId) ? s.completedIds : [...s.completedIds, matchId],
+    }));
+    if (match) {
+      addLog(`${match.playerA} v ${match.playerB} scored in`, 'info');
+      openScoring(match);
     }
-  }, [occupied, byId, addLog, schedule]);
+  }, [byId, addLog, openScoring]);
+
+  /** Mis-tap: back on the court they came off (or any open one). */
+  const backOnCourt = useCallback((matchId: string, court: string) => {
+    setState((s) => {
+      const held = (s.awaiting ?? []).find((w) => w.matchId === matchId);
+      if (!held) return s;
+      return {
+        ...s,
+        awaiting: (s.awaiting ?? []).filter((w) => w.matchId !== matchId),
+        assignments: [
+          ...s.assignments.filter((a) => a.court !== court),
+          { court, matchId, startedAt: held.startedAt },
+        ],
+      };
+    });
+    addLog(`Put back on court ${court}`, 'info');
+  }, [addLog]);
+
+  /**
+   * Scored in TopDog directly: the holding area clears itself, same as a
+   * court does.
+   */
+  useEffect(() => {
+    const scored = (state.awaiting ?? []).filter((w) => byId.get(w.matchId)?.completed);
+    if (!scored.length) return;
+    const ids = new Set(scored.map((w) => w.matchId));
+    setState((s) => ({
+      ...s,
+      awaiting: (s.awaiting ?? []).filter((w) => !ids.has(w.matchId)),
+    }));
+    for (const w of scored) {
+      const m = byId.get(w.matchId);
+      if (m) addLog(`${m.playerA} v ${m.playerB}: TopDog has the score${m.score ? ` (${m.score})` : ''}`, 'info');
+    }
+  }, [state.awaiting, byId, addLog]);
 
   /**
    * A court TopDog has a score for opens itself.
@@ -836,6 +937,13 @@ export default function TopDogDeskClient() {
                 </div>
               </div>
               <div style={S.courtButtons}>
+                <button
+                  style={S.offButton}
+                  onClick={() => offCourt(court)}
+                  title="Match is over — free the court now, hold it until they report the score"
+                >
+                  Off court
+                </button>
                 <button style={S.scoreButton} onClick={() => scoreIn(court)}>
                   Score in ▸
                 </button>
@@ -899,6 +1007,46 @@ export default function TopDogDeskClient() {
           );
         })}
       </div>
+
+      {/* ---- awaiting score ---------------------------------------------- */}
+      {(state.awaiting ?? []).length > 0 && (
+        <>
+          <h2 style={S.h2}>Awaiting score ({state.awaiting.length})</h2>
+          <div style={S.awaitGrid}>
+            {state.awaiting.map((w) => {
+              const m = byId.get(w.matchId);
+              if (!m) return null;
+              const waitMin = Math.max(0, Math.round((now.getTime() - new Date(w.offAt).getTime()) / 60000));
+              const back = occupied.has(w.court) ? freeCourts[0] : w.court;
+              return (
+                <div key={w.matchId} style={S.awaitCard}>
+                  <div style={S.awaitCourt}>{w.court}</div>
+                  <div style={S.courtBody}>
+                    <div style={S.players}>{m.playerA} <span style={S.vs}>v</span> {m.playerB}</div>
+                    <div style={S.meta}>
+                      {m.event} · {m.round} · off {clockOf(w.offAt)} · {waitMin} min ago
+                    </div>
+                  </div>
+                  <div style={S.courtButtons}>
+                    <button style={S.scoreButton} onClick={() => scoreInAwaiting(w.matchId)}>
+                      Score in ▸
+                    </button>
+                    {back && (
+                      <button
+                        style={S.editButton}
+                        onClick={() => backOnCourt(w.matchId, back)}
+                        title={`Not finished after all — back on court ${back}`}
+                      >
+                        Back on {back}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {/* ---- the queue --------------------------------------------------- */}
       <h2 style={S.h2}>
@@ -1014,6 +1162,10 @@ const S: Record<string, React.CSSProperties> = {
   scoreButton: { padding: '8px 12px', borderRadius: 8, border: 0, background: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
 
   deskCallButton: { padding: '8px 12px', borderRadius: 8, border: '1px solid #f59e0b', background: '#fff7ed', color: '#9a3412', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
+  offButton: { padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#fff', color: '#1d4ed8', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
+  awaitGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 },
+  awaitCard: { display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff' },
+  awaitCourt: { width: 40, height: 40, flexShrink: 0, borderRadius: 8, background: '#dbeafe', color: '#1e40af', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 18 },
   courtBusyWrap: { display: 'flex', flexDirection: 'column', gap: 0 },
   editButton: { padding: '7px 10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#374151', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 },
   editButtonOn: { padding: '7px 10px', borderRadius: 8, border: '1px solid #111827', background: '#111827', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 },
