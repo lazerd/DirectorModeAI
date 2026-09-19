@@ -74,6 +74,13 @@ interface DeskState {
    * timing it contributed taken back out.
    */
   scoredFrom?: Record<string, ScoredFrom>;
+  /**
+   * Matches Darrin put back on court even though TopDog has a score, keyed
+   * to the score TopDog showed at the time. The court stays put until that
+   * score changes (he corrects it in TopDog) — otherwise the next poll would
+   * just free the court again.
+   */
+  keptOn?: Record<string, string>;
 }
 
 interface ScoredFrom {
@@ -339,8 +346,8 @@ export default function TopDogDeskClient() {
   );
 
   const finished = useMemo(
-    () => matches.filter((m) => m.completed || doneIds.has(m.id)),
-    [matches, doneIds]
+    () => matches.filter((m) => (m.completed || doneIds.has(m.id)) && !busyMatchIds.has(m.id)),
+    [matches, doneIds, busyMatchIds]
   );
 
   const freeCourts = useMemo(
@@ -594,7 +601,12 @@ export default function TopDogDeskClient() {
    * Nothing gets said twice.
    */
   useEffect(() => {
-    const finished = state.assignments.filter((a) => byId.get(a.matchId)?.completed);
+    const finished = state.assignments.filter((a) => {
+      const m = byId.get(a.matchId);
+      if (!m?.completed) return false;
+      const kept = state.keptOn?.[a.matchId];
+      return kept === undefined || kept !== (m.score ?? m.winner ?? 'done');
+    });
     if (!finished.length) return;
 
     const freed = new Set(finished.map((a) => a.court));
@@ -615,7 +627,7 @@ export default function TopDogDeskClient() {
       const m = byId.get(a.matchId);
       addLog(`Court ${a.court} open — TopDog has the score${m?.score ? ` (${m.score})` : ''}`, 'info');
     }
-  }, [state.assignments, byId, addLog]);
+  }, [state.assignments, state.keptOn, byId, addLog]);
 
   /** Put a court back the way it was — a mis-tap at a busy desk is common. */
   const clearCourt = useCallback((court: string) => {
@@ -641,11 +653,15 @@ export default function TopDogDeskClient() {
       }
       const scoredFrom = { ...(s.scoredFrom ?? {}) };
       delete scoredFrom[matchId];
+      const m = byId.get(matchId);
+      const keptOn = { ...(s.keptOn ?? {}) };
+      if (court && m?.completed) keptOn[matchId] = m.score ?? m.winner ?? 'done';
       return {
         ...s,
         completedIds: s.completedIds.filter((id) => id !== matchId),
         observations,
         scoredFrom,
+        keptOn,
         assignments: court
           ? [
               ...s.assignments.filter((a) => a.court !== court && a.matchId !== matchId),
@@ -1156,9 +1172,9 @@ export default function TopDogDeskClient() {
               {m.winner && ` · ${m.winner} won`}
             </div>
           </div>
-          {doneIds.has(m.id) && !m.completed && (() => {
-            // TopDog-scored matches aren't offered: TopDog would just free
-            // the court again on the next poll.
+          {(() => {
+            // Offered for every finished match. One TopDog already has a
+            // score for stays on court until that score changes.
             const from = state.scoredFrom?.[m.id];
             const target = from && !occupied.has(from.court) ? from.court : freeCourts[0] ?? null;
             return (
