@@ -63,6 +63,11 @@ interface DeskState {
   observations: Observation[];
   /** Who has shown up, by match id. */
   checkIns: Record<string, CheckIn>;
+  /**
+   * Matches whose late start Darrin has confirmed is real (the tournament
+   * was running behind), so the "logged late?" banner stops asking.
+   */
+  timesConfirmed?: string[];
 }
 
 const EMPTY_STATE: DeskState = { assignments: [], completedIds: [], observations: [], checkIns: {} };
@@ -352,10 +357,17 @@ export default function TopDogDeskClient() {
   const lateLoaded = useMemo(() => state.assignments.filter((a) => {
     const m = byId.get(a.matchId);
     if (!m?.slot24) return false;
+    if (state.timesConfirmed?.includes(a.matchId)) return false;
     const started = new Date(a.startedAt);
     const slot = new Date(isoAt(m.slot24, started));
     return started.getTime() - slot.getTime() > LATE_LOAD_MIN * 60_000;
-  }), [state.assignments, byId]);
+  }), [state.assignments, state.timesConfirmed, byId]);
+
+  /** The late starts are real: stop asking about these matches. */
+  const keepActualTimes = useCallback(() => {
+    const ids = lateLoaded.map((a) => a.matchId);
+    setState((s) => ({ ...s, timesConfirmed: [...(s.timesConfirmed ?? []), ...ids] }));
+  }, [lateLoaded]);
 
   const startAllOnSchedule = useCallback(() => {
     const fix = new Set(lateLoaded.map((a) => a.court));
@@ -792,12 +804,18 @@ export default function TopDogDeskClient() {
       {lateLoaded.length > 0 && (
         <div style={S.fixBanner}>
           <span>
-            {lateLoaded.length} court{lateLoaded.length === 1 ? '' : 's'} logged well after the scheduled time.
-            If they went on at their slot, fix it so the wait times are right.
+            {lateLoaded.length === 1 ? 'Court ' : 'Courts '}
+            {lateLoaded.map((a) => a.court).join(', ')} went on well after the scheduled time.
+            Running behind, or did you just log it late?
           </span>
-          <button style={S.fixButton} onClick={startAllOnSchedule}>
-            They started on time
-          </button>
+          <span style={S.editRow}>
+            <button style={S.keepButton} onClick={keepActualTimes}>
+              Keep actual times
+            </button>
+            <button style={S.fixButton} onClick={startAllOnSchedule}>
+              They started on time
+            </button>
+          </span>
         </div>
       )}
       <div style={S.courtGrid}>
@@ -1063,6 +1081,7 @@ const S: Record<string, React.CSSProperties> = {
   placeSelect: { padding: '6px 8px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#111827', fontSize: 12.5, maxWidth: 260 },
   clearButton: { padding: '6px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', cursor: 'pointer', fontSize: 12.5 },
   fixBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '10px 14px', marginBottom: 10, borderRadius: 10, background: '#fef3c7', color: '#92400e', fontSize: 13.5 },
+  keepButton: { padding: '8px 14px', borderRadius: 8, border: '1px solid #92400e', background: '#fff', color: '#92400e', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   fixButton: { padding: '8px 14px', borderRadius: 8, border: 0, background: '#92400e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   timeInput: { padding: '1px 4px', borderRadius: 6, border: '1px solid #bbf7d0', background: '#fff', color: '#111827', fontSize: 12.5 },
   nameRow: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
