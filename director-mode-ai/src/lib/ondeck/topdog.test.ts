@@ -199,3 +199,46 @@ describe('scheduleUrl', () => {
     );
   });
 });
+
+describe('match identity', () => {
+  /** A one-slot sheet whose 8:00 cell holds `lines`, in that order. */
+  function sheet(lines: string[]): string {
+    return `<h2>T</h2><select><option value="9/19/2026" selected>Sat</option></select>
+      <table class="table table-striped">
+        <tr><td></td><td>Unknown Court</td></tr>
+        <tr><td>8:00am</td><td class="matches">${lines.join('<br>')}&nbsp;</td></tr>
+      </table>`;
+  }
+  const collins = "Boys' 10 Singles Round 16 Declan Collins vs. Owen Choi";
+  const stocker = "Boys' 10 Singles Round 16 Bennett J Stocker vs. Niam R Pathare";
+  const dflt = "Boys' 10 Singles Round 16 <b>Massimo Cardenas</b> vs. Rory Frase (default)";
+
+  it('survives TopDog reordering the cell as results come in', () => {
+    // This reorder is what moved a court onto the neighbouring match.
+    const before = parseSchedule(sheet([stocker, collins, dflt]), '1715').matches;
+    const after = parseSchedule(sheet([dflt, stocker, collins]), '1715').matches;
+    const idOf = (ms: typeof before, name: string) => ms.find((x) => x.playerA === name)!.id;
+    expect(idOf(after, 'Declan Collins')).toBe(idOf(before, 'Declan Collins'));
+    expect(idOf(after, 'Bennett J Stocker')).toBe(idOf(before, 'Bennett J Stocker'));
+  });
+
+  it('keeps the old positional id so a saved desk can be carried over', () => {
+    const [first] = parseSchedule(sheet([stocker]), '1715').matches;
+    expect(first.legacyId).toBe("9/19/2026|08:00|0|0|Boys' 10 Singles|Round 16");
+  });
+
+  it('pulls a finished score off the end of the second name', () => {
+    const line = parseMatchLine("Boys' 14 Singles Round 16 Sahej Preet S Batra vs. Jason Lee (6-2,6-1)");
+    expect(line?.playerB).toBe('Jason Lee');
+    expect(line?.score).toBe('6-2,6-1');
+  });
+
+  it('treats a match with a score on the sheet as finished', () => {
+    const [m] = parseSchedule(
+      sheet(["Boys' 14 Singles Round 16 Sahej Preet S Batra vs. Jason Lee (6-2,6-1)"]), '1715'
+    ).matches;
+    expect(m.completed).toBe(true);
+    expect(m.ready).toBe(false);
+    expect(m.score).toBe('6-2,6-1');
+  });
+});

@@ -45,6 +45,11 @@ export interface TopDogMatch {
   score?: string;
   /** Both players known and no result yet: this one can go over the PA. */
   ready: boolean;
+  /**
+   * The id this match had before ids were name-based (position in the
+   * cell). Only used to carry a desk's saved state across that change.
+   */
+  legacyId?: string;
 }
 
 export interface TopDogDateOption {
@@ -132,7 +137,7 @@ const ROUND_RE =
  */
 export function parseMatchLine(html: string): {
   event: string; round: string; playerA: string; playerB: string;
-  winner: string | null; defaulted: boolean;
+  winner: string | null; defaulted: boolean; score: string | null;
 } | null {
   const bold = html.match(/<b>(.*?)<\/b>/i);
   const winner = bold ? stripTags(bold[1]) || null : null;
@@ -142,6 +147,15 @@ export function parseMatchLine(html: string): {
 
   const defaulted = /\(default\)/i.test(text);
   text = text.replace(/\(default\)/gi, '').trim();
+
+  // Once a result is in, TopDog appends it to the line: "Jason Lee (6-2,6-1)".
+  // Left in place it becomes part of the second player's name.
+  let score: string | null = null;
+  const trailing = text.match(/\s*\(([^()]*\d[^()]*)\)\s*$/);
+  if (trailing) {
+    score = trailing[1].trim();
+    text = text.slice(0, trailing.index).trim();
+  }
   if (!text) return null;
 
   const head = text.match(/^(.*?\b(?:singles|doubles))\b\s*(.*)$/i);
@@ -156,7 +170,35 @@ export function parseMatchLine(html: string): {
   const round = roundMatch ? roundMatch[1].replace(/\s+/g, ' ').trim() : '';
   const playerA = roundMatch ? left.slice(roundMatch[0].length).trim() : left;
 
-  return { event, round, playerA, playerB, winner, defaulted };
+  return { event, round, playerA, playerB, winner, defaulted, score };
+}
+
+function nameKey(name: string): string {
+  return name.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+/**
+ * A match's identity, independent of where TopDog happens to print it.
+ *
+ * TopDog reorders a time slot's cell as results come in (a finished match
+ * jumps to the top), so an id built from position silently pointed saved
+ * courts and check-ins at the neighbouring match. Division, round and the
+ * two names never move. A match still missing a player has no names to go
+ * on; it gets a per-slot counter instead, and a new id once it fills in —
+ * harmless, because nothing can be assigned or checked in until then.
+ */
+function matchId(
+  date: string, slot24: string, event: string, round: string,
+  playerA: string, playerB: string, tbdSeen: Map<string, number>
+): string {
+  if (playerA && playerB) {
+    const pair = [nameKey(playerA), nameKey(playerB)].sort().join('~');
+    return `${date}|${event}|${round}|${pair}`;
+  }
+  const bucket = `${date}|${slot24}|${event}|${round}`;
+  const n = tbdSeen.get(bucket) ?? 0;
+  tbdSeen.set(bucket, n + 1);
+  return `${bucket}|tbd${n}`;
 }
 
 /** Rows of the schedule table, each already split into its `<td>` contents. */
@@ -205,6 +247,7 @@ export function parseSchedule(html: string, tournamentId: string): TopDogSchedul
   const courts = courtHeaders.filter(isRealCourt);
 
   const matches: TopDogMatch[] = [];
+  const tbdSeen = new Map<string, number>();
   for (const cells of rows.slice(1)) {
     const slot = stripTags(cells[0] ?? '');
     const slot24 = slotTo24(slot);
@@ -217,16 +260,18 @@ export function parseSchedule(html: string, tournamentId: string): TopDogSchedul
       cell.split(/<br\s*\/?>/i).forEach((line, idx) => {
         const parsed = parseMatchLine(line);
         if (!parsed) return;
-        const { event, round, playerA, playerB, winner, defaulted } = parsed;
+        const { event, round, playerA, playerB, winner, defaulted, score } = parsed;
         // A line with no event and no players is table padding (&nbsp;).
         if (!event && !playerA && !playerB) return;
 
-        const completed = defaulted || !!winner;
+        const completed = defaulted || !!winner || !!score;
         matches.push({
-          id: `${date}|${slot24}|${col}|${idx}|${event}|${round}`,
+          id: matchId(date, slot24, event, round, playerA, playerB, tbdSeen),
           slot, slot24, court, event, round, playerA, playerB, winner, defaulted,
           completed,
+          ...(score ? { score } : {}),
           ready: !!playerA && !!playerB && !completed,
+          legacyId: `${date}|${slot24}|${col}|${idx}|${event}|${round}`,
         });
       });
     });

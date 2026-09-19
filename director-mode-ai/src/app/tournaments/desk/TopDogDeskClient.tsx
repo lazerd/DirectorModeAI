@@ -128,6 +128,9 @@ export default function TopDogDeskClient() {
   const [publishState, setPublishState] = useState<'idle' | 'ok' | 'failed' | 'signed_out'>('idle');
   const [showDone, setShowDone] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
+  /** The court whose edit panel is open. */
+  const [editing, setEditing] = useState<string | null>(null);
+  const migratedFor = useRef('');
   const [now, setNow] = useState(() => new Date());
 
   const lastPublish = useRef<{ signature: string; at: number }>({ signature: '', at: 0 });
@@ -235,6 +238,36 @@ export default function TopDogDeskClient() {
     });
   }, [schedule, matches, courts, state, lengths, now]);
 
+  /**
+   * Match ids used to be the match's position in TopDog's time-slot cell,
+   * and TopDog reorders that cell as results come in. A desk saved under the
+   * old ids is carried across once per day by mapping each old id to
+   * whatever sits at that position now — exactly what the screen was showing
+   * — so nothing jumps. Anything that was pointing at the wrong match was
+   * already wrong on screen, and is fixed with the court's Edit button.
+   */
+  useEffect(() => {
+    if (!schedule || !date || schedule.date !== date || migratedFor.current === date) return;
+    migratedFor.current = date;
+    const ids = new Set(schedule.matches.map((m) => m.id));
+    const legacy = new Map(
+      schedule.matches.filter((m) => m.legacyId).map((m) => [m.legacyId as string, m.id])
+    );
+    const fix = (id: string) => (ids.has(id) ? id : legacy.get(id) ?? id);
+
+    setState((s) => {
+      const assignments = s.assignments.map((a) => ({ ...a, matchId: fix(a.matchId) }));
+      const completedIds = s.completedIds.map(fix);
+      const checkIns: Record<string, CheckIn> = {};
+      for (const [k, v] of Object.entries(s.checkIns ?? {})) checkIns[fix(k)] = v;
+      const changed =
+        assignments.some((a, i) => a.matchId !== s.assignments[i].matchId) ||
+        completedIds.some((id, i) => id !== s.completedIds[i]) ||
+        Object.keys(checkIns).some((k) => !(k in (s.checkIns ?? {})));
+      return changed ? { ...s, assignments, completedIds, checkIns } : s;
+    });
+  }, [schedule, date]);
+
   const occupied = useMemo(
     () => new Map(state.assignments.map((a) => [a.court, a])),
     [state.assignments]
@@ -337,7 +370,12 @@ export default function TopDogDeskClient() {
     addLog(`Start times set to the scheduled slot on ${fix.size} court${fix.size === 1 ? '' : 's'}`, 'info');
   }, [lateLoaded, byId, addLog]);
 
-  const assign = useCallback((match: TopDogMatch, court: string) => {
+  /**
+   * Put a match on a court. Normally that is the PA call; `announce: false`
+   * is for correcting the desk after the fact, when the players are already
+   * out there and a call would only confuse them.
+   */
+  const assign = useCallback((match: TopDogMatch, court: string, announce = true) => {
     setState((s) => ({
       ...s,
       assignments: [
@@ -346,8 +384,59 @@ export default function TopDogDeskClient() {
       ],
     }));
     setPicking(null);
-    say(announcementText(match, court));
-  }, [say]);
+    if (announce) say(announcementText(match, court));
+    else addLog(`${match.playerA} v ${match.playerB} placed on court ${court} (no call)`, 'info');
+  }, [say, addLog]);
+
+  /**
+   * Move a court's match to another court. If that court is busy the two
+   * swap — the usual mistake is two matches typed onto each other's courts.
+   * Start times travel with the match. Silent: the players are already
+   * playing.
+   */
+  const moveCourt = useCallback((from: string, to: string) => {
+    if (from === to) return;
+    setState((s) => ({
+      ...s,
+      assignments: s.assignments.map((a) => {
+        if (a.court === from) return { ...a, court: to };
+        if (a.court === to) return { ...a, court: from };
+        return a;
+      }),
+    }));
+    setEditing(null);
+    addLog(`Court ${from} moved to court ${to}`, 'info');
+  }, [addLog]);
+
+  /**
+   * Correct which match is on a court. If the right match is showing on
+   * another court, the two swap; otherwise the wrong one goes back to the
+   * queue. Each match keeps its own start time.
+   */
+  const replaceMatch = useCallback((court: string, matchId: string) => {
+    setState((s) => {
+      const here = s.assignments.find((a) => a.court === court);
+      if (!here || here.matchId === matchId) return s;
+      const there = s.assignments.find((a) => a.matchId === matchId);
+      return {
+        ...s,
+        assignments: s.assignments.map((a) => {
+          if (a.court === court) {
+            return there
+              ? { ...a, matchId: there.matchId, startedAt: there.startedAt }
+              : { ...a, matchId };
+          }
+          if (there && a.court === there.court) {
+            return { ...a, matchId: here.matchId, startedAt: here.startedAt };
+          }
+          return a;
+        }),
+      };
+    });
+    setEditing(null);
+    const m = byId.get(matchId);
+    if (m) addLog(`Court ${court} corrected to ${m.playerA} v ${m.playerB}`, 'info');
+  }, [byId, addLog]);
 
   /**
    * The players came back with a score. The court opens, the match drops off
@@ -725,12 +814,32 @@ export default function TopDogDeskClient() {
                 ) : (
                   <span style={S.muted}>No one checked in</span>
                 )}
+                {queue.length > 0 && (
+                  <select
+                    style={S.placeSelect}
+                    value=""
+                    onChange={(e) => {
+                      const m = byId.get(e.target.value);
+                      if (m) assign(m, court, false);
+                    }}
+                    title="Already out there? Put the match on this court without a PA call"
+                  >
+                    <option value="">Place (no call)…</option>
+                    {queue.map((q) => (
+                      <option key={q.id} value={q.id}>
+                        {q.slot} · {q.playerA} v {q.playerB}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             );
           }
 
+          const isEditing = editing === court;
           return (
-            <div key={court} style={S.courtBusy}>
+            <div key={court} style={S.courtBusyWrap}>
+            <div style={S.courtBusy}>
               <div style={S.courtNumBusy}>{court}</div>
               <div style={S.courtBody}>
                 <div style={S.players}>{m.playerA} <span style={S.vs}>v</span> {m.playerB}</div>
@@ -759,13 +868,61 @@ export default function TopDogDeskClient() {
                   🔊
                 </button>
                 <button
-                  style={S.smallGhost}
-                  title="Put this court back to open without recording a score"
-                  onClick={() => clearCourt(court)}
+                  style={isEditing ? S.editButtonOn : S.editButton}
+                  title="Wrong court or wrong match? Fix it here, without a PA call"
+                  onClick={() => setEditing(isEditing ? null : court)}
                 >
-                  ✕
+                  Edit
                 </button>
               </div>
+            </div>
+            {isEditing && (
+              <div style={S.editPanel}>
+                <div style={S.editRow}>
+                  <span style={S.editLabel}>Move to court</span>
+                  {courts.filter((c) => c !== court).map((c) => (
+                    <button
+                      key={c}
+                      style={occupied.has(c) ? S.moveBusy : S.courtPick}
+                      onClick={() => moveCourt(court, c)}
+                      title={occupied.has(c) ? `Court ${c} is busy: the two will swap` : `Court ${c} is open`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+                <div style={S.editRow}>
+                  <span style={S.editLabel}>Wrong players? Court {court} actually has</span>
+                  <select
+                    style={S.placeSelect}
+                    value=""
+                    onChange={(e) => e.target.value && replaceMatch(court, e.target.value)}
+                  >
+                    <option value="">Choose the match…</option>
+                    {matches
+                      .filter((x) => x.ready && x.id !== m.id && !doneIds.has(x.id))
+                      .map((x) => {
+                        const on = state.assignments.find((a) => a.matchId === x.id);
+                        return (
+                          <option key={x.id} value={x.id}>
+                            {x.slot} · {x.playerA} v {x.playerB}{on ? ` (showing on ${on.court})` : ''}
+                          </option>
+                        );
+                      })}
+                  </select>
+                </div>
+                <div style={S.editRow}>
+                  <button
+                    style={S.clearButton}
+                    onClick={() => { clearCourt(court); setEditing(null); }}
+                    title="Put this court back to open; the match returns to the queue"
+                  >
+                    Clear court (no score)
+                  </button>
+                  <button style={S.smallGhost} onClick={() => setEditing(null)}>Done</button>
+                </div>
+              </div>
+            )}
             </div>
           );
         })}
@@ -874,7 +1031,7 @@ const S: Record<string, React.CSSProperties> = {
   warnPill: { fontSize: 12, padding: '4px 8px', borderRadius: 999, background: '#fef3c7', color: '#92400e' },
 
   courtGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: 10 },
-  courtFree: { display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 10, border: '1px dashed #d1d5db', background: '#fafafa' },
+  courtFree: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: 12, borderRadius: 10, border: '1px dashed #d1d5db', background: '#fafafa' },
   courtBusy: { display: 'flex', alignItems: 'center', gap: 12, padding: 12, borderRadius: 10, border: '1px solid #bbf7d0', background: '#f0fdf4' },
   courtNum: { width: 40, height: 40, flexShrink: 0, borderRadius: 8, background: '#e5e7eb', color: '#6b7280', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 18 },
   courtNumBusy: { width: 40, height: 40, flexShrink: 0, borderRadius: 8, background: '#16a34a', color: '#fff', display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 18 },
@@ -885,6 +1042,15 @@ const S: Record<string, React.CSSProperties> = {
   scoreButton: { padding: '8px 12px', borderRadius: 8, border: 0, background: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
 
   deskCallButton: { padding: '8px 12px', borderRadius: 8, border: '1px solid #f59e0b', background: '#fff7ed', color: '#9a3412', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
+  courtBusyWrap: { display: 'flex', flexDirection: 'column', gap: 0 },
+  editButton: { padding: '7px 10px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#374151', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 },
+  editButtonOn: { padding: '7px 10px', borderRadius: 8, border: '1px solid #111827', background: '#111827', color: '#fff', cursor: 'pointer', fontSize: 12.5, fontWeight: 600 },
+  editPanel: { display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', margin: '-4px 0 0', border: '1px solid #bbf7d0', borderTop: 0, borderRadius: '0 0 10px 10px', background: '#fff' },
+  editRow: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 },
+  editLabel: { fontSize: 12.5, color: '#6b7280', marginRight: 4 },
+  moveBusy: { width: 36, height: 36, borderRadius: 8, border: '1px solid #d1d5db', background: '#f3f4f6', color: '#6b7280', cursor: 'pointer', fontWeight: 800 },
+  placeSelect: { padding: '6px 8px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', color: '#111827', fontSize: 12.5, maxWidth: 260 },
+  clearButton: { padding: '6px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#b91c1c', cursor: 'pointer', fontSize: 12.5 },
   fixBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '10px 14px', marginBottom: 10, borderRadius: 10, background: '#fef3c7', color: '#92400e', fontSize: 13.5 },
   fixButton: { padding: '8px 14px', borderRadius: 8, border: 0, background: '#92400e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   timeInput: { padding: '1px 4px', borderRadius: 6, border: '1px solid #bbf7d0', background: '#fff', color: '#111827', fontSize: 12.5 },
