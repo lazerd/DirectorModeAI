@@ -23,7 +23,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  announcementText, type TopDogMatch, type TopDogSchedule,
+  announcementText, spokenName, type TopDogMatch, type TopDogSchedule,
 } from '@/lib/ondeck/topdog';
 import {
   eventIdFor, scoreEntryUrl, type DivisionLink,
@@ -532,7 +532,7 @@ export default function TopDogDeskClient() {
                 <button
                   style={S.deskCallButton}
                   title="Call both players to the tournament desk over the PA"
-                  onClick={() => say(reportToDeskText(m.playerA, m.playerB))}
+                  onClick={() => say(reportToDeskText(spokenName(m.playerA), spokenName(m.playerB)))}
                 >
                   📣 Call to desk
                 </button>
@@ -540,7 +540,7 @@ export default function TopDogDeskClient() {
                 <button
                   style={S.smallButton}
                   title="Call whoever has not checked in to the desk"
-                  onClick={() => say(reportToDeskText(missingA, missingB))}
+                  onClick={() => say(reportToDeskText(spokenName(missingA), spokenName(missingB)))}
                 >
                   🔔
                 </button>
