@@ -25,6 +25,7 @@ import {
 } from '@/lib/programs/emails';
 import { CreditLimitError } from '@/lib/billing';
 import { getClubPayments, paymentOffer } from '@/lib/courts/payments';
+import { payUrl } from '@/lib/squareConnect';
 
 export const dynamic = 'force-dynamic';
 
@@ -290,6 +291,7 @@ export async function POST(
       clubPayments,
       surface: 'program',
       ownLink: program.external_payment_url as string | null,
+      checkoutUrl: payUrl('program', registration.id),
     });
 
     const emailCtx: ProgramEmailContext = {

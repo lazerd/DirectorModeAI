@@ -10,6 +10,7 @@
 import { NextResponse } from 'next/server';
 import { requireStaffForClub } from '@/lib/courtsheet/routeAuth';
 import { isPaymentLink } from '@/config/payments';
+import { squareOAuthConfigured } from '@/lib/squareConnect';
 import { blockIfDemo } from '@/lib/demo/server';
 import { z } from 'zod';
 
@@ -51,7 +52,7 @@ const patchSchema = z
  */
 function providerAvailability() {
   return {
-    square: Boolean(process.env.SQUARE_OAUTH_APP_ID && process.env.SQUARE_OAUTH_APP_SECRET),
+    square: squareOAuthConfigured(),
     stripe: Boolean(process.env.STRIPE_CONNECT_CLIENT_ID),
   };
 }
@@ -96,7 +97,10 @@ export async function GET() {
    * reservations. Nothing on any screen said so.
    */
   const link = (data as { payment_link?: string | null } | null)?.payment_link || '';
-  const haveCheckout = isPaymentLink(link.trim());
+  const connected =
+    (data as { provider?: string; provider_status?: string } | null)?.provider === 'square' &&
+    (data as { provider_status?: string } | null)?.provider_status === 'connected';
+  const haveCheckout = connected || isPaymentLink(link.trim());
 
   const [{ data: paidRates }, { count: paidClasses }] = await Promise.all([
     ctx.db

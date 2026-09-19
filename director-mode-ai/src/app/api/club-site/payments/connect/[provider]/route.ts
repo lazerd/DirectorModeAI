@@ -1,29 +1,16 @@
 /**
  * GET /api/club-site/payments/connect/[provider]
  *
- * The per-club processor connection. NOT BUILT YET.
+ * Starts connecting the club's OWN processor. Square: redirect to Square's
+ * authorize page with a signed state naming this club; Square brings the staff
+ * member back to /api/club-site/payments/callback/square. See lib/squareConnect.
  *
- * This route exists so that the day somebody sets SQUARE_OAUTH_APP_ID in the
- * environment, the Connect button they just enabled leads somewhere that
- * explains itself instead of a 404. The settings screen only renders that
- * button when the env vars are present, so under normal configuration nothing
- * reaches here at all.
- *
- * What finishing it needs, in order:
- *   1. A Square application (or Stripe Connect client) registered to ClubMode.
- *   2. This route redirecting to the provider's authorize URL with a signed
- *      state parameter carrying the club id.
- *   3. A callback route exchanging the code, storing the merchant id on
- *      club_payments and the access token somewhere that is NOT a table page
- *      code reads.
- *   4. Checkout creation at booking time, and a webhook marking bookings paid.
- *
- * Until then the payment LINK on the same screen is how a club gets paid, and
- * it works.
+ * Stripe Connect is not built — ClubMode's Stripe platform account is disabled.
  */
-
 import { NextResponse } from 'next/server';
 import { requireStaffForClub } from '@/lib/courtsheet/routeAuth';
+import { blockIfDemo } from '@/lib/demo/server';
+import { authorizeUrl, signState, squareOAuthConfigured } from '@/lib/squareConnect';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,23 +18,21 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ provider: string }> },
 ) {
-  // Staff-gated even though it does nothing: the day it does something, it
-  // will be changing how a club gets paid.
+  // Changes how the club gets paid: write access only, and never a demo.
   const ctx = await requireStaffForClub({ requireWrite: true });
   if ('error' in ctx) return ctx.error;
+  const demo = await blockIfDemo(ctx.user.id);
+  if (demo) return demo;
 
   const { provider } = await params;
-  if (provider !== 'square' && provider !== 'stripe') {
-    return NextResponse.json({ error: 'Unknown provider.' }, { status: 404 });
+  if (provider === 'square') {
+    if (!squareOAuthConfigured()) {
+      return NextResponse.json({ error: 'Square connection is not switched on yet.' }, { status: 501 });
+    }
+    return NextResponse.redirect(authorizeUrl(signState(ctx.club.id, ctx.user.id)));
   }
-
-  return NextResponse.json(
-    {
-      error: `Connecting ${provider === 'square' ? 'Square' : 'Stripe'} is not finished yet.`,
-      detail:
-        'Your payment link on the same screen is how the club gets paid in the meantime, and it works today.',
-      provider,
-    },
-    { status: 501 },
-  );
+  if (provider === 'stripe') {
+    return NextResponse.json({ error: 'Connecting Stripe is not available yet.' }, { status: 501 });
+  }
+  return NextResponse.json({ error: 'Unknown provider.' }, { status: 404 });
 }

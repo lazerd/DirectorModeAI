@@ -12,6 +12,7 @@ import { notFound } from 'next/navigation';
 import { getClubProgram, getClubSite } from '@/lib/clubSite/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { getClubPayments, paymentOffer } from '@/lib/courts/payments';
+import { payUrl } from '@/lib/squareConnect';
 import { readableOn, tint, inkTint } from '@/lib/clubSite/theme';
 import {
   daysLabel,
@@ -135,6 +136,7 @@ export default async function RegisteredPage({
                 clubPayments,
                 surface: 'program',
                 ownLink: program.external_payment_url,
+                checkoutUrl: registration && r ? payUrl('program', r) : null,
               });
               if (offer.kind !== 'link') {
                 return (

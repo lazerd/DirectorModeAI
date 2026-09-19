@@ -13,13 +13,10 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { squareConfigured, getPayment, getOrder } from '@/lib/square';
+import { settleClubPayment } from '@/lib/squareConnect';
 
 export async function POST(request: Request) {
   try {
-    if (!squareConfigured()) {
-      return NextResponse.json({ error: 'Square not configured' }, { status: 400 });
-    }
-
     const body = await request.json().catch(() => ({}));
     const type: string = body?.type || '';
     const paymentId: string | undefined =
@@ -28,6 +25,21 @@ export async function POST(request: Request) {
     // Only act on payment events; ack everything else so Square stops retrying.
     if (!paymentId || !type.startsWith('payment')) {
       return NextResponse.json({ ignored: true });
+    }
+
+    /*
+     * A club that connected its OWN Square (lib/squareConnect). The event names
+     * the merchant; that club's token re-fetches the payment. Null = not one of
+     * our connected clubs, so fall through to the platform account below.
+     */
+    const merchantId: string | undefined = body?.merchant_id;
+    if (merchantId) {
+      const settled = await settleClubPayment(merchantId, paymentId);
+      if (settled) return NextResponse.json({ club: true, ...settled });
+    }
+
+    if (!squareConfigured()) {
+      return NextResponse.json({ ignored: true, reason: 'platform Square not configured' });
     }
 
     // Re-fetch from Square (authenticated) — this is the trust boundary.

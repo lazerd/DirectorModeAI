@@ -118,6 +118,8 @@ const PUBLIC_PREFIXES = [
   // director rail, and on a phone its floating opener sat on top of the logo.
   '/pricing',
   '/captainmode',
+  // Customers paying a club by card — never the director rail.
+  '/pay',
   '/terms',
   '/privacy',
   '/login',

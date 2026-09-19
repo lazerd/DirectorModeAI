@@ -12,8 +12,9 @@
  *   2. the club's default payment_link — one paste covering everything
  *   3. nothing, which means the club settles up in person
  *
- * A per-club processor connection would slot in above all three; it is
- * reported as unavailable until one exists rather than guessed at.
+ * 0. ABOVE all three: the club's own connected Square (lib/squareConnect).
+ *    Given the record's checkout URL (/pay/<kind>/<id>), that's the offer —
+ *    card payment on the club's account, marked paid automatically.
  */
 
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -51,6 +52,11 @@ export async function getClubPayments(clubId: string): Promise<ClubPayments> {
   return { ...DEFAULT_PAYMENTS, ...(data as Partial<ClubPayments>) };
 }
 
+/** The club takes cards through its own connected Square. */
+export function cardConnected(p: ClubPayments): boolean {
+  return p.provider === 'square' && p.provider_status === 'connected';
+}
+
 export type PaymentOffer =
   /** Send them to a checkout the club owns. */
   | { kind: 'link'; url: string; label: string; note: string | null }
@@ -72,8 +78,22 @@ export function paymentOffer(opts: {
   surface: 'program' | 'court';
   /** The class's own link, where it has one. */
   ownLink?: string | null;
+  /**
+   * /pay/<kind>/<id> for the record being paid, when there is one. With a
+   * connected Square it wins over every pasted link.
+   */
+  checkoutUrl?: string | null;
 }): PaymentOffer {
   if (opts.amountCents <= 0) return { kind: 'free' };
+
+  if (opts.checkoutUrl && cardConnected(opts.clubPayments)) {
+    return {
+      kind: 'link',
+      url: opts.checkoutUrl,
+      label: 'Pay by card',
+      note: opts.clubPayments.payment_note,
+    };
+  }
 
   const allowed =
     opts.surface === 'program'

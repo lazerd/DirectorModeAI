@@ -24,7 +24,7 @@ import {
   formatTimeRange,
   programSessions,
 } from '@/lib/programs/sessions';
-import { getClubPayments, paymentOffer } from '@/lib/courts/payments';
+import { getClubPayments, paymentOffer, cardConnected } from '@/lib/courts/payments';
 import RegisterForm from './RegisterForm';
 
 export const dynamic = 'force-dynamic';
@@ -281,7 +281,7 @@ export default async function ProgramDetailPage({
                   programSlug={program.slug}
                   waitlisting={!!waitlisting}
                   priceLabel={(program.price_cents ?? 0) > 0 ? formatPrice(program.price_cents) : ''}
-                  hasPaymentLink={offer.kind === 'link'}
+                  hasPaymentLink={offer.kind === 'link' || cardConnected(clubPayments)}
                   accent={theme.primary}
                   onAccent={onPrimary}
                   ink={theme.ink}

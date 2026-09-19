@@ -36,6 +36,7 @@ import {
 } from '@/lib/courts/server';
 import { sendCourtBookingEmail } from '@/lib/courts/emails';
 import { getClubPayments, paymentOffer } from '@/lib/courts/payments';
+import { payUrl } from '@/lib/squareConnect';
 import { resolveTheme } from '@/lib/clubSite/theme';
 
 export const dynamic = 'force-dynamic';
@@ -294,6 +295,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       amountCents: saved.amount_cents,
       clubPayments,
       surface: 'court',
+      checkoutUrl: payUrl('court', saved.id),
     });
 
     let emailed = false;

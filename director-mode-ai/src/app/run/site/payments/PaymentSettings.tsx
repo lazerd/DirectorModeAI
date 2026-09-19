@@ -25,6 +25,17 @@ type Payments = {
   link_on_courts: boolean;
   provider: 'none' | 'square' | 'stripe';
   provider_status: string;
+  provider_business_name?: string | null;
+};
+
+/** What Square's round trip came back with (?square=… on this page). */
+const SQUARE_RESULT: Record<string, { ok: boolean; text: string }> = {
+  connected: { ok: true, text: 'Square is connected. Sign-ups and bookings now offer “Pay by card” and are marked paid automatically.' },
+  declined: { ok: false, text: 'Square was not connected — the request was declined on Square’s page.' },
+  expired: { ok: false, text: 'That Square link expired. Tap Connect Square again.' },
+  signin: { ok: false, text: 'Sign in to ClubMode, then tap Connect Square again.' },
+  wrongclub: { ok: false, text: 'That Square connection was started from a different club or account. Start it again from here.' },
+  failed: { ok: false, text: 'Square did not finish connecting. Try again in a minute.' },
 };
 
 const money = (cents: number) =>
@@ -39,6 +50,24 @@ export default function PaymentSettings() {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [squareResult, setSquareResult] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => {
+    const k = new URLSearchParams(window.location.search).get('square');
+    if (k && SQUARE_RESULT[k]) setSquareResult(SQUARE_RESULT[k]);
+  }, []);
+
+  async function disconnect() {
+    if (!confirm('Disconnect Square? Sign-ups and bookings stop offering card payment until you reconnect.')) return;
+    setBusy(true);
+    const res = await fetch('/api/club-site/payments/disconnect', { method: 'POST' });
+    setBusy(false);
+    if (!res.ok) {
+      setError('Could not disconnect Square. Try again.');
+      return;
+    }
+    setSquareResult({ ok: true, text: 'Square is disconnected.' });
+    load();
+  }
 
   const load = useCallback(async () => {
     const res = await fetch('/api/club-site/payments');
@@ -262,9 +291,21 @@ export default function PaymentSettings() {
       <section>
         <h2 className="font-display text-xl text-white">Card payments inside ClubMode</h2>
         <p className="mt-1 text-sm text-white/50">
-          Connecting your own Square or Stripe would let someone pay without leaving your site, and
-          let us mark it paid for you automatically.
+          Connect your club&rsquo;s own Square and every class sign-up and court booking gets a
+          &ldquo;Pay by card&rdquo; button. The money goes straight to your Square account, and
+          ClubMode marks it paid for you.
         </p>
+        {squareResult && (
+          <p
+            className={`mt-3 rounded-xl border px-4 py-3 text-sm ${
+              squareResult.ok
+                ? 'border-[#D3FB52]/30 bg-[#D3FB52]/[0.06] text-[#D3FB52]'
+                : 'border-amber-400/30 bg-amber-400/[0.06] text-amber-200'
+            }`}
+          >
+            {squareResult.text}
+          </p>
+        )}
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {(
@@ -279,7 +320,23 @@ export default function PaymentSettings() {
             >
               <div className="font-semibold text-white">{name}</div>
               {payments.provider === key && payments.provider_status === 'connected' ? (
-                <p className="mt-1 text-sm text-[#D3FB52]">Connected.</p>
+                <div className="mt-1 text-sm">
+                  <p className="text-[#D3FB52]">
+                    Connected{payments.provider_business_name ? ` — ${payments.provider_business_name}` : ''}.
+                  </p>
+                  <p className="mt-1 text-white/50">
+                    Card payments go to this Square account and are marked paid automatically.
+                  </p>
+                  <button
+                    onClick={disconnect}
+                    disabled={busy}
+                    className="mt-3 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:text-white disabled:opacity-40"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : key === 'stripe' ? (
+                <p className="mt-1 text-sm text-white/45">Not available yet.</p>
               ) : available ? (
                 <a
                   href={`/api/club-site/payments/connect/${key}`}
@@ -294,8 +351,7 @@ export default function PaymentSettings() {
                  * nothing teaches a customer that the software lies.
                  */
                 <p className="mt-1 text-sm text-white/45">
-                  Not available yet. This is the next thing we build, and it needs your {name}{' '}
-                  login rather than any change here.
+                  Coming very soon — you&rsquo;ll connect with your own {name} login.
                 </p>
               )}
             </div>
