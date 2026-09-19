@@ -484,26 +484,23 @@ export default function TopDogDeskClient() {
 
   /**
    * The match is over but the score isn't in: take it off the court so the
-   * next match can go on, and hold it until the players report. Timed here,
-   * at the real finish, not whenever the score finally arrives.
+   * next match can go on, and hold it until the players report. The length
+   * is measured to this moment, the real finish — but only recorded once the
+   * score is in, so a mis-tap put back on court isn't timed twice.
    */
   const offCourt = useCallback((court: string) => {
     const assignment = occupied.get(court);
     if (!assignment) return;
     const match = byId.get(assignment.matchId);
     const offAt = new Date();
-    setState((s) => {
-      const obs = match ? observationFor(match, assignment.startedAt, offAt) : null;
-      return {
-        ...s,
-        assignments: s.assignments.filter((a) => a.court !== court),
-        awaiting: [
-          ...(s.awaiting ?? []).filter((w) => w.matchId !== assignment.matchId),
-          { matchId: assignment.matchId, court, startedAt: assignment.startedAt, offAt: offAt.toISOString() },
-        ],
-        observations: obs ? [...s.observations, obs] : s.observations,
-      };
-    });
+    setState((s) => ({
+      ...s,
+      assignments: s.assignments.filter((a) => a.court !== court),
+      awaiting: [
+        ...(s.awaiting ?? []).filter((w) => w.matchId !== assignment.matchId),
+        { matchId: assignment.matchId, court, startedAt: assignment.startedAt, offAt: offAt.toISOString() },
+      ],
+    }));
     setEditing(null);
     if (match) addLog(`Court ${court} open — ${match.playerA} v ${match.playerB} off court, awaiting score`, 'info');
   }, [occupied, byId, addLog]);
@@ -511,11 +508,16 @@ export default function TopDogDeskClient() {
   /** The players reported: done, and off to TopDog to enter it. */
   const scoreInAwaiting = useCallback((matchId: string) => {
     const match = byId.get(matchId);
-    setState((s) => ({
-      ...s,
-      awaiting: (s.awaiting ?? []).filter((w) => w.matchId !== matchId),
-      completedIds: s.completedIds.includes(matchId) ? s.completedIds : [...s.completedIds, matchId],
-    }));
+    setState((s) => {
+      const held = (s.awaiting ?? []).find((w) => w.matchId === matchId);
+      const obs = match && held ? observationFor(match, held.startedAt, new Date(held.offAt)) : null;
+      return {
+        ...s,
+        awaiting: (s.awaiting ?? []).filter((w) => w.matchId !== matchId),
+        completedIds: s.completedIds.includes(matchId) ? s.completedIds : [...s.completedIds, matchId],
+        observations: obs ? [...s.observations, obs] : s.observations,
+      };
+    });
     if (match) {
       addLog(`${match.playerA} v ${match.playerB} scored in`, 'info');
       openScoring(match);
@@ -547,9 +549,16 @@ export default function TopDogDeskClient() {
     const scored = (state.awaiting ?? []).filter((w) => byId.get(w.matchId)?.completed);
     if (!scored.length) return;
     const ids = new Set(scored.map((w) => w.matchId));
+    const timed = scored
+      .map((w) => {
+        const m = byId.get(w.matchId);
+        return m ? observationFor(m, w.startedAt, new Date(w.offAt)) : null;
+      })
+      .filter((o): o is NonNullable<typeof o> => o !== null);
     setState((s) => ({
       ...s,
       awaiting: (s.awaiting ?? []).filter((w) => !ids.has(w.matchId)),
+      observations: [...s.observations, ...timed],
     }));
     for (const w of scored) {
       const m = byId.get(w.matchId);
