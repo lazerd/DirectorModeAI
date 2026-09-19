@@ -18,10 +18,10 @@
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { seasonOpenerBodyText, seasonOpenerEmail, seasonWhenText } from '@/lib/captain/emails';
+import { seasonOpenerBodyText, seasonOpenerEmail, seasonWhenText, sendAll } from '@/lib/captain/emails';
 import { CLUB_TZ_EMBED, clubTimeZoneOf } from '@/lib/captain/clubTime';
 import { leagueSpec, defaultCourts } from '@/lib/captain/leagues';
-import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
+import { creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
 
 export const dynamic = 'force-dynamic';
@@ -284,7 +284,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    await sendBilledEmails(
+    await sendAll(
       ctx.userId,
       targets.map((r) => emailFor(r)),
     );

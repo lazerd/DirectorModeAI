@@ -6,6 +6,7 @@
  * handling stay consistent with the rest of the app.
  */
 import { sendBilledEmails, type SafeSendResult } from '@/lib/email';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { CLUB_TZ } from './clubTime';
 import { lineName, lineNames } from './leagues';
 import { googleCalendarUrl, matchEvent } from './calendar';
@@ -740,12 +741,31 @@ export function seasonAvailabilityEmail(
   };
 }
 
+/**
+ * The captain's own address, for Reply-To. Mail leaves from a no-reply
+ * sender, and without this a parent's "we'll be late" or another club's
+ * "we have 8 kids" goes nowhere.
+ */
+async function captainReplyTo(userId: string | null): Promise<string | undefined> {
+  if (!userId) return undefined;
+  try {
+    const { data } = await getSupabaseAdmin().auth.admin.getUserById(userId);
+    return data?.user?.email || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function sendAll(
   billingUserId: string | null,
-  payloads: { to: string; subject: string; html: string }[],
+  payloads: { to: string; subject: string; html: string; replyTo?: string }[],
 ): Promise<SafeSendResult[]> {
   if (!payloads.length) return [];
-  return sendBilledEmails(billingUserId, payloads);
+  const replyTo = await captainReplyTo(billingUserId);
+  return sendBilledEmails(
+    billingUserId,
+    payloads.map((p) => ({ ...p, replyTo: p.replyTo ?? replyTo })),
+  );
 }
 
 /**

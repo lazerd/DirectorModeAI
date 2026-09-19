@@ -25,12 +25,13 @@ import {
   type MatchInfo,
   type OpenLine,
   openLines,
+  sendAll,
 } from '@/lib/captain/emails';
 import { CLUB_TZ, normalizeTimeZone } from '@/lib/captain/clubTime';
 import { leagueSpec } from '@/lib/captain/leagues';
 import { ccPayloads, matchCoachOf, withMatchCoach } from '@/lib/captain/teamContacts';
 import { formatPhone, normalizePhone } from '@/lib/captain/phone';
-import { sendBilledEmails, creditLimitResponse } from '@/lib/email';
+import { creditLimitResponse } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
 
 export const dynamic = 'force-dynamic';
@@ -341,7 +342,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const [result] = await sendBilledEmails(ctx.userId, [
+    const [result] = await sendAll(ctx.userId, [
       { to: email.to, subject: email.subject, html: email.html },
     ]);
     if (!result || result.sent !== true) {
@@ -363,7 +364,7 @@ export async function POST(req: Request) {
   const coachCc = withMatchCoach([], coach, [email.to]);
   if (coachCc.length) {
     try {
-      await sendBilledEmails(ctx.userId, ccPayloads({ subject: email.subject, html: email.html }, coachCc, team.name as string));
+      await sendAll(ctx.userId, ccPayloads({ subject: email.subject, html: email.html }, coachCc, team.name as string));
     } catch (e) {
       console.error('host-email coach copy failed', e);
     }
