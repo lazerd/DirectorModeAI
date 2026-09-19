@@ -482,8 +482,10 @@ export default function TopDogDeskClient() {
       );
     };
 
-    // Page only whoever is missing; the player already at the desk
-    // doesn't need their name read out.
+    // Before check-in, page only whoever is missing: the player already at
+    // the desk doesn't need their name read out. Once both are in, the call
+    // is for the pair: "come back to the desk, you're up".
+    const bothIn = !!(ci.a && ci.b);
     const missingA = ci.a ? '' : m.playerA;
     const missingB = ci.b ? '' : m.playerB;
 
@@ -526,7 +528,15 @@ export default function TopDogDeskClient() {
               >
                 Court ▸
               </button>
-              {(missingA || missingB) && (
+              {bothIn ? (
+                <button
+                  style={S.deskCallButton}
+                  title="Call both players to the tournament desk over the PA"
+                  onClick={() => say(reportToDeskText(m.playerA, m.playerB))}
+                >
+                  📣 Call to desk
+                </button>
+              ) : (
                 <button
                   style={S.smallButton}
                   title="Call whoever has not checked in to the desk"
@@ -874,6 +884,7 @@ const S: Record<string, React.CSSProperties> = {
   sendButton: { padding: '8px 12px', borderRadius: 8, border: '1px solid #16a34a', background: '#fff', color: '#166534', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   scoreButton: { padding: '8px 12px', borderRadius: 8, border: 0, background: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
 
+  deskCallButton: { padding: '8px 12px', borderRadius: 8, border: '1px solid #f59e0b', background: '#fff7ed', color: '#9a3412', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   fixBanner: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '10px 14px', marginBottom: 10, borderRadius: 10, background: '#fef3c7', color: '#92400e', fontSize: 13.5 },
   fixButton: { padding: '8px 14px', borderRadius: 8, border: 0, background: '#92400e', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   timeInput: { padding: '1px 4px', borderRadius: 6, border: '1px solid #bbf7d0', background: '#fff', color: '#111827', fontSize: 12.5 },
