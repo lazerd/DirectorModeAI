@@ -238,6 +238,8 @@ export default function ClubSidebar() {
    * her nav.
    */
   const [captainTeams, setCaptainTeams] = useState<{ id: string; name: string }[]>([]);
+  /** Signed in, owns no club and belongs to none. */
+  const [noClub, setNoClub] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/view-as')
@@ -269,6 +271,8 @@ export default function ClubSidebar() {
           null,
         );
         const mem = ((mems as unknown as any[]) || []).find((m) => m.club_id === primary) || null;
+        // No club at all: a captain-only account hides the club rail (below).
+        if (!mems || !(mems as unknown as any[]).length) setNoClub(true);
         if (mem && (mem as any).role === 'member') {
           const slug = (mem as any).cc_clubs?.slug as string | undefined;
           setMemberNav([{
@@ -482,6 +486,9 @@ export default function ClubSidebar() {
   };
 
   if (isPublic) return null;
+  // A captain with no club: CaptainMode has its own sidebar, and every club
+  // tool on this rail would open onto a club they don't have.
+  if (noClub && captainTeams.length > 0 && pathname.startsWith('/captain')) return null;
 
   return (
     <>

@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ClipboardList, Users, Settings, Zap } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
+import { isCaptainOnly } from '@/lib/postLogin';
 
 /**
  * Auth layout for the captain-facing app only. It lives in the (app) route
@@ -22,6 +23,8 @@ export default async function CaptainLayout({ children }: { children: React.Reac
     .select('*')
     .eq('id', user.id)
     .single();
+  // No club to go back to for a captain-only account.
+  const captainOnly = await isCaptainOnly(supabase, user.id);
 
   return (
     <div className="min-h-screen bg-[#001820]">
@@ -65,6 +68,7 @@ export default async function CaptainLayout({ children }: { children: React.Reac
           </ul>
         </nav>
 
+        {!captainOnly && (
         <div className="p-4 border-t border-white/[0.06]">
           <Link
             href="/"
@@ -74,6 +78,7 @@ export default async function CaptainLayout({ children }: { children: React.Reac
             Back to ClubMode
           </Link>
         </div>
+        )}
       </aside>
 
       <main className="md:ml-64 pt-16 md:pt-0 min-h-screen">{children}</main>

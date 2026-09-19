@@ -41,8 +41,28 @@ export function isMemberOnly(roles: string[]): boolean {
  * checklist; a plain club MEMBER gets their clubhouse at /member, because the
  * checklist is all director tools they cannot open.
  */
+/**
+ * A captain with no club: they captain (or co-captain) a team but own no club
+ * and belong to none. CaptainMode is their whole app. The club landing, the
+ * club welcome page and the club tools rail mean nothing to them (Darrin,
+ * 2026-09-18, viewing as Artem Melnik).
+ */
+export async function isCaptainOnly(supabase: SupabaseClient, userId: string): Promise<boolean> {
+  const [{ data: owned }, { data: mems }] = await Promise.all([
+    supabase.from('cc_clubs').select('id').eq('owner_id', userId).limit(1).maybeSingle(),
+    supabase.from('cc_club_members').select('club_id').eq('user_id', userId).limit(1),
+  ]);
+  if (owned || (mems && mems.length)) return false;
+  const [{ data: own }, { data: staff }] = await Promise.all([
+    supabase.from('captain_teams').select('id').eq('captain_user_id', userId).limit(1),
+    supabase.from('captain_team_staff').select('team_id').eq('user_id', userId).limit(1),
+  ]);
+  return !!((own && own.length) || (staff && staff.length));
+}
+
 export async function defaultDestination(supabase: SupabaseClient, userId: string): Promise<string> {
   try {
+    if (await isCaptainOnly(supabase, userId)) return '/captain';
     const { data: owned } = await supabase
       .from('cc_clubs').select('id').eq('owner_id', userId).limit(1).maybeSingle();
     if (owned) return '/welcome';

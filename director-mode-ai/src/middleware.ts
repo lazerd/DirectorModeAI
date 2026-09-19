@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { APP_URL, LEGACY_HOST } from '@/lib/appUrl';
-import { isMemberOnly } from '@/lib/postLogin';
+import { isMemberOnly, isCaptainOnly } from '@/lib/postLogin';
 import { EMBED_HEADER, clubSlugFromPath, frameAncestors, isEmbedParam } from '@/lib/clubSite/embed';
 
 type CookieToSet = { name: string; value: string; options?: any };
@@ -412,6 +412,19 @@ export async function middleware(request: NextRequest) {
         }
       }
     }
+  }
+
+  // A captain with no club lives in CaptainMode: the tools home and the club
+  // welcome page would show them a club they don't have.
+  if (
+    user &&
+    (request.nextUrl.pathname === '/' || request.nextUrl.pathname === '/welcome') &&
+    (await isCaptainOnly(supabase, user.id))
+  ) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/captain';
+    url.search = '';
+    return NextResponse.redirect(url);
   }
 
   /*
