@@ -371,11 +371,11 @@ export default function TopDogDeskClient() {
   }, [lateLoaded, byId, addLog]);
 
   /**
-   * Put a match on a court. Normally that is the PA call; `announce: false`
-   * is for correcting the desk after the fact, when the players are already
-   * out there and a call would only confuse them.
+   * Put a match on a court. Always silent: Darrin calls players to the desk
+   * himself (📣) and hands them their court there. The PA never announces a
+   * court on its own — he asked for that explicitly on tournament morning.
    */
-  const assign = useCallback((match: TopDogMatch, court: string, announce = true) => {
+  const assign = useCallback((match: TopDogMatch, court: string) => {
     setState((s) => ({
       ...s,
       assignments: [
@@ -384,9 +384,13 @@ export default function TopDogDeskClient() {
       ],
     }));
     setPicking(null);
-    if (announce) say(announcementText(match, court));
-    else addLog(`${match.playerA} v ${match.playerB} placed on court ${court} (no call)`, 'info');
-  }, [say, addLog]);
+    addLog(`${match.playerA} v ${match.playerB} on court ${court}`, 'info');
+  }, [addLog]);
+
+  /** "Come to the desk" for a pair, over the PA. The only call the desk makes. */
+  const callToDesk = useCallback((m: TopDogMatch) => {
+    say(reportToDeskText(spokenName(m.playerA), spokenName(m.playerB)));
+  }, [say]);
 
   /**
    * Move a court's match to another court. If that court is busy the two
@@ -613,7 +617,7 @@ export default function TopDogDeskClient() {
                   else setPicking(m.id);
                 }}
                 disabled={freeCourts.length === 0}
-                title={freeCourts.length === 0 ? 'Every court is busy' : 'Put this match on a court and call it'}
+                title={freeCourts.length === 0 ? 'Every court is busy' : 'Put this match on a court (no announcement)'}
               >
                 Court ▸
               </button>
@@ -621,7 +625,7 @@ export default function TopDogDeskClient() {
                 <button
                   style={S.deskCallButton}
                   title="Call both players to the tournament desk over the PA"
-                  onClick={() => say(reportToDeskText(spokenName(m.playerA), spokenName(m.playerB)))}
+                  onClick={() => callToDesk(m)}
                 >
                   📣 Call to desk
                 </button>
@@ -653,8 +657,13 @@ export default function TopDogDeskClient() {
           <button
             style={S.bigButton}
             onClick={() => {
-              // Browsers keep speech muted until a real click. This is it.
-              void speak('Announcer ready.', { voice });
+              // Browsers keep speech muted until a real click. This is it —
+              // unlocked with a silent utterance, so nothing reaches the PA.
+              try {
+                const u = new SpeechSynthesisUtterance(' ');
+                u.volume = 0;
+                speechSynthesis.speak(u);
+              } catch { /* no speech engine */ }
               setArmed(true);
               addLog('Desk armed', 'info');
             }}
@@ -804,13 +813,22 @@ export default function TopDogDeskClient() {
                 <div style={S.courtNum}>{court}</div>
                 <div style={S.courtOpen}>Open</div>
                 {checkedIn.length > 0 ? (
-                  <button
-                    style={S.sendButton}
-                    onClick={() => assign(checkedIn[0], court)}
-                    title={`${checkedIn[0].playerA} v ${checkedIn[0].playerB}`}
-                  >
-                    Send next ▸
-                  </button>
+                  <>
+                    <button
+                      style={S.deskCallButton}
+                      onClick={() => callToDesk(checkedIn[0])}
+                      title={`Call ${checkedIn[0].playerA} and ${checkedIn[0].playerB} to the desk`}
+                    >
+                      📣 Call next to desk
+                    </button>
+                    <button
+                      style={S.sendButton}
+                      onClick={() => assign(checkedIn[0], court)}
+                      title={`Put ${checkedIn[0].playerA} v ${checkedIn[0].playerB} on court ${court} (no announcement)`}
+                    >
+                      Put on ▸
+                    </button>
+                  </>
                 ) : (
                   <span style={S.muted}>No one checked in</span>
                 )}
@@ -820,11 +838,11 @@ export default function TopDogDeskClient() {
                     value=""
                     onChange={(e) => {
                       const m = byId.get(e.target.value);
-                      if (m) assign(m, court, false);
+                      if (m) assign(m, court);
                     }}
-                    title="Already out there? Put the match on this court without a PA call"
+                    title="Put any match on this court (no announcement)"
                   >
-                    <option value="">Place (no call)…</option>
+                    <option value="">Place a match…</option>
                     {queue.map((q) => (
                       <option key={q.id} value={q.id}>
                         {q.slot} · {q.playerA} v {q.playerB}
@@ -859,13 +877,6 @@ export default function TopDogDeskClient() {
               <div style={S.courtButtons}>
                 <button style={S.scoreButton} onClick={() => scoreIn(court)}>
                   Score in ▸
-                </button>
-                <button
-                  style={S.smallButton}
-                  title="Announce this match again"
-                  onClick={() => say(announcementText(m, court))}
-                >
-                  🔊
                 </button>
                 <button
                   style={isEditing ? S.editButtonOn : S.editButton}
