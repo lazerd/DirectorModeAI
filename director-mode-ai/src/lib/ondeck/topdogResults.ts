@@ -112,13 +112,18 @@ export function parseResults(html: string): ResultsPage {
 }
 
 /**
- * Names are the only thing the two pages agree on — the schedule has no ids —
- * so the join is on the pair, order-insensitive because TopDog is not
- * consistent about which side it calls the player and which the opponent.
+ * The schedule has no ids, so the join is on what both pages print:
+ * division, round, and the two names — the names order-insensitive, because
+ * TopDog is not consistent about which side it calls the opponent.
+ *
+ * The division and round are not optional. Two players who met in the main
+ * draw can meet again in the consolation (Cardenas and Frase: a Round 16
+ * default in the morning, a Consol Quarters in the afternoon), and keying on
+ * the names alone marked the second match finished with the first one's score.
  */
-function pairKey(a: string, b: string): string {
-  const norm = (n: string) => n.toLowerCase().replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
-  return [norm(a), norm(b)].sort().join(' | ');
+function matchKey(division: string, round: string, a: string, b: string): string {
+  const norm = (n: string) => n.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  return [norm(division), norm(round), [norm(a), norm(b)].sort().join(' | ')].join(' # ');
 }
 
 /**
@@ -132,13 +137,13 @@ export function mergeResults(matches: TopDogMatch[], results: MatchResult[]): To
   const scored = new Map<string, MatchResult>();
   for (const r of results) {
     if (!r.done || !r.playerA || !r.playerB) continue;
-    scored.set(pairKey(r.playerA, r.playerB), r);
+    scored.set(matchKey(r.division, r.round, r.playerA, r.playerB), r);
   }
   if (!scored.size) return matches;
 
   return matches.map((m) => {
     if (!m.playerA || !m.playerB || m.completed) return m;
-    const hit = scored.get(pairKey(m.playerA, m.playerB));
+    const hit = scored.get(matchKey(m.event, m.round, m.playerA, m.playerB));
     if (!hit) return m;
     return { ...m, completed: true, ready: false, score: hit.score };
   });

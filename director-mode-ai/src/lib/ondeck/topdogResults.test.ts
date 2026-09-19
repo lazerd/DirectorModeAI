@@ -111,3 +111,30 @@ describe('urls', () => {
     expect(scoreEntryUrl('17166')).toContain('scoresbatch.asp?idevent=17166');
   });
 });
+
+describe('mergeResults across rounds', () => {
+  const r = (round: string, score: string) => ({
+    division: "Boys' 10 Singles", round, date: '09/19/26',
+    playerA: 'Massimo Cardenas', playerB: 'Rory Frase', score, done: score !== 'Scheduled',
+  });
+
+  it('does not give a consolation rematch the main-draw score', () => {
+    // A Round 16 default in the morning; the same two meet again in the consolation.
+    const consol = m({ round: 'Consol Quarters', playerA: 'Rory Frase', playerB: 'Massimo Cardenas' });
+    const [out] = mergeResults([consol], [r('Round 16', 'DF'), r('Consol Quarters', 'Scheduled')]);
+    expect(out.completed).toBe(false);
+    expect(out.ready).toBe(true);
+  });
+
+  it('still finishes the round that was actually played', () => {
+    const r16 = m({ round: 'Round 16', playerA: 'Massimo Cardenas', playerB: 'Rory Frase' });
+    const [out] = mergeResults([r16], [r('Round 16', '6-1,6-0')]);
+    expect(out.completed).toBe(true);
+    expect(out.score).toBe('6-1,6-0');
+  });
+
+  it('keeps divisions apart', () => {
+    const other = m({ event: "Girls' 10 Singles", round: 'Round 16', playerA: 'Massimo Cardenas', playerB: 'Rory Frase' });
+    expect(mergeResults([other], [r('Round 16', 'DF')])[0].completed).toBe(false);
+  });
+});
