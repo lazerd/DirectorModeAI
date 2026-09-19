@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseSchedule, scheduleUrl } from '@/lib/ondeck/topdog';
+import { mergeResults, parseResults, resultsUrl } from '@/lib/ondeck/topdogResults';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,37 +32,60 @@ export async function GET(request: NextRequest) {
 
   const url = scheduleUrl(tournamentId, date || undefined);
 
+  // TopDog serves a bot page to anything that doesn't look like a browser,
+  // so these headers are load-bearing, not decoration.
+  const headers = {
+    'user-agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+    accept: 'text/html,application/xhtml+xml',
+  };
+
+  const get = (target: string) =>
+    fetch(target, { cache: 'no-store', signal: AbortSignal.timeout(TIMEOUT_MS), headers });
+
   let html: string;
+  // The results page is a bonus, not a requirement: if it fails the desk
+  // still works, it just goes back to Darrin clearing courts by hand.
+  let resultsHtml: string | null = null;
   try {
-    const res = await fetch(url, {
-      cache: 'no-store',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: {
-        // Plain-browser headers: the page renders differently for what it
-        // thinks is a bot, and we want exactly what Darrin sees.
-        'user-agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
-        accept: 'text/html,application/xhtml+xml',
-      },
-    });
-    if (!res.ok) {
+    const [scheduleRes, resultsRes] = await Promise.allSettled([
+      get(url),
+      get(resultsUrl(tournamentId)),
+    ]);
+
+    if (scheduleRes.status === 'rejected' || !scheduleRes.value.ok) {
+      const status = scheduleRes.status === 'fulfilled' ? scheduleRes.value.status : 0;
       return NextResponse.json(
-        { error: 'topdog_error', status: res.status },
+        { error: 'topdog_error', status },
         { status: 502, headers: { 'cache-control': 'no-store' } }
       );
     }
-    html = await res.text();
+    html = await scheduleRes.value.text();
+
+    if (resultsRes.status === 'fulfilled' && resultsRes.value.ok) {
+      resultsHtml = await resultsRes.value.text();
+    }
   } catch (e) {
     const message = e instanceof Error ? e.message : 'fetch failed';
     return NextResponse.json({ error: 'unreachable', message }, { status: 502 });
   }
 
   const schedule = parseSchedule(html, tournamentId);
+  const { divisions, results } = resultsHtml
+    ? parseResults(resultsHtml)
+    : { divisions: [], results: [] };
 
-  // An empty sheet is almost always a wrong tournament id rather than a day
-  // with no tennis on it, and it is worth saying so on screen.
   return NextResponse.json(
-    { ...schedule, sourceUrl: url, fetchedAt: new Date().toISOString() },
+    {
+      ...schedule,
+      // A match TopDog has a score for is finished, whatever the order of
+      // play still shows — this is what lets the desk open a court by itself.
+      matches: mergeResults(schedule.matches, results),
+      divisions,
+      resultsAvailable: resultsHtml !== null,
+      sourceUrl: url,
+      fetchedAt: new Date().toISOString(),
+    },
     { headers: { 'cache-control': 'no-store' } }
   );
 }

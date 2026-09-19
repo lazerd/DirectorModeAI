@@ -41,6 +41,8 @@ export interface TopDogMatch {
   defaulted: boolean;
   /** Result already in — nothing left to call. */
   completed: boolean;
+  /** The score, once TopDog's match list has one ("6-1 6-2", "DF"). */
+  score?: string;
   /** Both players known and no result yet: this one can go over the PA. */
   ready: boolean;
 }

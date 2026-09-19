@@ -26,6 +26,9 @@ import {
   announcementText, type TopDogMatch, type TopDogSchedule,
 } from '@/lib/ondeck/topdog';
 import {
+  eventIdFor, scoreEntryUrl, type DivisionLink,
+} from '@/lib/ondeck/topdogResults';
+import {
   buildDeskBoard, observationFor, type Assignment,
 } from '@/lib/ondeck/desk';
 import { DEFAULT_LENGTHS, type MatchLengths, type Observation } from '@/lib/ondeck/board';
@@ -88,8 +91,11 @@ function pretty(hhmm: string | null): string {
   return `${hour}:${String(m || 0).padStart(2, '0')} ${mer}`;
 }
 
+/** The schedule, plus the division links the results page carries. */
+type Sheet = TopDogSchedule & { divisions?: DivisionLink[]; resultsAvailable?: boolean };
+
 export default function TopDogDeskClient() {
-  const [schedule, setSchedule] = useState<TopDogSchedule | null>(null);
+  const [schedule, setSchedule] = useState<Sheet | null>(null);
   const [date, setDate] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [lastPoll, setLastPoll] = useState<Date | null>(null);
@@ -176,8 +182,8 @@ export default function TopDogDeskClient() {
         setError(body?.message ?? `TopDog did not answer (${body?.error ?? res.status})`);
         return;
       }
-      setSchedule(body as TopDogSchedule);
-      setDate((d) => d || (body as TopDogSchedule).date);
+      setSchedule(body as Sheet);
+      setDate((d) => d || (body as Sheet).date);
       setError(null);
       setLastPoll(new Date());
     } catch (e) {
@@ -288,13 +294,51 @@ export default function TopDogDeskClient() {
     if (match) {
       addLog(`Court ${court} open — ${match.playerA} v ${match.playerB} scored in`, 'info');
     }
-    if (openTopDog) {
+    if (openTopDog && match) {
+      // Straight to the batch form for that division, with the division
+      // preselected — TopDog's own dropdown is there if the guess is wrong
+      // (a main draw and its consolation share a name).
+      const eventId = eventIdFor(match, schedule?.divisions ?? []);
       window.open(
-        `https://sleepyhollowswimtennis.topdoglive.com/pages/tournaments/matches_list.asp?idevent=0&t=${TOURNAMENT_ID}`,
+        eventId
+          ? scoreEntryUrl(eventId)
+          : `https://sleepyhollowswimtennis.topdoglive.com/pages/tournaments/matches_list.asp?idevent=0&t=${TOURNAMENT_ID}`,
         'topdog-scoring'
       );
     }
-  }, [occupied, byId, addLog]);
+  }, [occupied, byId, addLog, schedule]);
+
+  /**
+   * A court TopDog has a score for opens itself.
+   *
+   * This closes the loop from the other end: Darrin enters the result in
+   * TopDog the way he always has, and within one poll the court comes back,
+   * the match is timed, and the next round's names appear in the queue.
+   * Nothing gets said twice.
+   */
+  useEffect(() => {
+    const finished = state.assignments.filter((a) => byId.get(a.matchId)?.completed);
+    if (!finished.length) return;
+
+    const freed = new Set(finished.map((a) => a.court));
+    const timed = finished
+      .map((a) => {
+        const m = byId.get(a.matchId);
+        return m ? observationFor(m, a.startedAt) : null;
+      })
+      .filter((o): o is NonNullable<typeof o> => o !== null);
+
+    setState((s) => ({
+      ...s,
+      assignments: s.assignments.filter((a) => !freed.has(a.court)),
+      observations: [...s.observations, ...timed],
+    }));
+
+    for (const a of finished) {
+      const m = byId.get(a.matchId);
+      addLog(`Court ${a.court} open — TopDog has the score${m?.score ? ` (${m.score})` : ''}`, 'info');
+    }
+  }, [state.assignments, byId, addLog]);
 
   /** Put a court back the way it was — a mis-tap at a busy desk is common. */
   const clearCourt = useCallback((court: string) => {
@@ -620,8 +664,8 @@ export default function TopDogDeskClient() {
             </div>
             <div style={S.meta}>
               {m.event} · {m.round}
+              {m.score && ` · ${m.score}`}
               {m.winner && ` · ${m.winner} won`}
-              {m.defaulted && ' (default)'}
             </div>
           </div>
           {doneIds.has(m.id) && !m.completed && (
