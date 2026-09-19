@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Calendar, Trophy, Target, ExternalLink, ClipboardList, ListOrdered } from 'lucide-react';
+import { Plus, Calendar, Trophy, Target, ExternalLink, ClipboardList, ListOrdered, Megaphone } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { format, parseISO } from 'date-fns';
 import { isTournamentEvent } from '@/lib/eventCategory';
@@ -150,13 +150,23 @@ export default function TournamentModePage() {
           <h1 className="font-semibold text-2xl sm:text-3xl mb-1">TournamentMode</h1>
           <p className="text-gray-500">Brackets &amp; draws — single elim, consolation, round robin, compass, and quads.</p>
         </div>
-        <Link
-          href="/mixer/select-format"
-          className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg font-medium hover:bg-yellow-600"
-        >
-          <Plus size={18} />
-          New Tournament
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/mixer/tournaments/topdog"
+            title="Call matches over the PA for a tournament run on TopDog"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 border rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <Megaphone size={18} />
+            TopDog announcer
+          </Link>
+          <Link
+            href="/mixer/select-format"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-yellow-500 text-white rounded-lg font-medium hover:bg-yellow-600"
+          >
+            <Plus size={18} />
+            New Tournament
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
