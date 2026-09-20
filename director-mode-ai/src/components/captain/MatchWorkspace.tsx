@@ -281,6 +281,29 @@ export default function MatchWorkspace({
     ),
   );
 
+  /*
+   * The score rows are the lineup's courts UNION the courts that already have a
+   * saved result.
+   *
+   * They used to be the lineup alone, so a match scored off a paper card with
+   * no lineup saved — or one whose lineup was cleared by a reschedule — showed
+   * "Results · recorded" above an empty form, with the scores safe in the
+   * database and invisible. recapData.ts unions both tables for exactly this
+   * reason; this screen never got the same fix.
+   */
+  const scoringCourts: Court[] = (() => {
+    const have = new Set(courts.map((c) => c.courtNumber));
+    const extras = initialResults
+      .filter((r) => !have.has(r.courtNumber))
+      .map((r) => ({
+        courtNumber: r.courtNumber,
+        courtType: 'doubles' as const,
+        player1Id: null,
+        player2Id: null,
+      }));
+    return [...courts, ...extras].sort((a, b) => a.courtNumber - b.courtNumber);
+  })();
+
   const answered = players.filter((p) => p.availability !== null);
   const yes = players.filter((p) => p.availability === 'yes');
   const no = players.filter((p) => p.availability === 'no');
@@ -2693,7 +2716,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
               </div>
 
               <div className="mt-3 space-y-2">
-                {courts.map((c) => {
+                {scoringCourts.map((c) => {
                   const s = scores[c.courtNumber] ?? { score: '', won: null };
                   return (
                     <div

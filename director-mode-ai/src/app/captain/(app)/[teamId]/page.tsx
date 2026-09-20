@@ -8,6 +8,7 @@ import OpponentDirectory, {
 } from '@/components/captain/OpponentDirectory';
 import { gateTeam } from '@/lib/captain/access';
 import { playedCounts, pairRecords, rulesFor } from '@/lib/captain/server';
+import { tallyCourts, type MatchScoring } from '@/lib/captain/recap';
 import { eligibilityReport, type RatingType } from '@/lib/captain/lineup';
 import RosterPanel from '@/components/captain/RosterPanel';
 import RosterContactsPanel from '@/components/captain/RosterContactsPanel';
@@ -201,7 +202,7 @@ export default async function TeamHub({
       ? ((matches as { id: string }[]) || []).map((m) => m.id)
       : [];
   // Both need ids from the batch above, so they wait — but only for each other.
-  const [{ data: contactRows }, { data: avail }] = await Promise.all([
+  const [{ data: contactRows }, { data: avail }, { data: resultRows }] = await Promise.all([
     opponentIds.length
       ? db
           .from('captain_opponent_captains')
@@ -211,6 +212,13 @@ export default async function TeamHub({
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
     matchIds.length
       ? db.from('captain_availability').select('match_id, status, player_id').in('match_id', matchIds)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    /*
+     * The scores the captain entered, so the schedule can say "Won 2-1" instead
+     * of "recorded". Read here rather than per row: one query for the season.
+     */
+    view === 'schedule' && matchIds.length
+      ? db.from('captain_results').select('match_id, won, score, defaulted').in('match_id', matchIds)
       : Promise.resolve({ data: [] as Record<string, unknown>[] }),
   ]);
   const peopleByOpponent = new Map<string, OpponentPerson[]>();
@@ -288,6 +296,43 @@ export default async function TeamHub({
       answeredByPlayer[a.player_id] = (answeredByPlayer[a.player_id] ?? 0) + 1;
     }
   }
+
+  /*
+   * One line per played match: the captain's own card if they kept one,
+   * otherwise whatever the league published when the team was imported.
+   */
+  const scoring: MatchScoring =
+    (team as unknown as { match_scoring?: string | null }).match_scoring === 'topdog'
+      ? 'topdog'
+      : 'courts';
+  const courtsByMatch = new Map<string, { won: boolean | null; score: string | null; defaulted: boolean }[]>();
+  for (const row of (resultRows as unknown as {
+    match_id: string;
+    won: boolean | null;
+    score: string | null;
+    defaulted: boolean | null;
+  }[]) || []) {
+    const list = courtsByMatch.get(row.match_id) ?? [];
+    list.push({ won: row.won ?? null, score: row.score ?? null, defaulted: row.defaulted === true });
+    courtsByMatch.set(row.match_id, list);
+  }
+  const resultFor = (m: Record<string, unknown>): { label: string; outcome: 'win' | 'loss' | 'tie' } | null => {
+    const courts = courtsByMatch.get(m.id as string);
+    if (courts?.some((c) => c.won !== null)) {
+      const t = tallyCourts(courts, scoring);
+      return {
+        label: `${t.outcome === 'win' ? 'Won' : t.outcome === 'loss' ? 'Lost' : 'Tied'} ${t.scoreline}`,
+        outcome: t.outcome,
+      };
+    }
+    // As published by the league site this team was imported from.
+    const league = (m.league_result as string | null)?.trim();
+    if (!league) return null;
+    return {
+      label: league,
+      outcome: /^won/i.test(league) ? 'win' : /^lost/i.test(league) ? 'loss' : 'tie',
+    };
+  };
 
   const atRisk = eligibility.filter((e) => !e.eligible);
 
@@ -477,6 +522,7 @@ export default async function TeamHub({
             <div className="space-y-2">
               {past.map((m) => {
                 const scored = (m.status as string) === 'played';
+                const result = resultFor(m);
                 return (
                   <Link
                     key={m.id as string}
@@ -499,11 +545,27 @@ export default async function TeamHub({
                       </div>
                     </div>
                     <div className="text-right text-sm">
-                      {/* The one thing a captain is looking for here is whether
-                          they still owe this match a score. */}
-                      <div className={scored ? 'text-white/40' : 'text-[#D3FB52] font-medium'}>
-                        {scored ? 'recorded' : 'scores needed'}
-                      </div>
+                      {/* The result if we have one — from the captain's own card
+                          or the league's — and otherwise the chore that is
+                          still owed. A played match that showed only the word
+                          "recorded" read as a hole in the app. */}
+                      {result ? (
+                        <div
+                          className={
+                            result.outcome === 'win'
+                              ? 'font-semibold text-[#D3FB52]'
+                              : result.outcome === 'loss'
+                                ? 'font-semibold text-white/70'
+                                : 'font-semibold text-white/60'
+                          }
+                        >
+                          {result.label}
+                        </div>
+                      ) : (
+                        <div className={scored ? 'text-white/40' : 'text-[#D3FB52] font-medium'}>
+                          {scored ? 'recorded' : 'scores needed'}
+                        </div>
+                      )}
                     </div>
                   </Link>
                 );
