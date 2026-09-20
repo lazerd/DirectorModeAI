@@ -407,6 +407,15 @@ export default function ClubSidebar() {
   // Close the mobile drawer whenever you navigate.
   useEffect(() => { setMobileOpen(false); }, [pathname]);
 
+  /*
+   * The section flyout is a FIXED sibling of the rail, drawn above it, and it
+   * used to close on one thing only: the mouse leaving it. So collapsing the
+   * rail (or navigating from a rail row) left a 292px panel floating over the
+   * page, anchored to a rail that was no longer there — Artem Melnik reported
+   * exactly this on 2026-09-19. Anything that moves the rail closes the panel.
+   */
+  useEffect(() => { setFlyout(null); }, [collapsed, mobileOpen, pathname]);
+
   const toggleCollapsed = () => {
     setCollapsed((c) => {
       const next = !c;
@@ -429,11 +438,18 @@ export default function ClubSidebar() {
     if (!it.tools?.length) return;
     if (closeTimer.current) clearTimeout(closeTimer.current);
     const r = el.getBoundingClientRect();
+    /*
+     * Anchor to where the rail WILL be, not where the row is now. Hovering a
+     * collapsed rail starts the 72 -> 248 peek, but this handler runs before
+     * that render, so r.right was still 72 and the panel opened underneath the
+     * widening rail. EXPANDED is what the rail is about to be in every state
+     * that can show a flyout.
+     */
     setFlyout({
       item: it,
       // Keep the panel on screen when the row sits near the bottom.
       top: Math.min(r.top - 8, Math.max(8, window.innerHeight - 40 - it.tools.length * 58)),
-      left: r.right + 8,
+      left: EXPANDED + 8,
     });
   };
   const scheduleClose = () => {
@@ -488,9 +504,16 @@ export default function ClubSidebar() {
   };
 
   if (isPublic) return null;
-  // A captain with no club: CaptainMode has its own sidebar, and every club
-  // tool on this rail would open onto a club they don't have.
-  if (noClub && captainTeams.length > 0 && pathname.startsWith('/captain')) return null;
+  /*
+   * A captain with no club: CaptainMode has its own sidebar, and every club
+   * tool on this rail would open onto a club they don't have.
+   *
+   * This used to be limited to /captain, so the same captain-only account got
+   * the full director rail — Courts, Programs, Members, Coaching — the moment
+   * they landed anywhere else, and every one of those links 403s or 404s for
+   * them. The rail is wrong for this account on every page, not just one.
+   */
+  if (noClub && captainTeams.length > 0) return null;
 
   return (
     <>
@@ -605,7 +628,7 @@ export default function ClubSidebar() {
         load to reach CourtSheet. Desktop only — the phone drawer already shows
         everything, and there is no hover on a touch screen.
       */}
-      {flyout && !mobileOpen && (
+      {flyout && !mobileOpen && showLabels && (
         <div
           onMouseEnter={keepOpen}
           onMouseLeave={scheduleClose}

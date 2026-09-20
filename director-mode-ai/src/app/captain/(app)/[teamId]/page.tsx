@@ -64,18 +64,34 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
     court_format: number | null;
   };
 
-  // The club's zone — the schedule and new-match entry are both club-local.
-  const timeZone = await resolveClubTimeZone(
-    getSupabaseAdmin(),
-    (teamRow as { club_id?: string | null }).club_id,
-  );
-
   // What a new match starts with. The team's own numbers if it has them,
   // otherwise the shape of its league.
   const courts = defaultCourts(team);
 
-  const [{ data: players }, { data: matches }, { data: prefs }, { data: never }] =
-    await Promise.all([
+  /*
+   * ONE ROUND TRIP, NOT TEN.
+   *
+   * Every read below used to be its own `await` in sequence. The functions run
+   * in a different AWS region from the database, so each one cost a full
+   * cross-country round trip and the page took ~3s to send its first byte
+   * (Artem Melnik, 2026-09-19: "a bit slow response"). Nothing here depends on
+   * anything else here, so they all go at once. Only the two reads that need
+   * ids from this batch — opponent captains, availability — wait, and they then
+   * run as a pair.
+   */
+  const [
+    timeZone,
+    { data: players },
+    { data: matches },
+    { data: prefs },
+    { data: never },
+    { data: opponentRows },
+    { data: teamContactRows },
+    counts,
+    partnerships,
+  ] = await Promise.all([
+      // The club's zone — the schedule and new-match entry are both club-local.
+      resolveClubTimeZone(getSupabaseAdmin(), (teamRow as { club_id?: string | null }).club_id),
       db
         .from('captain_players')
         // select('*') so a newly added column (sort_order, court_note) can't 400
@@ -91,6 +107,19 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         .select('player_id, preferred_player_id, rank')
         .eq('team_id', team.id),
       db.from('captain_never_pair').select('id, player_a_id, player_b_id').eq('team_id', team.id),
+      db
+        .from('captain_opponents')
+        .select('id, opponent, division, court_format, home_club, club_phone')
+        .eq('team_id', team.id)
+        .order('opponent'),
+      db
+        .from('captain_team_contacts')
+        .select('id, name, role, email, phone, on_emails')
+        .eq('team_id', team.id)
+        .order('sort_order')
+        .order('name'),
+      playedCounts(db, team.id),
+      pairRecords(db, team.id),
     ]);
 
   /*
@@ -101,27 +130,23 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
    * to five captains per team, which the old captain_/cocaptain_ pair could not
    * hold.
    */
-  const { data: opponentRows } = await db
-    .from('captain_opponents')
-    .select('id, opponent, division, court_format, home_club, club_phone')
-    .eq('team_id', team.id)
-    .order('opponent');
-  const { data: teamContactRows } = await db
-    .from('captain_team_contacts')
-    .select('id, name, role, email, phone, on_emails')
-    .eq('team_id', team.id)
-    .order('sort_order')
-    .order('name');
   const teamContacts = (teamContactRows as TeamContact[] | null) ?? [];
 
   const opponentIds = ((opponentRows as { id: string }[]) || []).map((o) => o.id);
-  const { data: contactRows } = opponentIds.length
-    ? await db
-        .from('captain_opponent_captains')
-        .select('opponent_id, name, usta_number, safe_play_expires, email, phone, sort_order')
-        .in('opponent_id', opponentIds)
-        .order('sort_order')
-    : { data: [] };
+  const matchIds = ((matches as { id: string }[]) || []).map((m) => m.id);
+  // Both need ids from the batch above, so they wait — but only for each other.
+  const [{ data: contactRows }, { data: avail }] = await Promise.all([
+    opponentIds.length
+      ? db
+          .from('captain_opponent_captains')
+          .select('opponent_id, name, usta_number, safe_play_expires, email, phone, sort_order')
+          .in('opponent_id', opponentIds)
+          .order('sort_order')
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    matchIds.length
+      ? db.from('captain_availability').select('match_id, status, player_id').in('match_id', matchIds)
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+  ]);
   const peopleByOpponent = new Map<string, OpponentPerson[]>();
   for (const row of (contactRows as (OpponentPerson & { opponent_id: string })[]) || []) {
     const list = peopleByOpponent.get(row.opponent_id) ?? [];
@@ -153,8 +178,6 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
     (m) => m.status === 'scheduled' && new Date(m.match_at as string) >= new Date(),
   );
 
-  const counts = await playedCounts(db, team.id);
-  const partnerships = await pairRecords(db, team.id);
   const eligibility = eligibilityReport({
     players: roster
       .filter((p) => !p.is_sub)
@@ -192,19 +215,11 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
     );
 
   const upcomingIds = new Set(upcoming.map((m) => m.id as string));
-  if (allMatches.length) {
-    const { data: avail } = await db
-      .from('captain_availability')
-      .select('match_id, status, player_id')
-      .in(
-        'match_id',
-        allMatches.map((m) => m.id as string),
-      );
-    for (const a of (avail as { match_id: string; status: string; player_id: string }[]) || []) {
-      if (a.status === 'yes') availByMatch[a.match_id] = (availByMatch[a.match_id] ?? 0) + 1;
-      if (upcomingIds.has(a.match_id)) {
-        answeredByPlayer[a.player_id] = (answeredByPlayer[a.player_id] ?? 0) + 1;
-      }
+  for (const a of (avail as unknown as { match_id: string; status: string; player_id: string }[]) ||
+    []) {
+    if (a.status === 'yes') availByMatch[a.match_id] = (availByMatch[a.match_id] ?? 0) + 1;
+    if (upcomingIds.has(a.match_id)) {
+      answeredByPlayer[a.player_id] = (answeredByPlayer[a.player_id] ?? 0) + 1;
     }
   }
 
