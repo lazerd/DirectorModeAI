@@ -550,6 +550,24 @@ export default function TopDogDeskClient() {
     }
   }, [byId, addLog, openScoring]);
 
+  /**
+   * A result for a match that never goes on a court — a default, a walkover,
+   * a retirement before play. Waiting for a court first would be absurd, and
+   * on a full afternoon there may not be one for an hour.
+   *
+   * No timing is recorded: nothing was played. The result itself still goes
+   * into TopDog, so the scoring form opens alongside.
+   */
+  const enterResult = useCallback((m: TopDogMatch) => {
+    setState((s) => ({
+      ...s,
+      completedIds: s.completedIds.includes(m.id) ? s.completedIds : [...s.completedIds, m.id],
+      awaiting: (s.awaiting ?? []).filter((w) => w.matchId !== m.id),
+    }));
+    addLog(`${m.playerA} v ${m.playerB} scored in without going on court`, 'info');
+    openScoring(m);
+  }, [addLog, openScoring]);
+
   /** Mis-tap: back on the court they came off (or any open one). */
   const backOnCourt = useCallback((matchId: string, court: string) => {
     setState((s) => {
@@ -768,6 +786,13 @@ export default function TopDogDeskClient() {
                 title={freeCourts.length === 0 ? 'Every court is busy' : 'Put this match on a court (no announcement)'}
               >
                 Court ▸
+              </button>
+              <button
+                style={S.resultButton}
+                title="Default, walkover or retirement: score it without using a court"
+                onClick={() => enterResult(m)}
+              >
+                Result ▸
               </button>
               {bothIn ? (
                 <button
@@ -1178,15 +1203,24 @@ export default function TopDogDeskClient() {
             const from = state.scoredFrom?.[m.id];
             const target = from && !occupied.has(from.court) ? from.court : freeCourts[0] ?? null;
             return (
-              <button
-                style={S.editButton}
-                onClick={() => restoreScored(m.id, target)}
-                title={target
-                  ? `Scored in by mistake? Back on court ${target}${from ? `, started ${clockOf(from.startedAt)}` : ''}`
-                  : 'Every court is busy: back into the queue'}
-              >
-                {target ? `Back on court ${target}` : 'Back to queue'}
-              </button>
+              <div style={S.queueButtons}>
+                {target && (
+                  <button
+                    style={S.editButton}
+                    onClick={() => restoreScored(m.id, target)}
+                    title={`Back on court ${target}${from ? `, started ${clockOf(from.startedAt)}` : ''}`}
+                  >
+                    Back on court {target}
+                  </button>
+                )}
+                <button
+                  style={S.editButton}
+                  onClick={() => restoreScored(m.id, null)}
+                  title="Put this match back in the queue, on no court"
+                >
+                  Back to queue
+                </button>
+              </div>
             );
           })()}
         </div>
@@ -1249,6 +1283,7 @@ const S: Record<string, React.CSSProperties> = {
   scoreButton: { padding: '8px 12px', borderRadius: 8, border: 0, background: '#2563eb', color: '#fff', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
 
   deskCallButton: { padding: '8px 12px', borderRadius: 8, border: '1px solid #f59e0b', background: '#fff7ed', color: '#9a3412', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
+  resultButton: { padding: '8px 12px', borderRadius: 8, border: '1px solid #c7d2fe', background: '#eef2ff', color: '#3730a3', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   offButton: { padding: '8px 12px', borderRadius: 8, border: '1px solid #2563eb', background: '#fff', color: '#1d4ed8', cursor: 'pointer', fontWeight: 700, fontSize: 13 },
   awaitGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 10 },
   awaitCard: { display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, padding: 12, borderRadius: 10, border: '1px solid #bfdbfe', background: '#eff6ff' },
