@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { CalendarClock, Settings } from 'lucide-react';
+import { CalendarClock } from 'lucide-react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import OpponentDirectory, {
   type OpponentContact,
@@ -28,7 +28,39 @@ import { defaultCourts, leagueSpec } from '@/lib/captain/leagues';
 
 export const dynamic = 'force-dynamic';
 
-export default async function TeamHub({ params }: { params: { teamId: string } }) {
+/**
+ * The team page is FIVE PAGES, not one scroll.
+ *
+ * It used to render sixteen panels at once — roster, contacts, opponents,
+ * import, intake, availability, partnerships, strength, form, never-pair, host
+ * notes, settings, schedule — and fetch everything all of them needed on every
+ * visit. Artem Melnik's first hour with it: "when you select a team then this
+ * page is too crowded. I would rather have more menu items / sub-pages."
+ *
+ * Each tab is the same route with ?view=, so every link a captain already has
+ * still opens the team, and each view fetches only what it draws. Schedule is
+ * the default because that is what match week is about.
+ */
+const VIEWS = ['schedule', 'roster', 'availability', 'opponents', 'setup'] as const;
+type View = (typeof VIEWS)[number];
+const VIEW_LABEL: Record<View, string> = {
+  schedule: 'Schedule',
+  roster: 'Roster',
+  availability: 'Availability',
+  opponents: 'Opponents',
+  setup: 'Setup',
+};
+
+export default async function TeamHub({
+  params,
+  searchParams,
+}: {
+  params: { teamId: string };
+  searchParams?: { view?: string };
+}) {
+  const view: View = (VIEWS as readonly string[]).includes(searchParams?.view || '')
+    ? (searchParams!.view as View)
+    : 'schedule';
   const supabase = await createClient();
   const {
     data: { user },
@@ -79,6 +111,21 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
    * ids from this batch — opponent captains, availability — wait, and they then
    * run as a pair.
    */
+  /*
+   * What this view actually needs. A tab that draws no roster does not pay for
+   * one: `false` skips the round trip entirely rather than fetching and
+   * discarding. Roster is the widest — eligibility, strength and partnerships
+   * are all read off it — and the schedule needs it too, for the playoff
+   * eligibility warning.
+   */
+  const needRoster = view !== 'opponents';
+  const needMatches = view === 'schedule' || view === 'availability' || view === 'roster';
+  const needPrefs = view === 'roster';
+  const needOpponents = view === 'opponents';
+  const needContacts = view === 'roster';
+  const needPartnerships = view === 'roster';
+  const none = Promise.resolve({ data: [] as Record<string, unknown>[] });
+
   const [
     timeZone,
     { data: players },
@@ -92,34 +139,49 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
   ] = await Promise.all([
       // The club's zone — the schedule and new-match entry are both club-local.
       resolveClubTimeZone(getSupabaseAdmin(), (teamRow as { club_id?: string | null }).club_id),
-      db
-        .from('captain_players')
-        // select('*') so a newly added column (sort_order, court_note) can't 400
-        // the whole team hub if the migration hasn't been run yet.
-        .select('*')
-        .eq('team_id', team.id)
-        .eq('active', true)
-        .order('is_sub')
-        .order('name'),
-      db.from('captain_matches').select('*').eq('team_id', team.id).order('match_at'),
-      db
-        .from('captain_partner_prefs')
-        .select('player_id, preferred_player_id, rank')
-        .eq('team_id', team.id),
-      db.from('captain_never_pair').select('id, player_a_id, player_b_id').eq('team_id', team.id),
-      db
-        .from('captain_opponents')
-        .select('id, opponent, division, court_format, home_club, club_phone')
-        .eq('team_id', team.id)
-        .order('opponent'),
-      db
-        .from('captain_team_contacts')
-        .select('id, name, role, email, phone, on_emails')
-        .eq('team_id', team.id)
-        .order('sort_order')
-        .order('name'),
-      playedCounts(db, team.id),
-      pairRecords(db, team.id),
+      needRoster
+        ? db
+            // select('*') so a newly added column (sort_order, court_note) can't
+            // 400 the whole team hub if the migration hasn't been run yet.
+            .from('captain_players')
+            .select('*')
+            .eq('team_id', team.id)
+            .eq('active', true)
+            .order('is_sub')
+            .order('name')
+        : none,
+      needMatches
+        ? db.from('captain_matches').select('*').eq('team_id', team.id).order('match_at')
+        : none,
+      needPrefs
+        ? db
+            .from('captain_partner_prefs')
+            .select('player_id, preferred_player_id, rank')
+            .eq('team_id', team.id)
+        : none,
+      needPrefs
+        ? db
+            .from('captain_never_pair')
+            .select('id, player_a_id, player_b_id')
+            .eq('team_id', team.id)
+        : none,
+      needOpponents
+        ? db
+            .from('captain_opponents')
+            .select('id, opponent, division, court_format, home_club, club_phone')
+            .eq('team_id', team.id)
+            .order('opponent')
+        : none,
+      needContacts
+        ? db
+            .from('captain_team_contacts')
+            .select('id, name, role, email, phone, on_emails')
+            .eq('team_id', team.id)
+            .order('sort_order')
+            .order('name')
+        : none,
+      needRoster ? playedCounts(db, team.id) : Promise.resolve({} as Record<string, number>),
+      needPartnerships ? pairRecords(db, team.id) : Promise.resolve([]),
     ]);
 
   /*
@@ -133,7 +195,11 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
   const teamContacts = (teamContactRows as TeamContact[] | null) ?? [];
 
   const opponentIds = ((opponentRows as { id: string }[]) || []).map((o) => o.id);
-  const matchIds = ((matches as { id: string }[]) || []).map((m) => m.id);
+  // Availability counts are only drawn on the schedule and availability tabs.
+  const matchIds =
+    view === 'schedule' || view === 'availability'
+      ? ((matches as { id: string }[]) || []).map((m) => m.id)
+      : [];
   // Both need ids from the batch above, so they wait — but only for each other.
   const [{ data: contactRows }, { data: avail }] = await Promise.all([
     opponentIds.length
@@ -259,27 +325,30 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         </p>
       )}
 
-      {/*
-        The two things we point a captain at by name in an email or a text.
-        Team settings lives far down this one long page, so without this link
-        "open team settings" was an instruction with nothing to click.
-      */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      {/* The five sub-pages. Plain links, so each one is a real URL a captain
+          can bookmark or be sent. */}
+      <nav className="mt-5 flex flex-wrap items-center gap-1.5 border-b border-white/[0.08] pb-px">
+        {VIEWS.map((v) => (
+          <Link
+            key={v}
+            href={v === 'schedule' ? `/captain/${team.id}` : `/captain/${team.id}?view=${v}`}
+            className={`rounded-t-xl px-4 py-2.5 text-sm transition-colors ${
+              view === v
+                ? 'border-b-2 border-[#D3FB52] font-semibold text-white'
+                : 'border-b-2 border-transparent text-white/50 hover:text-white'
+            }`}
+          >
+            {VIEW_LABEL[v]}
+          </Link>
+        ))}
         <Link
           href={`/captain/${team.id}/timeline`}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-2.5 text-sm text-white/80 hover:border-[#D3FB52]/40 hover:text-white transition-colors"
+          className="ml-auto inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-2 text-sm text-white/80 transition-colors hover:border-[#D3FB52]/40 hover:text-white"
         >
           <CalendarClock size={16} className="text-[#D3FB52]" />
-          Season email timeline
+          Season emails
         </Link>
-        <a
-          href="#team-settings"
-          className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] bg-[#002838] px-4 py-2.5 text-sm text-white/80 hover:border-[#D3FB52]/40 hover:text-white transition-colors"
-        >
-          <Settings size={16} className="text-[#D3FB52]" />
-          Team settings
-        </a>
-      </div>
+      </nav>
 
       {/*
         The roster leads the page.
@@ -288,6 +357,8 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         hardest thing to find. Everything about who is on the team, and how to
         reach them, is now one section at the top.
       */}
+      {view === 'roster' && (
+      <>
       <section className="mt-8">
         <h2 className="text-xl font-display text-white">Your team</h2>
       <RosterPanel
@@ -309,8 +380,33 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         <TeamContactsPanel teamId={team.id} contacts={teamContacts} />
       </section>
 
-      <OpponentDirectory contacts={opponentContacts} teamId={team.id} division={team.level} />
+      <PartnershipsPanel
+        partnerships={partnerships.map((r) => ({
+          ...r,
+          playerAName: (roster.find((p) => p.id === r.playerAId)?.name as string) ?? '—',
+          playerBName: (roster.find((p) => p.id === r.playerBId)?.name as string) ?? '—',
+        }))}
+      />
 
+      <StrengthOrderPanel teamId={team.id} players={roster as never} />
+
+      {/* What played lines say the order should be — proposals only. */}
+      <FormOrderPanel teamId={team.id} />
+
+      <NeverPairPanel
+        teamId={team.id}
+        players={roster as never}
+        neverPairs={(never as never) || []}
+      />
+      </>
+      )}
+
+      {view === 'opponents' && (
+        <OpponentDirectory contacts={opponentContacts} teamId={team.id} division={team.level} />
+      )}
+
+      {view === 'schedule' && (
+      <>
       {/* Host clubs' emails, forwarded to the team's address or pasted on a match. */}
       <TeamHostNotes teamId={team.id} timeZone={timeZone} />
 
@@ -422,7 +518,11 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
           timeZone={timeZone}
         />
       </section>
+      </>
+      )}
 
+      {view === 'availability' && (
+      <>
       <SeasonAvailabilityPanel
         teamId={team.id}
         totalMatches={upcoming.length}
@@ -436,16 +536,6 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
           }))}
       />
 
-      <PartnershipsPanel
-        partnerships={partnerships.map((r) => ({
-          ...r,
-          playerAName: (roster.find((p) => p.id === r.playerAId)?.name as string) ?? '—',
-          playerBName: (roster.find((p) => p.id === r.playerBId)?.name as string) ?? '—',
-        }))}
-      />
-
-      <ImportPanel teamId={team.id} teamIsEmpty={roster.length === 0} />
-
       {/*
         No pre-season questionnaire for juniors.
         It asks for ranked partner preferences and a preferred return side —
@@ -457,6 +547,12 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
       {!leagueSpec(team.league_type).multiLine && (
         <PreseasonPanel teamId={team.id} players={roster as never} />
       )}
+      </>
+      )}
+
+      {view === 'setup' && (
+      <>
+      <ImportPanel teamId={team.id} teamIsEmpty={roster.length === 0} />
 
       <TeamSettingsPanel
         teamId={team.id}
@@ -475,18 +571,8 @@ export default async function TeamHub({ params }: { params: { teamId: string } }
         levelLabel={leagueSpec(team.league_type).levelLabel}
         sourceTeamId={team.source_team_id}
       />
-
-      <StrengthOrderPanel teamId={team.id} players={roster as never} />
-
-      {/* What played lines say the order should be — proposals only. */}
-      <FormOrderPanel teamId={team.id} />
-
-      <NeverPairPanel
-        teamId={team.id}
-        players={roster as never}
-        neverPairs={(never as never) || []}
-      />
-
+      </>
+      )}
 
     </div>
   );
