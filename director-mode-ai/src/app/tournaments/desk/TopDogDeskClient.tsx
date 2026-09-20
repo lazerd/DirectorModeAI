@@ -75,10 +75,10 @@ interface DeskState {
    */
   scoredFrom?: Record<string, ScoredFrom>;
   /**
-   * Matches Darrin put back on court even though TopDog has a score, keyed
-   * to the score TopDog showed at the time. The court stays put until that
-   * score changes (he corrects it in TopDog) — otherwise the next poll would
-   * just free the court again.
+   * Matches Darrin has put back even though TopDog has a score, keyed to the
+   * score TopDog showed at the time. The desk treats them as live — on court
+   * or in the queue — until that score changes in TopDog. Without this the
+   * next poll would simply file them as finished again.
    */
   keptOn?: Record<string, string>;
 }
@@ -250,7 +250,23 @@ export default function TopDogDeskClient() {
     return () => clearInterval(t);
   }, [fetchSchedule, date]);
 
-  const matches = useMemo(() => schedule?.matches ?? [], [schedule]);
+  /**
+   * The sheet as the desk should act on it: TopDog's matches, with anything
+   * Darrin has deliberately put back treated as still to be played until
+   * TopDog's own score for it changes.
+   */
+  const matches = useMemo(() => {
+    const raw = schedule?.matches ?? [];
+    const kept = state.keptOn ?? {};
+    if (!Object.keys(kept).length) return raw;
+    return raw.map((m) => {
+      const held = kept[m.id];
+      if (held === undefined || !m.completed) return m;
+      const current = m.score ?? m.winner ?? 'done';
+      if (held !== current) return m; // TopDog changed its mind; so do we
+      return { ...m, completed: false, ready: !!m.playerA && !!m.playerB, score: undefined };
+    });
+  }, [schedule, state.keptOn]);
   const byId = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
 
   // --- the board ----------------------------------------------------------
@@ -671,9 +687,11 @@ export default function TopDogDeskClient() {
       }
       const scoredFrom = { ...(s.scoredFrom ?? {}) };
       delete scoredFrom[matchId];
+      // Held whether it goes back on a court or into the queue: either way
+      // the desk must stop treating TopDog's score as the last word.
       const m = byId.get(matchId);
       const keptOn = { ...(s.keptOn ?? {}) };
-      if (court && m?.completed) keptOn[matchId] = m.score ?? m.winner ?? 'done';
+      if (m?.completed) keptOn[matchId] = m.score ?? m.winner ?? 'done';
       return {
         ...s,
         completedIds: s.completedIds.filter((id) => id !== matchId),
