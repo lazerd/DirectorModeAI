@@ -8,6 +8,7 @@ import { resolveActiveClub } from '@/lib/clubs/activeClub';
 import { clubRoster, loadClub, GAME_COLS, type Game } from '@/lib/partnerFinder/server';
 import { FORMAT_LABEL, gameTitle, isFormat, ratingLabel, shortName } from '@/lib/partnerFinder/format';
 import NotifyAgain from './NotifyAgain';
+import SendAgain from './SendAgain';
 
 /**
  * CourtConnect — the director's view. (Built as "Partner Finder"; the old
@@ -130,11 +131,14 @@ export default async function CourtConnectDirectorPage() {
   };
   /** Players who got the email and then tapped "I'm in" — a real yes. */
   const saidYesBy = new Map<string, string[]>();
+  /** Anyone who has answered in any way, so the remainder is silence. */
+  const answered = new Map<string, Set<string>>();
   for (const p of (playerRows as { game_id: string; user_id: string; status: string }[] | null) ?? []) {
     const into = bucket[p.status];
     if (!into) continue;
     const who = names.get(p.user_id) ?? 'A member';
     into.set(p.game_id, [...(into.get(p.game_id) ?? []), who]);
+    answered.set(p.game_id, (answered.get(p.game_id) ?? new Set<string>()).add(p.user_id));
     if (p.status === 'in' && emailedOn.get(p.game_id)?.has(p.user_id)) {
       saidYesBy.set(p.game_id, [...(saidYesBy.get(p.game_id) ?? []), who]);
     }
@@ -336,7 +340,9 @@ export default async function CourtConnectDirectorPage() {
                           const dropped = droppedBy.get(g.id) ?? [];
                           const waiting = waitingBy.get(g.id) ?? [];
                           const asked = emailedOn.get(g.id)?.size ?? g.notified_count;
-                          const silent = Math.max(asked - yes.length - no.length - waiting.length, 0);
+                          const quiet = [...(emailedOn.get(g.id) ?? [])]
+                            .filter((id) => !(answered.get(g.id)?.has(id)))
+                            .map((id) => ({ id, name: names.get(id) ?? 'A member' }));
                           if (!asked) return <span className="text-white/35">—</span>;
                           return (
                             <>
@@ -344,7 +350,7 @@ export default async function CourtConnectDirectorPage() {
                               {' · '}
                               <span className={no.length ? 'text-rose-300' : 'text-white/50'}>{no.length} no</span>
                               {waiting.length > 0 && <span className="text-amber-300">{` · ${waiting.length} in line`}</span>}
-                              {silent > 0 && <span className="text-white/35">{` · ${silent} no reply`}</span>}
+                              {quiet.length > 0 && <span className="text-white/35">{` · ${quiet.length} no reply`}</span>}
                               {yes.length > 0 && (
                                 <span className="mt-0.5 block text-xs text-emerald-300/70">said yes: {yes.join(', ')}</span>
                               )}
@@ -353,6 +359,10 @@ export default async function CourtConnectDirectorPage() {
                               )}
                               {dropped.length > 0 && (
                                 <span className="mt-0.5 block text-xs text-amber-300/70">dropped out: {dropped.join(', ')}</span>
+                              )}
+                              {/* One tap per person, for the copies that are sitting in spam. */}
+                              {g.status === 'open' && new Date(g.starts_at) > new Date() && (
+                                <SendAgain gameId={g.id} people={quiet} />
                               )}
                               {/* Anyone the director put in the game themselves is on the court but never answered anything. */}
                               {(playersBy.get(g.id) ?? []).length > yes.length && (

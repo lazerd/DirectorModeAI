@@ -50,7 +50,11 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const club = await loadClub(db, game.club_id);
   if (!club) return NextResponse.json({ error: 'Club not found' }, { status: 404 });
 
-  const { preview } = (await req.json().catch(() => ({}))) as { preview?: boolean };
+  const { preview, resend } = (await req.json().catch(() => ({}))) as {
+    preview?: boolean;
+    /** User ids to email AGAIN — people already written to who have not answered. */
+    resend?: string[];
+  };
 
   const { data: recipientRows } = await db.rpc('pf_game_recipients', { p_game: game.id, p_limit: MAX_RECIPIENTS });
   const { data: alreadyRows } = await db
@@ -62,6 +66,31 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const fresh = (
     (recipientRows as { user_id: string; email: string; full_name: string | null; ntrp: number | null }[] | null) ?? []
   ).filter((r) => !already.has(r.user_id));
+
+  /*
+   * A re-send to named people. The first 16 invitations Sleepy Hollow sent went
+   * out before the deliverability fixes landed (HTML-only, no one-click
+   * headers, from "ClubMode"), so most of them are sitting in spam and their
+   * recipients never had the chance to answer. One person at a time, by name,
+   * because a second blast to everybody is how a club earns a mute.
+   */
+  if (Array.isArray(resend) && resend.length) {
+    if (resend.length > 10) {
+      return NextResponse.json({ error: 'Re-send to 10 people or fewer at a time.' }, { status: 400 });
+    }
+    const eligible = new Set(
+      ((recipientRows as { user_id: string }[] | null) ?? []).map((r) => r.user_id),
+    );
+    const targets = resend.filter((id) => eligible.has(id));
+    if (!targets.length) {
+      return NextResponse.json(
+        { sent: 0, message: 'Those people have already answered, or no longer fit this game.' },
+        { status: 400 },
+      );
+    }
+    const sent = await inviteMembers(db, game, club, { only: targets });
+    return NextResponse.json({ sent, message: `Sent again to ${sent} ${sent === 1 ? 'person' : 'people'}.` });
+  }
 
   if (preview !== false) {
     return NextResponse.json({

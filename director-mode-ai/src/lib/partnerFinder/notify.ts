@@ -94,7 +94,7 @@ export async function inviteMembers(
   db: Db,
   game: Game,
   club: Club,
-  opts: { onlyNew?: boolean } = {},
+  opts: { onlyNew?: boolean; only?: string[] } = {},
 ): Promise<number> {
   const { data, error } = await db.rpc('pf_game_recipients', { p_game: game.id, p_limit: MAX_RECIPIENTS });
   if (error) {
@@ -102,6 +102,17 @@ export async function inviteMembers(
     return 0;
   }
   let recipients = (data as { user_id: string; email: string; full_name: string | null; stop_token: string | null }[]) ?? [];
+
+  /*
+   * `only` is a deliberate re-send to named people — the ones who were emailed
+   * and have not answered. It is filtered through pf_game_recipients like
+   * everything else, so it cannot reach somebody who has since said no, joined,
+   * or muted game email: the director picks a name, not an address.
+   */
+  if (opts.only?.length) {
+    const wanted = new Set(opts.only);
+    recipients = recipients.filter((r) => wanted.has(r.user_id));
+  }
 
   if (opts.onlyNew && recipients.length) {
     const { data: already } = await db
@@ -158,8 +169,11 @@ export async function inviteMembers(
 
   const sent = await deliver(club, messages);
   const now = new Date().toISOString();
+  // A re-send reaches somebody already counted, so it must not inflate the
+  // "Emailed" figure the director reads answers against.
+  const newlyReached = opts.only?.length ? 0 : sent;
   await Promise.all([
-    db.from('pf_games').update({ notified_count: game.notified_count + sent, updated_at: now }).eq('id', game.id),
+    db.from('pf_games').update({ notified_count: game.notified_count + newlyReached, updated_at: now }).eq('id', game.id),
     db.from('pf_links').update({ emailed_at: now }).eq('game_id', game.id).in('user_id', recipients.map((r) => r.user_id)),
   ]);
   return sent;
