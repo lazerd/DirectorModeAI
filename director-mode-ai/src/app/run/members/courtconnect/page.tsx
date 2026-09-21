@@ -93,14 +93,26 @@ export default async function CourtConnectDirectorPage() {
         .from('pf_game_players')
         .select('game_id, user_id, status')
         .in('game_id', games.map((g) => g.id))
-        .in('status', ['in', 'wait'])
+        .in('status', ['in', 'wait', 'no', 'out'])
         .order('joined_at')
     : { data: [] };
   const names = new Map(roster.map((r) => [r.user_id, shortName(r.full_name)]));
   const playersBy = new Map<string, string[]>();
   const waitingBy = new Map<string, string[]>();
+  /*
+   * Who has said no, and who joined and then dropped out. Both used to be
+   * status 'out' and neither was shown, so on the morning of a game a director
+   * could see that sixteen people were emailed and nothing else — no way to
+   * tell sixteen people ignoring it from sixteen people who had answered.
+   */
+  const declinedBy = new Map<string, string[]>();
+  const droppedBy = new Map<string, string[]>();
+  const bucket: Record<string, Map<string, string[]>> = {
+    in: playersBy, wait: waitingBy, no: declinedBy, out: droppedBy,
+  };
   for (const p of (playerRows as { game_id: string; user_id: string; status: string }[] | null) ?? []) {
-    const into = p.status === 'wait' ? waitingBy : playersBy;
+    const into = bucket[p.status];
+    if (!into) continue;
     into.set(p.game_id, [...(into.get(p.game_id) ?? []), names.get(p.user_id) ?? 'A member']);
   }
 
@@ -258,6 +270,7 @@ export default async function CourtConnectDirectorPage() {
                   <th className="px-4 py-3 font-medium">Posted by</th>
                   <th className="px-4 py-3 font-medium">Playing</th>
                   <th className="px-4 py-3 font-medium">Emailed</th>
+                  <th className="px-4 py-3 font-medium">Answers</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                 </tr>
               </thead>
@@ -292,6 +305,30 @@ export default async function CourtConnectDirectorPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-white/70">{g.notified_count}</td>
+                      <td className="px-4 py-3 text-white/70">
+                        {(() => {
+                          const yes = playersBy.get(g.id) ?? [];
+                          const no = declinedBy.get(g.id) ?? [];
+                          const dropped = droppedBy.get(g.id) ?? [];
+                          const waiting = waitingBy.get(g.id) ?? [];
+                          const silent = Math.max(g.notified_count - no.length - yes.length - waiting.length, 0);
+                          if (!g.notified_count && !yes.length) return <span className="text-white/35">—</span>;
+                          return (
+                            <>
+                              <span className="text-emerald-300">{yes.length} yes</span>
+                              {' · '}
+                              <span className={no.length ? 'text-rose-300' : ''}>{no.length} no</span>
+                              {silent > 0 && <span className="text-white/35">{` · ${silent} no reply`}</span>}
+                              {no.length > 0 && (
+                                <span className="mt-0.5 block text-xs text-rose-300/70">said no: {no.join(', ')}</span>
+                              )}
+                              {dropped.length > 0 && (
+                                <span className="mt-0.5 block text-xs text-amber-300/70">dropped out: {dropped.join(', ')}</span>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[g.status] ?? ''}`}>
                           {g.status}
