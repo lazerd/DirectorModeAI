@@ -25,6 +25,13 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+/*
+ * The root layout's title is the sales pitch ("Run Your Entire Racquet Sports
+ * Club"). On a member's own clubhouse tab that is the wrong voice, and it is
+ * what a member glances at to tell whether they are actually signed in.
+ */
+export const metadata = { title: 'Your clubhouse — ClubMode' };
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function publicHref(e: { match_format: string | null; slug: string | null; event_code: string | null }): string {
