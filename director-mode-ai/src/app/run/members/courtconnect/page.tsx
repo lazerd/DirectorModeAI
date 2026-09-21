@@ -96,6 +96,24 @@ export default async function CourtConnectDirectorPage() {
         .in('status', ['in', 'wait', 'no', 'out'])
         .order('joined_at')
     : { data: [] };
+  /*
+   * Who was actually written to. An answer is a reply to an invitation, so the
+   * Answers column counts only people this game emailed: Gabe Fett was put in
+   * the game by the director and never got the blast, and counting him as a
+   * "yes" made it look as though a member had tapped when none had.
+   */
+  const { data: linkRows } = games.length
+    ? await db
+        .from('pf_links')
+        .select('game_id, user_id, emailed_at')
+        .in('game_id', games.map((g) => g.id))
+        .not('emailed_at', 'is', null)
+    : { data: [] };
+  const emailedOn = new Map<string, Set<string>>();
+  for (const l of (linkRows as { game_id: string; user_id: string }[] | null) ?? []) {
+    emailedOn.set(l.game_id, (emailedOn.get(l.game_id) ?? new Set<string>()).add(l.user_id));
+  }
+
   const names = new Map(roster.map((r) => [r.user_id, shortName(r.full_name)]));
   const playersBy = new Map<string, string[]>();
   const waitingBy = new Map<string, string[]>();
@@ -110,10 +128,16 @@ export default async function CourtConnectDirectorPage() {
   const bucket: Record<string, Map<string, string[]>> = {
     in: playersBy, wait: waitingBy, no: declinedBy, out: droppedBy,
   };
+  /** Players who got the email and then tapped "I'm in" — a real yes. */
+  const saidYesBy = new Map<string, string[]>();
   for (const p of (playerRows as { game_id: string; user_id: string; status: string }[] | null) ?? []) {
     const into = bucket[p.status];
     if (!into) continue;
-    into.set(p.game_id, [...(into.get(p.game_id) ?? []), names.get(p.user_id) ?? 'A member']);
+    const who = names.get(p.user_id) ?? 'A member';
+    into.set(p.game_id, [...(into.get(p.game_id) ?? []), who]);
+    if (p.status === 'in' && emailedOn.get(p.game_id)?.has(p.user_id)) {
+      saidYesBy.set(p.game_id, [...(saidYesBy.get(p.game_id) ?? []), who]);
+    }
   }
 
   // ---- findings
@@ -307,23 +331,35 @@ export default async function CourtConnectDirectorPage() {
                       <td className="px-4 py-3 text-white/70">{g.notified_count}</td>
                       <td className="px-4 py-3 text-white/70">
                         {(() => {
-                          const yes = playersBy.get(g.id) ?? [];
+                          const yes = saidYesBy.get(g.id) ?? [];
                           const no = declinedBy.get(g.id) ?? [];
                           const dropped = droppedBy.get(g.id) ?? [];
                           const waiting = waitingBy.get(g.id) ?? [];
-                          const silent = Math.max(g.notified_count - no.length - yes.length - waiting.length, 0);
-                          if (!g.notified_count && !yes.length) return <span className="text-white/35">—</span>;
+                          const asked = emailedOn.get(g.id)?.size ?? g.notified_count;
+                          const silent = Math.max(asked - yes.length - no.length - waiting.length, 0);
+                          if (!asked) return <span className="text-white/35">—</span>;
                           return (
                             <>
-                              <span className="text-emerald-300">{yes.length} yes</span>
+                              <span className={yes.length ? 'text-emerald-300' : 'text-white/50'}>{yes.length} yes</span>
                               {' · '}
-                              <span className={no.length ? 'text-rose-300' : ''}>{no.length} no</span>
+                              <span className={no.length ? 'text-rose-300' : 'text-white/50'}>{no.length} no</span>
+                              {waiting.length > 0 && <span className="text-amber-300">{` · ${waiting.length} in line`}</span>}
                               {silent > 0 && <span className="text-white/35">{` · ${silent} no reply`}</span>}
+                              {yes.length > 0 && (
+                                <span className="mt-0.5 block text-xs text-emerald-300/70">said yes: {yes.join(', ')}</span>
+                              )}
                               {no.length > 0 && (
                                 <span className="mt-0.5 block text-xs text-rose-300/70">said no: {no.join(', ')}</span>
                               )}
                               {dropped.length > 0 && (
                                 <span className="mt-0.5 block text-xs text-amber-300/70">dropped out: {dropped.join(', ')}</span>
+                              )}
+                              {/* Anyone the director put in the game themselves is on the court but never answered anything. */}
+                              {(playersBy.get(g.id) ?? []).length > yes.length && (
+                                <span className="mt-0.5 block text-xs text-white/35">
+                                  added by staff:{' '}
+                                  {(playersBy.get(g.id) ?? []).filter((n) => !yes.includes(n)).join(', ')}
+                                </span>
                               )}
                             </>
                           );
