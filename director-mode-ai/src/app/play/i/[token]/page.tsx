@@ -56,6 +56,16 @@ export default async function GameLinkPage({ params }: { params: { token: string
   const isPoster = game.posted_by === link.user_id;
   const imIn = group.some((m) => !m.isPoster && m.userId === link.user_id);
   const spotsLeft = Math.max(game.spots_needed - (group.length - 1), 0);
+
+  // A full game still takes answers — they go in line (pf_claim_spot).
+  const { data: waitRows } = await db
+    .from('pf_game_players')
+    .select('user_id, joined_at')
+    .eq('game_id', game.id)
+    .eq('status', 'wait')
+    .order('joined_at');
+  const waiting = (waitRows as { user_id: string }[] | null) ?? [];
+  const myWaitPlace = waiting.findIndex((w) => w.user_id === link.user_id) + 1; // 0 = not waiting
   const tz = club.timezone;
   const started = new Date(game.starts_at).getTime() <= Date.now();
 
@@ -82,12 +92,19 @@ export default async function GameLinkPage({ params }: { params: { token: string
       spotsLeft={spotsLeft}
       isPoster={isPoster}
       imIn={imIn}
-      /* Names only for people in the game. A member who was merely emailed sees the poster, nothing more. */
-      group={
-        isPoster || imIn
-          ? group.map((m) => ({ name: m.short, note: m.isPoster ? 'posted the game' : null, phone: m.phone }))
-          : []
-      }
+      myWaitPlace={myWaitPlace}
+      waitingCount={waiting.length}
+      /*
+       * Everyone invited sees WHO is playing — that is what turns "a game needs
+       * players" into a reason to say yes. Phone numbers are the line that does
+       * not move: they reach only the people actually in the game, and only
+       * from members who chose to share them.
+       */
+      group={group.map((m) => ({
+        name: m.short,
+        note: m.isPoster ? 'posted the game' : null,
+        phone: isPoster || imIn ? m.phone : null,
+      }))}
       myLevel={me.ntrp}
       scale={club.levels}
     />

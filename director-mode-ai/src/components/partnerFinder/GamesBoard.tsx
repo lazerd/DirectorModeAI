@@ -323,8 +323,9 @@ function GameCard({
             </button>
           )
         ) : g.fitsMe ? (
+          /* A full game takes the answer as a place in line — see pf_claim_spot. */
           <button onClick={() => act('join')} disabled={busy} className={`${primaryBtn} w-full sm:w-auto sm:min-w-[200px]`}>
-            {busy ? 'One moment…' : "I'm in"}
+            {busy ? 'One moment…' : g.status === 'full' ? 'Put me in line' : "I'm in"}
           </button>
         ) : (
           <p className="rounded-2xl bg-slate-50 px-4 py-3 text-slate-700">

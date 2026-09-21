@@ -40,8 +40,10 @@ const GENDERS = [
 const ACCESS = [
   { value: '', label: 'Everyone' },
   { value: 'staff', label: 'Staff only' },
-  { value: 'members', label: 'Has an account' },
-  { value: 'roster', label: 'Roster only' },
+  // "In CourtConnect" is the question a director actually asks here: an account
+  // is what CourtConnect can email, and a roster row on its own is not.
+  { value: 'members', label: 'In CourtConnect (has an account)' },
+  { value: 'roster', label: 'Roster only — not in CourtConnect' },
 ];
 
 type VaultPlayer = {
@@ -130,6 +132,12 @@ export default function PlayerVaultPage() {
   useEffect(() => {
     loadMembers();
     loadLevels();
+    // Linked to from the CourtConnect page as ?access=roster — the people it
+    // just said cannot be reached.
+    if (typeof window !== 'undefined') {
+      const wanted = new URLSearchParams(window.location.search).get('access');
+      if (wanted && ACCESS.some((a) => a.value === wanted)) setAccessFilter(wanted);
+    }
   }, []);
 
   const fetchPlayers = async () => {
@@ -393,6 +401,14 @@ export default function PlayerVaultPage() {
           </p>
         </div>
       )}
+
+      {/* Who CourtConnect can actually reach */}
+      <p className="mb-4 text-sm text-gray-400">
+        <strong className="text-white">{allRows.filter((r) => r._account).length}</strong> in CourtConnect
+        <span className="text-gray-500"> (have an account, can be emailed about games)</span> ·{' '}
+        <strong className="text-white">{allRows.filter((r) => !r._account).length}</strong> on the roster only
+        <span className="text-gray-500"> — use Add or Invite in the Access column to bring them in.</span>
+      </p>
 
       {/* Filters */}
       <div className="card p-4 mb-4">

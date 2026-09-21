@@ -26,6 +26,9 @@ const MESSAGES: Record<string, string> = {
   joined_full: "You're in, and that fills the game. Everyone's getting an email with the group.",
   already_in: "You're already in this game.",
   full: "This game just filled. We'll tell you about the next one.",
+  waitlisted: "This game is full, so you're first in line if a spot opens. We'll email you the moment one does.",
+  already_waiting: "You're already in line for this game. We'll email you if a spot opens.",
+  off_waitlist: "Done — you're off the list for this game.",
   cancelled: 'This game was cancelled.',
   past: 'This game has already started.',
   not_found: "We couldn't find that game.",
@@ -65,7 +68,19 @@ export async function joinGame(
 
   const { data, error } = await db.rpc('pf_claim_spot', { p_game: gameId, p_user: userId, p_via: via });
   if (error) return { ok: false, result: 'error', message: say('error') };
-  const r = data as { result: string; now_full?: boolean };
+  const r = data as { result: string; now_full?: boolean; position?: number };
+
+  /*
+   * A full game takes the answer as a place in line rather than turning it
+   * down (pf_claim_spot). It counts as a yes — ok: true — because the person
+   * did say yes, and the page must show them they are on the list, not an
+   * error. Their position is only worth saying past first.
+   */
+  if (r.result === 'waitlisted' || r.result === 'already_waiting') {
+    const place = r.position && r.position > 1 ? ` You're number ${r.position} in line.` : '';
+    return { ok: true, result: r.result, message: say(r.result) + place };
+  }
+
   if (r.result !== 'joined') return { ok: r.result === 'already_in', result: r.result, message: say(r.result) };
 
   background('join emails', () => afterJoin(db, gameId, userId, !!r.now_full));
@@ -75,7 +90,9 @@ export async function joinGame(
 export async function leaveGame(db: Db, gameId: string, userId: string): Promise<ActionOutcome> {
   const { data, error } = await db.rpc('pf_leave_spot', { p_game: gameId, p_user: userId });
   if (error) return { ok: false, result: 'error', message: say('error') };
-  const r = data as { result: string };
+  const r = data as { result: string; waiting?: number };
+  // Stepping off the waitlist opens nothing and tells nobody.
+  if (r.result === 'off_waitlist') return { ok: true, result: r.result, message: say(r.result) };
   if (r.result !== 'left') return { ok: false, result: r.result, message: say(r.result) };
   background('leave email', () => afterLeave(db, gameId, userId));
   return { ok: true, result: 'left', message: say('left') };

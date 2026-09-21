@@ -81,7 +81,13 @@ function button(href: string, label: string, bg = GREEN): string {
   return `<a href="${href}" style="display:inline-block;padding:18px 30px;background:${bg};color:#ffffff;text-decoration:none;border-radius:12px;font-weight:700;font-size:20px">${label}</a>`;
 }
 
-function details(g: Game, club: Club, posterShort?: string): string {
+/**
+ * `playing` is who is already in, poster first. It is the line that decides a
+ * yes: "a game needs players" is an abstraction, "Walden B. and Gabe F. are
+ * playing" is an afternoon with people you know. Names only — phone numbers
+ * stay for the people actually in the game (see groupList).
+ */
+function details(g: Game, club: Club, posterShort?: string, playing?: string[]): string {
   const tz = club.timezone;
   const rows: [string, string][] = [
     ['When', `${longDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`],
@@ -91,7 +97,8 @@ function details(g: Game, club: Club, posterShort?: string): string {
   const level = ratingLabel(g.rating_min, g.rating_max, club.levels);
   if (level) rows.push(['Level', level]);
   rows.push(['Court', g.court ? esc(g.court) : 'To be decided']);
-  if (posterShort) rows.push(['Posted by', esc(posterShort)]);
+  if (playing?.length) rows.push([playing.length > 1 ? 'Playing' : 'Posted by', playing.map(esc).join(', ')]);
+  else if (posterShort) rows.push(['Posted by', esc(posterShort)]);
   return `
     <table style="width:100%;border-collapse:collapse;font-size:18px;line-height:1.4;margin:0 0 16px;background:#f8fafc;border-radius:12px">
       ${rows
@@ -122,7 +129,16 @@ function groupList(group: GroupMember[]): string {
 export function inviteEmail(
   g: Game,
   club: Club,
-  opts: { to: string; name: string | null; poster: string; token: string; stopToken: string | null; spotsLeft: number },
+  opts: {
+    to: string;
+    name: string | null;
+    poster: string;
+    token: string;
+    stopToken: string | null;
+    spotsLeft: number;
+    /** Who is already in, poster first. */
+    playing?: string[];
+  },
 ): GameMessage {
   const tz = club.timezone;
   const level = ratingLabel(g.rating_min, g.rating_max, club.levels);
@@ -136,7 +152,7 @@ export function inviteEmail(
   const url = linkUrl(opts.token);
   const body = `
     <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, a game at the club needs players. Can you play?</p>
-    ${details(g, club, opts.poster)}
+    ${details(g, club, opts.poster, opts.playing)}
     <p style="margin:24px 0 10px">${button(`${url}?a=yes`, "Yes, I'm in")}</p>
     <p style="margin:0 0 14px">${button(`${url}?a=no`, 'No, not this time', MUTED)}</p>
     <p style="font-size:16px;color:${MUTED};margin:0">One tap either way. First to tap gets the spot, and you don't need a password.</p>`;
@@ -208,6 +224,33 @@ export function spotOpenedEmail(
     subject: ascii(`${title} - your game is open again`),
     html: shell(club, esc(title), body),
     sms: ascii(`${title}. Your game is open again.`),
+  };
+}
+
+/**
+ * To everyone waiting when a spot opens up. Not a promotion — the first to
+ * tap takes it, because someone who said yes on Sunday may not still be free
+ * on Tuesday, and a silent promotion fills a court with a player who never
+ * confirmed.
+ */
+export function waitlistSpotEmail(
+  g: Game,
+  club: Club,
+  opts: { to: string; name: string | null; token: string; poster: string; playing?: string[] },
+): GameMessage {
+  const title = `A spot just opened: ${headline(g, club.timezone)}`;
+  const url = linkUrl(opts.token);
+  const body = `
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, you were in line for this game and somebody dropped out. Still want it?</p>
+    ${details(g, club, opts.poster, opts.playing)}
+    <p style="margin:24px 0 10px">${button(`${url}?a=yes`, "Yes, I'll take it")}</p>
+    <p style="margin:0 0 14px">${button(`${url}?a=no`, 'No, give it to someone else', MUTED)}</p>
+    <p style="font-size:16px;color:${MUTED};margin:0">First to tap gets it.</p>`;
+  return {
+    to: opts.to,
+    subject: ascii(title),
+    html: shell(club, esc(title), body),
+    sms: ascii(`${club.name}: a spot opened for ${headline(g, club.timezone)}. First to tap gets it: ${url}`),
   };
 }
 

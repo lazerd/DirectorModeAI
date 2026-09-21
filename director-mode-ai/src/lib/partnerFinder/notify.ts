@@ -36,6 +36,7 @@ import {
   reminderEmail,
   someoneJoinedEmail,
   spotOpenedEmail,
+  waitlistSpotEmail,
   type GameMessage,
 } from './emails';
 
@@ -116,12 +117,16 @@ export async function inviteMembers(
     for (const r of missingPrefs) r.stop_token = tokens.get(r.user_id) ?? null;
   }
 
-  const [links, posterRow, left] = await Promise.all([
+  const [links, fullRoster, left] = await Promise.all([
     ensureLinks(db, game, recipients.map((r) => r.user_id)),
-    clubRoster(db, club.id, game.posted_by),
+    clubRoster(db, club.id),
     spotsLeft(db, game),
   ]);
-  const poster = shortName(posterRow[0]?.full_name);
+  // Who is already in, poster first. An invitation that can say "Walden B. and
+  // Gabe F. are playing" is a different message from "a game needs players".
+  const group = await gameGroup(db, game, fullRoster);
+  const poster = group[0]?.short ?? shortName(fullRoster.find((r) => r.user_id === game.posted_by)?.full_name);
+  const playing = group.map((m) => m.short);
 
   const messages = recipients
     .filter((r) => links.has(r.user_id))
@@ -133,6 +138,7 @@ export async function inviteMembers(
         token: links.get(r.user_id)!,
         stopToken: r.stop_token,
         spotsLeft: left,
+        playing,
       }),
     );
 
@@ -195,13 +201,46 @@ export async function afterLeave(db: Db, gameId: string, leaverId: string): Prom
   const roster = await clubRoster(db, club.id);
   const poster = roster.find((r) => r.user_id === game.posted_by);
   const leaver = roster.find((r) => r.user_id === leaverId);
+  const left = await spotsLeft(db, game);
+
+  // Everyone in line hears first, in the order they answered, and the first to
+  // tap takes it — see pf_claim_spot. Nobody is promoted behind their back.
+  const { data: waitingRows } = await db
+    .from('pf_game_players')
+    .select('user_id')
+    .eq('game_id', game.id)
+    .eq('status', 'wait')
+    .order('joined_at');
+  const waiting = ((waitingRows as { user_id: string }[] | null) ?? [])
+    .map((w) => roster.find((r) => r.user_id === w.user_id))
+    .filter((r): r is RosterRow => !!r?.email);
+
+  if (waiting.length) {
+    const playingNow = (await gameGroup(db, game, roster)).map((m) => m.short);
+    const waitLinks = await ensureLinks(db, game, waiting.map((w) => w.user_id));
+    await deliver(
+      club,
+      waiting
+        .filter((w) => waitLinks.has(w.user_id))
+        .map((w) =>
+          waitlistSpotEmail(game, club, {
+            to: w.email!,
+            name: w.full_name,
+            token: waitLinks.get(w.user_id)!,
+            poster: shortName(poster?.full_name),
+            playing: playingNow,
+          }),
+        ),
+    );
+  }
+
   if (!poster?.email) return;
   const links = await ensureLinks(db, game, [game.posted_by]);
   await deliver(club, [
     spotOpenedEmail(game, club, {
       to: poster.email,
       leaver: shortName(leaver?.full_name),
-      spotsLeft: await spotsLeft(db, game),
+      spotsLeft: left,
       token: links.get(game.posted_by)!,
     }),
   ]);

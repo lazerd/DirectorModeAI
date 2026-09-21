@@ -91,14 +91,17 @@ export default async function CourtConnectDirectorPage() {
   const { data: playerRows } = games.length
     ? await db
         .from('pf_game_players')
-        .select('game_id, user_id')
+        .select('game_id, user_id, status')
         .in('game_id', games.map((g) => g.id))
-        .eq('status', 'in')
+        .in('status', ['in', 'wait'])
+        .order('joined_at')
     : { data: [] };
   const names = new Map(roster.map((r) => [r.user_id, shortName(r.full_name)]));
   const playersBy = new Map<string, string[]>();
-  for (const p of (playerRows as { game_id: string; user_id: string }[] | null) ?? []) {
-    playersBy.set(p.game_id, [...(playersBy.get(p.game_id) ?? []), names.get(p.user_id) ?? 'A member']);
+  const waitingBy = new Map<string, string[]>();
+  for (const p of (playerRows as { game_id: string; user_id: string; status: string }[] | null) ?? []) {
+    const into = p.status === 'wait' ? waitingBy : playersBy;
+    into.set(p.game_id, [...(into.get(p.game_id) ?? []), names.get(p.user_id) ?? 'A member']);
   }
 
   // ---- findings
@@ -218,7 +221,17 @@ export default async function CourtConnectDirectorPage() {
           </div>
         )}
 
-        <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <p className="mt-8 text-[14.5px] leading-relaxed text-white/60">
+          CourtConnect can reach <strong className="text-white">{roster.length}</strong>{' '}
+          {roster.length === 1 ? 'person' : 'people'} — the members with a ClubMode account at {club.name}. Everyone
+          else on your roster is in PlayerVault only, and cannot be emailed about a game until you add them there
+          (&ldquo;Add&rdquo; needs no email; &ldquo;Invite&rdquo; sends one).{' '}
+          <Link href="/courtconnect/vault?access=roster" className="font-medium text-[#D3FB52]">
+            See who is not in yet
+          </Link>
+        </p>
+
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {tiles.map(([k, v]) => (
             <div key={k} className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
               <div className="text-2xl font-bold">{v}</div>
@@ -262,6 +275,11 @@ export default async function CourtConnectDirectorPage() {
                       <td className="px-4 py-3 text-white/70">
                         {players.length}/{g.spots_needed}
                         {players.length > 0 && <span className="block text-white/45">{players.join(', ')}</span>}
+                        {(waitingBy.get(g.id)?.length ?? 0) > 0 && (
+                          <span className="block text-amber-300/70">
+                            waiting: {waitingBy.get(g.id)!.join(', ')}
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-white/70">{g.notified_count}</td>
                       <td className="px-4 py-3">

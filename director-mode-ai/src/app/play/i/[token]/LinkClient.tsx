@@ -28,6 +28,9 @@ type Props = {
   spotsLeft: number;
   isPoster: boolean;
   imIn: boolean;
+  /** 1-based place in line, or 0 when not waiting. */
+  myWaitPlace: number;
+  waitingCount: number;
   group: { name: string; note: string | null; phone: string | null }[];
   myLevel: number | null;
   /** What this club calls a level — see lib/levels.ts. */
@@ -98,14 +101,34 @@ export default function LinkClient(p: Props) {
           {p.note && <p className="mt-4 border-l-4 border-emerald-600 pl-4 text-lg italic text-slate-700">&ldquo;{p.note}&rdquo;</p>}
         </section>
 
+        {/* Already in line for a full game */}
+        {p.myWaitPlace > 0 && !p.imIn && !notice && (
+          <Notice tone="info">
+            You&rsquo;re {p.myWaitPlace === 1 ? 'first' : `number ${p.myWaitPlace}`} in line for this game. We&rsquo;ll
+            email you the moment a spot opens.
+          </Notice>
+        )}
+
         {/* Someone who was invited and has not joined */}
         {/* Hidden once a tap has said what happened, so the answer is not shown twice. */}
-        {!p.isPoster && !p.imIn && !(notice && notice.tone !== 'bad') && (
+        {!p.isPoster && !p.imIn && p.myWaitPlace === 0 && !(notice && notice.tone !== 'bad') && (
           <>
             {closedText ? (
               <Notice tone="info">{closedText}</Notice>
             ) : p.status === 'full' ? (
-              <Notice tone="info">This game just filled. We&rsquo;ll tell you about the next one.</Notice>
+              /* Full is no longer a closed door: the answer becomes a place in line. */
+              <div className="space-y-3">
+                <p className="text-xl text-slate-700">
+                  This game is full{p.waitingCount > 0 ? `, and ${p.waitingCount} ${p.waitingCount === 1 ? 'person is' : 'people are'} in line` : ''}.
+                  Want the spot if someone drops out?
+                </p>
+                <button onClick={() => act('join')} disabled={busy} className={`${primaryBtn} w-full text-2xl`}>
+                  {busy ? 'One moment…' : 'Put me in line'}
+                </button>
+                <button onClick={() => act('decline')} disabled={busy} className={`${secondaryBtn} w-full text-xl`}>
+                  No, not this time
+                </button>
+              </div>
             ) : (
               /* Two answers, one tap each. A "no" is not a dead end: the same
                  email still works if they change their mind. */
@@ -122,8 +145,8 @@ export default function LinkClient(p: Props) {
           </>
         )}
 
-        {/* In the game, or posted it */}
-        {(p.isPoster || p.imIn) && (
+        {/* Who is playing — shown to everyone who got the email, not just the group */}
+        {p.group.length > 0 && (
           <section className="rounded-3xl border border-slate-200 bg-white p-6">
             <h2 className="text-2xl font-bold">
               {p.status === 'full' ? "Who's playing" : p.status === 'cancelled' ? 'Was playing' : 'In so far'}
@@ -166,6 +189,12 @@ export default function LinkClient(p: Props) {
               I can&rsquo;t make it
             </button>
           )
+        )}
+
+        {p.myWaitPlace > 0 && !p.imIn && !closedText && (
+          <button onClick={() => act('leave')} disabled={busy} className={`${secondaryBtn} w-full`}>
+            Take me off the list
+          </button>
         )}
 
         {p.isPoster && !closedText && (
