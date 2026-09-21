@@ -127,11 +127,19 @@ export function inviteEmail(
   const tz = club.timezone;
   const level = ratingLabel(g.rating_min, g.rating_max, club.levels);
   const line = `${headline(g, tz)} ${needsLabel(opts.spotsLeft)}${level ? ` (${level})` : ''}`;
+  /*
+   * Yes and no, side by side. Both go to the same page rather than acting on
+   * the click, because mail scanners follow links: a Safe Links check must not
+   * take a spot, or turn one down, on somebody's behalf. The answer is the tap
+   * on the page — see /play/i/[token].
+   */
+  const url = linkUrl(opts.token);
   const body = `
-    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, a game at the club needs players.</p>
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, a game at the club needs players. Can you play?</p>
     ${details(g, club, opts.poster)}
-    <p style="margin:24px 0 10px">${button(linkUrl(opts.token), "I'm in")}</p>
-    <p style="font-size:16px;color:${MUTED};margin:0">First to tap gets the spot. No password needed.</p>`;
+    <p style="margin:24px 0 10px">${button(`${url}?a=yes`, "Yes, I'm in")}</p>
+    <p style="margin:0 0 14px">${button(`${url}?a=no`, 'No, not this time', MUTED)}</p>
+    <p style="font-size:16px;color:${MUTED};margin:0">One tap either way. First to tap gets the spot, and you don't need a password.</p>`;
   const footer = opts.stopToken
     ? `You're getting this from CourtConnect because you're a member of ${esc(club.name)}. <a href="${stopUrl(opts.stopToken)}" style="color:${MUTED}">Stop emails about games that need players</a>.`
     : '';

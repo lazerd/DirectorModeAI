@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveActiveClub } from '@/lib/clubs/activeClub';
 import { clubRoster, loadClub, GAME_COLS, type Game } from '@/lib/partnerFinder/server';
 import { FORMAT_LABEL, gameTitle, isFormat, ratingLabel, shortName } from '@/lib/partnerFinder/format';
+import NotifyAgain from './NotifyAgain';
 
 /**
  * CourtConnect — the director's view. (Built as "Partner Finder"; the old
@@ -269,6 +270,10 @@ export default async function CourtConnectDirectorPage() {
                         </span>
                         {fillMin != null && g.status === 'full' && (
                           <span className="mt-1 block text-xs text-white/40">filled in {minutesLabel(fillMin)}</span>
+                        )}
+                        {/* Members added since it was posted have never heard about it. */}
+                        {g.status === 'open' && new Date(g.starts_at) > new Date() && (
+                          <NotifyAgain gameId={g.id} levelWord={club.levels.inline} />
                         )}
                       </td>
                     </tr>

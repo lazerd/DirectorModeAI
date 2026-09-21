@@ -22,6 +22,32 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // A wrong password and "I have never set one" look identical from here, and
+  // the second is common: members seated from PlayerVault have an account they
+  // never chose a password for. So a failed sign-in offers the way in rather
+  // than just saying no.
+  const [sendingLink, setSendingLink] = useState(false);
+  const [linkSent, setLinkSent] = useState(false);
+
+  const emailMeALink = async () => {
+    if (!email.trim()) {
+      setError('Enter your email address first, then tap this.');
+      return;
+    }
+    setSendingLink(true);
+    try {
+      const supabase = createClient();
+      const redirectTo =
+        typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : '/reset-password';
+      await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      setLinkSent(true);
+      setError('');
+    } catch {
+      setError('We could not send that link. Please try again.');
+    } finally {
+      setSendingLink(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -114,7 +140,24 @@ function LoginForm() {
 
         {error && (
           <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm">
-            {error}
+            <p>{error}</p>
+            <p className="mt-2 text-red-700/80">
+              Never set a password? Your club may have set up your account for you.
+            </p>
+            <button
+              type="button"
+              onClick={emailMeALink}
+              disabled={sendingLink}
+              className="mt-2 font-medium underline disabled:opacity-50"
+            >
+              {sendingLink ? 'Sending…' : 'Email me a link to sign in'}
+            </button>
+          </div>
+        )}
+
+        {linkSent && (
+          <div className="bg-emerald-50 text-emerald-800 p-3 rounded-lg text-sm">
+            Check your email — tap the link and you can set a password and sign straight in.
           </div>
         )}
 

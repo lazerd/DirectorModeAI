@@ -69,6 +69,32 @@ function RegisterForm() {
         return;
       }
 
+      /*
+       * THIS ADDRESS ALREADY HAS AN ACCOUNT.
+       *
+       * Supabase will not say so — telling a stranger which addresses are
+       * registered is an enumeration leak — so it returns a success with a
+       * user that has NO identities and no session, and sends nothing. Left
+       * alone, the app read that as "confirmation email on its way" and sent
+       * the person to /verify-email to wait for mail that never comes. They
+       * then cannot sign in either, because the password they just chose was
+       * never saved against the account that already existed.
+       *
+       * It is not a rare edge: a club member seated from PlayerVault (see
+       * /api/clubs/members/add) HAS an account and has never set a password,
+       * so signing up is exactly what they will try first.
+       *
+       * So: send them the one email that does work — a link to set a password
+       * on the account they already have.
+       */
+      if (data.user && (data.user.identities?.length ?? 0) === 0) {
+        const redirectTo =
+          typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : '/reset-password';
+        await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+        router.push(`/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}&mode=existing`);
+        return;
+      }
+
       // If Supabase has email confirmation enabled, signUp returns no session.
       // Send the user to a confirmation screen instead of the dashboard.
       if (!data.session) {

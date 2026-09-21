@@ -68,15 +68,24 @@ export async function POST(req: Request) {
   const joinUrl = `${BASE}/join/${club.join_code}`;
   let sent = 0, capped = false;
   for (const p of players || []) {
+    /*
+     * Lead with the reason they were invited, not with the software. The old
+     * version opened with "your club uses ClubMode to book courts, sign up for
+     * lessons and track your development" — true of the product, and no answer
+     * at all to "why am I getting this?". What is actually waiting for them is
+     * CourtConnect: their own club's members looking for a fourth.
+     */
+    const first = (p.full_name || '').split(' ')[0] || 'there';
     const html = `
-      <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto">
-        <h2 style="color:#002838">You're invited to ${club.name}</h2>
-        <p>Hi ${(p.full_name || '').split(' ')[0] || 'there'}, your club uses <b>ClubMode</b> to book courts, sign up for lessons, and track your development.</p>
-        <p><a href="${joinUrl}" style="display:inline-block;background:#D3FB52;color:#002838;font-weight:600;padding:12px 20px;border-radius:10px;text-decoration:none">Join ${club.name}</a></p>
-        <p style="color:#667">Or use club code <b>${club.join_code}</b> after signing up.</p>
+      <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
+        <h2 style="color:#002838;margin:0 0 12px">Come play at ${club.name}</h2>
+        <p style="font-size:17px;line-height:1.5">Hi ${first}, members here are using <b>CourtConnect</b> to find players for games &mdash; doubles that needs a fourth, a hit before work, a match at your level.</p>
+        <p style="font-size:17px;line-height:1.5">Join and you'll get an email whenever a game fits your level. One tap says yes, one tap says no. You can post your own games that need players too.</p>
+        <p style="margin:24px 0"><a href="${joinUrl}" style="display:inline-block;background:#D3FB52;color:#002838;font-weight:700;padding:14px 24px;border-radius:10px;text-decoration:none;font-size:18px">Join ${club.name}</a></p>
+        <p style="color:#475569;font-size:15px">It also gets you court booking, class sign-ups and the club calendar. Already have a login? Use club code <b>${club.join_code}</b>.</p>
       </div>`;
     try {
-      await sendBilledEmail(user.id, { to: p.email, subject: `Join ${club.name} on ClubMode`, html });
+      await sendBilledEmail(user.id, { to: p.email, subject: `${first}, your club is finding you games on CourtConnect`, html });
       sent++;
     } catch (e) {
       if (e instanceof CreditLimitError) { capped = true; break; }

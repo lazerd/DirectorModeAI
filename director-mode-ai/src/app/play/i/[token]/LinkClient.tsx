@@ -44,7 +44,7 @@ export default function LinkClient(p: Props) {
   const [askLevel, setAskLevel] = useState(false);
   const [level, setLevel] = useState<number | null>(p.myLevel);
 
-  async function act(action: 'join' | 'leave' | 'cancel') {
+  async function act(action: 'join' | 'decline' | 'leave' | 'cancel') {
     setBusy(true);
     setNotice(null);
     const r = await postJson<Outcome>(`/api/play/link/${p.token}`, { action });
@@ -107,9 +107,14 @@ export default function LinkClient(p: Props) {
             ) : p.status === 'full' ? (
               <Notice tone="info">This game just filled. We&rsquo;ll tell you about the next one.</Notice>
             ) : (
+              /* Two answers, one tap each. A "no" is not a dead end: the same
+                 email still works if they change their mind. */
               <div className="space-y-3">
                 <button onClick={() => act('join')} disabled={busy} className={`${primaryBtn} w-full text-2xl`}>
-                  {busy ? 'One moment…' : "I'm in"}
+                  {busy ? 'One moment…' : "Yes, I'm in"}
+                </button>
+                <button onClick={() => act('decline')} disabled={busy} className={`${secondaryBtn} w-full text-xl`}>
+                  No, not this time
                 </button>
                 <p className="text-center text-lg text-slate-600">First to tap gets the spot.</p>
               </div>

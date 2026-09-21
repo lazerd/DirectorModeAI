@@ -67,14 +67,37 @@ async function spotsLeft(db: Db, game: Game): Promise<number> {
   return Math.max(game.spots_needed - (count ?? 0), 0);
 }
 
-/** "A game needs players", to the members whose level fits. Returns how many were sent. */
-export async function inviteMembers(db: Db, game: Game, club: Club): Promise<number> {
+/**
+ * "A game needs players", to the members whose level fits. Returns how many
+ * were sent.
+ *
+ * `onlyNew` is for a second run over a game that is still open: it skips
+ * everyone this game has already emailed, so a director who has just added
+ * members can reach them without mailing the club twice about one game.
+ */
+export async function inviteMembers(
+  db: Db,
+  game: Game,
+  club: Club,
+  opts: { onlyNew?: boolean } = {},
+): Promise<number> {
   const { data, error } = await db.rpc('pf_game_recipients', { p_game: game.id, p_limit: MAX_RECIPIENTS });
   if (error) {
     console.error('[courtconnect] recipients', error.message);
     return 0;
   }
-  const recipients = (data as { user_id: string; email: string; full_name: string | null; stop_token: string | null }[]) ?? [];
+  let recipients = (data as { user_id: string; email: string; full_name: string | null; stop_token: string | null }[]) ?? [];
+
+  if (opts.onlyNew && recipients.length) {
+    const { data: already } = await db
+      .from('pf_links')
+      .select('user_id')
+      .eq('game_id', game.id)
+      .not('emailed_at', 'is', null);
+    const sent = new Set(((already as { user_id: string }[] | null) ?? []).map((l) => l.user_id));
+    recipients = recipients.filter((r) => !sent.has(r.user_id));
+  }
+
   if (!recipients.length) return 0;
 
   // Everyone needs a stop link, including members who have never opened the board.

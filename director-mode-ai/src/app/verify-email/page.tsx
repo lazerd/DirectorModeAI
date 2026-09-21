@@ -12,6 +12,12 @@ function VerifyEmailContent() {
   // confirming the email doesn't strand them on a generic page.
   const next = params.get('next');
   const signInHref = next ? `/login?next=${encodeURIComponent(next)}` : '/login';
+  /*
+   * They did not sign up — they already had an account and /register sent them
+   * a password link instead. Saying "confirm your account" here is what left
+   * people waiting for an email that was never coming.
+   */
+  const existing = params.get('mode') === 'existing';
 
   return (
     <div className="min-h-screen bg-[#001820] flex items-center justify-center p-6">
@@ -27,11 +33,24 @@ function VerifyEmailContent() {
           <div className="w-16 h-16 rounded-full bg-[#D3FB52]/10 flex items-center justify-center mx-auto mb-4">
             <Mail size={28} className="text-[#D3FB52]" />
           </div>
-          <h2 className="font-display text-2xl mb-2 text-white">Check your email</h2>
+          <h2 className="font-display text-2xl mb-2 text-white">
+            {existing ? 'You already have an account' : 'Check your email'}
+          </h2>
           <p className="text-white/60 mb-6">
-            We sent a confirmation link to{' '}
-            {email ? <strong className="text-white">{email}</strong> : 'your email address'}.
-            Click the link to activate your account, then sign in.
+            {existing ? (
+              <>
+                Your club already set up{' '}
+                {email ? <strong className="text-white">{email}</strong> : 'your email address'} — so instead of a new
+                account, we just emailed you a link to <strong className="text-white">choose your password</strong>.
+                Tap it and you&apos;re in.
+              </>
+            ) : (
+              <>
+                We sent a confirmation link to{' '}
+                {email ? <strong className="text-white">{email}</strong> : 'your email address'}.
+                Click the link to activate your account, then sign in.
+              </>
+            )}
           </p>
 
           <Link href={signInHref} className="btn btn-primary w-full">

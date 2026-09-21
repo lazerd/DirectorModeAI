@@ -34,6 +34,7 @@ const MESSAGES: Record<string, string> = {
   need_level: 'Tell us your level first, then you can join.',
   wrong_level: "This game is for a different level than yours.",
   left: "Done. You're out of this game, and we've told the person who posted it.",
+  declined: "No problem — we've noted you can't make this one. Tap “I'm in” above if that changes.",
   not_in: "You're not in this game.",
   game_cancelled: 'The game is cancelled. We emailed everyone who was playing.',
   not_poster: 'Only the person who posted a game can cancel it.',
@@ -78,6 +79,18 @@ export async function leaveGame(db: Db, gameId: string, userId: string): Promise
   if (r.result !== 'left') return { ok: false, result: r.result, message: say(r.result) };
   background('leave email', () => afterLeave(db, gameId, userId));
   return { ok: true, result: 'left', message: say('left') };
+}
+
+/**
+ * "No, not this time." Nobody is emailed about it — see pf_decline_spot. They
+ * can still tap "I'm in" from the same email afterwards.
+ */
+export async function declineGame(db: Db, gameId: string, userId: string): Promise<ActionOutcome> {
+  const { data, error } = await db.rpc('pf_decline_spot', { p_game: gameId, p_user: userId });
+  if (error) return { ok: false, result: 'error', message: say('error') };
+  const r = data as { result: string };
+  if (r.result !== 'declined') return { ok: false, result: r.result, message: say(r.result) };
+  return { ok: true, result: 'declined', message: say('declined') };
 }
 
 export async function cancelGame(db: Db, gameId: string, userId: string): Promise<ActionOutcome> {

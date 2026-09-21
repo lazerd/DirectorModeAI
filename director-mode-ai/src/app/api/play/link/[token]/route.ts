@@ -1,7 +1,7 @@
 /**
  * POST /api/play/link/[token] — the no-login actions behind an emailed link.
  *
- * { action: 'join' | 'leave' | 'cancel' | 'level', ntrp? }
+ * { action: 'join' | 'decline' | 'leave' | 'cancel' | 'level', ntrp? }
  *
  * The token is the credential: it names one game and one person, and it can
  * only act as that person on that game. Same rule as CaptainMode's sub claim.
@@ -10,7 +10,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { cancelGame, joinGame, leaveGame } from '@/lib/partnerFinder/actions';
+import { cancelGame, declineGame, joinGame, leaveGame } from '@/lib/partnerFinder/actions';
 import { linkByToken, loadClub, saveSelfRating } from '@/lib/partnerFinder/server';
 import { isLevelValue } from '@/lib/levels';
 
@@ -60,7 +60,9 @@ export async function POST(req: Request, { params }: { params: { token: string }
         ? await leaveGame(db, link.game_id, link.user_id)
         : body.action === 'cancel'
           ? await cancelGame(db, link.game_id, link.user_id)
-          : null;
+          : body.action === 'decline'
+            ? await declineGame(db, link.game_id, link.user_id)
+            : null;
   if (!outcome) return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
   return NextResponse.json(outcome);
 }
