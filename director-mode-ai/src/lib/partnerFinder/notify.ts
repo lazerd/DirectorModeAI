@@ -44,10 +44,24 @@ async function deliver(club: Club, messages: GameMessage[]): Promise<number> {
   const real = messages.filter((m) => !!m.to);
   if (!real.length) return 0;
   try {
-    // clubId lets a demo club's blast be held back (lib/demo/emailGuard.ts).
+    /*
+     * In the CLUB's name, answerable at the club's address. A member has no
+     * relationship with "ClubMode" and every reason to distrust it; the name in
+     * the inbox and a working Reply-To are two of the four things that decided
+     * whether Sleepy Hollow's first blast was read or filtered (see
+     * lib/emailText.ts for the other two).
+     */
     const results = await sendBilledEmails(
       club.owner_id,
-      real.map((m) => ({ to: m.to, subject: m.subject, html: m.html, clubId: club.id })),
+      real.map((m) => ({
+        to: m.to,
+        subject: m.subject,
+        html: m.html,
+        fromName: club.name,
+        ...(club.contactEmail ? { replyTo: club.contactEmail } : {}),
+        // clubId lets a demo club's blast be held back (lib/demo/emailGuard.ts).
+        clubId: club.id,
+      })),
     );
     return results.filter((r) => r.sent).length;
   } catch (err) {

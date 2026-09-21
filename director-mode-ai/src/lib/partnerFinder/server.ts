@@ -67,6 +67,12 @@ export type Club = {
   owner_id: string;
   sports: string[];
   levels: LevelScale;
+  /**
+   * Where a member's reply should land. The club's own address when it has set
+   * one, otherwise null — and never a made-up noreply, because a message no
+   * human can answer is both rude and a filtering signal.
+   */
+  contactEmail: string | null;
 };
 
 export type RosterRow = {
@@ -103,14 +109,16 @@ function toGame(row: Record<string, unknown>): Game {
 export async function loadClub(db: Db, clubId: string): Promise<Club | null> {
   const { data } = await db
     .from('cc_clubs')
-    .select('id, name, slug, timezone, owner_id, sports')
+    .select('id, name, slug, timezone, owner_id, sports, email')
     .eq('id', clubId)
     .maybeSingle();
   if (!data) return null;
-  const c = data as Omit<Club, 'levels'>;
+  const row = data as Omit<Club, 'levels' | 'contactEmail'> & { email: string | null };
+  const { email, ...c } = row;
   const sports = c.sports ?? ['tennis'];
   return {
     ...c,
+    contactEmail: email?.trim() ? email.trim() : null,
     sports,
     timezone: normalizeTimeZone(c.timezone),
     levels: await clubLevelScale(db, { id: c.id, sports }),

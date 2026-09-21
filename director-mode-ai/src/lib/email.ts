@@ -3,15 +3,27 @@ import { consumeEmailCredits, CreditLimitError } from '@/lib/billing';
 import { createServiceClient } from '@/lib/supabase/server';
 import { safeResendSend, type SafeSendResult } from '@/lib/emailUnsubscribe';
 import { demoEmailHold, logDemoHold } from '@/lib/demo/suppress';
+import { clubFromLine } from '@/lib/emailText';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 interface EmailPayload {
   from?: string;
+  /**
+   * The club this is from, for the name in the inbox: "Sleepy Hollow Swim &
+   * Tennis Club", not "ClubMode". A member has a relationship with their club
+   * and none with us, and the display name is most of what decides whether a
+   * first email is opened or reported. The address stays ours — that is where
+   * the DKIM key lives. Ignored when `from` is given outright.
+   */
+  fromName?: string;
   to: string;
   subject: string;
   html: string;
+  /** Plain-text half; derived from the HTML when absent. */
+  text?: string;
   replyTo?: string;
+  headers?: Record<string, string>;
   /**
    * The club this email is for. Optional, but pass it where it is known: a
    * club in demo mode has its emails held back (lib/demo/emailGuard.ts), and
@@ -24,6 +36,8 @@ interface EmailPayload {
 }
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
+/** Just the address out of DEFAULT_FROM, for building a club-named From line. */
+const DEFAULT_ADDRESS = DEFAULT_FROM.match(/<([^>]+)>/)?.[1] || DEFAULT_FROM.trim();
 
 /**
  * Demo sends are held BEFORE credits are spent, so exploring a demo never
@@ -38,11 +52,13 @@ async function holdForDemo(userId: string | null, p: EmailPayload): Promise<Safe
 }
 
 const toSend = (userId: string | null, p: EmailPayload) => ({
-  from: p.from || DEFAULT_FROM,
+  from: p.from || (p.fromName ? clubFromLine(p.fromName, DEFAULT_ADDRESS) : DEFAULT_FROM),
   to: p.to,
   subject: p.subject,
   html: p.html,
+  ...(p.text ? { text: p.text } : {}),
   ...(p.replyTo ? { replyTo: p.replyTo } : {}),
+  ...(p.headers ? { headers: p.headers } : {}),
   operational: p.operational,
   clubId: p.clubId,
   clubSlug: p.clubSlug,

@@ -177,12 +177,21 @@ export function buildUnsubscribeFooterHtml(email: string): string {
 
 // ----- drop-in Resend wrapper -----
 
+import { htmlToText } from '@/lib/emailText';
+
 type ResendSendInput = {
   from: string;
   to: string;
   subject: string;
   html: string;
   replyTo?: string;
+  /**
+   * The plain-text half. Left out, it is derived from the HTML — see
+   * lib/emailText.ts for why no ClubMode email may go out without one.
+   */
+  text?: string;
+  /** Extra headers, merged after the unsubscribe ones this adds itself. */
+  headers?: Record<string, string>;
   /**
    * Operational mail to the account holder — "a player pulled out of your
    * lineup", not a broadcast. It ignores the unsubscribe list and carries no
@@ -246,8 +255,32 @@ export async function safeResendSend(
       to: input.to,
       subject: input.subject,
       html: htmlWithFooter,
+      // Never HTML-only. The text part is derived from the final HTML, footer
+      // included, so the two can never say different things.
+      text: input.text || htmlToText(htmlWithFooter),
     };
     if (input.replyTo) resendInput.replyTo = input.replyTo;
+
+    /*
+     * One-click unsubscribe (RFC 8058), which Gmail and Yahoo have required of
+     * bulk senders since February 2024. A footer link does not satisfy it: the
+     * check is for these HEADERS, and their absence is itself a reason to put
+     * a message in Promotions or spam.
+     *
+     * The mailbox provider POSTs the URL with no human involved, so it points
+     * at the one-click route and not at the page a person sees. Operational
+     * mail carries neither header: it is transactional, it has no footer
+     * either, and an unsubscribe on "a player pulled out of your lineup" is
+     * how a director's own alerts go silent.
+     */
+    const headers: Record<string, string> = { ...(input.headers ?? {}) };
+    if (!input.operational) {
+      const token = signUnsubscribeToken(input.to);
+      headers['List-Unsubscribe'] = `<${APP_URL}/api/unsubscribe/one-click?token=${token}>`;
+      headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click';
+    }
+    if (Object.keys(headers).length) resendInput.headers = headers;
+
     const result = await resend.emails.send(resendInput);
     return { sent: true, messageId: (result as any)?.data?.id };
   } catch (e: any) {
