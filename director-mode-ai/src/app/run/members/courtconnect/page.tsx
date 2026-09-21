@@ -256,7 +256,7 @@ export default async function CourtConnectDirectorPage() {
                   <th className="px-4 py-3 font-medium">Game</th>
                   <th className="px-4 py-3 font-medium">Level</th>
                   <th className="px-4 py-3 font-medium">Posted by</th>
-                  <th className="px-4 py-3 font-medium">Players</th>
+                  <th className="px-4 py-3 font-medium">Playing</th>
                   <th className="px-4 py-3 font-medium">Emailed</th>
                   <th className="px-4 py-3 font-medium">Status</th>
                 </tr>
@@ -273,8 +273,18 @@ export default async function CourtConnectDirectorPage() {
                       <td className="px-4 py-3 text-white/70">{ratingLabel(g.rating_min, g.rating_max, club.levels) || 'Any'}</td>
                       <td className="px-4 py-3 text-white/70">{names.get(g.posted_by) ?? 'A member'}</td>
                       <td className="px-4 py-3 text-white/70">
-                        {players.length}/{g.spots_needed}
-                        {players.length > 0 && <span className="block text-white/45">{players.join(', ')}</span>}
+                        {/*
+                          Court terms, not database terms. spots_needed counts
+                          the players wanted BESIDES the poster, so a doubles
+                          game posted by one member wanting three more is
+                          stored as 3 — and a director reading "1/3" has to do
+                          arithmetic to find out whether his court is full. The
+                          poster is playing: 2 of 4.
+                        */}
+                        {players.length + 1}/{g.spots_needed + 1}
+                        <span className="block text-white/45">
+                          {[names.get(g.posted_by) ?? 'A member', ...players].join(', ')}
+                        </span>
                         {(waitingBy.get(g.id)?.length ?? 0) > 0 && (
                           <span className="block text-amber-300/70">
                             waiting: {waitingBy.get(g.id)!.join(', ')}
