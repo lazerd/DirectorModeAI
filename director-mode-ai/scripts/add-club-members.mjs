@@ -102,6 +102,65 @@ if (!players?.length) {
   process.exit(0);
 }
 
+/* ------------------------------------------------------------------ guards
+ * An account IS an email address, and a club roster is full of households:
+ * one inbox shared by a couple, or by a couple and two juniors. Seating a
+ * person under an address that describes somebody else gets that somebody
+ * else emails addressed to their spouse, under an account carrying the wrong
+ * name - and the person you meant to add still is not reachable.
+ *
+ * So a row whose address appears on more than one roster entry is SKIPPED,
+ * and named, unless you decide otherwise with --allow-shared. Same for anyone
+ * whose name is already seated at the club under a different address: that is
+ * a second account for one person, which is how a member ends up with a login
+ * that sees none of their own history.
+ */
+const { data: allRows } = await db
+  .from('cc_vault_players')
+  .select('full_name, email')
+  .eq('director_id', club.owner_id)
+  .not('email', 'is', null);
+
+const sharers = new Map(); // email -> [names]
+for (const r of allRows ?? []) {
+  const k = r.email.trim().toLowerCase();
+  sharers.set(k, [...(sharers.get(k) ?? []), r.full_name]);
+}
+
+const { data: seatedRows } = await db.from('cc_club_members').select('user_id').eq('club_id', club.id);
+const seatedNames = new Set();
+for (const m of seatedRows ?? []) {
+  const { data: prof } = await db.from('profiles').select('full_name').eq('id', m.user_id).maybeSingle();
+  if (prof?.full_name) seatedNames.add(prof.full_name.trim().toLowerCase());
+}
+
+const skipped = [];
+const queue = [];
+for (const p of players) {
+  const shared = (sharers.get(p.email.trim().toLowerCase()) ?? []).filter((n) => n !== p.full_name);
+  if (shared.length && !has('--allow-shared')) {
+    skipped.push(`${p.full_name.padEnd(26)} ${p.email}  shared with ${shared.join(', ')}`);
+    continue;
+  }
+  if (seatedNames.has((p.full_name || '').trim().toLowerCase())) {
+    skipped.push(`${p.full_name.padEnd(26)} ${p.email}  already a member under another address`);
+    continue;
+  }
+  queue.push(p);
+}
+
+if (skipped.length) {
+  console.log('SKIPPED:');
+  for (const line of skipped) console.log(`  ${line}`);
+  if (!has('--allow-shared')) console.log('  (--allow-shared seats the shared-inbox ones anyway)');
+}
+if (!queue.length) {
+  console.log('Nothing left to add.');
+  process.exit(0);
+}
+players.length = 0;
+players.push(...queue);
+
 console.log(`${club.name} — ${players.length} roster ${players.length === 1 ? 'person' : 'people'} matched\n`);
 
 if (!live) {
