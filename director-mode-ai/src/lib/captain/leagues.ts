@@ -510,3 +510,16 @@ export function lineName(courtType: string, courtNumber: number, singlesCount: n
   const s = singlesCount ?? 0;
   return `Doubles ${courtNumber > s ? courtNumber - s : courtNumber}`;
 }
+
+/**
+ * Where a league's scores are actually posted.
+ *
+ * USTA leagues — including Junior Team Tennis — are scored on TennisLink. The
+ * flex leagues we play (Fall League, EBWT) are on TopDog. The match page used
+ * to offer "Post the scores to TopDog" to everyone, which is simply the wrong
+ * site for a JTT coach.
+ */
+export function scoreSiteFor(leagueType: string | null | undefined): 'topdog' | 'usta' {
+  return (leagueType || '').startsWith('usta') || leagueType === 'jtt' ? 'usta' : 'topdog';
+}
+

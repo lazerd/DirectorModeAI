@@ -9,7 +9,7 @@ import HostNotePanel from '@/components/captain/HostNotePanel';
 import MatchCoachPicker, { type CoachOption } from '@/components/captain/MatchCoachPicker';
 import { resolveClubTimeZone } from '@/lib/captain/clubTime';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { DEFAULT_JTT_COURT_FORMAT, leagueSpec } from '@/lib/captain/leagues';
+import { DEFAULT_JTT_COURT_FORMAT, leagueSpec, scoreSiteFor } from '@/lib/captain/leagues';
 import { pickOpponentRow } from '@/lib/captain/opponentMatch';
 import { formatPhone, normalizePhone } from '@/lib/captain/phone';
 
@@ -301,6 +301,7 @@ export default async function MatchPage({
         }))}
         recapSentAt={(match.recap_sent_at as string) ?? null}
         topdogMatchId={(match.source_match_id as string) || null}
+        scoreSite={scoreSiteFor(teamRec.league_type as string)}
         withdrawals={withdrawals}
         teamName={team.name}
         opponent={(match.opponent as string) || null}

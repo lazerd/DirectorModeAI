@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import MatchNextStep, { matchStage } from '@/components/captain/MatchNextStep';
 import RecapPanel from '@/components/captain/RecapPanel';
 import TopDogPanel from '@/components/captain/TopDogPanel';
+import UstaScorePanel, { type UstaLine } from '@/components/captain/UstaScorePanel';
 import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
 import { lineupAsText } from '@/lib/captain/lineupText';
@@ -130,6 +131,7 @@ export default function MatchWorkspace({
   initialResults,
   recapSentAt,
   topdogMatchId,
+  scoreSite = 'topdog',
   withdrawals,
   teamName,
   opponent,
@@ -162,6 +164,12 @@ export default function MatchWorkspace({
   recapSentAt: string | null;
   /** TopDog's id for this match, when linked — enables "Enter on TopDog". */
   topdogMatchId?: string | null;
+  /**
+   * Where this league's scores are actually posted. JTT and the adult USTA
+   * leagues are scored on TennisLink; the flex leagues are on TopDog. Sending a
+   * JTT coach to TopDog is just wrong.
+   */
+  scoreSite?: 'topdog' | 'usta';
   /**
    * Who tapped "I can't play" on the lineup email. Keyed by PLAYER, not by
    * slot, so a withdrawal survives every swap and line flip below — a bail
@@ -303,6 +311,23 @@ export default function MatchWorkspace({
       }));
     return [...courts, ...extras].sort((a, b) => a.courtNumber - b.courtNumber);
   })();
+
+  /** The card as ClubMode has it, in line order — what gets typed into TennisLink. */
+  const ustaLines: UstaLine[] = scoringCourts.map((c) => {
+    const s = scores[c.courtNumber] ?? { score: '', won: null };
+    const ours = [c.player1Id, c.player2Id]
+      .filter(Boolean)
+      .map((id) => nameOf(id as string))
+      .join(' / ');
+    return {
+      label: sheetNames.get(c.courtNumber) ?? `Line ${c.courtNumber}`,
+      ours: ours || '—',
+      theirs: opponentNames[c.courtNumber]?.trim() || null,
+      score: s.score || null,
+      won: s.won,
+      defaulted: !!defaulted[c.courtNumber],
+    };
+  });
 
   const answered = players.filter((p) => p.availability !== null);
   const yes = players.filter((p) => p.availability === 'yes');
@@ -2864,15 +2889,26 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
             timeZone={timeZone}
           />
 
-          {/* Carries the SAVED scores to TopDog, so it holds back while the
-              form above has changes that aren't saved yet. */}
-          <TopDogPanel
-            teamId={teamId}
-            matchId={matchId}
-            linkedMatchId={topdogMatchId ?? null}
-            hasResults={initialResults.length > 0}
-            unsaved={resultsDirty}
-          />
+          {/* Carries the SAVED scores to wherever this league is scored, so
+              both panels hold back while the form above has unsaved changes. */}
+          {scoreSite === 'usta' ? (
+            <UstaScorePanel
+              lines={ustaLines}
+              opponent={opponent}
+              isHome={isHome}
+              matchAt={matchAt}
+              timeZone={timeZone}
+              unsaved={resultsDirty}
+            />
+          ) : (
+            <TopDogPanel
+              teamId={teamId}
+              matchId={matchId}
+              linkedMatchId={topdogMatchId ?? null}
+              hasResults={initialResults.length > 0}
+              unsaved={resultsDirty}
+            />
+          )}
         </section>
       )}
 
