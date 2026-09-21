@@ -302,6 +302,7 @@ export default async function MatchPage({
         recapSentAt={(match.recap_sent_at as string) ?? null}
         topdogMatchId={(match.source_match_id as string) || null}
         scoreSite={scoreSiteFor(teamRec.league_type as string)}
+        teamLevel={team.level}
         withdrawals={withdrawals}
         teamName={team.name}
         opponent={(match.opponent as string) || null}

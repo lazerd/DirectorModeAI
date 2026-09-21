@@ -132,6 +132,7 @@ export default function MatchWorkspace({
   recapSentAt,
   topdogMatchId,
   scoreSite = 'topdog',
+  teamLevel = null,
   withdrawals,
   teamName,
   opponent,
@@ -170,6 +171,8 @@ export default function MatchWorkspace({
    * JTT coach to TopDog is just wrong.
    */
   scoreSite?: 'topdog' | 'usta';
+  /** "12U Yellow Ball" — TennisLink's Completed-vs-Timed line hangs off this. */
+  teamLevel?: string | null;
   /**
    * Who tapped "I can't play" on the lineup email. Keyed by PLAYER, not by
    * slot, so a withdrawal survives every swap and line flip below — a bail
@@ -2904,6 +2907,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
               isHome={isHome}
               matchAt={matchAt}
               timeZone={timeZone}
+              teamLevel={teamLevel}
               unsaved={resultsDirty}
             />
           ) : (

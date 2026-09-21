@@ -5,15 +5,20 @@ import { useState } from 'react';
 /**
  * Post this match's saved scores to USTA TennisLink.
  *
- * The TopDog panel used to be shown for every team, so a JTT coach — playing a
- * USTA league that is scored on TennisLink and has nothing to do with TopDog —
- * was told to "post the scores to TopDog" (Darrin, 2026-09-20).
+ * FIRST VERSION GOT THIS WRONG (Darrin, mid-match, 2026-09-20): the button
+ * opened CaptainTeams.aspx, the team LIST, which is not a step in score entry
+ * at all. The real path he walked is:
  *
- * TennisLink is behind a USTA login and its score page is built per match, so
- * there is no link we can hand someone that lands on the right card, and
- * nothing here ever submits anything. What it does is remove the retyping
- * error: the card as ClubMode has it, in line order, ready to read across while
- * the captain fills TennisLink in the other tab.
+ *   Homepage.aspx -> click the Coach/Captain role link -> Score Entry (under My
+ *   Options) -> type the Match # -> Next -> Next -> the card.
+ *
+ * There is deliberately no deep link here. Opening the role or score-entry URL
+ * directly leaves the SERVER's idea of your role unchanged and the second Next
+ * lands on AccessDenied.htm — it reads like a permissions problem and is not
+ * one. The link must be clicked from the homepage, so the homepage is where we
+ * send you. (Same trap cost an hour in court-booker/jtt-score.js.)
+ *
+ * Nothing is ever submitted from here.
  */
 export type UstaLine = {
   label: string;
@@ -26,7 +31,31 @@ export type UstaLine = {
   defaulted: boolean;
 };
 
-const CAPTAIN_TEAMS_URL = 'https://tennislink.usta.com/TeamTennis/Secure/CaptainTeams.aspx';
+const HOME = 'https://tennislink.usta.com/TeamTennis/Main/Homepage.aspx';
+
+/**
+ * Games needed for TennisLink to call a line "Completed". A JTT round is timed,
+ * so a line that never reached the target is a **Timed Match** — the single
+ * field on that form people get wrong. 10U Green plays 4-game sets; 12U and 14U
+ * Yellow play 6.
+ */
+function gamesTarget(level: string | null): number {
+  return /10U/i.test(level || '') ? 4 : 6;
+}
+
+/** "6-4" / "4-2, 3-1" -> [6, 4]. JTT plays one short set, so the first pair is it. */
+function gamesOf(score: string | null): [number, number] | null {
+  const m = (score || '').match(/(\d+)\s*[-–]\s*(\d+)/);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
+/** What to pick in TennisLink's `result` dropdown for this line. */
+function resultLabel(line: UstaLine, target: number): string {
+  if (line.defaulted) return 'Default';
+  const g = gamesOf(line.score);
+  if (!g) return '—';
+  return Math.max(g[0], g[1]) >= target ? 'Completed' : 'Timed Match';
+}
 
 export default function UstaScorePanel({
   lines,
@@ -34,6 +63,7 @@ export default function UstaScorePanel({
   isHome,
   matchAt,
   timeZone,
+  teamLevel = null,
   unsaved = false,
 }: {
   lines: UstaLine[];
@@ -41,34 +71,42 @@ export default function UstaScorePanel({
   isHome: boolean;
   matchAt: string;
   timeZone: string;
+  /** "12U Yellow Ball" — decides the games target behind Completed vs Timed. */
+  teamLevel?: string | null;
   /** The score form above has changes not saved yet. */
   unsaved?: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
+  const target = gamesTarget(teamLevel);
   const scored = lines.filter((l) => l.score || l.won !== null || l.defaulted);
   const won = scored.filter((l) => l.won === true).length;
   const lost = scored.filter((l) => l.won === false).length;
 
-  const when = new Intl.DateTimeFormat('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
+  /** TennisLink asks for the date of the match on the card, not today's. */
+  const cardDate = new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    year: 'numeric',
     timeZone,
   }).format(new Date(matchAt));
 
+  /* Home/visiting is what the form's two columns are labelled, so say it that
+     way rather than "us/them" — one less translation at the keyboard. */
+  const ourColumn = isHome ? 'Home' : 'Visiting';
+  const theirColumn = isHome ? 'Visiting' : 'Home';
+
   const asText = [
-    `${isHome ? 'vs' : 'at'} ${opponent || 'TBD'} — ${when}`,
+    `${isHome ? 'vs' : 'at'} ${opponent || 'TBD'} — match date ${cardDate}`,
+    `${ourColumn} = us, ${theirColumn} = them`,
     ...scored.map((l) =>
       [
         `${l.label}:`,
         l.ours,
         l.theirs ? `vs ${l.theirs}` : '',
-        l.defaulted ? '(default)' : '',
-        l.score || '',
-        l.won === true ? 'W' : l.won === false ? 'L' : '',
+        l.defaulted ? '' : l.score || '',
+        `[${resultLabel(l, target)}]`,
+        l.won === true ? 'winner: us' : l.won === false ? 'winner: them' : '',
       ]
         .filter(Boolean)
         .join(' '),
@@ -95,13 +133,13 @@ export default function UstaScorePanel({
           <h3 className="text-white font-semibold">Post the scores to USTA (TennisLink)</h3>
           <p className="text-white/40 text-sm mt-0.5">
             {scored.length
-              ? 'Open TennisLink, find this match under your team, and copy the lines across. Nothing is posted from here.'
+              ? 'Four clicks on TennisLink, then read the card below across. Nothing is posted from here.'
               : 'Save the line scores above first, then post them to TennisLink.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <a
-            href={CAPTAIN_TEAMS_URL}
+            href={HOME}
             target="_blank"
             rel="noopener noreferrer"
             className={`${btn} bg-[#D3FB52] text-[#001820] hover:brightness-95`}
@@ -119,6 +157,28 @@ export default function UstaScorePanel({
         </div>
       </div>
 
+      {/* The path itself. TennisLink has no URL that lands on score entry, so
+          the steps are the product. */}
+      <ol className="mt-3 space-y-1 text-sm text-white/55">
+        <li>
+          1. On the homepage, click your <b className="text-white/80">Coach/Captain</b> role link.
+        </li>
+        <li>
+          2. Under My Options, click <b className="text-white/80">Score Entry</b>.
+        </li>
+        <li>
+          3. Type the <b className="text-white/80">Match #</b>, then Next, then Next. It is at the
+          top of this match&apos;s score card on your TennisLink team page — we don&apos;t have it.
+        </li>
+        <li>
+          4. Set the date to <b className="text-white/80">{cardDate}</b> and fill the lines below.
+        </li>
+      </ol>
+      <p className="mt-2 text-xs text-white/30">
+        Clicking the role link matters — opening those pages by URL leaves your role unset and Next
+        lands on Access Denied, which looks like a permissions problem but isn&apos;t.
+      </p>
+
       {unsaved && (
         <p className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/[0.07] p-2.5 text-sm text-amber-100/80">
           You have score changes that aren&apos;t saved. Press <b>Save scores</b> above first, or
@@ -128,6 +188,15 @@ export default function UstaScorePanel({
 
       {scored.length > 0 && (
         <div className="mt-3 space-y-1.5">
+          <div className="flex gap-3 px-3 text-[11px] uppercase tracking-wide text-white/25">
+            <span className="w-20 shrink-0">Line</span>
+            <span>
+              {ourColumn} / {theirColumn}
+            </span>
+            <span className="ml-auto">Games</span>
+            <span className="w-24 text-right">Result</span>
+            <span className="w-14 text-right">Winner</span>
+          </div>
           {scored.map((l) => (
             <div
               key={l.label}
@@ -139,23 +208,27 @@ export default function UstaScorePanel({
               <span className="text-white/80">{l.ours}</span>
               {l.theirs && <span className="text-white/35">vs {l.theirs}</span>}
               <span className="ml-auto font-mono text-white/70">
-                {l.defaulted ? 'default' : l.score || '—'}
+                {l.defaulted ? '—' : l.score || '—'}
+              </span>
+              <span className="w-24 text-right text-xs text-white/50">
+                {resultLabel(l, target)}
               </span>
               <span
-                className={
+                className={`w-14 text-right ${
                   l.won === true
                     ? 'font-semibold text-[#D3FB52]'
                     : l.won === false
                       ? 'font-semibold text-white/50'
                       : 'text-white/30'
-                }
+                }`}
               >
-                {l.won === true ? 'W' : l.won === false ? 'L' : '·'}
+                {l.won === true ? 'us' : l.won === false ? 'them' : '·'}
               </span>
             </div>
           ))}
           <p className="pt-1 text-sm text-white/50">
-            Lines {won}&ndash;{lost}
+            Lines {won}&ndash;{lost} · anything short of {target} games is a{' '}
+            <b className="text-white/70">Timed Match</b>, not Completed.
           </p>
         </div>
       )}
