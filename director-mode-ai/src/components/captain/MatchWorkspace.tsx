@@ -312,23 +312,6 @@ export default function MatchWorkspace({
     return [...courts, ...extras].sort((a, b) => a.courtNumber - b.courtNumber);
   })();
 
-  /** The card as ClubMode has it, in line order — what gets typed into TennisLink. */
-  const ustaLines: UstaLine[] = scoringCourts.map((c) => {
-    const s = scores[c.courtNumber] ?? { score: '', won: null };
-    const ours = [c.player1Id, c.player2Id]
-      .filter(Boolean)
-      .map((id) => nameOf(id as string))
-      .join(' / ');
-    return {
-      label: sheetNames.get(c.courtNumber) ?? `Line ${c.courtNumber}`,
-      ours: ours || '—',
-      theirs: opponentNames[c.courtNumber]?.trim() || null,
-      score: s.score || null,
-      won: s.won,
-      defaulted: !!defaulted[c.courtNumber],
-    };
-  });
-
   const answered = players.filter((p) => p.availability !== null);
   const yes = players.filter((p) => p.availability === 'yes');
   const no = players.filter((p) => p.availability === 'no');
@@ -363,6 +346,29 @@ export default function MatchWorkspace({
     : courts;
 
   const nameOf = (id: string | null) => (id ? players.find((p) => p.id === id)?.name ?? '—' : '—');
+
+  /**
+   * The card as ClubMode has it, in line order — what gets typed into
+   * TennisLink. Built HERE, below sheetNames and nameOf: read any higher and it
+   * is a temporal dead zone, which crashed every match screen that had a court
+   * on it (Darrin, mid-match, 2026-09-20).
+   */
+  const ustaLines: UstaLine[] = scoringCourts.map((c) => {
+    const s = scores[c.courtNumber] ?? { score: '', won: null };
+    const ours = [c.player1Id, c.player2Id]
+      .filter(Boolean)
+      .map((id) => nameOf(id as string))
+      .join(' / ');
+    return {
+      label: sheetNames.get(c.courtNumber) ?? `Line ${c.courtNumber}`,
+      ours: ours || '—',
+      theirs: opponentNames[c.courtNumber]?.trim() || null,
+      score: s.score || null,
+      won: s.won,
+      defaulted: !!defaulted[c.courtNumber],
+    };
+  });
+
   /**
    * JTT at home: the extra court beside the match courts. Each round, whoever
    * is on the sheet but not on a line that round plays an exhibition there, so
