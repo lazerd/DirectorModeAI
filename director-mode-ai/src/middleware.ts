@@ -428,6 +428,41 @@ export async function middleware(request: NextRequest) {
   }
 
   /*
+   * A signed-in club MEMBER on the marketing homepage or the director setup
+   * checklist belongs in their clubhouse.
+   *
+   * /login already did this, but every OTHER door into the app landed them on
+   * "run your entire racquet sports club": the password-reset page, the logo in
+   * the header, a bookmark, a link a friend sent. Lawrence Browne hit it on his
+   * first sign-in (2026-09-21) and reported it as "I still can't log in" —
+   * because to a member, being shown the pitch page is indistinguishable from
+   * being logged out. One rule here covers every entrance at once.
+   *
+   * Owners are checked first because ownership lives on cc_clubs, not in these
+   * rows; someone with NO club is deliberately left alone (they become a
+   * director on first use, and /welcome is exactly where they should be).
+   */
+  if (
+    user &&
+    (user.email_confirmed_at || user.confirmed_at) &&
+    (request.nextUrl.pathname === '/' || request.nextUrl.pathname === '/welcome')
+  ) {
+    const { data: ownedClub } = await supabase
+      .from('cc_clubs').select('id').eq('owner_id', user.id).limit(1).maybeSingle();
+    if (!ownedClub) {
+      const { data: mine } = await supabase
+        .from('cc_club_members').select('role').eq('user_id', user.id);
+      const roles = ((mine as { role: string }[] | null) || []).map((m) => m.role);
+      if (isMemberOnly(roles)) {
+        const url = request.nextUrl.clone();
+        url.pathname = '/member';
+        url.search = '';
+        return NextResponse.redirect(url);
+      }
+    }
+  }
+
+  /*
    * A visitor opening a demo tour is marked with its token straight away, not
    * only once they sign in through it. The public pages the tour links to
    * (a court booking, a sign-up) have no login, and the email guard treats a

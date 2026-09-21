@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Trophy, Eye, EyeOff, CheckCircle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { defaultDestination } from '@/lib/postLogin';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -95,9 +96,18 @@ export default function ResetPasswordPage() {
       }
 
       setSuccess(true);
-      // Send them to the homepage after a short pause so they see confirmation.
+      /*
+       * Their own home, not '/'. A club MEMBER who reset their password was
+       * landed on the marketing homepage — "run your entire racquet sports
+       * club" — which reads as "the login didn't work" to someone who just
+       * wanted their clubhouse (Lawrence Browne, first sign-in, 2026-09-21).
+       * Same rule /login uses: /member for members, /welcome for directors.
+       * A short pause first so they see the confirmation.
+       */
+      const { data: { user } } = await supabase.auth.getUser();
+      const home = user ? await defaultDestination(supabase, user.id) : '/';
       setTimeout(() => {
-        router.push('/');
+        router.push(home);
         router.refresh();
       }, 1500);
     } catch {
