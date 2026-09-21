@@ -144,6 +144,12 @@ export async function POST(req: Request) {
         .insert({ club_id: club.id, user_id: userId, role: 'member' });
       if (seatErr) throw new Error(seatErr.message);
 
+      // Nail this vault row to the account the director just seated. The
+      // roster reads that link rather than re-matching the email, so
+      // correcting the address later keeps their rating attached to them
+      // (pf_vault_user_link.sql).
+      await admin.from('cc_vault_players').update({ user_id: userId }).eq('id', p.id);
+
       results.push({ id: p.id, name, email, status: 'added', detail: fresh ? 'new account' : 'existing account' });
     } catch (err) {
       console.error('[members/add]', email, err);

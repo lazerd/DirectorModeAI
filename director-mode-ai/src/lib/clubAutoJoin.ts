@@ -32,11 +32,27 @@ export async function attachByEmail(
    */
   const { data: vaultRows } = await db
     .from('cc_vault_players')
-    .select('director_id')
+    .select('id, director_id, user_id')
     .ilike('email', addr);
 
+  const matched = ((vaultRows as { id: string; director_id: string; user_id: string | null }[]) || []);
+
+  /*
+   * Nail the vault row to the account while the addresses still agree.
+   *
+   * This is the only moment we can be certain the two are the same person:
+   * they proved the address, and the club put it on the roster. From here on
+   * the roster reads cc_vault_players.user_id, so the director can correct the
+   * email later and this person keeps their rating and their history instead
+   * of quietly splitting into two half-people (see pf_vault_user_link.sql).
+   */
+  const unlinked = matched.filter((v) => !v.user_id).map((v) => v.id);
+  if (unlinked.length) {
+    await db.from('cc_vault_players').update({ user_id: userId }).in('id', unlinked);
+  }
+
   const directorIds = [
-    ...new Set(((vaultRows as { director_id: string }[]) || []).map((v) => v.director_id).filter(Boolean)),
+    ...new Set(matched.map((v) => v.director_id).filter(Boolean)),
   ];
   if (!directorIds.length) return { clubIds: [], joined: [] };
 
