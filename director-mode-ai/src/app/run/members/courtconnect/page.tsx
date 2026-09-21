@@ -61,7 +61,7 @@ export default async function CourtConnectDirectorPage() {
   const tz = club.timezone;
   const since = new Date(Date.now() - WINDOW_DAYS * 864e5).toISOString();
 
-  const [{ data: statsRaw }, { data: gameRows }, roster] = await Promise.all([
+  const [{ data: statsRaw }, { data: gameRows }, roster, { data: unreachableVault }] = await Promise.all([
     db.rpc('pf_club_stats', { p_club: club.id, p_since: since }),
     db
       .from('pf_games')
@@ -71,6 +71,16 @@ export default async function CourtConnectDirectorPage() {
       .order('starts_at', { ascending: false })
       .limit(200),
     clubRoster(db, club.id),
+    // Roster rows with a rating but NO email. These are the reason a member can
+    // be "unrated" while the club has in fact rated them: pf_member_roster
+    // folds the vault over the account BY EMAIL, so a nameless-to-us row never
+    // reaches the person it describes.
+    db
+      .from('cc_vault_players')
+      .select('full_name, usta_rating')
+      .eq('director_id', club.owner_id)
+      .is('email', null)
+      .not('usta_rating', 'is', null),
   ]);
   const stats = (statsRaw as Stats | null) ?? {
     posted: 0, cancelled: 0, filled: 0, open_now: 0, expired: 0, median_fill_minutes: null, players_joined: 0,
@@ -93,7 +103,8 @@ export default async function CourtConnectDirectorPage() {
   // ---- findings
   const decided = stats.posted - stats.cancelled;
   const fillRate = decided > 0 ? Math.round((stats.filled / decided) * 100) : null;
-  const unrated = roster.filter((r) => r.ntrp == null).length;
+  const unratedPeople = roster.filter((r) => r.ntrp == null);
+  const unrated = unratedPeople.length;
   const muted = roster.filter((r) => !r.notify_games).length;
   const expiredByFormat = new Map<string, number>();
   for (const g of games.filter((x) => x.status === 'expired')) {
@@ -112,10 +123,34 @@ export default async function CourtConnectDirectorPage() {
     });
   }
   if (roster.length > 0 && unrated > 0) {
+    // Name them. A count sends the director to PlayerVault to hunt for people
+    // the page already knows — and the vault is sorted by name, not by who is
+    // missing a rating, so the hunt is the whole job.
+    const NAMED = 12;
+    const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+    const ratedNoEmail = new Map(
+      ((unreachableVault as { full_name: string; usta_rating: number }[] | null) ?? []).map((v) => [
+        key(v.full_name || ''),
+        Number(v.usta_rating),
+      ]),
+    );
+    const named = unratedPeople
+      .map((r) => {
+        const name = r.full_name?.trim() || r.email || 'Unnamed member';
+        const onRoster = ratedNoEmail.get(key(name));
+        // The fix for these two is different — and much smaller — than typing
+        // a rating in: their roster entry just needs their email address.
+        return onRoster != null ? `${name} (on your roster at ${onRoster}, but that entry has no email)` : name;
+      })
+      .sort((a, b) => a.localeCompare(b));
+    const list = named.slice(0, NAMED).join('; ');
+    const more = named.length > NAMED ? ` and ${named.length - NAMED} more` : '';
     findings.push({
       title: `${unrated} of ${roster.length} members have no level on file`,
       detail:
-        `They only hear about games that allow unrated players. Add their ${club.levels.inline} in PlayerVault and they start getting matched.`,
+        `${list}${more}. They only hear about games that allow unrated players. Add their ` +
+        `${club.levels.inline} in PlayerVault — or, where it says a roster entry has no email, ` +
+        `put their email on it, which is what links the rating to the person.`,
       href: '/courtconnect/vault',
       cta: 'Open PlayerVault',
     });

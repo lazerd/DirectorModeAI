@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Plus, Search, Users, Trash2, FileUp, Trophy, Crown, GraduationCap, User as UserIcon, Mail, Copy, Check, Loader2 } from 'lucide-react';
+import { Plus, Search, Users, Trash2, FileUp, Trophy, Crown, GraduationCap, User as UserIcon, Mail, Copy, Check, Loader2, UserPlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 
@@ -120,6 +120,7 @@ export default function PlayerVaultPage() {
   const [deleting, setDeleting] = useState(false);
   const [savingRole, setSavingRole] = useState<string | null>(null);
   const [inviting, setInviting] = useState<string | null>(null);
+  const [adding, setAdding] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -204,6 +205,39 @@ export default function PlayerVaultPage() {
       toast.error(e?.message || 'Could not send the invite.');
     } finally {
       setInviting(null);
+    }
+  }
+
+  /**
+   * Put roster people into the club WITHOUT emailing them (see
+   * /api/clubs/members/add). `key` is what spins: a row id, or 'bulk'.
+   * They start getting CourtConnect game emails, so say so plainly.
+   */
+  async function addToClub(vaultIds: string[], key: string) {
+    if (vaultIds.length === 0) return;
+    setAdding(key);
+    try {
+      const res = await fetch('/api/clubs/members/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: vaultIds }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || 'Could not add them');
+      const bits = [
+        json.added ? `${json.added} added` : '',
+        json.already ? `${json.already} already in` : '',
+        json.skipped ? `${json.skipped} skipped (no email)` : '',
+        json.failed ? `${json.failed} failed` : '',
+      ].filter(Boolean);
+      if (json.added) toast.success(`${bits.join(' · ')}. No email was sent.`);
+      else toast.info(bits.join(' · ') || 'Nothing to add.');
+      await loadMembers();
+      setSelectedIds([]);
+    } catch (e: any) {
+      toast.error(e?.message || 'Could not add them.');
+    } finally {
+      setAdding(null);
     }
   }
 
@@ -353,7 +387,9 @@ export default function PlayerVaultPage() {
             </button>
           </div>
           <p className="mt-2 text-xs text-gray-500">
-            Anyone with this link gets a member login. Your subscription covers your whole team — give a director, coach, or front-desk person <strong>staff access</strong> in the Access column and they can run events and enter scores at no extra charge.
+            Anyone with this link gets a member login. For people you already know, <strong>Add</strong> in the Access
+            column seats them as members immediately with no email sent — they can join games straight from the
+            CourtConnect email they get. Your subscription covers your whole team — give a director, coach, or front-desk person <strong>staff access</strong> in the Access column and they can run events and enter scores at no extra charge.
           </p>
         </div>
       )}
@@ -419,6 +455,23 @@ export default function PlayerVaultPage() {
       {selectedIds.length > 0 && (
         <div className="card p-3 mb-4 flex items-center gap-3 bg-courtconnect-light border-courtconnect/20">
           <span className="text-sm font-medium">{selectedIds.length} selected</span>
+          <button
+            onClick={() => {
+              if (
+                confirm(
+                  `Add ${selectedIds.length} player(s) to ${club?.name || 'the club'} as members?\n\n` +
+                    'No email is sent. They will start receiving CourtConnect emails when a game fits their level.',
+                )
+              ) {
+                addToClub(selectedIds, 'bulk');
+              }
+            }}
+            className="btn btn-courtconnect btn-sm"
+            disabled={adding !== null}
+            title="Create their accounts and seat them as members — nothing is emailed"
+          >
+            {adding === 'bulk' ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />} Add to club (no email)
+          </button>
           <button
             onClick={handleBulkDelete}
             className="btn btn-destructive btn-sm"
@@ -542,14 +595,24 @@ export default function PlayerVaultPage() {
                         </span>
                       )
                     ) : player.email ? (
-                      <button
-                        onClick={() => invite(player.id)}
-                        disabled={inviting === player.id}
-                        className="btn btn-ghost btn-sm text-xs"
-                        title="Email this player an invite to create a login"
-                      >
-                        {inviting === player.id ? <Loader2 size={13} className="animate-spin" /> : <><Mail size={13} /> Invite</>}
-                      </button>
+                      <span className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => addToClub([player.id], player.id)}
+                          disabled={adding !== null}
+                          className="btn btn-ghost btn-sm text-xs"
+                          title="Add them as a member right now — no email is sent"
+                        >
+                          {adding === player.id ? <Loader2 size={13} className="animate-spin" /> : <><UserPlus size={13} /> Add</>}
+                        </button>
+                        <button
+                          onClick={() => invite(player.id)}
+                          disabled={inviting === player.id}
+                          className="btn btn-ghost btn-sm text-xs"
+                          title="Email this player an invite to create a login"
+                        >
+                          {inviting === player.id ? <Loader2 size={13} className="animate-spin" /> : <><Mail size={13} /> Invite</>}
+                        </button>
+                      </span>
                     ) : (
                       <span className="text-xs text-gray-400">Roster only</span>
                     )}
