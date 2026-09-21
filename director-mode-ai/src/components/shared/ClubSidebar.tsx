@@ -209,6 +209,21 @@ export default function ClubSidebar() {
    */
   const [flyout, setFlyout] = useState<{ item: Item; top: number; left: number } | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /*
+   * Leaving the rail ends the peek on a short delay, not instantly. There is an
+   * 8px gap between the rail and its flyout, and the pointer crossing that gap
+   * is a mouseleave — without the grace period the rail snapped 248 -> 72 mid
+   * reach and the menu moved out from under the cursor.
+   */
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const holdPeek = () => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    setHovering(true);
+  };
+  const releasePeek = () => {
+    if (peekTimer.current) clearTimeout(peekTimer.current);
+    peekTimer.current = setTimeout(() => setHovering(false), 160);
+  };
   const [mounted, setMounted] = useState(false);
   // When the signed-in user is a club MEMBER (not a director/owner), show a
   // member-appropriate nav instead of the full director toolset. null = show all.
@@ -535,8 +550,8 @@ export default function ClubSidebar() {
       )}
 
       <aside
-        onMouseEnter={() => setHovering(true)}
-        onMouseLeave={() => setHovering(false)}
+        onMouseEnter={holdPeek}
+        onMouseLeave={releasePeek}
         style={{ width, fontFamily: "'Inter', system-ui, sans-serif" }}
         className={[
           'fixed top-0 left-0 h-screen z-[70] flex flex-col',
@@ -628,10 +643,22 @@ export default function ClubSidebar() {
         load to reach CourtSheet. Desktop only — the phone drawer already shows
         everything, and there is no hover on a touch screen.
       */}
-      {flyout && !mobileOpen && showLabels && (
+      {flyout && !mobileOpen && (
         <div
-          onMouseEnter={keepOpen}
-          onMouseLeave={scheduleClose}
+          /*
+           * The panel is a SIBLING of the rail, so reaching into it fires the
+           * rail's mouseleave and ends the peek. It must therefore hold
+           * `hovering` itself — otherwise a collapsed rail snaps shut halfway
+           * through the reach, and with it the menu you were aiming at.
+           */
+          onMouseEnter={() => {
+            keepOpen();
+            holdPeek();
+          }}
+          onMouseLeave={() => {
+            releasePeek();
+            scheduleClose();
+          }}
           style={{ top: flyout.top, left: flyout.left, fontFamily: "'Inter', system-ui, sans-serif" }}
           className="hidden md:block fixed z-[80] w-[292px] rounded-2xl border border-white/10 bg-[#001016] p-2 shadow-2xl shadow-black/50"
         >
