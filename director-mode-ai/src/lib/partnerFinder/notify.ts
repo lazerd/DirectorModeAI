@@ -184,14 +184,22 @@ async function sendToGroup(
   db: Db,
   game: Game,
   club: Club,
-  build: (m: { to: string; name: string; token: string; group: Awaited<ReturnType<typeof gameGroup>> }) => GameMessage,
+  build: (m: {
+    to: string;
+    name: string;
+    token: string;
+    isPoster: boolean;
+    group: Awaited<ReturnType<typeof gameGroup>>;
+  }) => GameMessage,
   roster?: RosterRow[],
 ): Promise<number> {
   const group = await gameGroup(db, game, roster);
   const links = await ensureLinks(db, game, group.map((m) => m.personId));
   const messages = group
     .filter((m) => m.email && links.has(m.personId))
-    .map((m) => build({ to: m.email!, name: m.name, token: links.get(m.personId)!, group }));
+    .map((m) =>
+      build({ to: m.email!, name: m.name, token: links.get(m.personId)!, isPoster: m.isPoster, group }),
+    );
   return deliver(club, messages);
 }
 
@@ -203,7 +211,10 @@ export async function afterJoin(db: Db, gameId: string, joinerId: string, nowFul
   const roster = await clubRoster(db, club.id);
 
   if (nowFull) {
-    await sendToGroup(db, game, club, (m) => gameFullEmail(game, club, m), roster);
+    // The poster's copy says who completed the game; everyone else gets the
+    // plain line-up.
+    const lastIn = shortName(roster.find((r) => r.person_id === joinerId)?.full_name);
+    await sendToGroup(db, game, club, (m) => gameFullEmail(game, club, { ...m, joiner: lastIn }), roster);
     return;
   }
 

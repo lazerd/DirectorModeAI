@@ -186,25 +186,51 @@ export function someoneJoinedEmail(
   };
 }
 
-/** To everyone in a game that just filled. */
+/**
+ * To everyone in a game that just filled.
+ *
+ * The poster's copy names whoever took the last spot, in the subject. Every
+ * earlier join reaches them as "Peter S. is in", so when the final one arrived
+ * as a bare "You're all set" Walden Browne scanned his inbox for the name,
+ * didn't find it, and reported the email missing — it had been delivered and
+ * read as something else (2026-09-22). The one join a poster most wants
+ * confirmed is the one that completes the game.
+ */
 export function gameFullEmail(
   g: Game,
   club: Club,
-  opts: { to: string; name: string; group: GroupMember[]; token: string },
+  opts: {
+    to: string;
+    name: string;
+    group: GroupMember[];
+    token: string;
+    /** Who took the last spot. Only named for the poster. */
+    joiner?: string | null;
+    isPoster?: boolean;
+  },
 ): GameMessage {
   const tz = club.timezone;
-  const title = `You're all set: ${headline(g, tz)}`;
+  const named = opts.isPoster && opts.joiner ? opts.joiner : null;
+  const title = named ? `${named} is in — your game is full` : `You're all set: ${headline(g, tz)}`;
+  const opening = named
+    ? `Hi ${esc(firstName(opts.name))}, ${esc(named)} took the last spot. Here's who is playing:`
+    : `Hi ${esc(firstName(opts.name))}, the game is full. Here's who is playing:`;
   const body = `
-    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, the game is full. Here's who is playing:</p>
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">${opening}</p>
     ${groupList(opts.group)}
     ${details(g, club)}
     <p style="font-size:18px;line-height:1.5;margin:0 0 14px">If something comes up, please let the group know by tapping below so we can find someone else.</p>
     <p style="margin:0">${button(linkUrl(opts.token), 'See the game', INK)}</p>`;
+  const when = `${formatWord(g)} ${shortDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`;
   return {
     to: opts.to,
-    subject: ascii(`You're all set: ${formatWord(g)} ${shortDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`),
+    subject: ascii(named ? `${named} is in - your ${when} is full` : `You're all set: ${when}`),
     html: shell(club, esc(title), body),
-    sms: ascii(`${club.name}: your ${headline(g, tz)} is full. ${opts.group.map((m) => m.short).join(', ')}.`),
+    sms: ascii(
+      named
+        ? `${club.name}: ${named} is in - your ${headline(g, tz)} is full. ${opts.group.map((m) => m.short).join(', ')}.`
+        : `${club.name}: your ${headline(g, tz)} is full. ${opts.group.map((m) => m.short).join(', ')}.`,
+    ),
   };
 }
 
