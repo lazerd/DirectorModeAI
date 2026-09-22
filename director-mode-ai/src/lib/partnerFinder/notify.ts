@@ -194,39 +194,54 @@ async function sendToGroup(
   roster?: RosterRow[],
 ): Promise<number> {
   const group = await gameGroup(db, game, roster);
-  const links = await ensureLinks(db, game, group.map((m) => m.personId));
+  // A guest has no person to hang a link on, and no email to send it to. They
+  // appear in everyone else's line-up and are written to nothing.
+  const links = await ensureLinks(db, game, group.filter((m) => !m.isGuest).map((m) => m.personId));
   const messages = group
-    .filter((m) => m.email && links.has(m.personId))
+    .filter((m) => !m.isGuest && m.email && links.has(m.personId))
     .map((m) =>
       build({ to: m.email!, name: m.name, token: links.get(m.personId)!, isPoster: m.isPoster, group }),
     );
   return deliver(club, messages);
 }
 
-export async function afterJoin(db: Db, gameId: string, joinerId: string, nowFull: boolean): Promise<void> {
+/**
+ * @param joinerId  The person who just took a spot, or null for a guest the
+ *                  host seated — a guest has no person anywhere, so their name
+ *                  arrives in `guestName` instead.
+ */
+export async function afterJoin(
+  db: Db,
+  gameId: string,
+  joinerId: string | null,
+  nowFull: boolean,
+  guestName?: string | null,
+): Promise<void> {
   const game = await loadGame(db, gameId);
   if (!game) return;
   const club = await loadClub(db, game.club_id);
   if (!club) return;
   const roster = await clubRoster(db, club.id);
 
+  const lastIn = joinerId
+    ? shortName(roster.find((r) => r.person_id === joinerId)?.full_name)
+    : (guestName ?? 'A guest');
+
   if (nowFull) {
     // The poster's copy says who completed the game; everyone else gets the
     // plain line-up.
-    const lastIn = shortName(roster.find((r) => r.person_id === joinerId)?.full_name);
     await sendToGroup(db, game, club, (m) => gameFullEmail(game, club, { ...m, joiner: lastIn }), roster);
     return;
   }
 
   const poster = roster.find((r) => r.user_id === game.posted_by);
-  const joiner = roster.find((r) => r.person_id === joinerId);
   if (!poster?.email) return;
   // posted_by is the account that posted; the link belongs to the person.
   const links = await ensureLinks(db, game, [poster.person_id]);
   await deliver(club, [
     someoneJoinedEmail(game, club, {
       to: poster.email,
-      joiner: shortName(joiner?.full_name),
+      joiner: lastIn,
       spotsLeft: await spotsLeft(db, game),
       token: links.get(poster.person_id)!,
     }),

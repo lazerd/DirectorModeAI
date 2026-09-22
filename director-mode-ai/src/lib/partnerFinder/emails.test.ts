@@ -36,10 +36,10 @@ const game: Game = {
 };
 
 const group: GroupMember[] = [
-  { personId: 'p-walden', name: 'Walden Browne', short: 'Walden B.', email: 'walden@example.com', phone: null, isPoster: true },
-  { personId: 'p-gabe', name: 'Gabrial Fett', short: 'Gabrial F.', email: 'gabe@example.com', phone: null, isPoster: false },
-  { personId: 'p-peter', name: 'Peter Schwaikert', short: 'Peter S.', email: 'peter@example.com', phone: null, isPoster: false },
-  { personId: 'p-chris', name: 'Chris Cortner', short: 'Chris C.', email: 'chris@example.com', phone: null, isPoster: false },
+  { personId: 'p-walden', name: 'Walden Browne', short: 'Walden B.', email: 'walden@example.com', phone: null, isPoster: true, isGuest: false },
+  { personId: 'p-gabe', name: 'Gabrial Fett', short: 'Gabrial F.', email: 'gabe@example.com', phone: null, isPoster: false, isGuest: false },
+  { personId: 'p-peter', name: 'Peter Schwaikert', short: 'Peter S.', email: 'peter@example.com', phone: null, isPoster: false, isGuest: false },
+  { personId: 'p-chris', name: 'Chris Cortner', short: 'Chris C.', email: 'chris@example.com', phone: null, isPoster: false, isGuest: false },
 ];
 
 describe('the email when a game fills', () => {
@@ -97,5 +97,35 @@ describe('the email when a game fills', () => {
       isPoster: true,
     });
     for (const m of group) expect(mail.html).toContain(m.short);
+  });
+});
+
+describe('a guest the host seated', () => {
+  const withGuest: GroupMember[] = [
+    ...group.slice(0, 3),
+    { personId: 'seat-9', name: 'Jamie Visitor', short: 'Jamie Visitor', email: null, phone: null, isPoster: false, isGuest: true },
+  ];
+
+  it('is named in the line-up like anyone else', () => {
+    const mail = gameFullEmail(game, club, {
+      to: 'peter@example.com',
+      name: 'Peter Schwaikert',
+      group: withGuest,
+      token: 'tok-peter',
+      isPoster: false,
+    });
+    expect(mail.html).toContain('Jamie Visitor');
+  });
+
+  it('can be the one who completed the game', () => {
+    const mail = gameFullEmail(game, club, {
+      to: 'walden@example.com',
+      name: 'Walden Browne',
+      group: withGuest,
+      token: 'tok-walden',
+      joiner: 'Jamie Visitor',
+      isPoster: true,
+    });
+    expect(mail.subject).toContain('Jamie Visitor is in');
   });
 });

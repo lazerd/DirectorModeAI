@@ -42,6 +42,8 @@ const MESSAGES: Record<string, string> = {
   game_cancelled: 'The game is cancelled. We emailed everyone who was playing.',
   not_poster: 'Only the person who posted a game can cancel it.',
   already_cancelled: 'This game was already cancelled.',
+  need_one: 'Pick a member or type a guest name.',
+  already_in_game: 'They are already in this game.',
 };
 
 const say = (result: string) => MESSAGES[result] ?? 'Something went wrong. Please try again.';
@@ -90,6 +92,48 @@ export async function joinGame(
 
   background('join emails', () => afterJoin(db, gameId, personId, !!r.now_full));
   return { ok: true, result: 'joined', message: say(r.now_full ? 'joined_full' : 'joined') };
+}
+
+/**
+ * The host seats someone themselves — a member who said yes in person, or a
+ * guest who is not in the club at all.
+ *
+ * Asked for by Walden Browne (2026-09-22) after his first game: people tell you
+ * yes on court, and a verbal yes had nowhere to go. Only the poster may do it,
+ * and the seat is recorded as `via = 'host'` so it is never mistaken for
+ * somebody having answered an email.
+ */
+export async function hostAddPlayer(
+  db: Db,
+  gameId: string,
+  actorPersonId: string,
+  who: { personId?: string | null; guestName?: string | null },
+): Promise<ActionOutcome> {
+  const guestName = (who.guestName ?? '').trim();
+  const personId = who.personId || null;
+  if (!personId && !guestName) return { ok: false, result: 'need_one', message: say('need_one') };
+
+  const { data, error } = await db.rpc('pf_host_add', {
+    p_game: gameId,
+    p_actor: actorPersonId,
+    p_person: personId,
+    p_guest_name: personId ? null : guestName,
+  });
+  if (error) return { ok: false, result: 'error', message: say('error') };
+  const r = data as { result: string; now_full?: boolean; is_guest?: boolean; name?: string };
+  if (r.result !== 'added') return { ok: false, result: r.result, message: say(r.result) };
+
+  background('host add emails', () =>
+    afterJoin(db, gameId, personId, !!r.now_full, r.is_guest ? (r.name ?? guestName) : null),
+  );
+  const named = r.name ?? 'They';
+  return {
+    ok: true,
+    result: 'added',
+    message: r.now_full
+      ? `${named} is in — that's everyone. We've emailed the group.`
+      : `${named} is in.`,
+  };
 }
 
 export async function leaveGame(db: Db, gameId: string, personId: string): Promise<ActionOutcome> {

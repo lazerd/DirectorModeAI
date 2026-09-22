@@ -32,6 +32,8 @@ type Props = {
   myWaitPlace: number;
   waitingCount: number;
   group: { name: string; note: string | null; phone: string | null }[];
+  /** Members the host may seat by hand. Empty for everyone but the host. */
+  addable: { id: string; name: string }[];
   myLevel: number | null;
   /** What this club calls a level — see lib/levels.ts. */
   scale: LevelScale;
@@ -46,6 +48,9 @@ export default function LinkClient(p: Props) {
   const [confirming, setConfirming] = useState<null | 'leave' | 'cancel'>(null);
   const [askLevel, setAskLevel] = useState(false);
   const [level, setLevel] = useState<number | null>(p.myLevel);
+  const [adding, setAdding] = useState(false);
+  const [pick, setPick] = useState('');
+  const [guest, setGuest] = useState('');
 
   async function act(action: 'join' | 'decline' | 'leave' | 'cancel') {
     setBusy(true);
@@ -57,6 +62,33 @@ export default function LinkClient(p: Props) {
     const good = r.ok || r.result === 'already_in';
     setNotice({ tone: good ? 'good' : 'info', text: r.message });
     if (action === 'join' && r.ok && p.myLevel == null) setAskLevel(true);
+    router.refresh();
+  }
+
+  /*
+   * The host seating someone who already said yes — on court, by text, in the
+   * parking lot. A member is picked from the club's list; anyone else goes in
+   * as a guest by name and is never written to PlayerVault.
+   */
+  async function addPlayer() {
+    if (!pick && !guest.trim()) {
+      return setNotice({ tone: 'bad', text: 'Pick a member or type a guest name.' });
+    }
+    setBusy(true);
+    setNotice(null);
+    const r = await postJson<Outcome>(`/api/play/link/${p.token}`, {
+      action: 'add',
+      personId: pick || null,
+      guestName: pick ? '' : guest.trim(),
+    });
+    setBusy(false);
+    if (r.error) return setNotice({ tone: 'bad', text: r.error });
+    setNotice({ tone: r.ok ? 'good' : 'info', text: r.message });
+    if (r.ok) {
+      setPick('');
+      setGuest('');
+      setAdding(false);
+    }
     router.refresh();
   }
 
@@ -195,6 +227,67 @@ export default function LinkClient(p: Props) {
           <button onClick={() => act('leave')} disabled={busy} className={`${secondaryBtn} w-full`}>
             Take me off the list
           </button>
+        )}
+
+        {/* The host can seat someone who said yes without waiting for a tap. */}
+        {p.isPoster && !closedText && p.status === 'open' && (
+          adding ? (
+            <section className="space-y-3 rounded-3xl border-2 border-emerald-300 bg-white p-6">
+              <h2 className="text-2xl font-bold">Who said yes?</h2>
+              <p className="text-lg text-slate-600">
+                Put someone in who told you they&rsquo;re playing. They don&rsquo;t need to tap anything.
+              </p>
+              {p.addable.length > 0 && (
+                <label className="block">
+                  <span className="text-lg font-semibold text-slate-700">A member</span>
+                  <select
+                    value={pick}
+                    onChange={(e) => {
+                      setPick(e.target.value);
+                      if (e.target.value) setGuest('');
+                    }}
+                    className="mt-1 w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                  >
+                    <option value="">Choose someone…</option>
+                    {p.addable.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <label className="block">
+                <span className="text-lg font-semibold text-slate-700">
+                  {p.addable.length > 0 ? 'Or a guest' : 'A guest'}
+                </span>
+                <input
+                  value={guest}
+                  onChange={(e) => {
+                    setGuest(e.target.value);
+                    if (e.target.value) setPick('');
+                  }}
+                  placeholder="Their name"
+                  maxLength={60}
+                  className="mt-1 w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                />
+                <span className="mt-1 block text-base text-slate-500">
+                  Someone visiting. We just note the name for the group — no emails, and they aren&rsquo;t
+                  added to the club.
+                </span>
+              </label>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button onClick={addPlayer} disabled={busy} className={`${primaryBtn} flex-1`}>
+                  {busy ? 'One moment…' : 'Add them'}
+                </button>
+                <button onClick={() => { setAdding(false); setPick(''); setGuest(''); }} className={`${secondaryBtn} flex-1`}>
+                  Never mind
+                </button>
+              </div>
+            </section>
+          ) : (
+            <button onClick={() => setAdding(true)} className={`${secondaryBtn} w-full`}>
+              Add someone who said yes
+            </button>
+          )
         )}
 
         {p.isPoster && !closedText && (

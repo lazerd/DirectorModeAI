@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   clubRoster,
   gameGroup,
+  levelFits,
   linkByToken,
   loadClub,
   loadGame,
@@ -70,6 +71,22 @@ export default async function GameLinkPage({ params }: { params: { token: string
   const tz = club.timezone;
   const started = new Date(game.starts_at).getTime() <= Date.now();
 
+  /*
+   * Who the host can seat by hand. Anyone already in, in line, or the host
+   * themselves is off the list; the level filter is the same one the emails
+   * used, so the host is not offered somebody the game was never for. Only
+   * ever built for the host — nobody else needs the club's roster.
+   */
+  const inGame = new Set(group.map((m) => m.personId));
+  const inLine = new Set(waiting.map((w) => w.person_id));
+  const addable = isPoster
+    ? roster
+        .filter((r) => !inGame.has(r.person_id) && !inLine.has(r.person_id))
+        .filter((r) => levelFits(game, r.ntrp))
+        .map((r) => ({ id: r.person_id, name: r.full_name || 'A member' }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
+
   const level = ratingLabel(game.rating_min, game.rating_max, club.levels);
   const rows: [string, string][] = [
     ['When', `${longDay(game.starts_at, tz)}, ${clockLabel(game.starts_at, tz)}`],
@@ -106,6 +123,7 @@ export default async function GameLinkPage({ params }: { params: { token: string
         note: m.isPoster ? 'posted the game' : null,
         phone: isPoster || imIn ? m.phone : null,
       }))}
+      addable={addable}
       myLevel={me.ntrp}
       scale={club.levels}
     />

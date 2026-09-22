@@ -10,7 +10,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { cancelGame, declineGame, joinGame, leaveGame } from '@/lib/partnerFinder/actions';
+import { cancelGame, declineGame, hostAddPlayer, joinGame, leaveGame } from '@/lib/partnerFinder/actions';
 import { linkByToken, loadClub, personRow, saveSelfRating } from '@/lib/partnerFinder/server';
 import { isLevelValue } from '@/lib/levels';
 
@@ -34,7 +34,25 @@ export async function POST(req: Request, { params }: { params: { token: string }
   const me = await personRow(db, link.club_id, link.person_id);
   if (!me) return NextResponse.json({ error: 'Only members of this club can join its games.' }, { status: 403 });
 
-  const body = (await req.json().catch(() => ({}))) as { action?: string; ntrp?: unknown };
+  const body = (await req.json().catch(() => ({}))) as {
+    action?: string;
+    ntrp?: unknown;
+    personId?: unknown;
+    guestName?: unknown;
+  };
+
+  /*
+   * The host seating someone who said yes out loud. The token proves who is
+   * asking; pf_host_add refuses anyone who did not post the game, so this
+   * cannot be used to stuff somebody else's court.
+   */
+  if (body.action === 'add') {
+    const guestName = typeof body.guestName === 'string' ? body.guestName.trim().slice(0, 60) : '';
+    const personId = typeof body.personId === 'string' && body.personId ? body.personId : null;
+    return NextResponse.json(
+      await hostAddPlayer(db, link.game_id, link.person_id, { personId, guestName }),
+    );
+  }
 
   if (body.action === 'level') {
     const n = Number(body.ntrp);

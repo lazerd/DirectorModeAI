@@ -293,33 +293,72 @@ export type GroupMember = {
   /** Only when they chose to share it. */
   phone: string | null;
   isPoster: boolean;
+  /**
+   * Seated by the host and not a member of anything — `personId` is the seat,
+   * not a person. No email, no token link, no PlayerVault row, ever.
+   */
+  isGuest: boolean;
 };
 
 /** The poster plus everyone currently in, poster first. */
 export async function gameGroup(db: Db, game: Game, roster?: RosterRow[]): Promise<GroupMember[]> {
   const { data } = await db
     .from('pf_game_players')
-    .select('person_id, joined_at')
+    .select('id, person_id, guest_name, joined_at')
     .eq('game_id', game.id)
     .eq('status', 'in')
     .order('joined_at');
-  const playerIds = ((data as { person_id: string }[] | null) ?? []).map((p) => p.person_id);
+  const rows = (data as { id: string; person_id: string | null; guest_name: string | null }[] | null) ?? [];
   const people = roster ?? (await clubRoster(db, game.club_id));
   const byId = new Map(people.map((r) => [r.person_id, r]));
   // posted_by is an ACCOUNT — a game is always posted by someone signed in —
   // so it has to be translated to that person before it can index this map.
   const posterPersonId = people.find((r) => r.user_id === game.posted_by)?.person_id ?? game.posted_by;
-  return [posterPersonId, ...playerIds].map((id, i) => {
-    const r = byId.get(id);
-    return {
-      personId: id,
+  const poster = byId.get(posterPersonId);
+
+  const members: GroupMember[] = [
+    {
+      personId: posterPersonId,
+      name: poster?.full_name || 'A member',
+      short: shortName(poster?.full_name),
+      email: poster?.email ?? null,
+      phone: poster?.share_phone && poster.phone ? poster.phone : null,
+      isPoster: true,
+      isGuest: false,
+    },
+  ];
+
+  for (const row of rows) {
+    /*
+     * A guest the host seated has no person anywhere — that is the point, they
+     * are not a member (pf_host_add.sql). They belong in the line-up so the
+     * group knows who is coming, but they are keyed by the seat rather than by
+     * a person, have no email, and must never be handed a token link.
+     */
+    if (!row.person_id) {
+      members.push({
+        personId: row.id,
+        name: row.guest_name || 'Guest',
+        short: row.guest_name || 'Guest',
+        email: null,
+        phone: null,
+        isPoster: false,
+        isGuest: true,
+      });
+      continue;
+    }
+    const r = byId.get(row.person_id);
+    members.push({
+      personId: row.person_id,
       name: r?.full_name || 'A member',
       short: shortName(r?.full_name),
       email: r?.email ?? null,
       phone: r?.share_phone && r.phone ? r.phone : null,
-      isPoster: i === 0,
-    };
-  });
+      isPoster: false,
+      isGuest: false,
+    });
+  }
+  return members;
 }
 
 /* ------------------------------------------------------------------ board */
