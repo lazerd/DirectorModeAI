@@ -1,3 +1,7 @@
 .vercel
 .env*.local
 .env.local.backup-*
+
+# WTN lookup scratch: cache, proposals and run logs are local working data
+scripts/_wtn-*.json
+scripts/_wtn-*.log
