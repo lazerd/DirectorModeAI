@@ -63,7 +63,7 @@ export default async function CourtConnectDirectorPage() {
   const tz = club.timezone;
   const since = new Date(Date.now() - WINDOW_DAYS * 864e5).toISOString();
 
-  const [{ data: statsRaw }, { data: gameRows }, roster, { data: unreachableVault }] = await Promise.all([
+  const [{ data: statsRaw }, { data: gameRows }, roster, { data: unreachableVault }, { data: vaultIndex }] = await Promise.all([
     db.rpc('pf_club_stats', { p_club: club.id, p_since: since }),
     db
       .from('pf_games')
@@ -83,6 +83,10 @@ export default async function CourtConnectDirectorPage() {
       .eq('director_id', club.owner_id)
       .is('email', null)
       .not('usta_rating', 'is', null),
+    // Who the club has a roster entry for at all. A member with no entry is a
+    // different problem from one whose entry has no rating, and the advice for
+    // the two is not the same -- see the finding below.
+    db.from('cc_vault_players').select('user_id, email').eq('director_id', club.owner_id),
   ]);
   const stats = (statsRaw as Stats | null) ?? {
     posted: 0, cancelled: 0, filled: 0, open_now: 0, expired: 0, median_fill_minutes: null, players_joined: 0,
@@ -178,13 +182,38 @@ export default async function CourtConnectDirectorPage() {
         Number(v.usta_rating),
       ]),
     );
+    /*
+     * Three different people end up "unrated", and only one of them is fixed
+     * by typing a rating in.
+     *
+     * Joshua Marke, a coach, is in the club but has no PlayerVault entry at
+     * all — and the copy sent Darrin to PlayerVault to add a level for someone
+     * who is not in it (2026-09-22: "I dont see anyone without a rating
+     * listed"). Advice you cannot act on reads as a broken page.
+     */
+    const vaultUsers = new Set(
+      ((vaultIndex as { user_id: string | null }[] | null) ?? []).map((v) => v.user_id).filter(Boolean) as string[],
+    );
+    const vaultEmails = new Set(
+      ((vaultIndex as { email: string | null }[] | null) ?? [])
+        .map((v) => (v.email || '').trim().toLowerCase())
+        .filter(Boolean),
+    );
+    const inVault = (r: { user_id: string; email: string | null }) =>
+      vaultUsers.has(r.user_id) || vaultEmails.has((r.email || '').trim().toLowerCase());
+
+    let notInVault = 0;
     const named = unratedPeople
       .map((r) => {
         const name = r.full_name?.trim() || r.email || 'Unnamed member';
         const onRoster = ratedNoEmail.get(key(name));
-        // The fix for these two is different — and much smaller — than typing
-        // a rating in: their roster entry just needs their email address.
-        return onRoster != null ? `${name} (on your roster at ${onRoster}, but that entry has no email)` : name;
+        // Rated on the roster, but that entry has no email to attach it by.
+        if (onRoster != null) return `${name} (on your roster at ${onRoster}, but that entry has no email)`;
+        if (!inVault(r)) {
+          notInVault += 1;
+          return `${name} (not in PlayerVault at all)`;
+        }
+        return name;
       })
       .sort((a, b) => a.localeCompare(b));
     const list = named.slice(0, NAMED).join('; ');
@@ -192,11 +221,14 @@ export default async function CourtConnectDirectorPage() {
     findings.push({
       title: `${unrated} of ${roster.length} members have no level on file`,
       detail:
-        `${list}${more}. They only hear about games that allow unrated players. Add their ` +
-        `${club.levels.inline} in PlayerVault — or, where it says a roster entry has no email, ` +
-        `put their email on it, which is what links the rating to the person.`,
+        `${list}${more}. They only hear about games that allow unrated players. ` +
+        (notInVault > 0
+          ? `Anyone marked "not in PlayerVault at all" has to be added there first — there is nothing to open. `
+          : '') +
+        `Otherwise add their ${club.levels.inline} in PlayerVault, or, where it says a roster ` +
+        `entry has no email, put their email on it — that address is what links the rating to the person.`,
       href: '/courtconnect/vault',
-      cta: 'Open PlayerVault',
+      cta: notInVault === unrated ? 'Add them to PlayerVault' : 'Open PlayerVault',
     });
   }
   if (worstFormat && worstFormat[1] >= 3) {
