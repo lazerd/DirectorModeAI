@@ -31,6 +31,7 @@ import {
 } from './timeline';
 import {
   ccPayloads,
+  rosterAddresses,
   recipientRows,
   withMatchCoach,
   withSecondContact,
@@ -309,7 +310,11 @@ function ccsFor(
   playerAddresses: string[],
 ): TeamCc[] {
   const base = kind === 'nudge' ? [] : ctx.teamCcs;
-  const taken = new Set(playerAddresses.map((e) => e.trim().toLowerCase()));
+  // The whole roster, not just this send's recipients — a parent is never a
+  // copy recipient, even on a send their own child is not in.
+  const taken = new Set(
+    [...playerAddresses, ...rosterAddresses(ctx.roster)].map((e) => e.trim().toLowerCase()),
+  );
   const team = base.filter((c) => !taken.has(c.email.toLowerCase()));
   return withMatchCoach(team, ctx.matchCoach.get(matchId) ?? null, playerAddresses);
 }

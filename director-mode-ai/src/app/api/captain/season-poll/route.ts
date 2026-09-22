@@ -179,7 +179,13 @@ export async function POST(req: Request) {
    * bothering anybody else, and copying the coaching staff on it defeats the
    * entire point.
    */
-  const ccs = body.player_ids?.length
+  /*
+   * A reminder (only_missing) copies nobody either. Its "copy" is one family's
+   * personal chase — "Jacob Chiu, we still need 5 dates" — with that child's
+   * live answer links in it, which is exactly what went to Ben Harmsen and got
+   * forwarded on (9/21/26).
+   */
+  const ccs = body.player_ids?.length || body.only_missing
     ? []
     : await teamCcRecipients(ctx.db, ctx.teamId, payloads.map((p) => p.to));
   const ccMail = payloads.length ? ccPayloads(payloads[0], ccs, team.name) : [];

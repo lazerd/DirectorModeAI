@@ -17,6 +17,20 @@ import { formatPhone } from './phone';
 
 export type TeamCc = { name: string; email: string; role: string };
 
+type RosterAddress = { email: string | null; contact2_email?: string | null };
+
+/**
+ * Every address on the roster, parents included. A team contact who is also a
+ * player's parent gets their own child's email, never a coach copy: on
+ * 9/21/26 Ben Harmsen (Scarlett's second parent, also a "team parent"
+ * contact) got the copy of a reminder to Jacob Chiu, because Scarlett had
+ * already answered and so her parents weren't in that send to be excluded.
+ * He forwarded Jacob's live links to another parent.
+ */
+export function rosterAddresses(roster: RosterAddress[]): string[] {
+  return roster.flatMap((p) => [p.email, p.contact2_email]).filter((e): e is string => !!e?.trim());
+}
+
 /**
  * Everyone on this team flagged `on_emails`, with an address.
  *
@@ -29,17 +43,22 @@ export async function teamCcRecipients(
   teamId: string,
   exclude: (string | null | undefined)[] = [],
 ): Promise<TeamCc[]> {
-  const { data } = await db
-    .from('captain_team_contacts')
-    .select('name, email, role')
-    .eq('team_id', teamId)
-    .eq('on_emails', true)
-    .not('email', 'is', null)
-    .order('sort_order')
-    .order('name');
+  const [{ data }, { data: roster }] = await Promise.all([
+    db
+      .from('captain_team_contacts')
+      .select('name, email, role')
+      .eq('team_id', teamId)
+      .eq('on_emails', true)
+      .not('email', 'is', null)
+      .order('sort_order')
+      .order('name'),
+    db.from('captain_players').select('email, contact2_email').eq('team_id', teamId).eq('active', true),
+  ]);
 
   const taken = new Set(
-    exclude.filter(Boolean).map((e) => (e as string).trim().toLowerCase()),
+    [...exclude, ...rosterAddresses((roster as RosterAddress[] | null) ?? [])]
+      .filter(Boolean)
+      .map((e) => (e as string).trim().toLowerCase()),
   );
   const seen = new Set<string>();
   const out: TeamCc[] = [];
