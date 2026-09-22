@@ -144,11 +144,29 @@ export async function POST(req: Request) {
         .insert({ club_id: club.id, user_id: userId, role: 'member' });
       if (seatErr) throw new Error(seatErr.message);
 
-      // Nail this vault row to the account the director just seated. The
-      // roster reads that link rather than re-matching the email, so
-      // correcting the address later keeps their rating attached to them
-      // (pf_vault_user_link.sql).
-      await admin.from('cc_vault_players').update({ user_id: userId }).eq('id', p.id);
+      /*
+       * Nail this vault row to the account the director just seated, so the
+       * roster stops re-matching the email and their rating survives an
+       * address correction (pf_vault_user_link.sql).
+       *
+       * Unless that account already belongs to a DIFFERENT roster row. Couples
+       * share an inbox: Sleepy Hollow's vault has Ryan Alexander and Vi Le on
+       * one address, Steve and Danielle Hawley on another. Seating the second
+       * of a pair finds the first one's account by email, and stamping the link
+       * would hand one spouse's rating to the other. Leave it unlinked and let
+       * a human sort the two people out.
+       */
+      const { data: taken } = await admin
+        .from('cc_vault_players')
+        .select('id')
+        .eq('director_id', user.id)
+        .eq('user_id', userId)
+        .neq('id', p.id)
+        .limit(1)
+        .maybeSingle();
+      if (!taken) {
+        await admin.from('cc_vault_players').update({ user_id: userId }).eq('id', p.id);
+      }
 
       results.push({ id: p.id, name, email, status: 'added', detail: fresh ? 'new account' : 'existing account' });
     } catch (err) {

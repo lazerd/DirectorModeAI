@@ -52,11 +52,12 @@ UPDATE cc_vault_players vp
 --    exactly, and it must match exactly ONE member and ONE vault row. Anything
 --    ambiguous is left unlinked for a human, because guessing here would
 --    attach one member's rating to another member's name.
-WITH candidate AS (
-  SELECT vp.id AS vault_id,
-         m.user_id,
-         count(*) OVER (PARTITION BY vp.id)            AS members_for_row,
-         count(*) OVER (PARTITION BY c.id, m.user_id)  AS rows_for_member
+WITH pairs AS (
+  -- DISTINCT on purpose: a director who owns three clubs meets the same member
+  -- three times over, and counting those rows made every multi-club member look
+  -- ambiguous. Shannon Koffman belongs to all three of Darrin's clubs and was
+  -- skipped for exactly that reason -- the count has to be of PEOPLE.
+  SELECT DISTINCT vp.id AS vault_id, vp.director_id, m.user_id
     FROM cc_vault_players vp
     JOIN cc_clubs c        ON c.owner_id = vp.director_id
     JOIN cc_club_members m ON m.club_id = c.id
@@ -69,20 +70,64 @@ WITH candidate AS (
            nullif(trim(u.raw_user_meta_data->>'full_name'), ''),
            nullif(trim(u.raw_user_meta_data->>'name'), ''),
            '')))
-     AND NOT EXISTS (
-       SELECT 1 FROM cc_vault_players other
-        WHERE other.director_id = vp.director_id
-          AND other.user_id = m.user_id
-     )
+), counted AS (
+  SELECT vault_id, director_id, user_id,
+         count(*) OVER (PARTITION BY vault_id)             AS users_for_row,
+         count(*) OVER (PARTITION BY director_id, user_id) AS rows_for_user
+    FROM pairs
 )
 UPDATE cc_vault_players vp
-   SET user_id = candidate.user_id
-  FROM candidate
- WHERE vp.id = candidate.vault_id
-   AND candidate.members_for_row = 1
-   AND candidate.rows_for_member = 1;
+   SET user_id = counted.user_id
+  FROM counted
+ WHERE vp.id = counted.vault_id
+   AND counted.users_for_row = 1
+   AND counted.rows_for_user = 1
+   AND NOT EXISTS (
+     SELECT 1 FROM cc_vault_players other
+      WHERE other.director_id = vp.director_id
+        AND other.user_id = counted.user_id
+   );
 
--- 4. The roster reads the link.
+-- 4. Peel apart the couples.
+--
+-- Step 2 links by address, and spouses share an inbox. Sleepy Hollow has three
+-- pairs on one address each -- Ryan Alexander and Vi Le, Steve and Danielle
+-- Hawley, Blair and Meghan Schmicker -- so both halves of each pair got linked
+-- to the one account that address belongs to, and the roster then showed
+-- whichever row was edited last. Ryan, a 3.5, was about to be a 2.5.
+--
+-- Keep the link on the row whose name is the account's name; let go of the
+-- other. The spouse stays in PlayerVault with their rating, unlinked, until
+-- they get an address of their own -- which is the honest state of affairs,
+-- and better than silently answering for them.
+WITH linked AS (
+  SELECT v.id, v.user_id, v.director_id,
+         lower(trim(v.full_name)) = lower(trim(coalesce(
+           nullif(trim(p.full_name), ''),
+           nullif(trim(u.raw_user_meta_data->>'full_name'), ''),
+           nullif(trim(u.raw_user_meta_data->>'name'), ''),
+           ''))) AS name_matches,
+         count(*) OVER (PARTITION BY v.director_id, v.user_id) AS rows_for_user
+    FROM cc_vault_players v
+    JOIN auth.users u    ON u.id = v.user_id
+    LEFT JOIN profiles p ON p.id = v.user_id
+)
+UPDATE cc_vault_players vp
+   SET user_id = NULL
+  FROM linked
+ WHERE vp.id = linked.id
+   AND linked.rows_for_user > 1
+   AND NOT linked.name_matches
+   -- Only when the right row is actually there to keep. If NEITHER name
+   -- matches we have no basis to choose, so both links stay as they were.
+   AND EXISTS (
+     SELECT 1 FROM linked keeper
+      WHERE keeper.director_id = linked.director_id
+        AND keeper.user_id = linked.user_id
+        AND keeper.name_matches
+   );
+
+-- 5. The roster reads the link.
 --
 -- Return type is unchanged, so this is a replace. pf_game_recipients selects
 -- from it by name and needs no edit.
@@ -148,19 +193,45 @@ AS $function$
       FROM cc_vault_players vp
      WHERE vp.director_id = c.owner_id
        AND (vp.user_id = m.user_id
+            -- The email fallback is for rows that were NEVER linked, and only
+            -- when this account has no linked row at all. Without that last
+            -- test a spouse deliberately unlinked in step 4 walks straight back
+            -- in through the shared address they were peeled off.
             OR (vp.user_id IS NULL AND u.email IS NOT NULL
-                AND lower(trim(vp.email)) = lower(u.email)))
-     ORDER BY (vp.user_id = m.user_id) DESC, vp.updated_at DESC NULLS LAST
+                AND lower(trim(vp.email)) = lower(u.email)
+                AND NOT EXISTS (
+                  SELECT 1 FROM cc_vault_players lk
+                   WHERE lk.director_id = c.owner_id AND lk.user_id = m.user_id
+                )))
+     ORDER BY (vp.user_id = m.user_id) DESC NULLS LAST,
+              (lower(trim(vp.full_name)) = lower(trim(coalesce(
+                 nullif(trim(p.full_name), ''),
+                 nullif(trim(u.raw_user_meta_data->>'full_name'), ''),
+                 nullif(trim(u.raw_user_meta_data->>'name'), ''), '')))) DESC,
+              vp.updated_at DESC NULLS LAST
      LIMIT 1
   ) vl ON true
   LEFT JOIN LATERAL (
     SELECT vp.usta_rating FROM cc_vault_players vp
      WHERE vp.director_id = c.owner_id
        AND (vp.user_id = m.user_id
+            -- The email fallback is for rows that were NEVER linked, and only
+            -- when this account has no linked row at all. Without that last
+            -- test a spouse deliberately unlinked in step 4 walks straight back
+            -- in through the shared address they were peeled off.
             OR (vp.user_id IS NULL AND u.email IS NOT NULL
-                AND lower(trim(vp.email)) = lower(u.email)))
+                AND lower(trim(vp.email)) = lower(u.email)
+                AND NOT EXISTS (
+                  SELECT 1 FROM cc_vault_players lk
+                   WHERE lk.director_id = c.owner_id AND lk.user_id = m.user_id
+                )))
        AND vp.usta_rating IS NOT NULL
-     ORDER BY (vp.user_id = m.user_id) DESC, vp.updated_at DESC NULLS LAST
+     ORDER BY (vp.user_id = m.user_id) DESC NULLS LAST,
+              (lower(trim(vp.full_name)) = lower(trim(coalesce(
+                 nullif(trim(p.full_name), ''),
+                 nullif(trim(u.raw_user_meta_data->>'full_name'), ''),
+                 nullif(trim(u.raw_user_meta_data->>'name'), ''), '')))) DESC,
+              vp.updated_at DESC NULLS LAST
      LIMIT 1
   ) v ON true
   -- master_players is still keyed by email, so ask it about BOTH addresses:
@@ -177,10 +248,23 @@ AS $function$
     SELECT vp.dupr_singles, vp.dupr_doubles FROM cc_vault_players vp
      WHERE vp.director_id = c.owner_id
        AND (vp.user_id = m.user_id
+            -- The email fallback is for rows that were NEVER linked, and only
+            -- when this account has no linked row at all. Without that last
+            -- test a spouse deliberately unlinked in step 4 walks straight back
+            -- in through the shared address they were peeled off.
             OR (vp.user_id IS NULL AND u.email IS NOT NULL
-                AND lower(trim(vp.email)) = lower(u.email)))
+                AND lower(trim(vp.email)) = lower(u.email)
+                AND NOT EXISTS (
+                  SELECT 1 FROM cc_vault_players lk
+                   WHERE lk.director_id = c.owner_id AND lk.user_id = m.user_id
+                )))
        AND (vp.dupr_singles IS NOT NULL OR vp.dupr_doubles IS NOT NULL)
-     ORDER BY (vp.user_id = m.user_id) DESC, vp.updated_at DESC NULLS LAST
+     ORDER BY (vp.user_id = m.user_id) DESC NULLS LAST,
+              (lower(trim(vp.full_name)) = lower(trim(coalesce(
+                 nullif(trim(p.full_name), ''),
+                 nullif(trim(u.raw_user_meta_data->>'full_name'), ''),
+                 nullif(trim(u.raw_user_meta_data->>'name'), ''), '')))) DESC,
+              vp.updated_at DESC NULLS LAST
      LIMIT 1
   ) vd ON true
   LEFT JOIN LATERAL (

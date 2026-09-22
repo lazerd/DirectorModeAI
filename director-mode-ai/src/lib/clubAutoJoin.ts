@@ -46,7 +46,15 @@ export async function attachByEmail(
    * email later and this person keeps their rating and their history instead
    * of quietly splitting into two half-people (see pf_vault_user_link.sql).
    */
-  const unlinked = matched.filter((v) => !v.user_id).map((v) => v.id);
+  // But only where the director holds ONE row on this address. Couples share
+  // an inbox, and linking both halves of a pair to whichever of them signed in
+  // hands one spouse the other's rating (see step 4 of pf_vault_user_link.sql).
+  // Two rows, one address: leave both for a human.
+  const rowsPerDirector = new Map<string, number>();
+  for (const v of matched) rowsPerDirector.set(v.director_id, (rowsPerDirector.get(v.director_id) ?? 0) + 1);
+  const unlinked = matched
+    .filter((v) => !v.user_id && rowsPerDirector.get(v.director_id) === 1)
+    .map((v) => v.id);
   if (unlinked.length) {
     await db.from('cc_vault_players').update({ user_id: userId }).in('id', unlinked);
   }
