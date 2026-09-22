@@ -1,5 +1,6 @@
 'use client';
 
+import { activeClubId } from '@/lib/vault/activeClubClient';
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Search, Users, Trash2, FileUp, Trophy, Crown, GraduationCap, User as UserIcon, Mail, Copy, Check, Loader2, UserPlus } from 'lucide-react';
@@ -146,10 +147,14 @@ export default function PlayerVaultPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
 
+    // This club's roster, not every row this director has ever entered.
+    const club = await activeClubId();
+    if (!club) { setPlayers([]); setLoading(false); return; }
+
     let query = supabase
       .from('cc_vault_players')
       .select('*')
-      .eq('director_id', user.id)
+      .eq('club_id', club)
       .order('full_name');
 
     if (sportFilter) query = query.eq('primary_sport', sportFilter);

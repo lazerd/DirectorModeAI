@@ -32,6 +32,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { blockIfDemo } from '@/lib/demo/server';
+import { resolveActiveClub } from '@/lib/clubs/activeClub';
 
 /** One run seats at most this many, so a mis-click cannot seat a whole vault. */
 const MAX_PER_CALL = 100;
@@ -55,13 +56,17 @@ export async function POST(req: Request) {
   if (demo) return demo;
 
   const admin = getSupabaseAdmin();
-  // limit(1) before maybeSingle: owning two clubs must pick one, not throw.
+  /*
+   * The club they are RUNNING, not the first one they own. A roster row now
+   * names its club, so seating it in a different club of the same director is
+   * how Sleepy Hollow's members ended up in Rossmoor.
+   */
+  const { active } = await resolveActiveClub(user.id, user.email);
+  if (!active) return NextResponse.json({ error: 'No club to add anyone to' }, { status: 400 });
   const { data: club } = await admin
     .from('cc_clubs')
     .select('id, name')
-    .eq('owner_id', user.id)
-    .order('created_at', { ascending: true })
-    .limit(1)
+    .eq('id', active.id)
     .maybeSingle();
   if (!club) return NextResponse.json({ error: 'No club to add anyone to' }, { status: 400 });
 
@@ -73,12 +78,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `Please add ${MAX_PER_CALL} or fewer at a time.` }, { status: 400 });
   }
 
-  // director_id scopes this to the caller's own roster: an id from someone
-  // else's vault simply isn't found.
+  // club_id scopes this to THIS club's roster: an id from another club --
+  // including another club the same person runs -- simply isn't found.
   const { data: players } = await admin
     .from('cc_vault_players')
     .select('id, full_name, email')
-    .eq('director_id', user.id)
+    .eq('club_id', club.id)
     .in('id', ids as string[]);
 
   const results: Result[] = [];
@@ -159,7 +164,7 @@ export async function POST(req: Request) {
       const { data: taken } = await admin
         .from('cc_vault_players')
         .select('id')
-        .eq('director_id', user.id)
+        .eq('club_id', club.id)
         .eq('user_id', userId)
         .neq('id', p.id)
         .limit(1)

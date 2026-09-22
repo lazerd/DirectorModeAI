@@ -1,5 +1,6 @@
 'use client';
 
+import { activeClubId } from '@/lib/vault/activeClubClient';
 import { useState, useRef, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -83,10 +84,14 @@ export default function CSVImportPage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      // This club's roster. An import must not dedupe against, or land in,
+      // another club run by the same person.
+      const clubId = await activeClubId();
+      if (!clubId) return;
       const { data } = await supabase
         .from('cc_vault_players')
         .select('id, email, notes')
-        .eq('director_id', user.id)
+        .eq('club_id', clubId)
         .not('email', 'is', null);
       const m = new Map<string, { id: string; notes: string | null }>();
       for (const r of (data ?? []) as { id: string; email: string; notes: string | null }[]) {
@@ -153,6 +158,9 @@ export default function CSVImportPage() {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setImporting(false); return; }
+    // Every imported row lands in the club being run right now.
+    const clubId = await activeClubId();
+    if (!clubId) { setImporting(false); return; }
 
     let failed = 0;
 
@@ -161,6 +169,7 @@ export default function CSVImportPage() {
     for (let i = 0; i < plan.inserts.length; i += 100) {
       const batch = plan.inserts.slice(i, i + 100).map((p) => ({
         director_id: user.id,
+        club_id: clubId,
         ...vaultColumns(p, 'insert'),
       }));
       const { error } = await supabase.from('cc_vault_players').insert(batch);
@@ -184,7 +193,7 @@ export default function CSVImportPage() {
         .from('cc_vault_players')
         .update(cols)
         .eq('id', id)
-        .eq('director_id', user.id);
+        .eq('club_id', clubId);
       if (error) failed++;
     }
 

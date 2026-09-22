@@ -186,7 +186,7 @@ export async function POST(req: Request) {
       const { data: dupe } = await admin
         .from('leagues')
         .select('id, slug')
-        .eq('director_id', user.id)
+        .eq('club_id', (club as any).id)
         .eq('name', leagueName)
         .limit(1)
         .maybeSingle();
@@ -239,12 +239,13 @@ export async function POST(req: Request) {
       const { data: existing } = await admin
         .from('cc_vault_players')
         .select('full_name')
-        .eq('director_id', user.id);
+        .eq('club_id', (club as any).id);
       const have = new Set((existing || []).map((p: { full_name: string }) => p.full_name.toLowerCase()));
       const rows = playerNames
         .filter((n) => !have.has(n.toLowerCase()))
         .map((full_name) => ({
           director_id: user.id,
+          club_id: club.id,
           full_name,
           primary_sport: 'tennis',
           membership_status: 'active',

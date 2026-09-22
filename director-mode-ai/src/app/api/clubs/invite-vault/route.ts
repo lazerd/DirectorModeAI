@@ -10,21 +10,27 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendBilledEmail } from '@/lib/email';
 import { CreditLimitError } from '@/lib/billing';
 import { blockIfDemo } from '@/lib/demo/server';
+import { resolveActiveClub } from '@/lib/clubs/activeClub';
 
 import { APP_URL } from '@/lib/appUrl';
 const BASE = APP_URL;
 
-async function ownerClub(userId: string) {
+/**
+ * The club this person is RUNNING right now, not the first one they own.
+ *
+ * Picking by ownership sent a director working in Rossmoor to Sleepy Hollow's
+ * roster, and returned nothing at all for a director who runs a club somebody
+ * else owns. Now that a roster row names its club, inviting the wrong club's
+ * people is a real mistake rather than a cosmetic one.
+ */
+async function activeClubFor(userId: string, email: string | null | undefined) {
+  const { active } = await resolveActiveClub(userId, email);
+  if (!active) return null;
   const admin = getSupabaseAdmin();
-  // limit(1) before maybeSingle: without it this THROWS the moment a user owns
-  // two clubs, rather than picking one. Every other club lookup already does
-  // this; this one and /api/me/onboarding were the two that did not.
   const { data: club } = await admin
     .from('cc_clubs')
     .select('id, name, join_code')
-    .eq('owner_id', userId)
-    .order('created_at', { ascending: true })
-    .limit(1)
+    .eq('id', active.id)
     .maybeSingle();
   return club;
 }
@@ -33,13 +39,13 @@ export async function GET() {
   const userClient = await createClient();
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const club = await ownerClub(user.id);
+  const club = await activeClubFor(user.id, user.email);
   if (!club) return NextResponse.json({ club: null, players: [] });
   const admin = getSupabaseAdmin();
   const { data: players } = await admin
     .from('cc_vault_players')
     .select('id, full_name, email')
-    .eq('director_id', user.id)
+    .eq('club_id', club.id)
     .not('email', 'is', null)
     .order('full_name');
   return NextResponse.json({ club: { name: club.name, join_code: club.join_code }, players: players || [] });
@@ -51,7 +57,7 @@ export async function POST(req: Request) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const demo = await blockIfDemo(user.id);
   if (demo) return demo;
-  const club = await ownerClub(user.id);
+  const club = await activeClubFor(user.id, user.email);
   if (!club) return NextResponse.json({ error: 'No club to invite to' }, { status: 400 });
 
   const { ids } = await req.json().catch(() => ({}));
@@ -61,7 +67,7 @@ export async function POST(req: Request) {
   const { data: players } = await admin
     .from('cc_vault_players')
     .select('id, full_name, email')
-    .eq('director_id', user.id)
+    .eq('club_id', club.id)
     .in('id', ids)
     .not('email', 'is', null);
 

@@ -13,7 +13,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ signedIn: false });
 
   const admin = getSupabaseAdmin();
-  const [{ count: events }, { data: club }, { count: vault }] = await Promise.all([
+  const [{ count: events }, { data: club }] = await Promise.all([
     admin.from('events').select('*', { count: 'exact', head: true }).eq('user_id', user.id),
     // limit(1) so a second club is picked between rather than thrown on.
     admin
@@ -23,17 +23,18 @@ export async function GET() {
       .order('created_at', { ascending: true })
       .limit(1)
       .maybeSingle(),
-    admin.from('cc_vault_players').select('*', { count: 'exact', head: true }).eq('director_id', user.id),
   ]);
 
-  let courts = 0, members = 0;
+  let courts = 0, members = 0, vaultCount = 0;
   if (club) {
-    const [{ count: c }, { count: m }] = await Promise.all([
+    const [{ count: c }, { count: m }, { count: v }] = await Promise.all([
       admin.from('courts').select('*', { count: 'exact', head: true }).eq('club_id', (club as any).id),
       admin.from('cc_club_members').select('*', { count: 'exact', head: true }).eq('club_id', (club as any).id),
+      admin.from('cc_vault_players').select('*', { count: 'exact', head: true }).eq('club_id', (club as any).id),
     ]);
     courts = c ?? 0;
     members = m ?? 0;
+    vaultCount = v ?? 0;
   }
 
   return NextResponse.json({
@@ -42,6 +43,6 @@ export async function GET() {
     hasEvent: (events ?? 0) > 0,
     hasCourts: courts > 0,
     hasMembers: members > 1, // owner + at least one other
-    hasVault: (vault ?? 0) > 0,
+    hasVault: vaultCount > 0,
   });
 }

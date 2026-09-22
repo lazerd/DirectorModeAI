@@ -162,7 +162,9 @@ async function buildCourts(
 
 async function buildMembership(
   db: SupabaseClient<any, "public", any>,
-  directorId: string,
+  // The CLUB's roster. Reading it by director counted every club that person
+  // runs as one membership -- see vault_belongs_to_a_club.sql.
+  clubId: string,
   start: Date,
   end: Date
 ): Promise<MembershipSection> {
@@ -178,7 +180,7 @@ async function buildMembership(
     const { data: players } = await db
       .from("cc_vault_players")
       .select("membership_status, created_at, updated_at")
-      .eq("director_id", directorId);
+      .eq("club_id", clubId);
 
     if (!players || players.length === 0) return empty;
 
@@ -412,7 +414,7 @@ export async function getBoardReportData(
 ): Promise<BoardReportData> {
   const [courts, membership, participation, nps] = await Promise.all([
     buildCourts(db, ctx.clubId, ctx.timezone, ctx.periodStart, ctx.periodEnd),
-    buildMembership(db, ctx.directorId, ctx.periodStart, ctx.periodEnd),
+    buildMembership(db, ctx.clubId, ctx.periodStart, ctx.periodEnd),
     buildParticipation(db, ctx.directorId),
     buildNps(db, ctx.clubId, ctx.periodStart, ctx.periodEnd, ctx.surveyUrl),
   ]);

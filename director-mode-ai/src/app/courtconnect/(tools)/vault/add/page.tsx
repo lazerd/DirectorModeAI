@@ -1,5 +1,6 @@
 'use client';
 
+import { activeClubId } from '@/lib/vault/activeClubClient';
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -188,6 +189,7 @@ export default function AddVaultPlayerPage() {
 
     const playerData = {
       director_id: user.id,
+      club_id: await activeClubId(),
       full_name: form.full_name,
       email: form.email || null,
       phone: form.phone || null,

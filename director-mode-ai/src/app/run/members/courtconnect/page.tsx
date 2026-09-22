@@ -80,13 +80,13 @@ export default async function CourtConnectDirectorPage() {
     db
       .from('cc_vault_players')
       .select('full_name, usta_rating')
-      .eq('director_id', club.owner_id)
+      .eq('club_id', club.id)
       .is('email', null)
       .not('usta_rating', 'is', null),
     // Who the club has a roster entry for at all. A member with no entry is a
     // different problem from one whose entry has no rating, and the advice for
     // the two is not the same -- see the finding below.
-    db.from('cc_vault_players').select('user_id, email').eq('director_id', club.owner_id),
+    db.from('cc_vault_players').select('user_id, email').eq('club_id', club.id),
   ]);
   const stats = (statsRaw as Stats | null) ?? {
     posted: 0, cancelled: 0, filled: 0, open_now: 0, expired: 0, median_fill_minutes: null, players_joined: 0,

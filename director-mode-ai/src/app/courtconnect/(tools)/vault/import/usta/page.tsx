@@ -1,5 +1,6 @@
 'use client';
 
+import { activeClubId } from '@/lib/vault/activeClubClient';
 import { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Search, Users, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
@@ -159,13 +160,15 @@ export default function UstaImportPage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('You must be signed in.');
+      const clubId = await activeClubId();
+      if (!clubId) throw new Error('Pick a club first.');
 
-      // Dedupe against existing vault rows by (director_id, full_name)
+      // Dedupe against existing vault rows by (club_id, full_name)
       const existingNames = new Set<string>();
       const { data: existing, error: existingErr } = await supabase
         .from('cc_vault_players')
         .select('full_name')
-        .eq('director_id', user.id);
+        .eq('club_id', clubId);
       if (existingErr) throw new Error(existingErr.message);
       existing?.forEach(r => existingNames.add(r.full_name.toLowerCase()));
 
@@ -173,6 +176,7 @@ export default function UstaImportPage() {
         .filter(r => !existingNames.has(r.name.toLowerCase()))
         .map(r => ({
           director_id: user.id,
+          club_id: clubId,
           full_name: r.name,
           gender: r.gender,
           usta_rating: r.ntrp_numeric,

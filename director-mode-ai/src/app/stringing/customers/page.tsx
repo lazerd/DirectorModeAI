@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Plus, Search, Users, Mail, Phone, ChevronRight, Database, Trash2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
+import { activeClubId } from '@/lib/vault/activeClubClient';
 import VaultPicker from '@/components/shared/VaultPicker';
 
 type Customer = {
@@ -68,6 +69,7 @@ export default function CustomersPage() {
           .from('cc_vault_players')
           .insert({
             director_id: user.id,
+            club_id: await activeClubId(),
             full_name: newCustomer.full_name,
             email: newCustomer.email || null,
             phone: newCustomer.phone || null,

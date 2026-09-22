@@ -98,7 +98,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       would_email: fresh.length,
       already_emailed: already.size,
       recipients: fresh.map((r) => ({ name: r.full_name, email: r.email, level: r.ntrp })),
-      unreachable: await unreachableForGame(db, club.owner_id, game),
+      unreachable: await unreachableForGame(db, game),
     });
   }
 
@@ -122,7 +122,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
  */
 async function unreachableForGame(
   db: ReturnType<typeof getSupabaseAdmin>,
-  ownerId: string,
   game: { club_id: string; rating_min: number | null; rating_max: number | null; include_unrated: boolean },
 ): Promise<{ count: number; names: string[] }> {
   const [{ data: memberRows }, { data: vaultRows }] = await Promise.all([
@@ -130,7 +129,7 @@ async function unreachableForGame(
     db
       .from('cc_vault_players')
       .select('full_name, email, usta_rating, user_id')
-      .eq('director_id', ownerId)
+      .eq('club_id', game.club_id)
       .not('email', 'is', null),
   ]);
   const members = new Set(((memberRows as { user_id: string }[] | null) ?? []).map((m) => m.user_id));

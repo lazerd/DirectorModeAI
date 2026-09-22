@@ -27,15 +27,23 @@ export async function attachByEmail(
   if (!addr) return { clubIds: [], joined: [] };
 
   /**
-   * The vault belongs to a director, and a director's club is the one they own.
-   * That indirection is why this cannot be a foreign key.
+   * A roster row names the CLUB it belongs to, so this joins that club and no
+   * other.
+   *
+   * It used to take the row's director and join every club that director owns.
+   * Darrin owns Sleepy Hollow and, for the Rossmoor pitch, two Rossmoor clubs
+   * — so signing in with an address on Sleepy Hollow's roster seated you in
+   * all three. Shannon Koffman and Lawrence Browne were sitting in Rossmoor
+   * Tennis and Rossmoor Pickleball, in line for game emails from a club they
+   * have never heard of (found 2026-09-22; see vault_belongs_to_a_club.sql).
    */
   const { data: vaultRows } = await db
     .from('cc_vault_players')
-    .select('id, director_id, user_id')
+    .select('id, club_id, user_id')
     .ilike('email', addr);
 
-  const matched = ((vaultRows as { id: string; director_id: string; user_id: string | null }[]) || []);
+  const matched = ((vaultRows as { id: string; club_id: string | null; user_id: string | null }[]) || [])
+    .filter((v) => !!v.club_id) as { id: string; club_id: string; user_id: string | null }[];
 
   /*
    * Nail the vault row to the account while the addresses still agree.
@@ -46,26 +54,20 @@ export async function attachByEmail(
    * email later and this person keeps their rating and their history instead
    * of quietly splitting into two half-people (see pf_vault_user_link.sql).
    */
-  // But only where the director holds ONE row on this address. Couples share
-  // an inbox, and linking both halves of a pair to whichever of them signed in
+  // But only where the CLUB holds one row on this address. Couples share an
+  // inbox, and linking both halves of a pair to whichever of them signed in
   // hands one spouse the other's rating (see step 4 of pf_vault_user_link.sql).
   // Two rows, one address: leave both for a human.
-  const rowsPerDirector = new Map<string, number>();
-  for (const v of matched) rowsPerDirector.set(v.director_id, (rowsPerDirector.get(v.director_id) ?? 0) + 1);
+  const rowsPerClub = new Map<string, number>();
+  for (const v of matched) rowsPerClub.set(v.club_id, (rowsPerClub.get(v.club_id) ?? 0) + 1);
   const unlinked = matched
-    .filter((v) => !v.user_id && rowsPerDirector.get(v.director_id) === 1)
+    .filter((v) => !v.user_id && rowsPerClub.get(v.club_id) === 1)
     .map((v) => v.id);
   if (unlinked.length) {
     await db.from('cc_vault_players').update({ user_id: userId }).in('id', unlinked);
   }
 
-  const directorIds = [
-    ...new Set(matched.map((v) => v.director_id).filter(Boolean)),
-  ];
-  if (!directorIds.length) return { clubIds: [], joined: [] };
-
-  const { data: clubs } = await db.from('cc_clubs').select('id').in('owner_id', directorIds);
-  const clubIds = [...new Set(((clubs as { id: string }[]) || []).map((c) => c.id))];
+  const clubIds = [...new Set(matched.map((v) => v.club_id))];
   if (!clubIds.length) return { clubIds: [], joined: [] };
 
   const { data: existing } = await db

@@ -1,5 +1,6 @@
 'use client';
 
+import { activeClubId } from '@/lib/vault/activeClubClient';
 import { useState, useEffect } from 'react';
 import { Search, Database, X, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -39,11 +40,13 @@ export default function VaultPicker({ onSelect, onClose, multiSelect = false, on
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
+    const club = await activeClubId();
+    if (!club) { setLoading(false); return; }
 
     let query = supabase
       .from('cc_vault_players')
       .select('id, full_name, email, phone, gender, age, usta_rating, utr_rating, primary_sport, notes')
-      .eq('director_id', user.id)
+      .eq('club_id', club)
       .eq('membership_status', 'active')
       .order('full_name');
 
