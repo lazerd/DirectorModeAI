@@ -11,17 +11,13 @@
  */
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { Loader2, Mail } from 'lucide-react';
 
 type Recipient = { name: string | null; email: string; level: number | null };
-/** PlayerVault people who fit but have no account, so cannot be emailed. */
-type Unreachable = { count: number; names: string[] };
 
 export default function NotifyAgain({ gameId, levelWord }: { gameId: string; levelWord: string }) {
   const [busy, setBusy] = useState(false);
   const [preview, setPreview] = useState<Recipient[] | null>(null);
-  const [unreachable, setUnreachable] = useState<Unreachable | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,7 +34,6 @@ export default function NotifyAgain({ gameId, levelWord }: { gameId: string; lev
       if (!res.ok) throw new Error(json.error || 'That did not work.');
       if (isPreview) {
         setPreview(json.recipients as Recipient[]);
-        setUnreachable((json.unreachable as Unreachable | undefined) ?? null);
         if (!json.recipients?.length) setDone('Everyone who fits this game has already had the email.');
       } else {
         setPreview(null);
@@ -79,26 +74,6 @@ export default function NotifyAgain({ gameId, levelWord }: { gameId: string; lev
               </li>
             ))}
           </ul>
-          {unreachable && unreachable.count > 0 && (
-            /*
-             * The gap, named. CourtConnect can only email accounts, and most of
-             * a club's PlayerVault has never made one -- so a director reads a
-             * short list, misses the members they expected, and concludes the
-             * matching is broken. It isn't; these people simply cannot be
-             * reached yet, and PlayerVault is where that is fixed.
-             */
-            <p className="mt-2 border-t border-white/10 pt-2 text-[11.5px] leading-relaxed text-amber-200/80">
-              {unreachable.count} more {unreachable.count === 1 ? 'person fits' : 'people fit'} this game in
-              PlayerVault but {unreachable.count === 1 ? 'has' : 'have'} no ClubMode account, so they cannot be
-              emailed — {unreachable.names.join(', ')}
-              {unreachable.count > unreachable.names.length ? ` +${unreachable.count - unreachable.names.length} more` : ''}.{' '}
-              <Link href="/courtconnect/vault" className="font-medium text-[#D3FB52] underline">
-                Add them from PlayerVault
-              </Link>
-              .
-            </p>
-          )}
-
           <div className="mt-2 flex gap-2">
             <button
               onClick={() => call(false)}
@@ -108,7 +83,7 @@ export default function NotifyAgain({ gameId, levelWord }: { gameId: string; lev
               {busy ? 'Sending…' : `Send to ${preview.length}`}
             </button>
             <button
-              onClick={() => { setPreview(null); setUnreachable(null); }}
+              onClick={() => setPreview(null)}
               className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-white/50 hover:text-white/80"
             >
               Not now

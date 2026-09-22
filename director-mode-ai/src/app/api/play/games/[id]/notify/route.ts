@@ -98,7 +98,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       would_email: fresh.length,
       already_emailed: already.size,
       recipients: fresh.map((r) => ({ name: r.full_name, email: r.email, level: r.ntrp })),
-      unreachable: await unreachableForGame(db, game),
     });
   }
 
@@ -108,50 +107,4 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const sent = await inviteMembers(db, game, club, { onlyNew: true });
   return NextResponse.json({ sent, message: `Emailed ${sent} ${sent === 1 ? 'member' : 'members'}.` });
-}
-
-/**
- * People in the club's PlayerVault who fit this game but cannot be emailed,
- * because they have no ClubMode account and so are not club members.
- *
- * This is the honest answer to "why isn't Ryan on the list?". CourtConnect
- * only reaches accounts, a director's vault is mostly people who have never
- * made one (79 of Sleepy Hollow's 92 addresses on 2026-09-21), and the preview
- * used to show a number with no explanation for the gap. A director reading a
- * short list of the members they expected concludes the matching is broken.
- */
-async function unreachableForGame(
-  db: ReturnType<typeof getSupabaseAdmin>,
-  game: { club_id: string; rating_min: number | null; rating_max: number | null; include_unrated: boolean },
-): Promise<{ count: number; names: string[] }> {
-  const [{ data: memberRows }, { data: vaultRows }] = await Promise.all([
-    db.from('cc_club_members').select('user_id').eq('club_id', game.club_id),
-    db
-      .from('cc_vault_players')
-      .select('full_name, email, usta_rating, user_id')
-      .eq('club_id', game.club_id)
-      .not('email', 'is', null),
-  ]);
-  const members = new Set(((memberRows as { user_id: string }[] | null) ?? []).map((m) => m.user_id));
-
-  const fits = (rating: number | null): boolean => {
-    if (game.rating_min == null && game.rating_max == null) return true;
-    if (rating == null) return game.include_unrated;
-    return rating >= (game.rating_min ?? 1) && rating <= (game.rating_max ?? 7);
-  };
-
-  // One entry per address: a vault with the same person twice must not read as
-  // two more people the club is failing to reach.
-  const seen = new Set<string>();
-  const names: string[] = [];
-  for (const v of ((vaultRows as { full_name: string | null; email: string | null; usta_rating: number | null; user_id: string | null }[] | null) ?? [])) {
-    const addr = (v.email || '').trim().toLowerCase();
-    if (!addr || seen.has(addr)) continue;
-    if (v.user_id && members.has(v.user_id)) continue;
-    if (!fits(v.usta_rating)) continue;
-    seen.add(addr);
-    names.push((v.full_name || addr).trim());
-  }
-  names.sort((a, b) => a.localeCompare(b));
-  return { count: names.length, names: names.slice(0, 8) };
 }

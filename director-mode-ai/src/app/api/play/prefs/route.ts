@@ -17,16 +17,17 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
   const ctx = await requireMember(typeof body.club_id === 'string' ? body.club_id : null);
   if (isCtxError(ctx)) return ctx.error;
-  const { db, club, user } = ctx;
+  const { db, club, user, personId } = ctx;
+  if (!personId) return NextResponse.json({ error: 'Only members of this club can do that.' }, { status: 403 });
 
-  await ensurePrefs(db, club.id, user.id);
+  await ensurePrefs(db, club.id, personId);
   const patch: Record<string, unknown> = {};
   if (typeof body.notify_games === 'boolean') patch.notify_games = body.notify_games;
   if (typeof body.share_phone === 'boolean') patch.share_phone = body.share_phone;
   if (typeof body.phone === 'string') patch.phone = body.phone.trim().slice(0, 30) || null;
   if (Object.keys(patch).length) {
     patch.updated_at = new Date().toISOString();
-    await db.from('pf_member_prefs').update(patch).eq('club_id', club.id).eq('user_id', user.id);
+    await db.from('pf_member_prefs').update(patch).eq('club_id', club.id).eq('person_id', personId);
   }
 
   let rating: { saved: boolean; reason?: string } | null = null;
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
     if (!isLevelValue(club.levels, n)) {
       return NextResponse.json({ error: 'Please pick a level from the list.' }, { status: 400 });
     }
-    rating = await saveSelfRating(db, { clubId: club.id, userId: user.id, email: user.email, fullName: user.name, ntrp: n });
+    rating = await saveSelfRating(db, { clubId: club.id, personId, email: user.email, fullName: user.name, ntrp: n });
   }
 
   return NextResponse.json({ ok: true, rating });

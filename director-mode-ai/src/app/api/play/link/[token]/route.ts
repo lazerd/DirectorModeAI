@@ -11,7 +11,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { cancelGame, declineGame, joinGame, leaveGame } from '@/lib/partnerFinder/actions';
-import { linkByToken, loadClub, saveSelfRating } from '@/lib/partnerFinder/server';
+import { linkByToken, loadClub, personRow, saveSelfRating } from '@/lib/partnerFinder/server';
 import { isLevelValue } from '@/lib/levels';
 
 export const dynamic = 'force-dynamic';
@@ -22,15 +22,17 @@ export async function POST(req: Request, { params }: { params: { token: string }
   const link = await linkByToken(db, params.token);
   if (!link) return NextResponse.json({ error: 'This link is not recognized.' }, { status: 404 });
 
-  // Still a member? Someone removed from the club keeps their old emails.
-  const { data: member } = await db
-    .from('cc_club_members')
-    .select('role')
-    .eq('club_id', link.club_id)
-    .eq('user_id', link.user_id)
-    .neq('role', 'maintenance')
-    .maybeSingle();
-  if (!member) return NextResponse.json({ error: 'Only members of this club can join its games.' }, { status: 403 });
+  /*
+   * Still on the club's roster? Someone taken off it keeps their old emails.
+   *
+   * This asked cc_club_members, which meant a club member with no ACCOUNT was
+   * refused by the very link the club had just emailed them -- "Only members
+   * of this club can join its games". Membership is being in the club's
+   * PlayerVault now (courtconnect_reads_people.sql), and that is what the
+   * roster answers.
+   */
+  const me = await personRow(db, link.club_id, link.person_id);
+  if (!me) return NextResponse.json({ error: 'Only members of this club can join its games.' }, { status: 403 });
 
   const body = (await req.json().catch(() => ({}))) as { action?: string; ntrp?: unknown };
 
@@ -41,13 +43,11 @@ export async function POST(req: Request, { params }: { params: { token: string }
     if (!club || !isLevelValue(club.levels, n)) {
       return NextResponse.json({ error: 'Please pick a level from the list.' }, { status: 400 });
     }
-    const { data: u } = await db.auth.admin.getUserById(link.user_id);
-    const { data: p } = await db.from('profiles').select('full_name').eq('id', link.user_id).maybeSingle();
     const saved = await saveSelfRating(db, {
       clubId: link.club_id,
-      userId: link.user_id,
-      email: u?.user?.email ?? null,
-      fullName: (p as { full_name: string | null } | null)?.full_name ?? null,
+      personId: link.person_id,
+      email: me.email,
+      fullName: me.full_name,
       ntrp: n,
     });
     return NextResponse.json({ ok: saved.saved, result: 'level', message: 'Thanks, your level is saved.' });
@@ -55,13 +55,13 @@ export async function POST(req: Request, { params }: { params: { token: string }
 
   const outcome =
     body.action === 'join'
-      ? await joinGame(db, link.game_id, link.user_id, 'email')
+      ? await joinGame(db, link.game_id, link.person_id, 'email')
       : body.action === 'leave'
-        ? await leaveGame(db, link.game_id, link.user_id)
+        ? await leaveGame(db, link.game_id, link.person_id)
         : body.action === 'cancel'
-          ? await cancelGame(db, link.game_id, link.user_id)
+          ? await cancelGame(db, link.game_id, link.person_id)
           : body.action === 'decline'
-            ? await declineGame(db, link.game_id, link.user_id)
+            ? await declineGame(db, link.game_id, link.person_id)
             : null;
   if (!outcome) return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
   return NextResponse.json(outcome);

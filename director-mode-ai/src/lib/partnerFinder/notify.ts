@@ -101,7 +101,7 @@ export async function inviteMembers(
     console.error('[courtconnect] recipients', error.message);
     return 0;
   }
-  let recipients = (data as { user_id: string; email: string; full_name: string | null; stop_token: string | null }[]) ?? [];
+  let recipients = (data as { person_id: string; email: string; full_name: string | null; stop_token: string | null }[]) ?? [];
 
   /*
    * `only` is a deliberate re-send to named people — the ones who were emailed
@@ -111,17 +111,17 @@ export async function inviteMembers(
    */
   if (opts.only?.length) {
     const wanted = new Set(opts.only);
-    recipients = recipients.filter((r) => wanted.has(r.user_id));
+    recipients = recipients.filter((r) => wanted.has(r.person_id));
   }
 
   if (opts.onlyNew && recipients.length) {
     const { data: already } = await db
       .from('pf_links')
-      .select('user_id')
+      .select('person_id')
       .eq('game_id', game.id)
       .not('emailed_at', 'is', null);
-    const sent = new Set(((already as { user_id: string }[] | null) ?? []).map((l) => l.user_id));
-    recipients = recipients.filter((r) => !sent.has(r.user_id));
+    const sent = new Set(((already as { person_id: string }[] | null) ?? []).map((l) => l.person_id));
+    recipients = recipients.filter((r) => !sent.has(r.person_id));
   }
 
   if (!recipients.length) return 0;
@@ -130,20 +130,20 @@ export async function inviteMembers(
   const missingPrefs = recipients.filter((r) => !r.stop_token);
   if (missingPrefs.length) {
     await db.from('pf_member_prefs').upsert(
-      missingPrefs.map((r) => ({ club_id: club.id, user_id: r.user_id })),
-      { onConflict: 'club_id,user_id', ignoreDuplicates: true },
+      missingPrefs.map((r) => ({ club_id: club.id, person_id: r.person_id })),
+      { onConflict: 'club_id,person_id', ignoreDuplicates: true },
     );
     const { data: made } = await db
       .from('pf_member_prefs')
-      .select('user_id, stop_token')
+      .select('person_id, stop_token')
       .eq('club_id', club.id)
-      .in('user_id', missingPrefs.map((r) => r.user_id));
-    const tokens = new Map(((made as { user_id: string; stop_token: string }[] | null) ?? []).map((m) => [m.user_id, m.stop_token]));
-    for (const r of missingPrefs) r.stop_token = tokens.get(r.user_id) ?? null;
+      .in('person_id', missingPrefs.map((r) => r.person_id));
+    const tokens = new Map(((made as { person_id: string; stop_token: string }[] | null) ?? []).map((m) => [m.person_id, m.stop_token]));
+    for (const r of missingPrefs) r.stop_token = tokens.get(r.person_id) ?? null;
   }
 
   const [links, fullRoster, left] = await Promise.all([
-    ensureLinks(db, game, recipients.map((r) => r.user_id)),
+    ensureLinks(db, game, recipients.map((r) => r.person_id)),
     clubRoster(db, club.id),
     spotsLeft(db, game),
   ]);
@@ -154,13 +154,13 @@ export async function inviteMembers(
   const playing = group.map((m) => m.short);
 
   const messages = recipients
-    .filter((r) => links.has(r.user_id))
+    .filter((r) => links.has(r.person_id))
     .map((r) =>
       inviteEmail(game, club, {
         to: r.email,
         name: r.full_name,
         poster,
-        token: links.get(r.user_id)!,
+        token: links.get(r.person_id)!,
         stopToken: r.stop_token,
         spotsLeft: left,
         playing,
@@ -174,7 +174,7 @@ export async function inviteMembers(
   const newlyReached = opts.only?.length ? 0 : sent;
   await Promise.all([
     db.from('pf_games').update({ notified_count: game.notified_count + newlyReached, updated_at: now }).eq('id', game.id),
-    db.from('pf_links').update({ emailed_at: now }).eq('game_id', game.id).in('user_id', recipients.map((r) => r.user_id)),
+    db.from('pf_links').update({ emailed_at: now }).eq('game_id', game.id).in('person_id', recipients.map((r) => r.person_id)),
   ]);
   return sent;
 }
@@ -188,10 +188,10 @@ async function sendToGroup(
   roster?: RosterRow[],
 ): Promise<number> {
   const group = await gameGroup(db, game, roster);
-  const links = await ensureLinks(db, game, group.map((m) => m.userId));
+  const links = await ensureLinks(db, game, group.map((m) => m.personId));
   const messages = group
-    .filter((m) => m.email && links.has(m.userId))
-    .map((m) => build({ to: m.email!, name: m.name, token: links.get(m.userId)!, group }));
+    .filter((m) => m.email && links.has(m.personId))
+    .map((m) => build({ to: m.email!, name: m.name, token: links.get(m.personId)!, group }));
   return deliver(club, messages);
 }
 
@@ -208,15 +208,16 @@ export async function afterJoin(db: Db, gameId: string, joinerId: string, nowFul
   }
 
   const poster = roster.find((r) => r.user_id === game.posted_by);
-  const joiner = roster.find((r) => r.user_id === joinerId);
+  const joiner = roster.find((r) => r.person_id === joinerId);
   if (!poster?.email) return;
-  const links = await ensureLinks(db, game, [game.posted_by]);
+  // posted_by is the account that posted; the link belongs to the person.
+  const links = await ensureLinks(db, game, [poster.person_id]);
   await deliver(club, [
     someoneJoinedEmail(game, club, {
       to: poster.email,
       joiner: shortName(joiner?.full_name),
       spotsLeft: await spotsLeft(db, game),
-      token: links.get(game.posted_by)!,
+      token: links.get(poster.person_id)!,
     }),
   ]);
 }
@@ -228,33 +229,33 @@ export async function afterLeave(db: Db, gameId: string, leaverId: string): Prom
   if (!club) return;
   const roster = await clubRoster(db, club.id);
   const poster = roster.find((r) => r.user_id === game.posted_by);
-  const leaver = roster.find((r) => r.user_id === leaverId);
+  const leaver = roster.find((r) => r.person_id === leaverId);
   const left = await spotsLeft(db, game);
 
   // Everyone in line hears first, in the order they answered, and the first to
   // tap takes it — see pf_claim_spot. Nobody is promoted behind their back.
   const { data: waitingRows } = await db
     .from('pf_game_players')
-    .select('user_id')
+    .select('person_id')
     .eq('game_id', game.id)
     .eq('status', 'wait')
     .order('joined_at');
-  const waiting = ((waitingRows as { user_id: string }[] | null) ?? [])
-    .map((w) => roster.find((r) => r.user_id === w.user_id))
+  const waiting = ((waitingRows as { person_id: string }[] | null) ?? [])
+    .map((w) => roster.find((r) => r.person_id === w.person_id))
     .filter((r): r is RosterRow => !!r?.email);
 
   if (waiting.length) {
     const playingNow = (await gameGroup(db, game, roster)).map((m) => m.short);
-    const waitLinks = await ensureLinks(db, game, waiting.map((w) => w.user_id));
+    const waitLinks = await ensureLinks(db, game, waiting.map((w) => w.person_id));
     await deliver(
       club,
       waiting
-        .filter((w) => waitLinks.has(w.user_id))
+        .filter((w) => waitLinks.has(w.person_id))
         .map((w) =>
           waitlistSpotEmail(game, club, {
             to: w.email!,
             name: w.full_name,
-            token: waitLinks.get(w.user_id)!,
+            token: waitLinks.get(w.person_id)!,
             poster: shortName(poster?.full_name),
             playing: playingNow,
           }),

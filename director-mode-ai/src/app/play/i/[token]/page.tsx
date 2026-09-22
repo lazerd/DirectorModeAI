@@ -49,23 +49,24 @@ export default async function GameLinkPage({ params }: { params: { token: string
   if (!game || !club) return <Shell title="Game not found" body="This game is no longer on the board." />;
 
   const roster = await clubRoster(db, club.id);
-  const me = roster.find((r) => r.user_id === link.user_id) ?? null;
+  const me = roster.find((r) => r.person_id === link.person_id) ?? null;
   if (!me) return <Shell title="Members only" body={`This game is for members of ${club.name}.`} />;
 
   const group = await gameGroup(db, game, roster);
-  const isPoster = game.posted_by === link.user_id;
-  const imIn = group.some((m) => !m.isPoster && m.userId === link.user_id);
+  // posted_by is an account; compare people to people.
+  const isPoster = roster.find((r) => r.user_id === game.posted_by)?.person_id === link.person_id;
+  const imIn = group.some((m) => !m.isPoster && m.personId === link.person_id);
   const spotsLeft = Math.max(game.spots_needed - (group.length - 1), 0);
 
   // A full game still takes answers — they go in line (pf_claim_spot).
   const { data: waitRows } = await db
     .from('pf_game_players')
-    .select('user_id, joined_at')
+    .select('person_id, joined_at')
     .eq('game_id', game.id)
     .eq('status', 'wait')
     .order('joined_at');
-  const waiting = (waitRows as { user_id: string }[] | null) ?? [];
-  const myWaitPlace = waiting.findIndex((w) => w.user_id === link.user_id) + 1; // 0 = not waiting
+  const waiting = (waitRows as { person_id: string }[] | null) ?? [];
+  const myWaitPlace = waiting.findIndex((w) => w.person_id === link.person_id) + 1; // 0 = not waiting
   const tz = club.timezone;
   const started = new Date(game.starts_at).getTime() <= Date.now();
 

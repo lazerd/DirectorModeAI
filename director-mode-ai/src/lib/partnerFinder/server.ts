@@ -76,7 +76,17 @@ export type Club = {
 };
 
 export type RosterRow = {
-  user_id: string;
+  /**
+   * WHO THIS IS. The PlayerVault row id — the person, not their login.
+   *
+   * CourtConnect used to key on the account, which meant a club member with no
+   * account did not exist to it, and two people sharing an inbox could not
+   * both exist (courtconnect_reads_people.sql). Everything CourtConnect
+   * remembers about somebody hangs off this.
+   */
+  person_id: string;
+  /** Their account, when they have one. Most club members never will. */
+  user_id: string | null;
   email: string | null;
   full_name: string | null;
   role: string;
@@ -160,8 +170,17 @@ export async function resolvePlayingClub(
   return { club, role: rows.find((r) => r.club_id === pick)?.role || 'member' };
 }
 
-export async function clubRoster(db: Db, clubId: string, userId?: string): Promise<RosterRow[]> {
-  const { data, error } = await db.rpc('pf_member_roster', { p_club: clubId, p_user: userId ?? null });
+export async function clubRoster(
+  db: Db,
+  clubId: string,
+  userId?: string,
+  personId?: string,
+): Promise<RosterRow[]> {
+  const { data, error } = await db.rpc('pf_member_roster', {
+    p_club: clubId,
+    p_user: userId ?? null,
+    p_person: personId ?? null,
+  });
   if (error) throw new Error(`pf_member_roster: ${error.message}`);
   return ((data as RosterRow[] | null) ?? []).map((r) => ({
     ...r,
@@ -173,6 +192,11 @@ export async function clubRoster(db: Db, clubId: string, userId?: string): Promi
 
 export async function memberRow(db: Db, clubId: string, userId: string): Promise<RosterRow | null> {
   return (await clubRoster(db, clubId, userId))[0] ?? null;
+}
+
+/** The same row, found by the person rather than by a session. */
+export async function personRow(db: Db, clubId: string, personId: string): Promise<RosterRow | null> {
+  return (await clubRoster(db, clubId, undefined, personId))[0] ?? null;
 }
 
 /** Does this level fit the game? Unrated fits only when the poster allowed it. */
@@ -194,9 +218,9 @@ export function levelFits(
  */
 export async function saveSelfRating(
   db: Db,
-  opts: { clubId: string; userId: string; email: string | null; fullName: string | null; ntrp: number },
+  opts: { clubId: string; personId: string; email: string | null; fullName: string | null; ntrp: number },
 ): Promise<{ saved: boolean; reason?: 'club_rated' | 'no_email' }> {
-  const current = await memberRow(db, opts.clubId, opts.userId);
+  const current = await personRow(db, opts.clubId, opts.personId);
   if (current?.ntrp_source === 'club') return { saved: false, reason: 'club_rated' };
   const email = (opts.email || '').trim().toLowerCase();
   if (!email) return { saved: false, reason: 'no_email' };
@@ -218,15 +242,15 @@ export async function saveSelfRating(
   return { saved: true };
 }
 
-export async function ensurePrefs(db: Db, clubId: string, userId: string) {
+export async function ensurePrefs(db: Db, clubId: string, personId: string) {
   await db
     .from('pf_member_prefs')
-    .upsert({ club_id: clubId, user_id: userId }, { onConflict: 'club_id,user_id', ignoreDuplicates: true });
+    .upsert({ club_id: clubId, person_id: personId }, { onConflict: 'club_id,person_id', ignoreDuplicates: true });
   const { data } = await db
     .from('pf_member_prefs')
     .select('notify_games, share_phone, phone, stop_token')
     .eq('club_id', clubId)
-    .eq('user_id', userId)
+    .eq('person_id', personId)
     .single();
   return data as { notify_games: boolean; share_phone: boolean; phone: string | null; stop_token: string };
 }
@@ -235,34 +259,34 @@ export async function ensurePrefs(db: Db, clubId: string, userId: string) {
 export async function ensureLinks(
   db: Db,
   game: Pick<Game, 'id' | 'club_id'>,
-  userIds: string[],
+  personIds: string[],
 ): Promise<Map<string, string>> {
-  const ids = [...new Set(userIds)];
+  const ids = [...new Set(personIds)];
   if (!ids.length) return new Map();
   await db.from('pf_links').upsert(
-    ids.map((user_id) => ({ game_id: game.id, club_id: game.club_id, user_id })),
-    { onConflict: 'game_id,user_id', ignoreDuplicates: true },
+    ids.map((person_id) => ({ game_id: game.id, club_id: game.club_id, person_id })),
+    { onConflict: 'game_id,person_id', ignoreDuplicates: true },
   );
   const { data } = await db
     .from('pf_links')
-    .select('user_id, token')
+    .select('person_id, token')
     .eq('game_id', game.id)
-    .in('user_id', ids);
-  return new Map(((data as { user_id: string; token: string }[] | null) ?? []).map((l) => [l.user_id, l.token]));
+    .in('person_id', ids);
+  return new Map(((data as { person_id: string; token: string }[] | null) ?? []).map((l) => [l.person_id, l.token]));
 }
 
 export async function linkByToken(db: Db, token: string) {
   if (!/^[a-f0-9]{32,64}$/.test(token || '')) return null;
   const { data } = await db
     .from('pf_links')
-    .select('token, game_id, club_id, user_id')
+    .select('token, game_id, club_id, person_id')
     .eq('token', token)
     .maybeSingle();
-  return (data as { token: string; game_id: string; club_id: string; user_id: string } | null) ?? null;
+  return (data as { token: string; game_id: string; club_id: string; person_id: string } | null) ?? null;
 }
 
 export type GroupMember = {
-  userId: string;
+  personId: string;
   name: string;
   short: string;
   email: string | null;
@@ -275,17 +299,20 @@ export type GroupMember = {
 export async function gameGroup(db: Db, game: Game, roster?: RosterRow[]): Promise<GroupMember[]> {
   const { data } = await db
     .from('pf_game_players')
-    .select('user_id, joined_at')
+    .select('person_id, joined_at')
     .eq('game_id', game.id)
     .eq('status', 'in')
     .order('joined_at');
-  const playerIds = ((data as { user_id: string }[] | null) ?? []).map((p) => p.user_id);
+  const playerIds = ((data as { person_id: string }[] | null) ?? []).map((p) => p.person_id);
   const people = roster ?? (await clubRoster(db, game.club_id));
-  const byId = new Map(people.map((r) => [r.user_id, r]));
-  return [game.posted_by, ...playerIds].map((id, i) => {
+  const byId = new Map(people.map((r) => [r.person_id, r]));
+  // posted_by is an ACCOUNT — a game is always posted by someone signed in —
+  // so it has to be translated to that person before it can index this map.
+  const posterPersonId = people.find((r) => r.user_id === game.posted_by)?.person_id ?? game.posted_by;
+  return [posterPersonId, ...playerIds].map((id, i) => {
     const r = byId.get(id);
     return {
-      userId: id,
+      personId: id,
       name: r?.full_name || 'A member',
       short: shortName(r?.full_name),
       email: r?.email ?? null,
@@ -350,10 +377,21 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
   const nowIso = new Date().toISOString();
   const tz = club.timezone;
 
+  /*
+   * The signed-in viewer, as a PERSON. Everything CourtConnect stores about
+   * them — their preferences, the games they are in — now hangs off the
+   * PlayerVault row rather than the login, so the session has to be resolved
+   * to one before anything else is read.
+   */
+  const me = await memberRow(db, club.id, userId);
+  const myPersonId = me?.person_id ?? null;
+
   const [roster, prefs, { data: openRows }, { data: mineRows }, { data: inRows }, { count: recent }] =
     await Promise.all([
       clubRoster(db, club.id),
-      ensurePrefs(db, club.id, userId),
+      myPersonId
+        ? ensurePrefs(db, club.id, myPersonId)
+        : Promise.resolve({ notify_games: true, share_phone: false, phone: null, stop_token: '' }),
       db
         .from('pf_games')
         .select(GAME_COLS)
@@ -370,7 +408,14 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
         .in('status', ['open', 'full'])
         .gt('starts_at', nowIso)
         .order('starts_at'),
-      db.from('pf_game_players').select('game_id').eq('club_id', club.id).eq('user_id', userId).eq('status', 'in'),
+      myPersonId
+        ? db
+            .from('pf_game_players')
+            .select('game_id')
+            .eq('club_id', club.id)
+            .eq('person_id', myPersonId)
+            .eq('status', 'in')
+        : Promise.resolve({ data: [] as { game_id: string }[] }),
       db
         .from('pf_games')
         .select('id', { count: 'exact', head: true })
@@ -399,24 +444,23 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
   const { data: playerRows } = all.size
     ? await db
         .from('pf_game_players')
-        .select('game_id, user_id, joined_at')
+        .select('game_id, person_id, joined_at')
         .in('game_id', [...all.keys()])
         .eq('status', 'in')
         .order('joined_at')
     : { data: [] };
   const playersByGame = new Map<string, string[]>();
-  for (const p of (playerRows as { game_id: string; user_id: string }[] | null) ?? []) {
-    playersByGame.set(p.game_id, [...(playersByGame.get(p.game_id) ?? []), p.user_id]);
+  for (const p of (playerRows as { game_id: string; person_id: string }[] | null) ?? []) {
+    playersByGame.set(p.game_id, [...(playersByGame.get(p.game_id) ?? []), p.person_id]);
   }
 
-  const byId = new Map(roster.map((r) => [r.user_id, r]));
-  const me = byId.get(userId);
+  const byId = new Map(roster.map((r) => [r.person_id, r]));
   const myNtrp = me?.ntrp ?? null;
 
   const view = (g: Game): BoardGame => {
     const ids = playersByGame.get(g.id) ?? [];
     const isMine = g.posted_by === userId;
-    const imIn = ids.includes(userId);
+    const imIn = !!myPersonId && ids.includes(myPersonId);
     return {
       id: g.id,
       title: gameTitle(g, tz),

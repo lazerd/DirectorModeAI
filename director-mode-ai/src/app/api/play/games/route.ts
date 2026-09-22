@@ -74,7 +74,9 @@ export async function POST(req: Request) {
   // A member telling us their level for the first time, on the way past.
   const mine = level(body.my_ntrp, club.levels);
   if (mine != null && !Number.isNaN(mine)) {
-    await saveSelfRating(db, { clubId: club.id, userId: user.id, email: user.email, fullName: user.name, ntrp: mine });
+    if (ctx.personId) {
+      await saveSelfRating(db, { clubId: club.id, personId: ctx.personId, email: user.email, fullName: user.name, ntrp: mine });
+    }
   }
 
   const { data, error } = await db.rpc('pf_post_game', {
