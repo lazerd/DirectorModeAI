@@ -52,6 +52,21 @@ export default function EventDashboard() {
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("share");
+  // ?tab=rounds (or players/standings/summary) opens on that tab and scrolls
+  // to it, past the sign-up list. Demo and pitch links land on the draw.
+  const [linkedTab, setLinkedTab] = useState<string | null>(null);
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('tab');
+    if (t && ['share', 'players', 'teams', 'rounds', 'standings', 'summary'].includes(t)) {
+      setActiveTab(t);
+      setLinkedTab(t);
+    }
+  }, []);
+  useEffect(() => {
+    if (loading || !linkedTab) return;
+    const id = window.setTimeout(() => document.getElementById('event-tabs')?.scrollIntoView({ block: 'start' }), 400);
+    return () => window.clearTimeout(id);
+  }, [loading, linkedTab]);
   const [eventEnded, setEventEnded] = useState(false);
   const [showEditFormatDialog, setShowEditFormatDialog] = useState(false);
 
@@ -301,7 +316,7 @@ export default function EventDashboard() {
         {/* Public signups panel — only visible if event has public_registration=true */}
         <EventPublicSignupsPanel eventId={event.id} />
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <Tabs id="event-tabs" value={activeTab} onValueChange={setActiveTab} className="space-y-6 scroll-mt-40">
           <TabsList className="grid w-full max-w-3xl mx-auto grid-cols-5 h-auto sm:h-14 p-1 gap-1">
             <TabsTrigger value="share" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-base font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground py-2 sm:py-3">
               <Share2 className="h-4 w-4 sm:h-5 sm:w-5" />
