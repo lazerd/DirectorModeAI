@@ -146,6 +146,16 @@ export default async function CourtConnectDirectorPage() {
   }
   const worstFormat = [...expiredByFormat.entries()].sort((a, b) => b[1] - a[1])[0];
 
+  /*
+   * A game that has been played is a record, not a to-do. Split on start time
+   * so the table leads with what still needs players and the rest collapses.
+   */
+  const nowMs = Date.now();
+  const upcoming = games
+    .filter((g) => new Date(g.starts_at).getTime() >= nowMs)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const past = games.filter((g) => new Date(g.starts_at).getTime() < nowMs);
+
   const findings: { title: string; detail: string; href?: string; cta?: string }[] = [];
   if (decided >= 3 && fillRate != null) {
     findings.push({
@@ -225,6 +235,113 @@ export default async function CourtConnectDirectorPage() {
     ['Median time to fill', minutesLabel(stats.median_fill_minutes == null ? null : Number(stats.median_fill_minutes))],
   ];
 
+  const gameRow = (g: Game) => {
+    const players = playersBy.get(g.id) ?? [];
+    const fillMin = g.filled_at
+      ? (new Date(g.filled_at).getTime() - new Date(g.created_at).getTime()) / 60000
+      : null;
+    return (
+      <tr key={g.id} className="border-t border-white/[0.06] align-top">
+        <td className="px-4 py-3 font-medium">{gameTitle(g, tz)}</td>
+        <td className="px-4 py-3 text-white/70">{ratingLabel(g.rating_min, g.rating_max, club.levels) || 'Any'}</td>
+        <td className="px-4 py-3 text-white/70">{names.get(g.posted_by) ?? 'A member'}</td>
+        <td className="px-4 py-3 text-white/70">
+          {/*
+            Court terms, not database terms. spots_needed counts
+            the players wanted BESIDES the poster, so a doubles
+            game posted by one member wanting three more is
+            stored as 3 — and a director reading "1/3" has to do
+            arithmetic to find out whether his court is full. The
+            poster is playing: 2 of 4.
+          */}
+          {players.length + 1}/{g.spots_needed + 1}
+          <span className="block text-white/45">
+            {[names.get(g.posted_by) ?? 'A member', ...players].join(', ')}
+          </span>
+          {(waitingBy.get(g.id)?.length ?? 0) > 0 && (
+            <span className="block text-amber-300/70">
+              waiting: {waitingBy.get(g.id)!.join(', ')}
+            </span>
+          )}
+        </td>
+        <td className="px-4 py-3 text-white/70">{g.notified_count}</td>
+        <td className="px-4 py-3 text-white/70">
+          {(() => {
+            const yes = saidYesBy.get(g.id) ?? [];
+            const no = declinedBy.get(g.id) ?? [];
+            const dropped = droppedBy.get(g.id) ?? [];
+            const waiting = waitingBy.get(g.id) ?? [];
+            const asked = emailedOn.get(g.id)?.size ?? g.notified_count;
+            const quiet = [...(emailedOn.get(g.id) ?? [])]
+              .filter((id) => !(answered.get(g.id)?.has(id)))
+              .map((id) => ({ id, name: names.get(id) ?? 'A member' }));
+            if (!asked) return <span className="text-white/35">—</span>;
+            return (
+              <>
+                <span className={yes.length ? 'text-emerald-300' : 'text-white/50'}>{yes.length} yes</span>
+                {' · '}
+                <span className={no.length ? 'text-rose-300' : 'text-white/50'}>{no.length} no</span>
+                {waiting.length > 0 && <span className="text-amber-300">{` · ${waiting.length} in line`}</span>}
+                {quiet.length > 0 && <span className="text-white/35">{` · ${quiet.length} no reply`}</span>}
+                {yes.length > 0 && (
+                  <span className="mt-0.5 block text-xs text-emerald-300/70">said yes: {yes.join(', ')}</span>
+                )}
+                {no.length > 0 && (
+                  <span className="mt-0.5 block text-xs text-rose-300/70">said no: {no.join(', ')}</span>
+                )}
+                {dropped.length > 0 && (
+                  <span className="mt-0.5 block text-xs text-amber-300/70">dropped out: {dropped.join(', ')}</span>
+                )}
+                {/* One tap per person, for the copies that are sitting in spam. */}
+                {g.status === 'open' && new Date(g.starts_at) > new Date() && (
+                  <SendAgain gameId={g.id} people={quiet} />
+                )}
+                {/* Anyone the director put in the game themselves is on the court but never answered anything. */}
+                {(playersBy.get(g.id) ?? []).length > yes.length && (
+                  <span className="mt-0.5 block text-xs text-white/35">
+                    added by staff:{' '}
+                    {(playersBy.get(g.id) ?? []).filter((n) => !yes.includes(n)).join(', ')}
+                  </span>
+                )}
+              </>
+            );
+          })()}
+        </td>
+        <td className="px-4 py-3">
+          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[g.status] ?? ''}`}>
+            {g.status}
+          </span>
+          {fillMin != null && g.status === 'full' && (
+            <span className="mt-1 block text-xs text-white/40">filled in {minutesLabel(fillMin)}</span>
+          )}
+          {/* Members added since it was posted have never heard about it. */}
+          {g.status === 'open' && new Date(g.starts_at) > new Date() && (
+            <NotifyAgain gameId={g.id} levelWord={club.levels.inline} />
+          )}
+        </td>
+      </tr>
+    );
+  };
+
+  const gamesTable = (list: Game[], nested = false) => (
+    <div className={`overflow-x-auto ${nested ? '' : 'mt-4 rounded-2xl border border-white/[0.08]'}`}>
+      <table className="w-full min-w-[720px] text-left text-[13.5px]">
+        <thead className="text-white/40">
+          <tr>
+            <th className="px-4 py-3 font-medium">Game</th>
+            <th className="px-4 py-3 font-medium">Level</th>
+            <th className="px-4 py-3 font-medium">Posted by</th>
+            <th className="px-4 py-3 font-medium">Playing</th>
+            <th className="px-4 py-3 font-medium">Emailed</th>
+            <th className="px-4 py-3 font-medium">Answers</th>
+            <th className="px-4 py-3 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>{list.map(gameRow)}</tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-[#001016] text-white" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
       <div className="mx-auto max-w-5xl px-5 py-12 sm:px-8 sm:py-16">
@@ -294,110 +411,24 @@ export default async function CourtConnectDirectorPage() {
             No games posted yet. Share the member link: <span className="text-white/80">/c/{club.slug}/play</span>
           </p>
         ) : (
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-white/[0.08]">
-            <table className="w-full min-w-[720px] text-left text-[13.5px]">
-              <thead className="text-white/40">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Game</th>
-                  <th className="px-4 py-3 font-medium">Level</th>
-                  <th className="px-4 py-3 font-medium">Posted by</th>
-                  <th className="px-4 py-3 font-medium">Playing</th>
-                  <th className="px-4 py-3 font-medium">Emailed</th>
-                  <th className="px-4 py-3 font-medium">Answers</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {games.map((g) => {
-                  const players = playersBy.get(g.id) ?? [];
-                  const fillMin = g.filled_at
-                    ? (new Date(g.filled_at).getTime() - new Date(g.created_at).getTime()) / 60000
-                    : null;
-                  return (
-                    <tr key={g.id} className="border-t border-white/[0.06] align-top">
-                      <td className="px-4 py-3 font-medium">{gameTitle(g, tz)}</td>
-                      <td className="px-4 py-3 text-white/70">{ratingLabel(g.rating_min, g.rating_max, club.levels) || 'Any'}</td>
-                      <td className="px-4 py-3 text-white/70">{names.get(g.posted_by) ?? 'A member'}</td>
-                      <td className="px-4 py-3 text-white/70">
-                        {/*
-                          Court terms, not database terms. spots_needed counts
-                          the players wanted BESIDES the poster, so a doubles
-                          game posted by one member wanting three more is
-                          stored as 3 — and a director reading "1/3" has to do
-                          arithmetic to find out whether his court is full. The
-                          poster is playing: 2 of 4.
-                        */}
-                        {players.length + 1}/{g.spots_needed + 1}
-                        <span className="block text-white/45">
-                          {[names.get(g.posted_by) ?? 'A member', ...players].join(', ')}
-                        </span>
-                        {(waitingBy.get(g.id)?.length ?? 0) > 0 && (
-                          <span className="block text-amber-300/70">
-                            waiting: {waitingBy.get(g.id)!.join(', ')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-white/70">{g.notified_count}</td>
-                      <td className="px-4 py-3 text-white/70">
-                        {(() => {
-                          const yes = saidYesBy.get(g.id) ?? [];
-                          const no = declinedBy.get(g.id) ?? [];
-                          const dropped = droppedBy.get(g.id) ?? [];
-                          const waiting = waitingBy.get(g.id) ?? [];
-                          const asked = emailedOn.get(g.id)?.size ?? g.notified_count;
-                          const quiet = [...(emailedOn.get(g.id) ?? [])]
-                            .filter((id) => !(answered.get(g.id)?.has(id)))
-                            .map((id) => ({ id, name: names.get(id) ?? 'A member' }));
-                          if (!asked) return <span className="text-white/35">—</span>;
-                          return (
-                            <>
-                              <span className={yes.length ? 'text-emerald-300' : 'text-white/50'}>{yes.length} yes</span>
-                              {' · '}
-                              <span className={no.length ? 'text-rose-300' : 'text-white/50'}>{no.length} no</span>
-                              {waiting.length > 0 && <span className="text-amber-300">{` · ${waiting.length} in line`}</span>}
-                              {quiet.length > 0 && <span className="text-white/35">{` · ${quiet.length} no reply`}</span>}
-                              {yes.length > 0 && (
-                                <span className="mt-0.5 block text-xs text-emerald-300/70">said yes: {yes.join(', ')}</span>
-                              )}
-                              {no.length > 0 && (
-                                <span className="mt-0.5 block text-xs text-rose-300/70">said no: {no.join(', ')}</span>
-                              )}
-                              {dropped.length > 0 && (
-                                <span className="mt-0.5 block text-xs text-amber-300/70">dropped out: {dropped.join(', ')}</span>
-                              )}
-                              {/* One tap per person, for the copies that are sitting in spam. */}
-                              {g.status === 'open' && new Date(g.starts_at) > new Date() && (
-                                <SendAgain gameId={g.id} people={quiet} />
-                              )}
-                              {/* Anyone the director put in the game themselves is on the court but never answered anything. */}
-                              {(playersBy.get(g.id) ?? []).length > yes.length && (
-                                <span className="mt-0.5 block text-xs text-white/35">
-                                  added by staff:{' '}
-                                  {(playersBy.get(g.id) ?? []).filter((n) => !yes.includes(n)).join(', ')}
-                                </span>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${STATUS_STYLE[g.status] ?? ''}`}>
-                          {g.status}
-                        </span>
-                        {fillMin != null && g.status === 'full' && (
-                          <span className="mt-1 block text-xs text-white/40">filled in {minutesLabel(fillMin)}</span>
-                        )}
-                        {/* Members added since it was posted have never heard about it. */}
-                        {g.status === 'open' && new Date(g.starts_at) > new Date() && (
-                          <NotifyAgain gameId={g.id} levelWord={club.levels.inline} />
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+          <>
+            {upcoming.length > 0 ? (
+              gamesTable(upcoming)
+            ) : (
+              <p className="mt-3 text-[14.5px] text-white/50">
+                Nothing on the books right now.
+              </p>
+            )}
+            {/* Played games are history: they stay one click away rather than on top of what is still coming. */}
+            {past.length > 0 && (
+              <details className="mt-4 overflow-hidden rounded-2xl border border-white/[0.08]">
+                <summary className="cursor-pointer px-4 py-3 text-[14.5px] font-medium text-white/60 hover:text-white/80">
+                  Previous games ({past.length})
+                </summary>
+                <div className="border-t border-white/[0.06]">{gamesTable(past, true)}</div>
+              </details>
+            )}
+          </>
         )}
       </div>
     </div>
