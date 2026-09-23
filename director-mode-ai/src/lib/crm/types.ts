@@ -67,7 +67,7 @@ export interface Activity {
   occurred_at: string;
   created_by_email: string | null;
   created_at: string;
-  /** Set on a `reply` filed from inbound mail — the email it came from. */
+  /** Set on a `reply` filed from inbound mail â€” the email it came from. */
   inbound_id?: string | null;
 }
 
