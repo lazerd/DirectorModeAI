@@ -31,10 +31,10 @@ export const DEMO_SILENCE_DAYS = 5;
  * What a logged reply looks like.
  *
  * The reps write their own timeline entries, in their own words: "Mary replied
- * — wants to see it on a phone", "got a reply from the GM". There is no
- * inbound-mail integration and no `reply` activity kind, so the note itself is
- * the signal. Narrow on purpose — it matches the word, not "no reply", which
- * is the opposite thing and is what rule 2 writes.
+ * — wants to see it on a phone", "got a reply from the GM". A reply filed
+ * from inbound mail is kind `reply`; hand-logged notes are still read for the
+ * word. Narrow on purpose — it matches the word, not "no reply", which is the
+ * opposite thing and is what rule 2 writes.
  */
 const REPLY_RE = /\b(replied|reply|replies|wrote back|got back to)\b/i;
 const NO_REPLY_RE = /\bno (reply|response)\b/i;
@@ -134,7 +134,10 @@ export function buildToday(
   // so the reply is where the deal stopped. If a rep logged a reply and then
   // set a next step, they have acted; that is the whole test.
   const unansweredReplies = open.filter(
-    (o) => !named.has(o.id) && !o.next_step && looksLikeAReply(o.last_activity_body),
+    (o) =>
+      !named.has(o.id) &&
+      !o.next_step &&
+      (o.last_activity_kind === 'reply' || looksLikeAReply(o.last_activity_body)),
   );
   const replyIds = new Set(unansweredReplies.map((o) => o.id));
 

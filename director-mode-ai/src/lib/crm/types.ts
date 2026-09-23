@@ -67,6 +67,8 @@ export interface Activity {
   occurred_at: string;
   created_by_email: string | null;
   created_at: string;
+  /** Set on a `reply` filed from inbound mail — the email it came from. */
+  inbound_id?: string | null;
 }
 
 /** An org as the pipeline draws it: the row plus the facts a card shows. */
@@ -113,4 +115,4 @@ export const CONTACT_COLS =
   'id, org_id, full_name, title, email, phone, role, is_primary, do_not_contact, notes, created_at, updated_at';
 
 export const ACTIVITY_COLS =
-  'id, org_id, contact_id, kind, body, occurred_at, created_by_email, created_at';
+  'id, org_id, contact_id, kind, body, occurred_at, created_by_email, created_at, inbound_id';

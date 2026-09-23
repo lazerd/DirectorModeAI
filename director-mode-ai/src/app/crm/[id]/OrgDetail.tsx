@@ -649,6 +649,25 @@ export default function OrgDetail({
                 {a.created_by_email && <span>· {a.created_by_email}</span>}
               </div>
               <p className="mt-0.5 whitespace-pre-wrap text-sm text-white/75">{a.body}</p>
+              {a.kind === 'reply' && a.inbound_id && a.contact_id && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const subj = a.body.split('\n')[0].match(/ — (.+)$/)?.[1] ?? '';
+                    setSeed({
+                      contact_id: a.contact_id!,
+                      subject: subj ? (/^re:/i.test(subj) ? subj : `Re: ${subj}`) : 'Re:',
+                      body: '',
+                      key: `reply-${a.id}-${Date.now()}`,
+                      in_reply_to: a.inbound_id!,
+                    });
+                    openComposerFor(a.contact_id!);
+                  }}
+                  className="mt-2 rounded-lg border border-[#D3FB52]/40 px-3 py-1.5 text-xs font-semibold text-[#D3FB52] hover:bg-[#D3FB52]/10"
+                >
+                  Reply
+                </button>
+              )}
             </li>
           ))}
           {activities.length === 0 && <li className="text-sm text-white/30">Nothing logged yet.</li>}

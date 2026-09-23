@@ -84,6 +84,8 @@ export interface ComposeSeed {
   replaces?: string;
   replaces_at?: string;
   template_slug?: string | null;
+  /** A reply to their email: the crm_inbound_emails id, so ours threads under theirs. */
+  in_reply_to?: string;
 }
 
 export default function Compose({
@@ -159,6 +161,7 @@ export default function Compose({
   const [schedWhen, setSchedWhen] = useState(() => tomorrowAt8());
   const [schedError, setSchedError] = useState<string | null>(null);
   const [replaces, setReplaces] = useState<string | null>(null);
+  const [inReplyTo, setInReplyTo] = useState<string | null>(null);
 
   const templateSlug = startedFrom?.slug ?? null;
   const edited =
@@ -194,6 +197,7 @@ export default function Compose({
     setTplError(null);
     setLeaks([]);
     setReplaces(seed.replaces ?? null);
+    setInReplyTo(seed.in_reply_to ?? null);
     if (seed.replaces_at) {
       const at = new Date(seed.replaces_at);
       if (!Number.isNaN(at.getTime())) {
@@ -245,7 +249,15 @@ export default function Compose({
       const res = await fetch('/api/crm/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ org_id: org.id, contact_id: contactId, subject, body, confirm, template_slug: templateSlug }),
+        body: JSON.stringify({
+          org_id: org.id,
+          contact_id: contactId,
+          subject,
+          body,
+          confirm,
+          template_slug: templateSlug,
+          in_reply_to: inReplyTo,
+        }),
       });
       const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       if (confirm) {
@@ -261,6 +273,7 @@ export default function Compose({
           setStartedFrom(null);
           setBaseline(null);
           setReplaces(null);
+          setInReplyTo(null);
           // The panel folds away and the confirmation goes up on the page,
           // next to the History the send just added a line to.
           onSent();
@@ -454,7 +467,7 @@ export default function Compose({
     <section className="rounded-2xl border border-[#D3FB52]/20 bg-[#002838] p-4">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="font-display text-xl text-white">
-          {replaces ? 'Edit the scheduled email' : 'Write an email'}
+          {replaces ? 'Edit the scheduled email' : inReplyTo ? 'Reply' : 'Write an email'}
         </h2>
         <button type="button" onClick={() => onOpenChange(false)} className="text-xs text-white/40 hover:text-white">
           Close
@@ -462,7 +475,7 @@ export default function Compose({
       </div>
       <p className="mt-1 text-sm text-white/45">
         From <span className="text-white/70">ClubMode Sales</span>, replies to{' '}
-        <span className="text-white/70">{repEmail}</span>. One person at a time.
+        <span className="text-white/70">hello@clubmode.ai</span> and land on this club&apos;s History. One person at a time.
       </p>
       {replaces && (
         <p className="mt-2 rounded-lg border border-[#D3FB52]/25 bg-[#D3FB52]/[0.06] p-2.5 text-xs text-[#D3FB52]">

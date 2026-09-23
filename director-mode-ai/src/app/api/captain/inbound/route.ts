@@ -14,6 +14,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { tokensFromRecipients } from '@/lib/captain/hostNote';
 import { verifySvix } from '@/lib/captain/svix';
 import { fileHostNote, HostNoteError } from '@/lib/captain/hostNoteServer';
+import { fileCrmReply } from '@/lib/crm/inbound';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -68,15 +69,38 @@ export async function POST(req: Request) {
     subject?: string;
     text?: string | null;
     html?: string | null;
+    message_id?: string | null;
+    created_at?: string | null;
+    headers?: Record<string, string> | null;
   };
 
   const tokens = tokensFromRecipients(
     [...(email.to ?? []), ...(email.cc ?? []), ...(event.data.to ?? []), ...(event.data.cc ?? []), ...(event.data.bcc ?? []), ...(event.data.received_for ?? [])],
     domain,
   );
-  if (!tokens.length) return NextResponse.json({ ignored: 'no team address' });
-
   const db = getSupabaseAdmin();
+
+  // Not a team address: a prospect answering a CRM letter (Reply-To
+  // hello@clubmode.ai, forwarded here by Namecheap). See lib/crm/inbound.ts.
+  if (!tokens.length) {
+    const headerId = email.headers
+      ? Object.entries(email.headers).find(([k]) => k.toLowerCase() === 'message-id')?.[1]
+      : null;
+    try {
+      const filed = await fileCrmReply(db, {
+        resendEmailId: event.data.email_id,
+        from: email.from ?? null,
+        subject: email.subject ?? null,
+        text: (email.text && email.text.trim()) || stripHtml(email.html || ''),
+        messageId: email.message_id || headerId || null,
+        receivedAt: email.created_at ?? null,
+      });
+      return NextResponse.json({ ok: true, crm: filed });
+    } catch (e) {
+      return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+    }
+  }
+
   const { data: team } = await db
     .from('captain_teams')
     .select('id, name, club_id')

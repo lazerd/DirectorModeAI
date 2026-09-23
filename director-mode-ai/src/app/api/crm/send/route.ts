@@ -78,6 +78,19 @@ export async function POST(req: Request) {
   }
 
   // ------------------------------------------------------------------ send
+  // Answering their email: thread under it. The row must be this club's.
+  let inReplyTo: string | null = null;
+  const inboundId = typeof body.in_reply_to === 'string' ? body.in_reply_to : '';
+  if (inboundId) {
+    const { data: inbound } = await ctx.db
+      .from('crm_inbound_emails')
+      .select('org_id, message_id')
+      .eq('id', inboundId)
+      .maybeSingle();
+    if (!inbound || (inbound as { org_id: string | null }).org_id !== orgId) return bad('That reply is not from this club.');
+    inReplyTo = (inbound as { message_id: string | null }).message_id;
+  }
+
   const outcome = await sendCrmEmail({
     db: ctx.db,
     org: org as unknown as Org,
@@ -87,6 +100,7 @@ export async function POST(req: Request) {
     subject,
     body: message,
     templateSlug: text(body.template_slug, 80),
+    inReplyTo,
   });
 
   // Only a real send is a 200. A hold reads as success to safeResendSend and

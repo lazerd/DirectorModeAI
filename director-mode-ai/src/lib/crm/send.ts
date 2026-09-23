@@ -62,6 +62,8 @@ export interface SendArgs {
   subject: string;
   body: string;
   templateSlug?: string | null;
+  /** Their Message-ID when this answers an inbound reply, so it threads. */
+  inReplyTo?: string | null;
 }
 
 /** The postal address that goes on every message. Missing means no sending. */
@@ -168,6 +170,7 @@ export async function sendCrmEmail(args: SendArgs): Promise<SendOutcome> {
     subject: built.subject,
     html: built.html,
     replyTo,
+    ...(args.inReplyTo ? { headers: { 'In-Reply-To': args.inReplyTo, References: args.inReplyTo } } : {}),
     // No clubId / clubSlug / billToUserId ON PURPOSE. See the header.
   });
 

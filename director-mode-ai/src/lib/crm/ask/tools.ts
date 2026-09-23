@@ -545,7 +545,7 @@ async function whatsWaiting(_input: any, ctx: CrmAskContext): Promise<ToolResult
       .filter((o) => o.stage === 'demo_done')
       .map((o) => ({ ...name(o), last_touch: last.get(o.id)?.occurred_at ?? null })),
     replies_not_acted_on: open
-      .filter((o) => !o.next_step && looksLikeAReply(last.get(o.id)?.body))
+      .filter((o) => !o.next_step && (last.get(o.id)?.kind === 'reply' || looksLikeAReply(last.get(o.id)?.body)))
       .map((o) => ({ ...name(o), reply: last.get(o.id)?.body ?? null })),
     queued_for_outreach: orgs.filter((o) => o.queued_at).length,
     clubs_with_no_next_step: open.filter((o) => !o.next_step).length,
