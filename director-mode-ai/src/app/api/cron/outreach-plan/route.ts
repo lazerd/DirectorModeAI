@@ -11,6 +11,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { planAutopilot, sendDigest } from '@/lib/outreach/autopilot';
+import { discoverClubs } from '@/lib/outreach/discover';
 import { platformOwnerEmails } from '@/lib/platformOwner';
 
 export const dynamic = 'force-dynamic';
@@ -23,6 +24,14 @@ export async function GET(request: NextRequest) {
   }
 
   const db = getSupabaseAdmin();
+
+  // ?discover=dry: find clubs on the live keys and write nothing. The way to
+  // check the Brave + Gemini keys work in production (their values cannot be
+  // read back out of Vercel).
+  if (request.nextUrl.searchParams.get('discover') === 'dry') {
+    const r = await discoverClubs(db, { count: 1, dryRun: true });
+    return NextResponse.json({ ok: true, note: r.note, found: (r.accepted ?? []).map((c) => `${c.club} (${c.state})`) });
+  }
   // A cron has no signed-in rep. The cards go to whoever is on the allowlist
   // first — in practice Darrin — and a right swipe re-stamps rep_email with
   // whoever actually decided, so ownership follows the human, not the cron.
