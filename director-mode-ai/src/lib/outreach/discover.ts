@@ -7,7 +7,9 @@
  * printed on the club's own website.
  *
  * ── HOW ──────────────────────────────────────────────────────────────────
- * One research call per run. The model gets Anthropic's server-side web search
+ * Free tiers: Brave search + Gemini flash, in discoverFree.ts (9/24/26). The
+ * paid Claude web-search version below, research(), is kept but not called.
+ * Originally: one research call per run. The model gets Anthropic's server-side web search
  * and web fetch, today's focus states (rotated by date so a week of runs does
  * not all land in one town), and a single client tool, report_clubs, to hand
  * back what it found. It is asked for a few more candidates than we need so
@@ -33,6 +35,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type { AnthropicLike } from './write';
+import { researchFree, type FreeDeps } from './discoverFree';
 
 type Db = ReturnType<typeof getSupabaseAdmin>;
 
@@ -182,6 +185,11 @@ export interface Candidate {
   source_url: string;
   why: string;
   small_club: boolean;
+  /**
+   * The person is named on the club's site but their own address is not, so
+   * the letter goes to the club's general mailbox addressed to them by name.
+   */
+  shared_ok?: boolean;
 }
 
 export interface Known {
@@ -202,7 +210,7 @@ export function rejectReason(c: Candidate, known: Known): string | null {
   const state = (c.state ?? '').trim().toUpperCase();
   if (!regionForState(state)) return `outside target states (${state || 'none'})`;
   if (isBackyard(c)) return 'our own backyard';
-  if (isGenericMailbox(email) && !c.small_club) return 'shared mailbox at a club that is not small';
+  if (isGenericMailbox(email) && !c.small_club && !c.shared_ok) return 'shared mailbox at a club that is not small';
   if (known.emails.has(email) || known.suppressedEmails.has(email)) return 'address already in the CRM or suppressed';
   const n = normalizeClubName(c.club);
   if (!n) return 'no club name';
@@ -439,13 +447,10 @@ export interface DiscoverResult {
 
 export async function discoverClubs(
   db: Db,
-  opts: { count: number; dryRun?: boolean; client?: AnthropicLike; now?: Date; fetcher?: (url: string) => Promise<string> },
+  opts: { count: number; dryRun?: boolean; client?: AnthropicLike; now?: Date; fetcher?: (url: string) => Promise<string>; free?: FreeDeps },
 ): Promise<DiscoverResult> {
   const count = Math.max(0, Math.floor(opts.count));
   if (!count) return { added: [], skipped: [], note: 'count is 0' };
-  const client =
-    opts.client ?? (ANTHROPIC_KEY ? (new Anthropic({ apiKey: ANTHROPIC_KEY, timeout: 280_000 }) as unknown as AnthropicLike) : null);
-  if (!client) return { added: [], skipped: [], note: 'no ANTHROPIC_API_KEY' };
   const fetcher = opts.fetcher ?? fetchPage;
 
   const known = await loadKnown(db);
@@ -457,7 +462,12 @@ export async function discoverClubs(
   const { data: inStates } = await db.from('crm_orgs').select('name').in('state', states).limit(200);
   const avoid = ((inStates as { name: string }[] | null) ?? []).map((o) => o.name);
 
-  const { candidates, usage, note: researchNote } = await research(client, count + 3, states, avoid);
+  // Free tiers only (Brave + Gemini), per Darrin 9/24: Active 10 finds its
+  // chiropractors this way for nothing. The paid research() above stays for a
+  // test harness but is no longer called. `avoid` is enforced by rejectReason.
+  void avoid;
+  void opts.client;
+  const { candidates, usage, note: researchNote } = await researchFree(count, states, { fetcher: opts.fetcher, ...opts.free });
   const skipped: string[] = [];
   const accepted: Candidate[] = [];
   const seenThisRun = new Set<string>();
@@ -541,12 +551,11 @@ export async function discoverClubs(
     }
   }
 
-  const cost = estimateCost(usage);
   const note = [
     researchNote,
     `states ${states.join('+')}`,
     `${candidates.length} candidates, ${accepted.length} passed`,
-    `${usage.searches} searches, ${usage.fetches} fetches, ${usage.input} in / ${usage.output} out tokens, ~$${cost.toFixed(2)}`,
+    `${usage.searches} Brave searches, ${usage.pages} pages read, ${usage.gemini} Gemini calls (free tiers)`,
   ]
     .filter(Boolean)
     .join('; ');

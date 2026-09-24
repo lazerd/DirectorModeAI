@@ -7,7 +7,7 @@ import { readFileSync } from 'fs';
 import { createClient } from '@supabase/supabase-js';
 
 const env = Object.fromEntries(readFileSync('.env.local', 'utf8').split('\n').filter((l) => l.includes('=')).map((l) => [l.slice(0, l.indexOf('=')).trim(), l.slice(l.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '')]));
-Object.assign(process.env, env);
+Object.assign(process.env, env, { BRAVE_API_KEY: process.env.BRAVE_API_KEY, GEMINI_API_KEY: process.env.GEMINI_API_KEY });
 const { discoverClubs } = await import('../src/lib/outreach/discover.ts');
 
 const args = process.argv.slice(2);
