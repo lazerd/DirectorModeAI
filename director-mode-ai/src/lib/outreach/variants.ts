@@ -49,10 +49,11 @@ const INTRO: Record<Variant, Letter> = {
     body: ({ first, club, link }) =>
       [
         `Hi ${first},`,
-        `We're not looking to replace the software ${club} uses today. We just want to make your life easier. We built a tool called MixerMode to make mixers easier to organize and easier for members to take part in. Partners, courts and rotations get drawn for you, and every player sees their next match on their phone.`,
-        `Here's one running at a sample club, no login:`,
+        `We're not looking to replace the software ${club} uses today. We just want to make your life easier.`,
+        `We're ClubMode. We've built 16 tools for racquet sports directors, and one of them is MixerMode, which makes mixers easier to organize and easier for members to take part in. Partners, courts and rotations get drawn for you, and every player sees their next match on their phone.`,
+        `Here's a mixer running at a sample club, no login:`,
         link,
-        `If it's not useful, no harm done. But we'd love to get your reaction.`,
+        `The other 15 tools are in the same sample club if you want to look around. If it's not useful, no harm done. But we'd love to get your reaction.`,
       ].join('\n\n'),
   },
 };
