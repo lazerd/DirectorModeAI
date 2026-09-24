@@ -16,11 +16,10 @@ describe('letters', () => {
       expect(l.body).not.toMatch(/—|\{\{|Darrin|Kevin|Sleepy Hollow/);
     }
   });
-  it('both intros end with the every-tool link, carrying the ref', () => {
+  it('every intro carries the every-tool link, with the ref', () => {
     for (const v of ['A', 'B', 'C'] as const) {
       const l = renderLetter('intro', v, { club: 'X Club', fullName: 'Y Z' }, links, 'abc123xyz9')!;
-      const last = l.body.split('\n\n').pop()!;
-      expect(last).toContain('https://clubmode.ai/demo/TOKEN/enter?as=director&next=%2Ftools&r=abc123xyz9');
+      expect(l.body).toContain('https://clubmode.ai/demo/TOKEN/enter?as=director&next=%2Ftools&r=abc123xyz9');
     }
   });
   it('never says free or no cost (reads as free software, Darrin 9/24)', () => {

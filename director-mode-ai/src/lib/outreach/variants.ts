@@ -69,15 +69,18 @@ const INTRO: Record<Variant, Letter> = {
       ].join('\n\n'),
   },
   C: {
-    subject: () => `What directors like you earn`,
-    body: ({ first, club, link, tools }) =>
+    // Darrin's own wording (9/24/26), em dash swapped for a comma.
+    subject: () => `We've been building something for club directors`,
+    body: ({ first, link, tools }) =>
       [
         `Hi ${first},`,
-        `This one is for you as a director, not for ${club}. We built Benchmarks, which shows what directors and pros at clubs like yours actually earn, from the clubs' own public IRS filings. You can see your percentile and what the top 25% make.`,
-        `It's in a sample club here, no login:`,
+        `I wanted to send you something we just built for club directors and pros.`,
+        `It's called Benchmarks. We pulled compensation information from clubs' public IRS filings and turned it into a simple way to see where you fall relative to other clubs.`,
+        `Here's a sample, no login needed:`,
         link,
-        `It's one of 17 tools we've built for racquet sports directors. If it's useful, we'd love to hear what you think.`,
-        ...toolsLine(tools),
+        `We've actually built 17 different tools like this for club directors and pros. We're still figuring out which ones are genuinely useful, so I'd love to get your take if you have a few minutes to poke around.`,
+        ...(tools ? [`Here's the full collection:`, tools] : []),
+        `Would be great to hear what you think.`,
       ].join('\n\n'),
   },
   B: {
