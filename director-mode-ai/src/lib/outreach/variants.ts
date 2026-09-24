@@ -40,7 +40,7 @@ const INTRO: Record<Variant, Letter> = {
         `We believe the club software we've been hard at work building the past couple of years would make things easier for the members at ${club} and for the people who run it.`,
         `There's a sample club set up so you can look around instead of reading a pitch. No login, nothing to install.`,
         link,
-        `Members can find a game at their level themselves, and sign-ups run without anyone keeping a list.`,
+        `Members can find a game at their level on their own with CourtConnect, and MixerMode makes your events a breeze to run.`,
         `If you like what you see, we'd be happy to set one up with ${club} already in it, at no cost.`,
       ].join('\n\n'),
   },
