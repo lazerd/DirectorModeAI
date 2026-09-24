@@ -201,6 +201,39 @@ function rewritePtlHost(request: NextRequest): NextResponse | null {
   return NextResponse.rewrite(url);
 }
 
+/**
+ * /event/<code> of a DEMO club's mixer forwards to that mixer's MixerMode page,
+ * signed in through the club's demo link, opened on Rounds.
+ *
+ * The plain player page is what someone standing at the mixer sees; a
+ * prospect clicking a link from an email should land on the club's side of
+ * it. Real clubs have no demo_mode, so demo_event_forward() returns null and
+ * nothing changes for them. `?me=` (a player's own phone view, which the demo
+ * tours link to on purpose) always passes through.
+ */
+async function forwardDemoEvent(request: NextRequest): Promise<NextResponse | null> {
+  const m = request.nextUrl.pathname.match(/^\/event\/([A-Za-z0-9]{3,12})\/?$/);
+  if (!m || request.nextUrl.searchParams.has('me')) return null;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  try {
+    const res = await fetch(`${url}/rest/v1/rpc/demo_event_forward`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_code: m[1] }),
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const target = (await res.json()) as string | null;
+    if (typeof target !== 'string' || !target.startsWith('/demo/')) return null;
+    return NextResponse.redirect(new URL(target, request.nextUrl.origin), 307);
+  } catch {
+    // The player page is still a working page; never block it on a lookup.
+    return null;
+  }
+}
+
 export async function middleware(request: NextRequest) {
   // Runs before anything else: no Supabase round-trip, and no session cookie
   // written against a host we are trying to retire.
@@ -211,6 +244,9 @@ export async function middleware(request: NextRequest) {
   // and the rewrite has to happen before routing decides what this path is.
   const ptl = rewritePtlHost(request);
   if (ptl) return ptl;
+
+  const demoEvent = await forwardDemoEvent(request);
+  if (demoEvent) return demoEvent;
 
   /*
    * `?embed=1` on a club's public page. Layouts get no searchParams, so the
