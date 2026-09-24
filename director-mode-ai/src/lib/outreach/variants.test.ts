@@ -23,6 +23,14 @@ describe('letters', () => {
       expect(last).toContain('https://clubmode.ai/demo/TOKEN/enter?as=director&next=%2Ftools&r=abc123xyz9');
     }
   });
+  it('never says free or no cost (reads as free software, Darrin 9/24)', () => {
+    for (const kind of ['intro', 'followup'] as const) {
+      for (const v of ['A', 'B'] as const) {
+        const l = renderLetter(kind, v, { club: 'X Club', fullName: 'Y Z' }, links, 'abc123xyz9')!;
+        expect(`${l.subject} ${l.body}`).not.toMatch(/\bfree\b|no cost|no charge|costs? (you )?nothing/i);
+      }
+    }
+  });
   it('no demo link means no letter', () => {
     expect(renderLetter('intro', 'A', { club: 'X', fullName: 'Y Z' }, { demo_url: null, mixer_url: null })).toBeNull();
   });

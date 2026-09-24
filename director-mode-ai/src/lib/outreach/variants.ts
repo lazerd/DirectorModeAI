@@ -44,7 +44,7 @@ const INTRO: Record<Variant, Letter> = {
         `There's a sample club set up so you can look around instead of reading a pitch. No login, nothing to install.`,
         link,
         `Members can find a game at their level on their own with CourtConnect, and MixerMode makes your events a breeze to run.`,
-        `If you like what you see, we'd be happy to set one up with ${club} already in it, at no cost.`,
+        `If you'd like us to set up a demo just for ${club}, reply to this email and we'd be happy to put one together.`,
         ...toolsLine(tools),
       ].join('\n\n'),
   },
@@ -71,7 +71,7 @@ const FOLLOW_UP: Letter = {
       `One more note and then we'll leave you be.`,
       `The sample club is still up if you'd like to click around:`,
       link,
-      `If you'd like one with ${club} in it, just reply and we'll set it up. No cost.`,
+      `If you'd like us to set up a demo just for ${club}, reply to this email and we'd be happy to put one together.`,
     ].join('\n\n'),
 };
 
