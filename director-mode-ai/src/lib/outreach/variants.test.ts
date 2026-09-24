@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { linkFor, newRef, nextVariant, renderLetter } from './variants';
+import { canBeSentC, linkFor, newRef, nextVariant, renderLetter } from './variants';
 
 const links = { demo_url: 'https://clubmode.ai/demo/TOKEN', mixer_url: 'https://clubmode.ai/demo/TOKEN/enter?as=director&next=%2Fmixer%2Fevents%2Fid%3Ftab%3Drounds' };
 
@@ -17,7 +17,7 @@ describe('letters', () => {
     }
   });
   it('both intros end with the every-tool link, carrying the ref', () => {
-    for (const v of ['A', 'B'] as const) {
+    for (const v of ['A', 'B', 'C'] as const) {
       const l = renderLetter('intro', v, { club: 'X Club', fullName: 'Y Z' }, links, 'abc123xyz9')!;
       const last = l.body.split('\n\n').pop()!;
       expect(last).toContain('https://clubmode.ai/demo/TOKEN/enter?as=director&next=%2Ftools&r=abc123xyz9');
@@ -25,7 +25,7 @@ describe('letters', () => {
   });
   it('never says free or no cost (reads as free software, Darrin 9/24)', () => {
     for (const kind of ['intro', 'followup'] as const) {
-      for (const v of ['A', 'B'] as const) {
+      for (const v of ['A', 'B', 'C'] as const) {
         const l = renderLetter(kind, v, { club: 'X Club', fullName: 'Y Z' }, links, 'abc123xyz9')!;
         expect(`${l.subject} ${l.body}`).not.toMatch(/\bfree\b|no cost|no charge|costs? (you )?nothing/i);
       }
@@ -44,5 +44,31 @@ describe('letters', () => {
   });
   it('makes a url-safe ref', () => {
     expect(newRef()).toMatch(/^[a-z2-9]{10}$/);
+  });
+});
+
+describe('letter C (Benchmarks)', () => {
+  it('goes only to racquet directors and head pros at their own address', () => {
+    expect(canBeSentC({ title: 'Director of Tennis', email: 'pat@club.org' })).toBe(true);
+    expect(canBeSentC({ title: 'Head Tennis Professional', email: 'pat@club.org' })).toBe(true);
+    expect(canBeSentC({ title: 'Racquet Sports Director', email: 'pat@club.org' })).toBe(true);
+    expect(canBeSentC({ title: 'General Manager', email: 'gm@club.org' })).toBe(false);
+    expect(canBeSentC({ title: 'Board President', email: 'pres@club.org' })).toBe(false);
+    expect(canBeSentC({ title: 'Director of Tennis', email: 'info@club.org' })).toBe(false);
+    expect(canBeSentC({ title: null, email: 'pat@club.org' })).toBe(false);
+    // Directors Club members are directors by membership, but never at a club inbox.
+    expect(canBeSentC({ title: null, email: 'pat@gmail.com' }, { knownDirector: true })).toBe(true);
+    expect(canBeSentC({ title: null, email: 'info@club.org' }, { knownDirector: true })).toBe(false);
+  });
+  it('links the comp score page and says nothing about the club paying', () => {
+    const l = renderLetter('intro', 'C', { club: 'X Club', fullName: 'Pat Lee' }, links, 'abc123xyz9')!;
+    expect(l.body).toContain('next=%2Fbenchmarks%2Fscore');
+    expect(l.body).toContain('Hi Pat,');
+    expect(l.subject).not.toContain('X Club');
+  });
+  it('is only picked when allowed, and balances when it is', () => {
+    expect(nextVariant({ A: 5, B: 5 })).toBe('A');
+    expect(nextVariant({ A: 1, B: 1 }, ['A', 'B', 'C'])).toBe('C');
+    expect(nextVariant({ A: 1, B: 1, C: 1 }, ['A', 'B', 'C'])).toBe('A');
   });
 });

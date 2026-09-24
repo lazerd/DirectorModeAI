@@ -80,7 +80,7 @@ export default async function AutopilotPage() {
         </header>
 
         <section className="rounded-2xl border border-white/[0.08] bg-[#002838] p-4">
-          <h2 className="font-display text-lg text-white">A vs B</h2>
+          <h2 className="font-display text-lg text-white">Split test: A, B and C</h2>
           <table className="mt-3 w-full text-sm">
             <thead className="text-left text-white/40">
               <tr><th className="py-1 font-medium">Letter</th><th className="font-medium">Sent</th><th className="font-medium">Opened link</th><th className="font-medium">Replied</th></tr>
@@ -98,10 +98,10 @@ export default async function AutopilotPage() {
           </table>
           <p className="mt-2 text-xs text-white/35">
             {LANES.map((l) => {
-              const [a, b] = score.filter((s) => s.lane === l);
-              return `${LANE_LABEL[l]}: A ${a.replied}/${a.sent}, B ${b.replied}/${b.sent}`;
+              const rows = score.filter((s) => s.lane === l).map((s) => `${s.variant} ${s.replied}/${s.sent}`);
+              return `${LANE_LABEL[l]}: ${rows.join(', ')}`;
             }).join(' · ')}
-            . Some mail filters open links on their own, so opens can run a little high.
+            . Letter C goes only to racquet directors and head pros at their own address. Some mail filters open links on their own, so opens can run a little high.
           </p>
         </section>
 

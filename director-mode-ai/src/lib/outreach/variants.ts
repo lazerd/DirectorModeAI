@@ -1,5 +1,5 @@
 /**
- * The two cold letters the autopilot split-tests.
+ * The cold letters the autopilot split-tests.
  *
  * Fixed text on purpose, not a model draft per club: an A/B test only means
  * something when every A is the same letter, and both are Darrin's own wording
@@ -11,6 +11,10 @@
  *   B  one tool that sits alongside whatever they use now, links the sample
  *      club's live mixer. Hal's "already using software" is the answer most
  *      established clubs will give A; B is built to survive it.
+ *   C  Benchmarks for the director personally ("Know Your Number"), links the
+ *      sample club's comp score page. DIRECTORS AND HEAD PROS ONLY, at their
+ *      own address (canBeSentC): a GM or board president sets the director's
+ *      pay, and a club info@ inbox may be read by exactly those people.
  *
  * The link is a real URL merged in by code. The sample club is invented and
  * says so on its first screen, so nobody mistakes it for a club we run.
@@ -18,20 +22,36 @@
 
 import { firstNameOf } from '@/lib/crm/compose';
 
-export type Variant = 'A' | 'B';
-export const VARIANTS: readonly Variant[] = ['A', 'B'];
+export type Variant = 'A' | 'B' | 'C';
+export const VARIANTS: readonly Variant[] = ['A', 'B', 'C'];
 
 export const VARIANT_LABEL: Record<Variant, string> = {
   A: 'A: the whole platform',
   B: 'B: one tool (MixerMode) alongside what they use',
+  C: 'C: Benchmarks, for the director personally',
 };
+
+/** Racquet directors and head pros: the only people letter C may go to. */
+const DIRECTOR_TITLE = /\b(director of (tennis|racquets?|racket sports|pickleball|paddle)|(tennis|racquets?|pickleball) (sports )?director|head (tennis |racquets? )?pro(fessional)?|director of racquet sports|racquet sports director)\b/i;
+const SHARED_LOCAL = /^(info|office|admin|administration|contact|hello|frontdesk|front\.?desk|reception|membership|members|events|mail|general|club|tennis|pro\.?shop|proshop|manager|gm|staff|inquiries|enquiries|team|play)$/i;
+
+/**
+ * `knownDirector`: the contact is a racquet director by where we got them,
+ * not by a title field. The Directors Club of America roster IS directors, and
+ * its import carries no titles at all (703 of 703 null on 9/24/26).
+ */
+export function canBeSentC(contact: { title: string | null; email: string }, opts: { knownDirector?: boolean } = {}): boolean {
+  const local = (contact.email.split('@')[0] ?? '').toLowerCase();
+  if (SHARED_LOCAL.test(local)) return false;
+  return opts.knownDirector === true || DIRECTOR_TITLE.test(contact.title ?? '');
+}
 
 interface Letter {
   subject: (club: string) => string;
   body: (v: { first: string; club: string; link: string; tools: string | null }) => string;
 }
 
-/** The small last line both intros end on: every tool, same sample club. */
+/** The small last line every intro ends on: every tool, same sample club. */
 const toolsLine = (tools: string | null) => (tools ? [`Every tool we've built, in the same sample club: ${tools}`] : []);
 
 const INTRO: Record<Variant, Letter> = {
@@ -45,6 +65,18 @@ const INTRO: Record<Variant, Letter> = {
         link,
         `Members can find a game at their level on their own with CourtConnect, and MixerMode makes your events a breeze to run.`,
         `If you'd like us to set up a demo just for ${club}, reply to this email and we'd be happy to put one together.`,
+        ...toolsLine(tools),
+      ].join('\n\n'),
+  },
+  C: {
+    subject: () => `What directors like you earn`,
+    body: ({ first, club, link, tools }) =>
+      [
+        `Hi ${first},`,
+        `This one is for you as a director, not for ${club}. We built Benchmarks, which shows what directors and pros at clubs like yours actually earn, from the clubs' own public IRS filings. You can see your percentile and what the top 25% make.`,
+        `It's in a sample club here, no login:`,
+        link,
+        `It's one of 17 tools we've built for racquet sports directors. If it's useful, we'd love to hear what you think.`,
         ...toolsLine(tools),
       ].join('\n\n'),
   },
@@ -80,8 +112,19 @@ export interface Links {
   mixer_url: string | null;
 }
 
+/** A page inside the sample club, signed in as its director. */
+function sampleLink(links: Links, next: string, ref?: string | null): string | null {
+  if (!links.demo_url) return null;
+  const u = new URL(links.demo_url.replace(/\/$/, '') + '/enter');
+  u.searchParams.set('as', 'director');
+  u.searchParams.set('next', next);
+  if (ref) u.searchParams.set('r', ref);
+  return u.toString();
+}
+
 /** The link a variant sends. B falls back to the tour if the mixer is not set. */
 export function linkFor(variant: Variant, links: Links, ref?: string | null): string | null {
+  if (variant === 'C') return sampleLink(links, '/benchmarks/score', ref);
   const base = variant === 'B' ? links.mixer_url || links.demo_url : links.demo_url;
   if (!base || !ref) return base;
   // ?r= is how a visit is tied back to this letter (demo_visits.ref).
@@ -95,12 +138,7 @@ export function linkFor(variant: Variant, links: Links, ref?: string | null): st
  * director. Built from the tour URL, so there is one demo link to change.
  */
 export function toolsLinkFor(links: Links, ref?: string | null): string | null {
-  if (!links.demo_url) return null;
-  const u = new URL(links.demo_url.replace(/\/$/, '') + '/enter');
-  u.searchParams.set('as', 'director');
-  u.searchParams.set('next', '/tools');
-  if (ref) u.searchParams.set('r', ref);
-  return u.toString();
+  return sampleLink(links, '/tools', ref);
 }
 
 /** A short, unguessable-enough code for one letter's link. */
@@ -127,9 +165,11 @@ export function renderLetter(
 }
 
 /**
- * Which letter the next club gets: whichever variant has gone out less in this
- * lane, so both lanes stay balanced on their own. Ties go to A.
+ * Which letter the next club gets: whichever ALLOWED variant has gone out
+ * least in this lane, so each lane stays balanced on its own. Ties go in
+ * A, B, C order. C is allowed only for a director at their own address.
  */
-export function nextVariant(sentSoFar: Partial<Record<Variant, number>>): Variant {
-  return (sentSoFar.B ?? 0) < (sentSoFar.A ?? 0) ? 'B' : 'A';
+export function nextVariant(sentSoFar: Partial<Record<Variant, number>>, allowed: readonly Variant[] = ['A', 'B']): Variant {
+  const pool = VARIANTS.filter((v) => allowed.includes(v));
+  return pool.reduce((best, v) => ((sentSoFar[v] ?? 0) < (sentSoFar[best] ?? 0) ? v : best), pool[0] ?? 'A');
 }

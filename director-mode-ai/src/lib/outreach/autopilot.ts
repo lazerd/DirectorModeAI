@@ -21,7 +21,7 @@ import type { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { daysBetween, type ISODate } from '@/lib/crm/dates';
 import { loadCandidates, loadFollowUpSources, loadSettings, selectFollowUps, selectIntros, type Candidate } from './plan';
 import { outreachToday } from './settings';
-import { newRef, nextVariant, renderLetter, VARIANT_LABEL, VARIANTS, type Links, type Variant } from './variants';
+import { canBeSentC, newRef, nextVariant, renderLetter, VARIANT_LABEL, VARIANTS, type Links, type Variant } from './variants';
 import { discoverClubs } from './discover';
 
 type Db = ReturnType<typeof getSupabaseAdmin>;
@@ -39,12 +39,14 @@ export interface AutopilotSettings {
   found_per_day: number;
   links: Links;
   digest_emails: string[];
+  /** Letter C (Benchmarks) is in the rotation. Off until Darrin approves it. */
+  variant_c: boolean;
 }
 
 export async function loadAutopilot(db: Db): Promise<AutopilotSettings> {
   const { data } = await db
     .from('crm_outreach_settings')
-    .select('auto_send, paused, dca_per_day, found_per_day, demo_url, mixer_url, digest_emails')
+    .select('auto_send, paused, dca_per_day, found_per_day, demo_url, mixer_url, digest_emails, variant_c')
     .eq('id', 1)
     .maybeSingle();
   const r = (data ?? {}) as Record<string, unknown>;
@@ -55,6 +57,7 @@ export async function loadAutopilot(db: Db): Promise<AutopilotSettings> {
     found_per_day: Number(r.found_per_day ?? 3),
     links: { demo_url: (r.demo_url as string) || null, mixer_url: (r.mixer_url as string) || null },
     digest_emails: Array.isArray(r.digest_emails) ? (r.digest_emails as string[]) : [],
+    variant_c: r.variant_c === true,
   };
 }
 
@@ -217,7 +220,9 @@ export async function planAutopilot(
       { cap: room[lane], today, repEmail: opts.repEmail },
     );
     for (const p of picks) {
-      const variant = nextVariant(balance[lane]);
+      // C (Benchmarks) only for a racquet director at their own address.
+      const allowed: Variant[] = ap.variant_c && canBeSentC({ title: p.contact.title, email: p.contact.email }, { knownDirector: lane === 'dca' }) ? ['A', 'B', 'C'] : ['A', 'B'];
+      const variant = nextVariant(balance[lane], allowed);
       balance[lane][variant] = (balance[lane][variant] ?? 0) + 1;
       const ref = newRef();
       const letter = renderLetter('intro', variant, { club: p.candidate.org_name, fullName: p.contact.full_name }, ap.links, ref);
@@ -327,12 +332,13 @@ export async function sendDigest(db: Db, plan: AutopilotResult, now = new Date()
     lines.push(`- ${nm(s.crm_orgs)}, ${s.crm_contacts?.full_name ?? ''} <${s.crm_contacts?.email ?? ''}>: ${s.kind === 'followup' ? 'follow-up' : `letter ${s.variant ?? '?'}`} (${LANE_LABEL[s.lane ?? 'dca']})`);
   }
 
-  lines.push('', 'A/B SO FAR (first letters sent, clubs that opened the link, clubs that replied)');
+  lines.push('', 'SPLIT TEST SO FAR (first letters sent, clubs that opened the link, clubs that replied)');
   for (const r of score.filter((x) => x.lane === 'all')) lines.push(`- ${VARIANT_LABEL[r.variant]}: ${r.sent} sent, ${r.clicked} opened the link, ${r.replied} replied (${pct(r)})`);
   for (const lane of LANES) {
-    const [a, b] = score.filter((x) => x.lane === lane);
-    lines.push(`  ${LANE_LABEL[lane]}: A ${a.sent} sent / ${a.clicked} opened / ${a.replied} replied, B ${b.sent} / ${b.clicked} / ${b.replied}`);
+    const rows = score.filter((x) => x.lane === lane).map((x) => `${x.variant} ${x.sent} sent / ${x.clicked} opened / ${x.replied} replied`);
+    lines.push(`  ${LANE_LABEL[lane]}: ${rows.join(', ')}`);
   }
+  lines.push('  Letter C (Benchmarks) goes only to racquet directors and head pros at their own address.');
 
   lines.push('', `GOING OUT TODAY (${plan.cards.length})`);
   if (plan.note) lines.push(plan.note);

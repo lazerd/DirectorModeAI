@@ -26,3 +26,10 @@ ALTER TABLE public.crm_outreach_queue
 UPDATE public.crm_outreach_settings
    SET daily_cap = 6, warmup_steps = '[]'::jsonb
  WHERE id = 1;
+
+-- 9/24/26: letter C (Benchmarks, "Know Your Number"), directors/head pros only.
+ALTER TABLE public.crm_outreach_queue DROP CONSTRAINT IF EXISTS crm_outreach_queue_variant_check;
+ALTER TABLE public.crm_outreach_queue ADD CONSTRAINT crm_outreach_queue_variant_check
+  CHECK (variant IS NULL OR variant IN ('A','B','C'));
+-- C stays off until Darrin approves its test email; one UPDATE turns it on.
+ALTER TABLE public.crm_outreach_settings ADD COLUMN IF NOT EXISTS variant_c boolean NOT NULL DEFAULT false;
