@@ -32,6 +32,8 @@ export type DemoLink = {
   created_at: string;
   last_used_at: string | null;
   use_count: number;
+  /** The shared cold-email demo, not a prospect's own club. */
+  is_sample?: boolean;
 };
 
 /** Tokens are base64url, 24+ chars. Anything else is not worth a query. */
@@ -39,7 +41,7 @@ export const isDemoTokenShape = (t: string | null | undefined): t is string =>
   !!t && /^[A-Za-z0-9_-]{24,128}$/.test(t);
 
 const LINK_COLS =
-  'token, club_id, label, member_user_id, director_user_id, director_label, active, expires_at, created_at, last_used_at, use_count';
+  'token, club_id, label, member_user_id, director_user_id, director_label, active, expires_at, created_at, last_used_at, use_count, is_sample';
 /** The row, whatever its state. */
 export async function findDemoLink(token: string | null | undefined): Promise<DemoLink | null> {
   if (!isDemoTokenShape(token)) return null;
@@ -68,6 +70,20 @@ export function roleOf(link: DemoLink, userId: string | null | undefined): DemoR
   if (link.member_user_id === userId) return 'member';
   if (link.director_user_id === userId) return 'director';
   return null;
+}
+
+/**
+ * One visit to a demo link. `ref` is the per-letter code a cold email carries
+ * (crm_outreach_queue.ref), so the pipeline can tell which club clicked.
+ * Never throws: a tour must open whether or not the log write works.
+ */
+export async function recordDemoVisit(token: string, ref: string | null, path: string, userAgent: string | null): Promise<void> {
+  const clean = ref && /^[A-Za-z0-9_-]{4,40}$/.test(ref) ? ref : null;
+  try {
+    await getSupabaseAdmin().from('demo_visits').insert({ token, ref: clean, path: path.slice(0, 300), user_agent: userAgent?.slice(0, 300) ?? null });
+  } catch {
+    // Logging only.
+  }
 }
 
 export async function touchDemoLink(link: DemoLink): Promise<void> {

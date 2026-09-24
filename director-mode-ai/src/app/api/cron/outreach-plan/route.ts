@@ -1,16 +1,16 @@
 /**
- * GET /api/cron/outreach-plan — build tomorrow's deck, once a day.
+ * GET /api/cron/outreach-plan — plan today's cold letters, once a weekday.
  *
- * 13:00 UTC (6 AM Pacific) via vercel.json, so the cards are waiting when
- * Darrin picks up his phone. Planning is the expensive half — one model call
- * per card — and it writes `planned` rows only. Nothing it does can put an
- * email in an inbox; that needs a human swipe and then the sender cron.
+ * 13:00 UTC (6 AM Pacific) via vercel.json. Runs the autopilot: with
+ * auto_send off it writes `planned` cards for the deck and sends nothing;
+ * with it on it writes them `approved`, the hourly sender cron sends them,
+ * and the morning digest goes to Darrin and Kevin.
  *
  * Fails closed without CRON_SECRET, like every other cron in the app.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { planDay } from '@/lib/outreach/plan';
+import { planAutopilot, sendDigest } from '@/lib/outreach/autopilot';
 import { platformOwnerEmails } from '@/lib/platformOwner';
 
 export const dynamic = 'force-dynamic';
@@ -38,15 +38,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: 'No CRM user to plan for.' }, { status: 200 });
   }
 
-  const result = await planDay(db, { repEmail, repName: rep?.full_name || repEmail });
+  // The autopilot: 3 Directors Club + 3 found clubs, letters A/B, then the
+  // morning digest to Darrin and Kevin. With auto_send off the cards wait in
+  // the deck exactly as before. See lib/outreach/autopilot.ts.
+  const result = await planAutopilot(db, { repEmail });
+  const digest = result.auto_send ? await sendDigest(db, result) : { sent: false, error: 'autopilot off' };
   return NextResponse.json({
     ok: true,
     date: result.date,
-    cap: result.cap,
-    paused: result.paused,
+    auto_send: result.auto_send,
     planned: result.planned,
-    intros: result.intros,
-    follow_ups: result.follow_ups,
+    discovered: result.discovered,
     note: result.note,
+    digest,
   });
 }

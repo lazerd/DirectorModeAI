@@ -29,6 +29,7 @@ import {
   getLiveDemoLink,
   isDemoTokenShape,
   roleOf,
+  recordDemoVisit,
   touchDemoLink,
 } from '@/lib/demo/server';
 import { demoAccountEmail, signInAs } from '@/lib/demo/session';
@@ -42,6 +43,7 @@ const see = (req: NextRequest, path: string) => NextResponse.redirect(new URL(pa
 export async function GET(req: NextRequest, { params }: Params) {
   const { token } = await params;
   const sp = req.nextUrl.searchParams;
+  if (isDemoTokenShape(token)) await recordDemoVisit(token, sp.get('r'), `enter:${sp.get('as') ?? ''}:${sp.get('next') ?? ''}`, req.headers.get('user-agent'));
   return enter(req, token, parseDemoRole(sp.get('as')), sp.get('next'), false);
 }
 

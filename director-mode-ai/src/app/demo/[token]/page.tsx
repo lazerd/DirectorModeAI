@@ -15,7 +15,8 @@
  */
 
 import type { Metadata } from 'next';
-import { getLiveDemoLink } from '@/lib/demo/server';
+import { headers } from 'next/headers';
+import { getLiveDemoLink, recordDemoVisit } from '@/lib/demo/server';
 import { loadTour, type TourSign } from '@/lib/demo/tour';
 import { readableOn, tint } from '@/lib/clubSite/theme';
 import { withArticle, type DemoRole } from '@/lib/demo/nextPath';
@@ -24,7 +25,7 @@ import DemoExpired from '../DemoExpired';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-type Props = { params: Promise<{ token: string }>; searchParams: Promise<{ trouble?: string }> };
+type Props = { params: Promise<{ token: string }>; searchParams: Promise<{ trouble?: string; r?: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { token } = await params;
@@ -115,9 +116,10 @@ function Sign({ sign, caption, theme }: { sign: TourSign; caption: string; theme
 
 export default async function DemoTourPage({ params, searchParams }: Props) {
   const { token } = await params;
-  const { trouble } = await searchParams;
+  const { trouble, r } = await searchParams;
   const link = await getLiveDemoLink(token);
   if (!link) return <DemoExpired />;
+  await recordDemoVisit(link.token, r ?? null, `/demo/${link.token}`, (await headers()).get('user-agent'));
   const tour = await loadTour(link);
   if (!tour) return <DemoExpired />;
 
@@ -179,7 +181,9 @@ export default async function DemoTourPage({ params, searchParams }: Props) {
             See {club.name} on ClubMode
           </h1>
           <p className="mt-5 max-w-3xl text-xl leading-relaxed sm:text-2xl">
-            This is a working copy of your club, filled with invented members. Tap anything you like:
+            {link.is_sample
+              ? 'This is a sample club, filled with invented members. Tap anything you like: '
+              : 'This is a working copy of your club, filled with invented members. Tap anything you like: '}
             you can look around the way a member sees it, or the way the people who run the club do.
           </p>
           {trouble && (
