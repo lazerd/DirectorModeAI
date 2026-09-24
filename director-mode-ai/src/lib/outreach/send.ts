@@ -37,11 +37,16 @@ import { QUEUE_COLS, type QueueRow } from './types';
 type Db = ReturnType<typeof getSupabaseAdmin>;
 
 /**
- * Where cold mail comes from. NOT mail.clubmode.ai — see the header.
- * Overridable so moving to another subdomain is one variable, no deploy.
+ * Where cold mail comes from.
+ *
+ * mail.clubmode.ai for now, by Darrin's decision on 9/24/26: outreach.clubmode.ai
+ * cannot verify (Resend wants an MX on send.outreach, and Namecheap only allows
+ * MX records by turning off the forwarding hello@ depends on). At six letters a
+ * day the shared-domain risk in the header is small; move back to a dedicated
+ * subdomain once volume grows. OUTREACH_FROM_EMAIL still overrides it.
  */
 export const OUTREACH_FROM =
-  process.env.OUTREACH_FROM_EMAIL || 'ClubMode <hello@outreach.clubmode.ai>';
+  process.env.OUTREACH_FROM_EMAIL || 'ClubMode <hello@mail.clubmode.ai>';
 
 /** How many the cron pushes through in one tick. Small on purpose. */
 export const BATCH_SIZE = 4;

@@ -13,7 +13,7 @@ const safeResendSend = vi.fn();
 vi.mock('@/lib/emailUnsubscribe', () => ({ safeResendSend: (...a: unknown[]) => safeResendSend(...a) }));
 vi.mock('resend', () => ({ Resend: class {} }));
 
-import { sendQueued } from './send';
+import { OUTREACH_FROM, sendQueued } from './send';
 import type { QueueRow } from './types';
 
 process.env.CRM_POSTAL_ADDRESS = '1572 Hillgrade Ave, Alamo, CA 94507';
@@ -152,11 +152,11 @@ describe('approved is required to send', () => {
 });
 
 describe('what goes on the wire', () => {
-  it('comes from the outreach domain, never mail.clubmode.ai', async () => {
+  it('comes from OUTREACH_FROM (mail.clubmode.ai until outreach.clubmode.ai verifies)', async () => {
     await sendQueued(fakeDb({}), ROW, { resend });
     const arg = safeResendSend.mock.calls[0][1] as { from: string; replyTo: string };
-    expect(arg.from).toContain('outreach.clubmode.ai');
-    expect(arg.from).not.toContain('mail.clubmode.ai');
+    expect(arg.from).toBe(OUTREACH_FROM);
+    expect(arg.from).toContain('mail.clubmode.ai');
   });
 
   it('replies to the rep who approved it', async () => {
