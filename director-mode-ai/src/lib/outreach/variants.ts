@@ -69,16 +69,16 @@ const INTRO: Record<Variant, Letter> = {
       ].join('\n\n'),
   },
   C: {
-    // Darrin's own wording (9/24/26), em dash swapped for a comma.
+    // Darrin's own wording (9/24/26): em dash swapped for a comma, "I" made "we" to match the Founding Team signature.
     subject: () => `We've been building something for club directors`,
     body: ({ first, link, tools }) =>
       [
         `Hi ${first},`,
-        `I wanted to send you something we just built for club directors and pros.`,
+        `We wanted to send you something we just built for club directors and pros.`,
         `It's called Benchmarks. We pulled compensation information from clubs' public IRS filings and turned it into a simple way to see where you fall relative to other clubs.`,
         `Here's a sample, no login needed:`,
         link,
-        `We've actually built 17 different tools like this for club directors and pros. We're still figuring out which ones are genuinely useful, so I'd love to get your take if you have a few minutes to poke around.`,
+        `We've actually built 17 different tools like this for club directors and pros. We're still figuring out which ones are genuinely useful, so we'd love to get your take if you have a few minutes to poke around.`,
         ...(tools ? [`Here's the full collection:`, tools] : []),
         `Would be great to hear what you think.`,
       ].join('\n\n'),
