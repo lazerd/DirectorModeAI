@@ -42,3 +42,18 @@ export function isClubPublicPath(pathname: string): boolean {
   }
   return false;
 }
+
+/**
+ * The club slug a `/courtsheet/<slug>` or `/calendar/<slug>` page belongs to,
+ * or null. `/c/<slug>` is left out on purpose: the club's website stays bare
+ * even for its own members, while the court sheet and calendar are app pages a
+ * member reaches from their own nav and needs a way back from.
+ */
+export function clubSlugFromAppPath(pathname: string): string | null {
+  for (const [prefix, ownRoutes] of Object.entries(CLUB_SLUG_ROUTES)) {
+    if (!pathname.startsWith(prefix + '/')) continue;
+    const segment = pathname.slice(prefix.length + 1).split('/')[0];
+    return segment !== '' && !ownRoutes.includes(segment) ? segment : null;
+  }
+  return null;
+}

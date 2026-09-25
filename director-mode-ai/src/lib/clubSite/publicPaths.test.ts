@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isClubPublicPath } from './publicPaths';
+import { isClubPublicPath, clubSlugFromAppPath } from './publicPaths';
 
 describe('isClubPublicPath', () => {
   it("treats a club's own pages as public", () => {
@@ -29,5 +29,18 @@ describe('isClubPublicPath', () => {
     expect(isClubPublicPath('/courts')).toBe(false);
     expect(isClubPublicPath('/club-site')).toBe(false);
     expect(isClubPublicPath('/courtsheet')).toBe(false);
+  });
+});
+
+describe('clubSlugFromAppPath', () => {
+  it('reads the slug off a club court sheet or calendar', () => {
+    expect(clubSlugFromAppPath('/courtsheet/sleepy-hollow')).toBe('sleepy-hollow');
+    expect(clubSlugFromAppPath('/calendar/sleepy-hollow')).toBe('sleepy-hollow');
+  });
+  it('ignores director tools and the club website', () => {
+    expect(clubSlugFromAppPath('/courtsheet/staff')).toBe(null);
+    expect(clubSlugFromAppPath('/calendar/board')).toBe(null);
+    expect(clubSlugFromAppPath('/c/sleepy-hollow')).toBe(null);
+    expect(clubSlugFromAppPath('/member')).toBe(null);
   });
 });

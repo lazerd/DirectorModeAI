@@ -30,7 +30,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { pickPrimaryClub } from '@/lib/clubRoles';
-import { isClubPublicPath } from '@/lib/clubSite/publicPaths';
+import { isClubPublicPath, clubSlugFromAppPath } from '@/lib/clubSite/publicPaths';
 import ClubSwitcher from './ClubSwitcher';
 import {
   SECTIONS, FOR_PLAYERS, FOR_YOU, ALL_TOOLS_ITEM, activeHref, type NavIcon,
@@ -193,10 +193,19 @@ export default function ClubSidebar() {
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const underAny = (prefixes: string[]) =>
     prefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
+  /*
+   * The clubs this person owns or belongs to. A club's court sheet and calendar
+   * are public pages, but for that club's OWN members they are app pages reached
+   * from the rail — hiding it there stranded them with only the back button
+   * (Vi Le, 2026-09-25). Another club's pages still render bare.
+   */
+  const [myClubSlugs, setMyClubSlugs] = useState<string[]>([]);
+  const appPathSlug = clubSlugFromAppPath(pathname);
+  const ownClubPage = !!appPathSlug && myClubSlugs.includes(appPathSlug);
   const isPublic =
     (signedIn !== true && (pathname === '/' || underAny(GUEST_ONLY_PREFIXES))) ||
     underAny(PUBLIC_PREFIXES) ||
-    isClubPublicPath(pathname);
+    (isClubPublicPath(pathname) && !ownClubPage);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [hovering, setHovering] = useState(false); // hover-to-peek when collapsed
@@ -276,8 +285,13 @@ export default function ClubSidebar() {
         const { data: { user } } = await supabase.auth.getUser();
         setSignedIn(!!user);
         if (!user) return; // guest → full nav (marketing shell)
-        const { data: owned } = await supabase.from('cc_clubs').select('id').eq('owner_id', user.id).limit(1).maybeSingle();
-        if (owned) return; // director/owner → full nav
+        const { data: owned } = await supabase.from('cc_clubs').select('id, slug').eq('owner_id', user.id);
+        const { data: memSlugs } = await supabase.from('cc_club_members').select('cc_clubs(slug)').eq('user_id', user.id);
+        setMyClubSlugs([
+          ...((owned as { slug: string | null }[] | null) || []).map((c) => c.slug),
+          ...((memSlugs as unknown as { cc_clubs: { slug: string | null } | null }[] | null) || []).map((m) => m.cc_clubs?.slug ?? null),
+        ].filter((x): x is string => !!x));
+        if (owned && owned.length) return; // director/owner → full nav
         // Deterministic across pages when someone belongs to more than one club.
         const { data: mems } = await supabase
           .from('cc_club_members')

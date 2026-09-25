@@ -23,16 +23,22 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     try {
-      const supabase = createClient();
-      const redirectTo =
-        typeof window !== 'undefined'
-          ? `${window.location.origin}/reset-password`
-          : '/reset-password';
-
-      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(
-        email.trim(),
-        { redirectTo }
-      );
+      // Our own email first (club-named, lands in the inbox); Supabase's stock
+      // one only if ours could not be sent.
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim() }),
+      }).catch(() => null);
+      let resetErr: { message: string } | null = null;
+      if (res?.status === 400) {
+        const j = await res.json().catch(() => ({}));
+        resetErr = { message: j?.error || 'Please enter a valid email.' };
+      } else if (!res?.ok) {
+        const supabase = createClient();
+        const redirectTo = `${window.location.origin}/reset-password`;
+        ({ error: resetErr } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo }));
+      }
 
       if (resetErr) {
         setError(friendlyAuthError(resetErr.message, "We couldn't send the reset link. Please try again."));
