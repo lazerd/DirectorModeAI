@@ -383,6 +383,10 @@ export default function MatchWorkspace({
       : null;
   const exhibitionExtra =
     format != null && isHome ? exhibitionRows(courts, format, (id) => nameOf(id)) : [];
+  // The printout lists who is off each round home AND away — away there is no
+  // exhibition court, but the coach still needs to see who is sitting out.
+  const printExtra =
+    format != null ? exhibitionRows(courts, format, (id) => nameOf(id)) : [];
 
   /**
    * Only bails that still matter: someone who withdrew and has since been
@@ -652,7 +656,7 @@ export default function MatchWorkspace({
             .concat(c.courtType === 'doubles' ? [c.player2Id] : [])
             .map((id) => nameOf(id)),
         })),
-          ...exhibitionExtra,
+          ...printExtra,
         ],
       }),
     );

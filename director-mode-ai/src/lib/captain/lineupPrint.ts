@@ -14,7 +14,7 @@ import { lineNames } from './leagues';
 
 export type PrintCourt = {
   courtNumber: number;
-  /** 'exhibition' = JTT home: the unscored extra court for whoever is off that round. */
+  /** 'exhibition' = JTT: whoever is off that round — the unscored extra court at home, sitting out away. */
   courtType: 'singles' | 'doubles' | 'exhibition';
   names: string[];
   /** JTT: the round this line is played in. Adds a Round column when set. */
@@ -46,7 +46,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ESC[c]);
 const labeller = (courts: PrintCourt[]) => {
   const names = lineNames(courts.filter((c) => c.courtType !== 'exhibition'));
   return (c: PrintCourt) =>
-    c.courtType === 'exhibition' ? 'Exhibition court' : (names.get(c.courtNumber) ?? `Line ${c.courtNumber}`);
+    c.courtType === 'exhibition' ? 'Exhibition / out' : (names.get(c.courtNumber) ?? `Line ${c.courtNumber}`);
 };
 
 /** A complete HTML document that prints itself on load. */
