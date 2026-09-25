@@ -85,12 +85,16 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
     return byRound && !c.round ? '<td class="round"></td>' : '';
   };
 
+  // Which physical court each line lands on is decided at the courts, so it
+  // is a blank box to write in — the exhibition court gets one too.
+  const COURT_CELL = '<td class="court"></td>';
+
   const rows = courts
     .map((c) => {
       const names = c.names.filter((n) => n && n !== '—');
       if (c.courtType === 'exhibition') {
         // Not on the scorecard: no opponents to write in, no score to record.
-        return `<tr class="exh">${roundCellFor(c)}<td class="line">${lineLabel(c)}</td><td class="names">${names
+        return `<tr class="exh">${roundCellFor(c)}${COURT_CELL}<td class="line">${lineLabel(c)}</td><td class="names">${names
           .map(esc)
           .join(', ')}</td><td class="opp muted">exhibition</td><td class="score muted">not scored</td></tr>`;
       }
@@ -99,7 +103,7 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
       // player on that line, so a doubles pair has room for both names.
       const writeIns = (c.courtType === 'doubles' ? 2 : 1);
       const opponents = Array.from({ length: writeIns }, () => '<span class="write"></span>').join('');
-      return `<tr>${roundCell}<td class="line">${lineLabel(c)}</td><td class="names">${
+      return `<tr>${roundCell}${COURT_CELL}<td class="line">${lineLabel(c)}</td><td class="names">${
         names.length ? names.map(esc).join(' &nbsp;/&nbsp; ') : '<span class="muted">— default —</span>'
       }</td><td class="opp">${opponents}</td><td class="score"></td></tr>`;
     })
@@ -133,6 +137,7 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
        color: #475569; border-bottom: 2px solid #0f172a; padding: 8px 10px; }
   td { border-bottom: 1px solid #cbd5e1; padding: 12px 10px; vertical-align: middle; }
   td.round { font-weight: 700; white-space: nowrap; border-right: 1px solid #cbd5e1; }
+  td.court { width: 9%; border-right: 1px solid #cbd5e1; }
   td.line { white-space: nowrap; color: #334155; width: 1%; }
   td.opp { width: 30%; border-left: 1px solid #cbd5e1; }
   td.score { width: 16%; border-left: 1px solid #cbd5e1; }
@@ -154,7 +159,7 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
   ${input.arrivalNote?.trim() ? `<p class="note">${esc(input.arrivalNote.trim())}</p>` : ''}
   ${input.draft ? '<p class="draft">DRAFT — not yet saved or sent to the team</p>' : ''}
   <table>
-    <thead><tr>${byRound ? '<th>Round</th>' : ''}<th>Line</th><th>Players</th><th>Opponents</th><th>Score</th></tr></thead>
+    <thead><tr>${byRound ? '<th>Round</th>' : ''}<th>Court #</th><th>Line</th><th>Players</th><th>Opponents</th><th>Score</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
   <div class="actions"><button onclick="window.print()">Print / Save as PDF</button></div>
