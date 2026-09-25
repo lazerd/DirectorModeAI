@@ -140,7 +140,7 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
     const { data: ev, error: evErr } = await supabase
       .from('events')
       .select(
-        'id, name, slug, event_date, start_time, num_courts, age_max, gender_restriction, event_scoring_format, entry_fee_cents, max_players, registration_opens_at, registration_closes_at, public_status, stripe_account_id, round_duration_minutes, court_names'
+        'id, name, slug, event_date, start_time, num_courts, age_max, gender_restriction, event_scoring_format, entry_fee_cents, max_players, registration_opens_at, registration_closes_at, public_status, stripe_account_id, round_duration_minutes, court_names, end_time, venue, sponsor_id, series_slug, divisions, total_quads, max_total_quads, wave2_start_time, wave2_end_time, entry_flow'
       )
       .eq('id', eventId)
       .maybeSingle();

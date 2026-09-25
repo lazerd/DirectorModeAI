@@ -133,8 +133,14 @@ export default function QuadsEntriesTab({
   };
 
   const divisions = parseDivisions(event.divisions);
-  const sorted = [...entries].sort(
-    (a, b) => (b.composite_rating ?? 0) - (a.composite_rating ?? 0)
+  // With divisions, group by division (event order) then signup order — the
+  // same order the allocation panel seats people in. Legacy events sort by rating.
+  const divisionRank = new Map(divisions.map((d, i) => [d.id, i]));
+  const sorted = [...entries].sort((a, b) =>
+    divisions.length > 0
+      ? (divisionRank.get(a.division ?? '') ?? 99) - (divisionRank.get(b.division ?? '') ?? 99) ||
+        Date.parse(a.registered_at) - Date.parse(b.registered_at)
+      : (b.composite_rating ?? 0) - (a.composite_rating ?? 0)
   );
 
   return (
@@ -143,7 +149,7 @@ export default function QuadsEntriesTab({
 
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-600">
-          {entries.length} total entries · sorted by rating
+          {entries.length} total entries · sorted by {divisions.length > 0 ? 'division, then signup order' : 'rating'}
         </div>
         <button
           onClick={() => setShowAdd((s) => !s)}
