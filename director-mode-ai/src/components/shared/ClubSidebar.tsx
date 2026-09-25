@@ -309,7 +309,7 @@ export default function ClubSidebar() {
           setMemberNav([{
             heading: null,
             items: [
-              { name: 'My Club', href: '/member', matches: ['/member'], icon: Home, color: '#22d3ee' },
+              { name: 'My Tennis', href: '/member', matches: ['/member'], icon: Home, color: '#22d3ee' },
               // Every court, booked or open, priced for the member.
               ...(slug ? [{ name: 'Court Sheet', href: `/courtsheet/${slug}`, matches: ['/courtsheet'], icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
               // CourtConnect: pairing members for games is the member-side reason

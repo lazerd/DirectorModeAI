@@ -5,21 +5,24 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { pickPrimaryClub } from '@/lib/clubRoles';
 import { attachByEmail } from '@/lib/clubAutoJoin';
 import { TOURNAMENT_FORMATS } from '@/lib/eventCategory';
-import { resolveClubTimeZone, normalizeTimeZone } from '@/lib/captain/clubTime';
+import { resolveClubTimeZone, normalizeTimeZone, isoToZonedWallTime } from '@/lib/captain/clubTime';
 import { publicOpenGames } from '@/lib/partnerFinder/server';
 import { publicLine } from '@/lib/partnerFinder/format';
 import { clubLevelScale } from '@/lib/clubLevels';
+import { loadMyTennis, type TeamCard } from '@/lib/member/myTennis';
+import MyTennisAgenda from '@/components/member/MyTennisAgenda';
 import {
   CalendarDays, LayoutGrid, GraduationCap, User, ArrowRight, Trophy, Ticket, MapPin,
-  ClipboardList, Handshake,
+  ClipboardList, Handshake, Sparkles,
 } from 'lucide-react';
 
-// The member's front door.
+// My Tennis — the member's front door.
 //
 // Directors get an operating system; members get a clubhouse. This is that
-// clubhouse: what's happening at the club this week, one tap to book a court,
-// and a way into their lessons and progress. Warm and simple on purpose — a
-// member is here to play, not to administer.
+// clubhouse, and it starts with THEIR week: every team match they said yes or
+// maybe to, games they joined, lessons, courts, events, and rackets at the
+// stringer, in one list (lib/member/myTennis.ts). Then what's on at the club.
+// Warm and simple on purpose — a member is here to play, not to administer.
 //
 // Members are redirected here by middleware from any director surface.
 
@@ -30,7 +33,7 @@ export const dynamic = 'force-dynamic';
  * Club"). On a member's own clubhouse tab that is the wrong voice, and it is
  * what a member glances at to tell whether they are actually signed in.
  */
-export const metadata = { title: 'Your clubhouse — ClubMode' };
+export const metadata = { title: 'My Tennis — ClubMode' };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -146,66 +149,40 @@ export default async function MemberHome() {
     .or(captainFilter)
     .eq('archived', false)
     .order('created_at', { ascending: false });
-  type TeamCard = { id: string; name: string; level: string | null; href: string; cta: string };
   const teams: TeamCard[] = ((myTeams as { id: string; name: string; level: string | null }[] | null) || []).map(
     (t) => ({ ...t, href: `/captain/${t.id}`, cta: 'Open CaptainMode →' }),
   );
 
-  /*
-   * Teams this member PLAYS on. Rosters are keyed by email, not user id — a
-   * captain types the roster long before anyone signs up. A player gets their
-   * own availability page (the same one the captain's email links to), never
-   * the captain's workspace.
-   */
-  if (user.email) {
-    const { data: rosterRows } = await admin
-      .from('captain_players')
-      .select('player_token, team:captain_teams!inner(id, name, level, archived)')
-      // Case-insensitive exact match: escape LIKE wildcards, since `_` is legal
-      // in an address and would otherwise match someone else's roster row.
-      .ilike('email', user.email.replace(/[\\%_]/g, '\\$&'))
-      .eq('active', true);
-    for (const r of (rosterRows as any[] | null) || []) {
-      const t = r.team;
-      if (!t || t.archived || !r.player_token || teams.some((x) => x.id === t.id)) continue;
-      teams.push({
-        id: t.id,
-        name: t.name,
-        level: t.level,
-        href: `/captain/availability/${r.player_token}`,
-        cta: 'My availability →',
-      });
+  // The person, for everything keyed by PlayerVault id.
+  const { data: person } = await admin
+    .from('cc_vault_players')
+    .select('id, master_player_id')
+    .eq('club_id', club.id)
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  const timeZone = await resolveClubTimeZone(admin, club.id);
+  const mine = await loadMyTennis(admin, {
+    userId: user.id,
+    email: user.email ?? null,
+    club: { id: club.id, name: club.name, owner_id: club.owner_id },
+    personId: (person as { id: string } | null)?.id ?? null,
+    masterPlayerId: (person as { master_player_id: string | null } | null)?.master_player_id ?? null,
+    timeZone,
+  });
+  // Teams they play on (their own availability page), after the ones they run.
+  for (const t of mine.teams) if (!teams.some((x) => x.id === t.id)) teams.push(t);
+  const todayWall = isoToZonedWallTime(new Date().toISOString(), timeZone).slice(0, 10);
+  const nextByTeam = new Map<string, string>();
+  for (const it of mine.agenda) {
+    if (it.kind !== 'match') continue;
+    const team = teams.find((t) => t.name === it.source);
+    if (team && !nextByTeam.has(team.id)) {
+      const [, mo, d] = it.at.slice(0, 10).split('-').map(Number);
+      nextByTeam.set(team.id, `${mo}/${d} ${it.title}`);
     }
   }
-
-  /*
-   * The club's zone. dayLabel() below reads the date out of the ISO string,
-   * which is UTC — and Vercel runs UTC, so an evening match lands on the wrong
-   * day. Match times get formatted in club time instead.
-   */
-  const timeZone = teams.length ? await resolveClubTimeZone(admin, club.id) : 'UTC';
-  const matchDay = (iso: string) =>
-    new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      timeZone,
-    }).format(new Date(iso));
-
-  // Each team's next match, so the card is worth tapping rather than just a link.
-  const nextByTeam = new Map<string, { match_at: string; opponent: string | null }>();
-  if (teams.length) {
-    const { data: next } = await admin
-      .from('captain_matches')
-      .select('team_id, match_at, opponent')
-      .in('team_id', teams.map((t) => t.id))
-      .eq('status', 'scheduled')
-      .gte('match_at', new Date().toISOString())
-      .order('match_at');
-    for (const m of (next as { team_id: string; match_at: string; opponent: string | null }[] | null) || []) {
-      if (!nextByTeam.has(m.team_id)) nextByTeam.set(m.team_id, m);
-    }
-  }
+  const readyRackets = mine.rackets.filter((r) => r.status === 'done');
 
   /*
    * Games looking for players (CourtConnect). The clubhouse shows the next
@@ -229,7 +206,8 @@ export default async function MemberHome() {
           <p className="text-sm/6 text-sky-100">
             {firstName ? `Welcome back, ${firstName}.` : 'Welcome back.'}
           </p>
-          <h1 className="text-3xl font-bold mt-1">{club.name}</h1>
+          <h1 className="text-3xl font-bold mt-1">My Tennis</h1>
+          <p className="text-sky-50 mt-1">{club.name}</p>
           {(club.city || club.state) && (
             <p className="text-sky-100 text-sm mt-1 flex items-center gap-1">
               <MapPin className="w-3.5 h-3.5" /> {[club.city, club.state].filter(Boolean).join(', ')}
@@ -248,6 +226,44 @@ export default async function MemberHome() {
           <Action href="/find-coach" icon={User} label="Find a coach" tone="#ea580c" />
           <Action href="/client/dashboard" icon={Trophy} label="My progress" tone="#ca8a04" />
         </div>
+
+        {/* Rackets ready at the stringer: the one thing that needs them today. */}
+        {readyRackets.length > 0 && (
+          <div className="flex items-start gap-3 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900">
+            <Sparkles className="w-5 h-5 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-semibold">
+                {readyRackets.length === 1
+                  ? `Your ${readyRackets[0].racket === 'Racket' ? 'racket' : readyRackets[0].racket} is strung and ready for pickup.`
+                  : `${readyRackets.length} of your rackets are strung and ready for pickup.`}
+              </div>
+              {readyRackets.length === 1 && readyRackets[0].string && (
+                <div className="text-sm">{readyRackets[0].string}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <MyTennisAgenda items={mine.agenda} today={todayWall} />
+
+        {mine.rackets.some((r) => r.status !== 'done') && (
+          <section>
+            <h2 className="text-lg font-semibold mb-3">Your rackets</h2>
+            <div className="space-y-2">
+              {mine.rackets.filter((r) => r.status !== 'done').map((r) => (
+                <div key={r.id} className="flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="min-w-0">
+                    <div className="font-semibold">{r.racket}</div>
+                    {r.string && <div className="text-sm text-slate-500">{r.string}</div>}
+                  </div>
+                  <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-medium text-slate-700">
+                    {r.status === 'picked_up' ? 'Picked up' : r.status === 'in_progress' ? 'Being strung' : 'Dropped off'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* The teams she runs or plays on. First thing on the page when she has any. */}
         {teams.length > 0 && (
@@ -269,9 +285,7 @@ export default async function MemberHome() {
                       <div className="font-semibold text-slate-900">{t.name}</div>
                       <div className="text-sm text-slate-500">
                         {t.level ? `${t.level} · ` : ''}
-                        {next
-                          ? `next: ${matchDay(next.match_at)} vs ${next.opponent || 'TBD'}`
-                          : 'no matches scheduled'}
+                        {next ? `next: ${next}` : 'no matches scheduled'}
                       </div>
                     </div>
                     <span className="shrink-0 text-sm font-medium text-cyan-700">
