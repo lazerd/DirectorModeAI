@@ -267,7 +267,28 @@ export default function ClubSidebar() {
   /** Signed in, owns no club and belongs to none. */
   const [noClub, setNoClub] = useState(false);
 
+  /*
+   * Who is signed in, kept live. The rail lives in the root layout and never
+   * remounts, and /login moves into the app with router.push — so reading the
+   * user once on mount left a member who signed in on this tab looking at the
+   * guest's full director nav until a hard reload (Shannon Koffman,
+   * 2026-09-25). Every role lookup below keys on this instead.
+   * undefined = not known yet; null = signed out.
+   */
+  const [authUserId, setAuthUserId] = useState<string | null | undefined>(undefined);
   useEffect(() => {
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUserId(session?.user?.id ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (authUserId === undefined) return;
+    setCanViewAs(false);
+    setCanCrm(false);
+    if (!authUserId) return;
     fetch('/api/admin/view-as')
       .then((r) => r.json())
       .then((j: { allowed?: boolean }) => setCanViewAs(!!j?.allowed))
@@ -276,17 +297,25 @@ export default function ClubSidebar() {
       .then((r) => r.json())
       .then((j: { allowed?: boolean }) => setCanCrm(!!j?.allowed))
       .catch(() => {});
-  }, []);
+  }, [authUserId]);
 
   useEffect(() => {
+    if (authUserId === undefined) return;
+    let cancelled = false;
+    // Start from the guest state; the answers below fill it back in.
+    setMemberNav(null);
+    setNoClub(false);
+    setMyClubSlugs([]);
     (async () => {
       try {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
+        if (cancelled) return;
         setSignedIn(!!user);
         if (!user) return; // guest → full nav (marketing shell)
         const { data: owned } = await supabase.from('cc_clubs').select('id, slug').eq('owner_id', user.id);
         const { data: memSlugs } = await supabase.from('cc_club_members').select('cc_clubs(slug)').eq('user_id', user.id);
+        if (cancelled) return;
         setMyClubSlugs([
           ...((owned as { slug: string | null }[] | null) || []).map((c) => c.slug),
           ...((memSlugs as unknown as { cc_clubs: { slug: string | null } | null }[] | null) || []).map((m) => m.cc_clubs?.slug ?? null),
@@ -297,6 +326,7 @@ export default function ClubSidebar() {
           .from('cc_club_members')
           .select('role, club_id, created_at, cc_clubs(slug)')
           .eq('user_id', user.id);
+        if (cancelled) return;
         const primary = pickPrimaryClub(
           (mems as unknown as { club_id: string; role: string; created_at: string }[]) || [],
           null,
@@ -331,16 +361,20 @@ export default function ClubSidebar() {
         }
       } catch { /* keep full nav on any error */ }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [authUserId]);
 
   // Own teams plus co-captained ones, the same pair of reads listCaptainTeams
   // does on the server. RLS scopes both to this user.
   useEffect(() => {
+    if (authUserId === undefined) return;
+    let cancelled = false;
+    setCaptainTeams([]);
     (async () => {
       try {
         const supabase = createClient();
         const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
+        if (!user || cancelled) return;
         const { data: staff } = await supabase
           .from('captain_team_staff')
           .select('team_id')
@@ -355,10 +389,12 @@ export default function ClubSidebar() {
           .or(filter)
           .eq('archived', false)
           .order('created_at', { ascending: false });
+        if (cancelled) return;
         setCaptainTeams((teams as { id: string; name: string }[] | null) || []);
       } catch { /* no captain item on any error */ }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [authUserId]);
 
   const isMember = memberNav !== null;
   /*

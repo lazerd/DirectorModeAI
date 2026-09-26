@@ -406,7 +406,9 @@ export async function middleware(request: NextRequest) {
   // Only runs on director surfaces, and short-circuits for owners after one
   // query, so it costs nothing on the common path.
   const DIRECTOR_PATHS = [
-    '/calendar', '/mixer', '/courtsheet/staff', '/lessons/dashboard',
+    // All of /lessons is the coach's LessonMode (open time, clients, blast...).
+    // Clients book on /coach/[slug] and /book, which stay public.
+    '/calendar', '/mixer', '/courtsheet/staff', '/lessons',
     '/stringing', '/club-hub', '/club/members', '/connect/clubs',
     '/run', '/tools',
     // PlayerVault and the club profile. NOT all of /courtconnect: the bare
