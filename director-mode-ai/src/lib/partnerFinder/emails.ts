@@ -11,7 +11,7 @@
  */
 import { APP_URL } from '@/lib/appUrl';
 import {
-  FORMAT_LABEL,
+  gameKind,
   clockLabel,
   durationLabel,
   isFormat,
@@ -57,7 +57,7 @@ const ascii = (s: string) =>
   s.replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/·/g, '-');
 
 function formatWord(g: Game): string {
-  return isFormat(g.format) ? FORMAT_LABEL[g.format] : g.format;
+  return gameKind(g.format, g.gender);
 }
 
 /** "Tue 9:00am doubles" */

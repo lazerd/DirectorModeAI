@@ -23,6 +23,7 @@ import {
   ratingLabel,
   shortName,
   gameTitle,
+  gameKind,
   clockLabel,
   longDay,
   durationLabel,
@@ -44,6 +45,8 @@ export type Game = {
   include_unrated: boolean;
   court: string | null;
   note: string | null;
+  /** 'male' / 'female' for a men's or women's game; null = anyone. */
+  gender: string | null;
   status: GameStatus;
   notified_count: number;
   filled_at: string | null;
@@ -103,7 +106,7 @@ export type RosterRow = {
 };
 
 export const GAME_COLS =
-  'id, club_id, posted_by, starts_at, duration_min, format, spots_needed, rating_min, rating_max, include_unrated, court, note, status, notified_count, filled_at, cancelled_at, reminder_sent_at, created_at';
+  'id, club_id, posted_by, starts_at, duration_min, format, spots_needed, rating_min, rating_max, include_unrated, court, note, gender, status, notified_count, filled_at, cancelled_at, reminder_sent_at, created_at';
 
 const num = (v: unknown) => (v == null ? null : Number(v));
 
@@ -207,6 +210,20 @@ export function levelFits(
   if (g.rating_min == null && g.rating_max == null) return true;
   if (ntrp == null) return g.include_unrated;
   return ntrp >= (g.rating_min ?? 1) && ntrp <= (g.rating_max ?? 7);
+}
+
+/** Does this person fit a men's or women's game? Unknown gender fits only an open one. */
+export function genderFits(g: Pick<Game, 'gender'>, gender: string | null | undefined): boolean {
+  if (!g.gender) return true;
+  return (gender || '').toLowerCase() === g.gender;
+}
+
+/** A person's gender as PlayerVault has it. */
+export async function personGender(db: Db, personId: string | null): Promise<string | null> {
+  if (!personId) return null;
+  const { data } = await db.from('cc_vault_players').select('gender').eq('id', personId).maybeSingle();
+  const g = (data as { gender: string | null } | null)?.gender;
+  return g ? g.toLowerCase() : null;
 }
 
 /**
@@ -386,7 +403,16 @@ export type BoardGame = {
   imIn: boolean;
   /** Names of who is in — only for the poster and the players themselves. */
   players: string[];
+  /** 'male' / 'female' for a men's or women's game; null = anyone. */
+  gender: string | null;
+  /**
+   * Who answered the invitation — only on the poster's own games. The poster
+   * asked to see it on the board, not just in the "someone joined" emails.
+   */
+  answers: { no: string[]; waiting: string[]; noReply: string[]; emailed: number } | null;
   fitsMe: boolean;
+  /** The level is fine but the game is for the other gender. */
+  wrongGender: boolean;
 };
 
 export type Board = {
@@ -424,6 +450,7 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
    */
   const me = await memberRow(db, club.id, userId);
   const myPersonId = me?.person_id ?? null;
+  const myGender = await personGender(db, myPersonId);
 
   const [roster, prefs, { data: openRows }, { data: mineRows }, { data: inRows }, { count: recent }] =
     await Promise.all([
@@ -474,6 +501,7 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
         .order('starts_at')
     : { data: [] };
 
+  const byIdEarly = new Map(roster.map((r) => [r.person_id, r]));
   const all = new Map<string, Game>();
   for (const r of [...(openRows ?? []), ...(mineRows ?? []), ...(joinedRows ?? [])] as Record<string, unknown>[]) {
     const g = toGame(r);
@@ -483,21 +511,55 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
   const { data: playerRows } = all.size
     ? await db
         .from('pf_game_players')
-        .select('game_id, person_id, joined_at')
+        .select('game_id, person_id, guest_name, joined_at')
         .in('game_id', [...all.keys()])
         .eq('status', 'in')
         .order('joined_at')
     : { data: [] };
+  /*
+   * A seat is a person or a named guest (pf_host_add). Guests have no person
+   * id, so they are counted and named from the seat itself — before this a
+   * guest the poster brought read as "A member".
+   */
   const playersByGame = new Map<string, string[]>();
-  for (const p of (playerRows as { game_id: string; person_id: string }[] | null) ?? []) {
-    playersByGame.set(p.game_id, [...(playersByGame.get(p.game_id) ?? []), p.person_id]);
+  const seatNames = new Map<string, string[]>();
+  for (const p of (playerRows as { game_id: string; person_id: string | null; guest_name: string | null }[] | null) ?? []) {
+    if (p.person_id) playersByGame.set(p.game_id, [...(playersByGame.get(p.game_id) ?? []), p.person_id]);
+    seatNames.set(p.game_id, [
+      ...(seatNames.get(p.game_id) ?? []),
+      p.person_id ? shortName(byIdEarly.get(p.person_id)?.full_name) : p.guest_name || 'Guest',
+    ]);
   }
 
-  const byId = new Map(roster.map((r) => [r.person_id, r]));
   const myNtrp = me?.ntrp ?? null;
+
+  // Answers for the poster's own games: no, in line, and emailed-but-silent.
+  const mineIds = [...all.values()].filter((g) => g.posted_by === userId).map((g) => g.id);
+  const answersBy = new Map<string, { no: string[]; waiting: string[]; noReply: string[]; emailed: number }>();
+  if (mineIds.length) {
+    const [{ data: ans }, { data: links }] = await Promise.all([
+      db.from('pf_game_players').select('game_id, person_id, status, joined_at').in('game_id', mineIds).order('joined_at'),
+      db.from('pf_links').select('game_id, person_id').in('game_id', mineIds).not('emailed_at', 'is', null),
+    ]);
+    const heard = new Map<string, Set<string>>();
+    for (const id of mineIds) answersBy.set(id, { no: [], waiting: [], noReply: [], emailed: 0 });
+    for (const a of (ans as { game_id: string; person_id: string | null; status: string }[] | null) ?? []) {
+      if (!a.person_id) continue;
+      heard.set(a.game_id, (heard.get(a.game_id) ?? new Set<string>()).add(a.person_id));
+      const name = shortName(byIdEarly.get(a.person_id)?.full_name);
+      if (a.status === 'no') answersBy.get(a.game_id)!.no.push(name);
+      if (a.status === 'wait') answersBy.get(a.game_id)!.waiting.push(name);
+    }
+    for (const l of (links as { game_id: string; person_id: string }[] | null) ?? []) {
+      const row = answersBy.get(l.game_id)!;
+      row.emailed += 1;
+      if (!heard.get(l.game_id)?.has(l.person_id)) row.noReply.push(shortName(byIdEarly.get(l.person_id)?.full_name));
+    }
+  }
 
   const view = (g: Game): BoardGame => {
     const ids = playersByGame.get(g.id) ?? [];
+    const seats = seatNames.get(g.id) ?? [];
     const isMine = g.posted_by === userId;
     const imIn = !!myPersonId && ids.includes(myPersonId);
     return {
@@ -506,21 +568,24 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
       day: longDay(g.starts_at, tz),
       clock: clockLabel(g.starts_at, tz),
       format: g.format,
-      formatLabel: isFormat(g.format) ? FORMAT_LABEL[g.format] : g.format,
+      formatLabel: gameKind(g.format, g.gender),
       duration: durationLabel(g.duration_min),
       spotsNeeded: g.spots_needed,
-      spotsLeft: Math.max(g.spots_needed - ids.length, 0),
+      spotsLeft: Math.max(g.spots_needed - seats.length, 0),
       rating: ratingLabel(g.rating_min, g.rating_max, club.levels),
       ratingFact: levelFact(club.levels, g.rating_min, g.rating_max),
       includeUnrated: g.include_unrated,
       court: g.court,
       note: g.note,
       status: g.status,
-      poster: shortName(byId.get(g.posted_by)?.full_name),
+      poster: shortName(roster.find((r) => r.user_id === g.posted_by)?.full_name),
       isMine,
       imIn,
-      players: isMine || imIn ? ids.map((id) => shortName(byId.get(id)?.full_name)) : [],
-      fitsMe: levelFits(g, myNtrp),
+      players: isMine || imIn ? seats : [],
+      gender: g.gender,
+      answers: isMine ? answersBy.get(g.id) ?? null : null,
+      fitsMe: levelFits(g, myNtrp) && genderFits(g, myGender),
+      wrongGender: !genderFits(g, myGender),
     };
   };
 

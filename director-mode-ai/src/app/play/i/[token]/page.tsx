@@ -9,11 +9,10 @@ import {
   loadGame,
 } from '@/lib/partnerFinder/server';
 import {
-  FORMAT_LABEL,
   clockLabel,
   durationLabel,
   firstName,
-  isFormat,
+  gameKind,
   longDay,
   ratingLabel,
 } from '@/lib/partnerFinder/format';
@@ -78,11 +77,19 @@ export default async function GameLinkPage({ params }: { params: { token: string
    * ever built for the host — nobody else needs the club's roster.
    */
   const inGame = new Set(group.map((m) => m.personId));
+  // A men's or women's game only offers the host people who fit it.
+  const { data: genderRows } = isPoster && game.gender
+    ? await db.from('cc_vault_players').select('id, gender').eq('club_id', club.id)
+    : { data: [] };
+  const genders = new Map(
+    ((genderRows as { id: string; gender: string | null }[] | null) ?? []).map((r) => [r.id, (r.gender ?? '').toLowerCase()]),
+  );
   const inLine = new Set(waiting.map((w) => w.person_id));
   const addable = isPoster
     ? roster
         .filter((r) => !inGame.has(r.person_id) && !inLine.has(r.person_id))
         .filter((r) => levelFits(game, r.ntrp))
+        .filter((r) => !game.gender || (genders.get(r.person_id) ?? '') === game.gender)
         .map((r) => ({ id: r.person_id, name: r.full_name || 'A member' }))
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];
@@ -91,7 +98,7 @@ export default async function GameLinkPage({ params }: { params: { token: string
   const rows: [string, string][] = [
     ['When', `${longDay(game.starts_at, tz)}, ${clockLabel(game.starts_at, tz)}`],
     ['How long', durationLabel(game.duration_min)],
-    ['Game', isFormat(game.format) ? FORMAT_LABEL[game.format] : game.format],
+    ['Game', gameKind(game.format, game.gender)],
     ...(level ? ([['Level', level]] as [string, string][]) : []),
     ['Court', game.court || 'To be decided'],
     ['Posted by', group[0]?.short || 'A member'],
@@ -103,7 +110,7 @@ export default async function GameLinkPage({ params }: { params: { token: string
       clubName={club.name}
       clubSlug={club.slug}
       myFirstName={firstName(me.full_name)}
-      title={`${longDay(game.starts_at, tz).split(',')[0]} ${clockLabel(game.starts_at, tz)} ${isFormat(game.format) ? FORMAT_LABEL[game.format] : game.format}`}
+      title={`${longDay(game.starts_at, tz).split(',')[0]} ${clockLabel(game.starts_at, tz)} ${gameKind(game.format, game.gender)}`}
       rows={rows}
       note={game.note}
       status={started && game.status !== 'cancelled' ? 'past' : game.status}

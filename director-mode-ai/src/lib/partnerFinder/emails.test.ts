@@ -27,6 +27,7 @@ const game: Game = {
   include_unrated: true,
   court: '6',
   note: 'Looking for two guys for doubles at 1pm.',
+  gender: null,
   status: 'full',
   notified_count: 16,
   filled_at: '2026-09-22T17:26:00.000Z',

@@ -20,6 +20,7 @@ import {
   FORMAT_LABEL,
   MAX_SPOTS,
   durationLabel,
+  gameKind,
   needsLabel,
   ratingLabel,
   type GameFormat,
@@ -291,6 +292,19 @@ function GameCard({
         </div>
       )}
 
+      {g.isMine && g.answers && g.answers.emailed > 0 && (
+        <div className="mt-3 rounded-2xl bg-slate-50 p-4 text-slate-800">
+          <p className="font-semibold">
+            We emailed {g.answers.emailed} {g.answers.emailed === 1 ? 'member' : 'members'}.
+          </p>
+          {g.answers.waiting.length > 0 && <p className="mt-1">In line if a spot opens: {g.answers.waiting.join(', ')}</p>}
+          {g.answers.no.length > 0 && <p className="mt-1">Said no: {g.answers.no.join(', ')}</p>}
+          {g.answers.noReply.length > 0 && (
+            <p className="mt-1 text-slate-600">No answer yet: {g.answers.noReply.join(', ')}</p>
+          )}
+        </div>
+      )}
+
       <div className="mt-4">
         {g.isMine ? (
           confirm ? (
@@ -329,7 +343,9 @@ function GameCard({
           </button>
         ) : (
           <p className="rounded-2xl bg-slate-50 px-4 py-3 text-slate-700">
-            {myLevelKnown
+            {g.wrongGender
+              ? `This game is for ${g.gender === 'male' ? 'men' : 'women'}.`
+              : myLevelKnown
               ? `This game is for ${g.rating} players.`
               : 'Pick your level at the top of this page to join this game.'}
           </p>
@@ -404,6 +420,33 @@ function PostForm({
   const [duration, setDuration] = useState<number>(90);
   const [format, setFormat] = useState<GameFormat>('doubles');
   const [spots, setSpots] = useState<number>(1);
+  /** '' = anyone. Mixed doubles never asks. */
+  const [gender, setGender] = useState<'' | 'male' | 'female'>('');
+  /*
+   * Who is already playing with the poster: a member (by PlayerVault id) or a
+   * guest's name. They are seated before anyone is emailed.
+   */
+  const [partners, setPartners] = useState<{ personId: string | null; name: string }[]>([]);
+  const [partnerText, setPartnerText] = useState('');
+  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    fetch(`/api/play/members?club=${encodeURIComponent(board.club.id)}`, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : { members: [] }))
+      .then((d: { members?: { id: string; name: string }[] }) => setMembers(d.members ?? []))
+      .catch(() => {});
+  }, [board.club.id]);
+  const maxMore = Math.max(MAX_SPOTS - partners.length, 1);
+  useEffect(() => {
+    if (spots > maxMore) setSpots(maxMore);
+  }, [maxMore, spots]);
+  function addPartner() {
+    const typed = partnerText.trim();
+    if (!typed || partners.length >= MAX_SPOTS - 1) return;
+    const hit = members.find((m) => m.name.toLowerCase() === typed.toLowerCase());
+    if (hit && partners.some((p) => p.personId === hit.id)) return setPartnerText('');
+    setPartners([...partners, hit ? { personId: hit.id, name: hit.name } : { personId: null, name: typed }]);
+    setPartnerText('');
+  }
   /*
    * "Any level" is the default and it means any level: null/null is what gets
    * saved. A range is only ever what the poster can see in From/To — it starts
@@ -432,7 +475,7 @@ function PostForm({
   const dayLabel = days.find((d) => d.value === date)?.label.replace(/^(Today|Tomorrow), /, '') ?? '';
   const timeLabel = TIME_OPTIONS.find((t) => t.value === time)?.label ?? '';
   const level = anyLevel ? '' : ratingLabel(min, max, scale);
-  const preview = `${dayLabel.split(',')[0]} ${timeLabel} ${FORMAT_LABEL[format]} ${needsLabel(spots)}${level ? ` (${level})` : ''}`;
+  const preview = `${dayLabel.split(',')[0]} ${timeLabel} ${gameKind(format, gender || null)} ${needsLabel(spots)}${level ? ` (${level})` : ''}`;
 
   async function submit() {
     if (!anyLevel && min > max) return setError('The lowest level must be at or below the highest.');
@@ -445,6 +488,8 @@ function PostForm({
       duration,
       format,
       spots,
+      gender: format === 'mixed' ? null : gender || null,
+      partners: partners.map((p) => (p.personId ? { person_id: p.personId } : { guest_name: p.name })),
       rating_min: anyLevel ? null : min,
       rating_max: anyLevel ? null : max,
       include_unrated: anyLevel ? true : includeUnrated,
@@ -499,9 +544,75 @@ function PostForm({
         />
       </Field>
 
-      <Field label="How many players do you need?">
+      {format !== 'mixed' && (
+        <Field label="Who can play?" hint="We only email members who fit.">
+          <Choice
+            options={[
+              { value: '' as const, label: 'Anyone' },
+              { value: 'male' as const, label: 'Men only' },
+              { value: 'female' as const, label: 'Women only' },
+            ]}
+            value={gender}
+            onChange={setGender}
+          />
+        </Field>
+      )}
+
+      <Field
+        label="Who's already playing with you?"
+        hint="Optional. Pick a member or type a guest's name. They won't get the email."
+      >
+        {partners.length > 0 && (
+          <ul className="mb-3 flex flex-wrap gap-2">
+            {partners.map((p, i) => (
+              <li key={`${p.name}-${i}`} className="flex items-center gap-2 rounded-full bg-emerald-50 py-2 pl-4 pr-2 text-lg">
+                {p.name}
+                {!p.personId && <span className="text-base text-slate-500">(guest)</span>}
+                <button
+                  type="button"
+                  onClick={() => setPartners(partners.filter((_, j) => j !== i))}
+                  aria-label={`Remove ${p.name}`}
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-emerald-100"
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {partners.length < MAX_SPOTS - 1 && (
+          <div className="flex gap-2">
+            <input
+              value={partnerText}
+              onChange={(e) => setPartnerText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addPartner();
+                }
+              }}
+              list="cc-partner-names"
+              maxLength={60}
+              placeholder="Start typing a name"
+              className={selectCls}
+            />
+            <datalist id="cc-partner-names">
+              {members
+                .filter((m) => !partners.some((p) => p.personId === m.id))
+                .map((m) => (
+                  <option key={m.id} value={m.name} />
+                ))}
+            </datalist>
+            <button type="button" onClick={addPartner} className={`${secondaryBtn} shrink-0`}>
+              Add
+            </button>
+          </div>
+        )}
+      </Field>
+
+      <Field label={partners.length ? 'How many more players do you need?' : 'How many players do you need?'}>
         <Choice
-          options={Array.from({ length: MAX_SPOTS }, (_, i) => ({ value: i + 1, label: String(i + 1) }))}
+          options={Array.from({ length: maxMore }, (_, i) => ({ value: i + 1, label: String(i + 1) }))}
           value={spots}
           onChange={setSpots}
         />

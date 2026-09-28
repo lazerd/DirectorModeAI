@@ -12,7 +12,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { afterCancel, afterJoin, afterLeave } from './notify';
-import { levelFits, loadGame, memberRow, personRow, resolvePlayingClub, type Club, type Db } from './server';
+import { genderFits, levelFits, loadGame, personGender, memberRow, personRow, resolvePlayingClub, type Club, type Db } from './server';
 
 export type ActionOutcome = {
   ok: boolean;
@@ -36,6 +36,7 @@ const MESSAGES: Record<string, string> = {
   not_member: 'Only members of this club can join its games.',
   need_level: 'Tell us your level first, then you can join.',
   wrong_level: "This game is for a different level than yours.",
+  wrong_gender: "This game is for the other gender, so it isn't open to you.",
   left: "Done. You're out of this game, and we've told the person who posted it.",
   declined: "No problem — we've noted you can't make this one. Tap “I'm in” above if that changes.",
   not_in: "You're not in this game.",
@@ -64,6 +65,9 @@ export async function joinGame(
     // ever sent to someone who fit, so it is not asked twice.
     const game = await loadGame(db, gameId);
     if (!game) return { ok: false, result: 'not_found', message: say('not_found') };
+    if (game.gender && !genderFits(game, await personGender(db, personId))) {
+      return { ok: false, result: 'wrong_gender', message: say('wrong_gender') };
+    }
     if (game.rating_min != null || game.rating_max != null) {
       const me = await personRow(db, game.club_id, personId);
       if (me && !levelFits(game, me.ntrp)) {

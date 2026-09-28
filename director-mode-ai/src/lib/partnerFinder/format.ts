@@ -20,6 +20,24 @@ export const FORMAT_LABEL: Record<GameFormat, string> = {
   hitting: 'hitting session',
 };
 
+/** Who a game is for. null = anyone. Matches cc_vault_players.gender. */
+export const GENDERS = ['male', 'female'] as const;
+export type GameGender = (typeof GENDERS)[number];
+
+export function isGender(v: unknown): v is GameGender {
+  return typeof v === 'string' && (GENDERS as readonly string[]).includes(v);
+}
+
+/**
+ * "doubles", "men's doubles", "women's hitting session". Mixed is already
+ * about gender, so it never takes a prefix.
+ */
+export function gameKind(format: string, gender?: string | null): string {
+  const f = isFormat(format) ? FORMAT_LABEL[format] : format;
+  if (format === 'mixed' || !isGender(gender)) return f;
+  return `${gender === 'male' ? "men's" : "women's"} ${f}`;
+}
+
 export const DURATIONS = [60, 90, 120] as const;
 
 /** Most spots a post may ask for. */
@@ -123,11 +141,12 @@ export type GameSummary = {
   spots_needed: number;
   rating_min: number | string | null;
   rating_max: number | string | null;
+  gender?: string | null;
 };
 
-/** "Tue Sep 22 · 9:00am doubles" */
-export function gameTitle(g: Pick<GameSummary, 'starts_at' | 'format'>, tz: string): string {
-  const f = isFormat(g.format) ? FORMAT_LABEL[g.format] : g.format;
+/** "Tue Sep 22 · 9:00am doubles" (or "men's doubles") */
+export function gameTitle(g: Pick<GameSummary, 'starts_at' | 'format' | 'gender'>, tz: string): string {
+  const f = gameKind(g.format, g.gender);
   return `${shortDay(g.starts_at, tz)} · ${clockLabel(g.starts_at, tz)} ${f}`;
 }
 

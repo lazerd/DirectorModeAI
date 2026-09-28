@@ -2,7 +2,12 @@
  * POST /api/play/games — post a game that needs players.
  *
  * { club_id, date: 'YYYY-MM-DD', time: 'HH:MM', duration, format, spots,
- *   rating_min?, rating_max?, include_unrated?, court?, note?, my_ntrp? }
+ *   rating_min?, rating_max?, include_unrated?, court?, note?, my_ntrp?,
+ *   gender?: 'male' | 'female', partners?: ({ person_id } | { guest_name })[] }
+ *
+ * `spots` is how many MORE players the poster needs. `partners` are the people
+ * already playing with them — seated on the game before anyone is emailed, so
+ * the court count is true from the start and they never get the invite.
  *
  * date + time are wall-clock AT THE CLUB and converted with the club's zone —
  * never `new Date('2026-09-22T09:00')`, which on Vercel means 9am UTC.
@@ -16,7 +21,7 @@ import { zonedWallTimeToIso } from '@/lib/captain/clubTime';
 import { isCtxError, requireMember } from '@/lib/partnerFinder/actions';
 import { inviteMembers } from '@/lib/partnerFinder/notify';
 import { loadGame, saveSelfRating } from '@/lib/partnerFinder/server';
-import { DAILY_POST_LIMIT, MAX_RECIPIENTS, MAX_SPOTS, isFormat } from '@/lib/partnerFinder/format';
+import { DAILY_POST_LIMIT, MAX_RECIPIENTS, MAX_SPOTS, isFormat, isGender } from '@/lib/partnerFinder/format';
 import { isLevelValue, type LevelScale } from '@/lib/levels';
 import { background } from '@/lib/partnerFinder/background';
 import { isDemoClub } from '@/lib/demo/server';
@@ -68,6 +73,28 @@ export async function POST(req: Request) {
   if (Number.isNaN(min) || Number.isNaN(max) || (min != null && max != null && min > max)) {
     return NextResponse.json({ error: 'Please check the level range.' }, { status: 400 });
   }
+  const gender = isGender(body.gender) && body.format !== 'mixed' ? body.gender : null;
+
+  /*
+   * Who is already playing. Walden's 9/28 doubles was stored as "needs 1"
+   * with only him on it, because Gabe and Darryl had nowhere to go — the
+   * director's table read 2/2 on a four-person court.
+   */
+  const partners = (Array.isArray(body.partners) ? body.partners : [])
+    .map((p): { personId: string | null; guest: string | null } | null => {
+      const o = (p ?? {}) as Record<string, unknown>;
+      const personId = typeof o.person_id === 'string' && o.person_id ? o.person_id : null;
+      const guest = typeof o.guest_name === 'string' ? o.guest_name.trim().slice(0, 60) : '';
+      return personId ? { personId, guest: null } : guest ? { personId: null, guest } : null;
+    })
+    .filter((p): p is { personId: string | null; guest: string | null } => p !== null);
+  if (spots + partners.length > MAX_SPOTS) {
+    return NextResponse.json(
+      { error: `That's more than ${MAX_SPOTS + 1} players on one court. Take someone off the list or ask for fewer.` },
+      { status: 400 },
+    );
+  }
+
   const court = typeof body.court === 'string' ? body.court.trim().slice(0, 60) : '';
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, 500) : '';
 
@@ -85,7 +112,7 @@ export async function POST(req: Request) {
     p_starts_at: startsAt,
     p_duration: duration,
     p_format: body.format,
-    p_spots: spots,
+    p_spots: spots + partners.length,
     p_rating_min: min,
     p_rating_max: max,
     p_include_unrated: body.include_unrated !== false,
@@ -107,11 +134,26 @@ export async function POST(req: Request) {
    * and a poster staring at "Posting…" that long taps again. The count is who
    * WILL be emailed, read with the same function the send uses.
    */
+  if (gender) await db.from('pf_games').update({ gender }).eq('id', r.game_id!);
+  const seated: string[] = [];
+  if (ctx.personId) {
+    for (const p of partners) {
+      const { data: added } = await db.rpc('pf_host_add', {
+        p_game: r.game_id,
+        p_actor: ctx.personId,
+        p_person: p.personId,
+        p_guest_name: p.personId ? null : p.guest,
+      });
+      const a = added as { result: string; name?: string } | null;
+      if (a?.result === 'added') seated.push(a.name ?? p.guest ?? 'A member');
+    }
+  }
+
   const game = await loadGame(db, r.game_id!);
   const { data: recipients } = await db.rpc('pf_game_recipients', { p_game: r.game_id, p_limit: MAX_RECIPIENTS });
   const notifying = ((recipients as unknown[] | null) ?? []).length;
   if (game && notifying > 0) background('invite emails', () => inviteMembers(db, game, club));
   // A demo club's invites are held back by the email guard; say so on screen.
   const demo = await isDemoClub(club.id);
-  return NextResponse.json({ ok: true, game_id: r.game_id, notified: notifying, demo });
+  return NextResponse.json({ ok: true, game_id: r.game_id, notified: notifying, demo, seated });
 }

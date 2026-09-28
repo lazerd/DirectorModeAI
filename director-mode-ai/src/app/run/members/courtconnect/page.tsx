@@ -82,7 +82,7 @@ export default async function CourtConnectDirectorPage() {
   const { data: playerRows } = games.length
     ? await db
         .from('pf_game_players')
-        .select('game_id, user_id, status')
+        .select('game_id, person_id, guest_name, via, status')
         .in('game_id', games.map((g) => g.id))
         .in('status', ['in', 'wait', 'no', 'out'])
         .order('joined_at')
@@ -96,16 +96,24 @@ export default async function CourtConnectDirectorPage() {
   const { data: linkRows } = games.length
     ? await db
         .from('pf_links')
-        .select('game_id, user_id, emailed_at')
+        .select('game_id, person_id, emailed_at')
         .in('game_id', games.map((g) => g.id))
         .not('emailed_at', 'is', null)
     : { data: [] };
   const emailedOn = new Map<string, Set<string>>();
-  for (const l of (linkRows as { game_id: string; user_id: string }[] | null) ?? []) {
-    emailedOn.set(l.game_id, (emailedOn.get(l.game_id) ?? new Set<string>()).add(l.user_id));
+  for (const l of (linkRows as { game_id: string; person_id: string }[] | null) ?? []) {
+    emailedOn.set(l.game_id, (emailedOn.get(l.game_id) ?? new Set<string>()).add(l.person_id));
   }
 
-  const names = new Map(roster.map((r) => [r.user_id, shortName(r.full_name)]));
+  /*
+   * Everything here is keyed by PERSON (the PlayerVault row). Seats and links
+   * moved from accounts to people in courtconnect_reads_people.sql, and this
+   * page kept reading user_id — so on 9/28 Simon Chan's email yes showed as
+   * "added by staff" and a game with four players on court read 2/2.
+   * posted_by is still an account, so the poster is looked up by user_id.
+   */
+  const names = new Map(roster.map((r) => [r.person_id, shortName(r.full_name)]));
+  const posterName = (g: Game) => shortName(roster.find((r) => r.user_id === g.posted_by)?.full_name);
   const playersBy = new Map<string, string[]>();
   const waitingBy = new Map<string, string[]>();
   /*
@@ -121,17 +129,24 @@ export default async function CourtConnectDirectorPage() {
   };
   /** Players who got the email and then tapped "I'm in" — a real yes. */
   const saidYesBy = new Map<string, string[]>();
+  /** Seated by the poster (people they brought, or a yes on court) — never a reply. */
+  const hostAddedBy = new Map<string, string[]>();
+  /** Joined from the board without an email, which is a yes but not a reply. */
+  const boardBy = new Map<string, string[]>();
   /** Anyone who has answered in any way, so the remainder is silence. */
   const answered = new Map<string, Set<string>>();
-  for (const p of (playerRows as { game_id: string; user_id: string; status: string }[] | null) ?? []) {
+  type Seat = { game_id: string; person_id: string | null; guest_name: string | null; via: string; status: string };
+  const push = (m: Map<string, string[]>, k: string, v: string) => m.set(k, [...(m.get(k) ?? []), v]);
+  for (const p of (playerRows as Seat[] | null) ?? []) {
     const into = bucket[p.status];
     if (!into) continue;
-    const who = names.get(p.user_id) ?? 'A member';
-    into.set(p.game_id, [...(into.get(p.game_id) ?? []), who]);
-    answered.set(p.game_id, (answered.get(p.game_id) ?? new Set<string>()).add(p.user_id));
-    if (p.status === 'in' && emailedOn.get(p.game_id)?.has(p.user_id)) {
-      saidYesBy.set(p.game_id, [...(saidYesBy.get(p.game_id) ?? []), who]);
-    }
+    const who = p.person_id ? names.get(p.person_id) ?? 'A member' : `${p.guest_name || 'Guest'} (guest)`;
+    push(into, p.game_id, who);
+    if (p.person_id) answered.set(p.game_id, (answered.get(p.game_id) ?? new Set<string>()).add(p.person_id));
+    if (p.status !== 'in') continue;
+    if (p.via === 'host') push(hostAddedBy, p.game_id, who);
+    else if (p.person_id && emailedOn.get(p.game_id)?.has(p.person_id)) push(saidYesBy, p.game_id, who);
+    else push(boardBy, p.game_id, who);
   }
 
   // ---- findings
@@ -242,9 +257,13 @@ export default async function CourtConnectDirectorPage() {
       : null;
     return (
       <tr key={g.id} className="border-t border-white/[0.06] align-top">
-        <td className="px-4 py-3 font-medium">{gameTitle(g, tz)}</td>
+        <td className="px-4 py-3 font-medium">
+          {gameTitle(g, tz)}
+          {g.court && <span className="block text-xs font-normal text-white/45">{g.court}</span>}
+          {g.note && <span className="mt-1 block text-xs font-normal italic text-white/45">&ldquo;{g.note}&rdquo;</span>}
+        </td>
         <td className="px-4 py-3 text-white/70">{ratingLabel(g.rating_min, g.rating_max, club.levels) || 'Any'}</td>
-        <td className="px-4 py-3 text-white/70">{names.get(g.posted_by) ?? 'A member'}</td>
+        <td className="px-4 py-3 text-white/70">{posterName(g)}</td>
         <td className="px-4 py-3 text-white/70">
           {/*
             Court terms, not database terms. spots_needed counts
@@ -255,8 +274,14 @@ export default async function CourtConnectDirectorPage() {
             poster is playing: 2 of 4.
           */}
           {players.length + 1}/{g.spots_needed + 1}
-          <span className="block text-white/45">
-            {[names.get(g.posted_by) ?? 'A member', ...players].join(', ')}
+          <span className="mt-0.5 block text-white/45">
+            {[`${posterName(g)} (posted)`, ...players].map((n) => (
+              <span key={n} className="block">{n}</span>
+            ))}
+            {g.status === 'open' &&
+              Array.from({ length: Math.max(g.spots_needed - players.length, 0) }, (_, i) => (
+                <span key={`open-${i}`} className="block text-white/25">open spot</span>
+              ))}
           </span>
           {(waitingBy.get(g.id)?.length ?? 0) > 0 && (
             <span className="block text-amber-300/70">
@@ -296,11 +321,15 @@ export default async function CourtConnectDirectorPage() {
                 {g.status === 'open' && new Date(g.starts_at) > new Date() && (
                   <SendAgain gameId={g.id} people={quiet} />
                 )}
-                {/* Anyone the director put in the game themselves is on the court but never answered anything. */}
-                {(playersBy.get(g.id) ?? []).length > yes.length && (
+                {/* On the court without answering an email: brought by the poster, or joined from the board. */}
+                {(hostAddedBy.get(g.id)?.length ?? 0) > 0 && (
                   <span className="mt-0.5 block text-xs text-white/35">
-                    added by staff:{' '}
-                    {(playersBy.get(g.id) ?? []).filter((n) => !yes.includes(n)).join(', ')}
+                    added by {posterName(g)}: {hostAddedBy.get(g.id)!.join(', ')}
+                  </span>
+                )}
+                {(boardBy.get(g.id)?.length ?? 0) > 0 && (
+                  <span className="mt-0.5 block text-xs text-white/35">
+                    joined from the board: {boardBy.get(g.id)!.join(', ')}
                   </span>
                 )}
               </>
