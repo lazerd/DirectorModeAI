@@ -2748,6 +2748,20 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                   Snap the paper card and the scores fill themselves in. Check them before you
                   save — nothing is recorded until you do.
                 </p>
+                {/* The card is read for scores and THEIR names; ours come from
+                    the lineup, so a mid-match switch is fixed there (Darrin 9/29). */}
+                <p className="mt-1.5 text-xs text-white/40">
+                  Our players&apos; names come from the lineup, not the photo. If someone switched
+                  mid-match, change the name in the{' '}
+                  <button
+                    type="button"
+                    onClick={() => jumpTo('lineup')}
+                    className="underline decoration-white/30 underline-offset-2 hover:text-white/70"
+                  >
+                    lineup
+                  </button>{' '}
+                  and press Save there. The scores stay put.
+                </p>
                 {readNote && (
                   <p className="mt-2 text-xs text-[#D3FB52]">{readNote}</p>
                 )}
