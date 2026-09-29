@@ -581,8 +581,8 @@ function MatchRow({
         className={`flex items-center gap-2 ${isPending ? 'cursor-pointer' : ''}`}
       >
         <div className="flex-1 grid grid-cols-2 gap-1">
-          <div className={`truncate ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!aWon ? { color: '#000000' } : undefined}>{a}</div>
-          <div className={`truncate ${bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!bWon ? { color: '#000000' } : undefined}>{b}</div>
+          <div className={`break-words ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!aWon ? { color: '#000000' } : undefined}>{a}</div>
+          <div className={`break-words ${bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`} style={!bWon ? { color: '#000000' } : undefined}>{b}</div>
         </div>
         <div className="text-gray-900 text-xs font-mono w-20 text-right truncate" style={{ color: '#000000' }}>
           {match.score || ''}
@@ -748,13 +748,13 @@ function DoublesRow({
       >
         <div className="flex-1 grid grid-cols-2 gap-1">
           <div
-            className={`truncate text-xs ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`}
+            className={`break-words text-xs ${aWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`}
             style={!aWon ? { color: '#000000' } : undefined}
           >
             {a1} + {a2}
           </div>
           <div
-            className={`truncate text-xs ${bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`}
+            className={`break-words text-xs ${bWon ? 'font-semibold text-emerald-700' : 'text-gray-900'}`}
             style={!bWon ? { color: '#000000' } : undefined}
           >
             {b1} + {b2}
