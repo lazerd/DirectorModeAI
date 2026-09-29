@@ -253,7 +253,10 @@ try {
   d10 = await doublesRow(0);
   check('correction re-pairs the unplayed doubles: Ava+Dee vs Ben+Cal', d10.length === 1 && teams(d10[0]) === want(T('Ava'), T('Dee'), T('Ben'), T('Cal')), d10[0] && teams(d10[0]));
   check('re-pair kept its court + time', d10[0]?.court === '1' && d10[0]?.t === '13:30');
+  const scrollBefore = await page.evaluate(() => window.scrollY);
   await directorDoubles(`${T('Ben')} + ${T('Cal')}`, '3-4');
+  const scrollAfter = await page.evaluate(() => window.scrollY);
+  check('saving a score keeps your place on the page', scrollBefore > 200 && Math.abs(scrollAfter - scrollBefore) < 400, `${scrollBefore} -> ${scrollAfter}`);
   await snap('10u-final');
 
   console.log('\n-- 13&O: director scoring --');
@@ -307,12 +310,11 @@ try {
   await snap('12u-doubles-reported', pp);
 
   console.log('\n-- Standings on the Matches tab --');
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.getByRole('button', { name: /^Matches/ }).click().catch(() => {});
-  await page.waitForTimeout(1500);
-  await snap('matches-final');
+  // No reload: the director's tab should pick up the players' scores by itself.
+  await page.locator('text=Final — most games wins').nth(2).waitFor({ timeout: 45000 }).catch(() => {});
   const boards = await page.locator('text=Final — most games wins').count();
-  check('all three flights show "Final — most games wins"', boards === 3, `${boards}`);
+  check('director screen picks up the players scores on its own (no reload)', boards === 3, `${boards} final boards`);
+  await snap('matches-final');
 
   console.log('\n-- Complete + public results --');
   await page.getByRole('button', { name: /Complete tournament/ }).click();

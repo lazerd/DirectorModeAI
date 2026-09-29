@@ -185,6 +185,16 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
     fetchAll();
   }, [fetchAll]);
 
+  // On event day parents score from their phones; keep the director's
+  // Matches tab (and its standings) current without a manual reload.
+  useEffect(() => {
+    if (tab !== 'matches') return;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') fetchAll();
+    }, 20000);
+    return () => clearInterval(id);
+  }, [tab, fetchAll]);
+
   const publicUrl = useMemo(() => {
     if (!event) return '';
     if (typeof window === 'undefined') return `/quads/${event.slug}`;
@@ -201,7 +211,10 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
     }
   };
 
-  if (loading) {
+  // Spinner on the FIRST load only. Showing it on every refresh unmounted
+  // the whole dashboard after each score — the page blanked and jumped back
+  // to the top, mid-event, on a phone.
+  if (loading && !event) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="animate-spin text-orange-500" size={24} />

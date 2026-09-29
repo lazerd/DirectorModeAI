@@ -636,6 +636,7 @@ function MatchRow({
         </select>
         <span className="ml-2">Start</span>
         <input
+          key={match.scheduled_at ?? 'none'}
           type="time"
           defaultValue={match.scheduled_at?.slice(0, 5) ?? ''}
           onBlur={(e) => {
@@ -811,6 +812,7 @@ function DoublesRow({
         </select>
         <span className="ml-2">Start</span>
         <input
+          key={match.scheduled_at ?? 'none'}
           type="time"
           defaultValue={match.scheduled_at?.slice(0, 5) ?? ''}
           onBlur={(e) => {
