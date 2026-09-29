@@ -540,8 +540,8 @@ export function resolveCourtList(input: {
  *     of the two courts (1 doubles match).
  *
  * If courts.length < 2 × numFlights, flights wrap around: extra flights
- * reuse the first pair of courts but start one wave later (staggered in
- * time). Director can hand-edit if it gets ugly; this is a sane default.
+ * reuse the first pair of courts in a later wave, starting once the earlier
+ * flight's four rounds are done. Director can hand-edit if it gets ugly; this is a sane default.
  */
 export function autoScheduleQuads(input: {
   startTime: string; // "HH:MM"
@@ -582,7 +582,10 @@ export function autoScheduleQuads(input: {
       const idxInRound = seenInRound.get(m.round) ?? 0;
       seenInRound.set(m.round, idxInRound + 1);
 
-      const slot = wave + (m.round - 1);
+      // A wave waits for the previous wave's four rounds to finish: its
+      // flights reuse the same courts, so starting one round later (as this
+      // used to) put two matches on one court.
+      const slot = wave * 4 + (m.round - 1);
       const scheduled = addMinutesToTime(input.startTime, slot * input.roundDurationMinutes);
       // R4 doubles always lands on courtA (1 match per flight).
       const court = m.round === 4 ? courtA : idxInRound === 0 ? courtA : courtB;

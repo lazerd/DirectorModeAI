@@ -477,8 +477,9 @@ describe('autoScheduleQuads', () => {
       flights: [flightA, flightB],
     });
     expect(result.get('mA1')).toEqual({ scheduled_at: '09:00', court: '1' });
-    // Flight B reuses courts 1+2 but starts one slot later
-    expect(result.get('mB1')).toEqual({ scheduled_at: '09:45', court: '1' });
+    // Flight B reuses courts 1+2, so it starts after A's four rounds
+    // (09:00 + 4 × 45), not while A's round 2 is on court 1.
+    expect(result.get('mB1')).toEqual({ scheduled_at: '12:00', court: '1' });
   });
 });
 
