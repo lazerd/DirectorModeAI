@@ -49,6 +49,20 @@ function gamesOf(score: string | null): [number, number] | null {
   return m ? [Number(m[1]), Number(m[2])] : null;
 }
 
+/**
+ * The score the way TennisLink's two boxes take it: WINNER'S games first.
+ * The boxes are named home/visiting but headed "Winning Team Score"; typing a
+ * lost line home-first gets it rejected as "invalid" (9/21 and 9/28/26 — a
+ * 0-8 card copied as "2-3 winner: them" failed on every line). Which side won
+ * is carried by the Winning Team box, not by the order.
+ */
+export function winnerFirst(score: string | null | undefined): string {
+  const m = (score || '').match(/^\s*(\d+)\s*[-–]\s*(\d+)\s*$/);
+  if (!m) return score || '';
+  const [a, b] = [Number(m[1]), Number(m[2])];
+  return `${Math.max(a, b)}-${Math.min(a, b)}`;
+}
+
 /** What to pick in TennisLink's `result` dropdown for this line. */
 function resultLabel(line: UstaLine, target: number): string {
   if (line.defaulted) return 'Default';
@@ -98,13 +112,13 @@ export default function UstaScorePanel({
 
   const asText = [
     `${isHome ? 'vs' : 'at'} ${opponent || 'TBD'} — match date ${cardDate}`,
-    `${ourColumn} = us, ${theirColumn} = them`,
+    `${ourColumn} = us, ${theirColumn} = them. Scores are WINNER'S GAMES FIRST, the way TennisLink's boxes take them.`,
     ...scored.map((l) =>
       [
         `${l.label}:`,
         l.ours,
         l.theirs ? `vs ${l.theirs}` : '',
-        l.defaulted ? '' : l.score || '',
+        l.defaulted ? '' : winnerFirst(l.score),
         `[${resultLabel(l, target)}]`,
         l.won === true ? 'winner: us' : l.won === false ? 'winner: them' : '',
       ]
@@ -171,7 +185,7 @@ export default function UstaScorePanel({
           top of this match&apos;s score card on your TennisLink team page — we don&apos;t have it.
         </li>
         <li>
-          4. Set the date to <b className="text-white/80">{cardDate}</b> and fill the lines below.
+          4. Set the date to <b className="text-white/80">{cardDate}</b> and fill the lines below. The left score box is the <b className="text-white/80">winning</b> team          4. Set the date to <b className="text-white/80">{cardDate}</b> and fill the lines below.apos;s games, whoever won.
         </li>
       </ol>
       <p className="mt-2 text-xs text-white/30">
@@ -193,7 +207,7 @@ export default function UstaScorePanel({
             <span>
               {ourColumn} / {theirColumn}
             </span>
-            <span className="ml-auto">Games</span>
+            <span className="ml-auto">Games, winner first</span>
             <span className="w-24 text-right">Result</span>
             <span className="w-14 text-right">Winner</span>
           </div>
@@ -208,7 +222,7 @@ export default function UstaScorePanel({
               <span className="text-white/80">{l.ours}</span>
               {l.theirs && <span className="text-white/35">vs {l.theirs}</span>}
               <span className="ml-auto font-mono text-white/70">
-                {l.defaulted ? '—' : l.score || '—'}
+                {l.defaulted ? '—' : winnerFirst(l.score) || '—'}
               </span>
               <span className="w-24 text-right text-xs text-white/50">
                 {resultLabel(l, target)}
