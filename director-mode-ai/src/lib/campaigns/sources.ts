@@ -4,6 +4,7 @@
 // reduce to a shared assemble(); point/pickup/RSVP surfaces (swim, stringing,
 // JTT coaches, CourtConnect) build their recipient lists directly.
 
+import { contactListSources, contactListRows, CONTACT_LIST_PREFIX } from '@/lib/promoContacts';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import type { CampaignData, CampaignCopy, NudgePerson, Person, Outstanding } from './core';
 import { matchCopy } from './core';
@@ -848,13 +849,22 @@ export async function quadPromoteCampaign(
    * a junior event and was missing entirely — a league entry is not a
    * tournament_entries row, so last summer's JTT players were invisible here.
    */
-  const sources = [...(await pastPaidEvents(user.id, eventId)), ...(await juniorLeagueSources(user.id))];
+  const sources = [
+    ...(await pastPaidEvents(user.id, eventId)),
+    ...(await juniorLeagueSources(user.id)),
+    ...(await contactListSources(admin, user.id)),
+  ];
   const chosen = sourceEventIds?.length ? sources.filter((s) => sourceEventIds.includes(s.id)) : sources;
 
-  const chosenEventIds = chosen.filter((s) => !s.id.startsWith(LEAGUE_SOURCE_PREFIX)).map((s) => s.id);
+  const chosenEventIds = chosen
+    .filter((s) => !s.id.startsWith(LEAGUE_SOURCE_PREFIX) && !s.id.startsWith(CONTACT_LIST_PREFIX))
+    .map((s) => s.id);
   const chosenDivisionIds = chosen
     .filter((s) => s.id.startsWith(LEAGUE_SOURCE_PREFIX))
     .map((s) => s.id.slice(LEAGUE_SOURCE_PREFIX.length));
+  const chosenListKeys = chosen
+    .filter((s) => s.id.startsWith(CONTACT_LIST_PREFIX))
+    .map((s) => s.id.slice(CONTACT_LIST_PREFIX.length));
 
   const everyone: Person[] = [];
   if (chosen.length) {
@@ -884,9 +894,13 @@ export async function quadPromoteCampaign(
     if (user.email) skip.add(user.email.trim().toLowerCase());
 
     const seen = new Map<string, Person>();
+    // Saved contact lists (e.g. the Dunkin' player list) — already one row per family.
+    const listRows = await contactListRows(admin, user.id, chosenListKeys);
+
     const allRows = [
       ...((paidRows as Array<Record<string, string | null>>) || []),
       ...((leagueRows as Array<Record<string, string | null>>) || []),
+      ...listRows,
     ];
     for (const r of allRows) {
       const parentEmail = (r.parent_email || '').trim();

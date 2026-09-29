@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { pastPaidEvents, juniorLeagueSources } from '@/lib/campaigns/sources';
+import { contactListSources } from '@/lib/promoContacts';
 
 // GET /api/campaigns/past-events?eventId=<id>
 //
@@ -35,6 +36,8 @@ export async function GET(req: NextRequest) {
   const events = [
     ...(await pastPaidEvents(user.id, eventId)),
     ...(await juniorLeagueSources(user.id)),
+    // Saved contact lists — e.g. every family from a sponsor's event series.
+    ...(await contactListSources(admin, user.id)),
   ];
   return NextResponse.json({ events });
 }

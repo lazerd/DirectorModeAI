@@ -23,6 +23,7 @@
  * Returns: { url?: string, entry_id: string, free?: boolean }
  */
 
+import { addSignupToSponsorList } from '@/lib/promoContacts';
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { stripe, platformFeeForCents } from '@/lib/stripe';
@@ -135,7 +136,7 @@ export async function POST(request: Request) {
     const { data: ev, error: evErr } = await admin
       .from('events')
       .select(
-        'id, name, slug, series_slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, external_payment_url, event_date, user_id, divisions, entry_flow, total_quads'
+        'id, name, slug, series_slug, public_status, public_registration, registration_opens_at, registration_closes_at, max_players, age_max, gender_restriction, entry_fee_cents, stripe_account_id, external_payment_url, event_date, user_id, divisions, entry_flow, total_quads, sponsor_id'
       )
       .eq('slug', slug)
       .maybeSingle();
@@ -279,6 +280,18 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    // A sponsored event's families join that sponsor's running contact list,
+    // so the next event in the series can be promoted to all of them.
+    await addSignupToSponsorList(admin, {
+      ownerId: e.user_id,
+      sponsorId: e.sponsor_id,
+      eventSlug: e.slug,
+      email: parent_email || player_email,
+      parentName: parent_name,
+      playerName: player_name,
+      division,
+    });
 
     const origin = new URL(request.url).origin;
 
