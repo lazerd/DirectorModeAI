@@ -75,7 +75,7 @@ describe('letter C (Benchmarks)', () => {
 describe('one-tool letters T1..T12 (12 Templates doc, 9/29/26)', () => {
   const pages: Record<string, string> = {
     T1: '%2Frun%2Fmembers%2Fcourtconnect', T2: '%2Fcourtsheet%2Fstaff', T3: '%2Fmixer%2Fleagues', T4: '%2Fmixer%2Ftournaments',
-    T5: '%2Flessons%2Fopen', T6: '%2Fstringing%2Fjobs', T7: '%2Fcaptain', T8: '%2Fcourtconnect%2Fvault',
+    T5: 'as=member&next=%2Fopen%2Fharbor-view-racquet-club', T6: '%2Fstringing%2Fjobs', T7: '%2Fcaptain', T8: '%2Fcourtconnect%2Fvault',
     T9: 'next=%2Fmixer%2Fevents%2Fid', T10: '%2Fconnect', T11: 'as=member&next=%2Fmember', T12: 'next=%2Ftools',
   };
   it('each links its own tool in the sample club, with the ref', () => {

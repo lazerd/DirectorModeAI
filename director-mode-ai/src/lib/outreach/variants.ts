@@ -59,7 +59,7 @@ const TOOL_PAGE: Partial<Record<Variant, { next: string; as?: 'member' | 'direct
   T2: { next: '/courtsheet/staff' },
   T3: { next: '/mixer/leagues' },
   T4: { next: '/mixer/tournaments' },
-  T5: { next: '/lessons/open' },
+  T5: { next: '/open/harbor-view-racquet-club', as: 'member' },
   T6: { next: '/stringing/jobs' },
   T7: { next: '/captain' },
   T8: { next: '/courtconnect/vault' },
