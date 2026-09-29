@@ -14,6 +14,7 @@ import type { Contact, Org } from '@/lib/crm/types';
 import { LANE_LABEL, LANES, loadAutopilot, scoreboard, type Lane } from '@/lib/outreach/autopilot';
 import { VARIANT_LABEL, type Variant } from '@/lib/outreach/variants';
 import Switch from './Switch';
+import LetterToggle from './LetterToggle';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Autopilot', robots: { index: false, follow: false } };
@@ -67,7 +68,7 @@ export default async function AutopilotPage() {
           <div>
             <h1 className="font-display text-2xl text-white">Autopilot</h1>
             <p className="mt-1 text-sm text-white/50">
-              {ap.dca_per_day} Directors Club + {ap.found_per_day} found clubs a weekday, letters A and B split evenly.
+              {ap.dca_per_day} Directors Club + {ap.found_per_day} found clubs a weekday, every letter in play split evenly.
             </p>
           </div>
           <div className="flex items-center gap-4">
@@ -80,10 +81,10 @@ export default async function AutopilotPage() {
         </header>
 
         <section className="rounded-2xl border border-white/[0.08] bg-[#002838] p-4">
-          <h2 className="font-display text-lg text-white">Split test: A, B and C</h2>
+          <h2 className="font-display text-lg text-white">Split test</h2>
           <table className="mt-3 w-full text-sm">
             <thead className="text-left text-white/40">
-              <tr><th className="py-1 font-medium">Letter</th><th className="font-medium">Sent</th><th className="font-medium">Opened link</th><th className="font-medium">Replied</th></tr>
+              <tr><th className="py-1 font-medium">Letter</th><th className="font-medium">Sent</th><th className="font-medium">Opened link</th><th className="font-medium">Replied</th><th className="font-medium">In rotation</th></tr>
             </thead>
             <tbody>
               {all.map((s) => (
@@ -92,6 +93,7 @@ export default async function AutopilotPage() {
                   <td>{s.sent}</td>
                   <td>{s.clicked}</td>
                   <td>{s.replied}{s.sent ? ` (${Math.round((100 * s.replied) / s.sent)}%)` : ''}</td>
+                  <td>{s.variant === 'C' && !ap.variant_c ? <span className="text-white/35">off</span> : <LetterToggle variant={s.variant} on={!ap.paused_variants.includes(s.variant)} />}</td>
                 </tr>
               ))}
             </tbody>
@@ -101,7 +103,7 @@ export default async function AutopilotPage() {
               const rows = score.filter((s) => s.lane === l).map((s) => `${s.variant} ${s.replied}/${s.sent}`);
               return `${LANE_LABEL[l]}: ${rows.join(', ')}`;
             }).join(' · ')}
-            . Letter C goes only to racquet directors and head pros at their own address. Some mail filters open links on their own, so opens can run a little high.
+            . T1 to T12 are the one-tool letters from the 12 Templates doc. Letter C goes only to racquet directors and head pros at their own address. Some mail filters open links on their own, so opens can run a little high.
           </p>
         </section>
 

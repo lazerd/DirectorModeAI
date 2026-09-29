@@ -4,8 +4,9 @@
  *   lane 'dca'    3 a day from the Directors Club of America list
  *   lane 'found'  3 a day from clubs discoverClubs() finds on the web
  *
- * Each lane alternates letter A and letter B (see variants.ts) so the split
- * test stays balanced inside each lane. The one follow-up, eight days later,
+ * Each lane rotates every letter in play (see variants.ts: A, B, C and the
+ * one-tool letters T1..T12, minus any paused on the page) so the split test
+ * stays balanced inside each lane. The one follow-up, eight days later,
  * comes out of the same lane's three and goes first.
  *
  * With settings.auto_send false (how it ships) cards are written `planned`
@@ -21,7 +22,7 @@ import type { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { daysBetween, type ISODate } from '@/lib/crm/dates';
 import { loadCandidates, loadFollowUpSources, loadSettings, selectFollowUps, selectIntros, type Candidate } from './plan';
 import { outreachToday } from './settings';
-import { canBeSentC, newRef, nextVariant, renderLetter, VARIANT_LABEL, VARIANTS, type Links, type Variant } from './variants';
+import { allowedVariants, canBeSentC, newRef, nextVariant, renderLetter, VARIANT_LABEL, VARIANTS, type Links, type Variant } from './variants';
 import { discoverClubs } from './discover';
 
 type Db = ReturnType<typeof getSupabaseAdmin>;
@@ -41,12 +42,14 @@ export interface AutopilotSettings {
   digest_emails: string[];
   /** Letter C (Benchmarks) is in the rotation. Off until Darrin approves it. */
   variant_c: boolean;
+  /** Letters switched off on /crm/autopilot. Everything else is in the rotation. */
+  paused_variants: string[];
 }
 
 export async function loadAutopilot(db: Db): Promise<AutopilotSettings> {
   const { data } = await db
     .from('crm_outreach_settings')
-    .select('auto_send, paused, dca_per_day, found_per_day, demo_url, mixer_url, digest_emails, variant_c')
+    .select('auto_send, paused, dca_per_day, found_per_day, demo_url, mixer_url, digest_emails, variant_c, paused_variants')
     .eq('id', 1)
     .maybeSingle();
   const r = (data ?? {}) as Record<string, unknown>;
@@ -58,6 +61,7 @@ export async function loadAutopilot(db: Db): Promise<AutopilotSettings> {
     links: { demo_url: (r.demo_url as string) || null, mixer_url: (r.mixer_url as string) || null },
     digest_emails: Array.isArray(r.digest_emails) ? (r.digest_emails as string[]) : [],
     variant_c: r.variant_c === true,
+    paused_variants: Array.isArray(r.paused_variants) ? (r.paused_variants as string[]) : [],
   };
 }
 
@@ -221,7 +225,11 @@ export async function planAutopilot(
     );
     for (const p of picks) {
       // C (Benchmarks) only for a racquet director at their own address.
-      const allowed: Variant[] = ap.variant_c && canBeSentC({ title: p.contact.title, email: p.contact.email }, { knownDirector: lane === 'dca' }) ? ['A', 'B', 'C'] : ['A', 'B'];
+      const allowed = allowedVariants({
+        paused: ap.paused_variants,
+        cOn: ap.variant_c,
+        cOk: canBeSentC({ title: p.contact.title, email: p.contact.email }, { knownDirector: lane === 'dca' }),
+      });
       const variant = nextVariant(balance[lane], allowed);
       balance[lane][variant] = (balance[lane][variant] ?? 0) + 1;
       const ref = newRef();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canBeSentC, linkFor, newRef, nextVariant, renderLetter } from './variants';
+import { allowedVariants, canBeSentC, linkFor, newRef, nextVariant, renderLetter, VARIANTS } from './variants';
 
 const links = { demo_url: 'https://clubmode.ai/demo/TOKEN', mixer_url: 'https://clubmode.ai/demo/TOKEN/enter?as=director&next=%2Fmixer%2Fevents%2Fid%3Ftab%3Drounds' };
 
@@ -24,7 +24,7 @@ describe('letters', () => {
   });
   it('never says free or no cost (reads as free software, Darrin 9/24)', () => {
     for (const kind of ['intro', 'followup'] as const) {
-      for (const v of ['A', 'B', 'C'] as const) {
+      for (const v of VARIANTS) {
         const l = renderLetter(kind, v, { club: 'X Club', fullName: 'Y Z' }, links, 'abc123xyz9')!;
         expect(`${l.subject} ${l.body}`).not.toMatch(/\bfree\b|no cost|no charge|costs? (you )?nothing/i);
       }
@@ -69,5 +69,40 @@ describe('letter C (Benchmarks)', () => {
     expect(nextVariant({ A: 5, B: 5 })).toBe('A');
     expect(nextVariant({ A: 1, B: 1 }, ['A', 'B', 'C'])).toBe('C');
     expect(nextVariant({ A: 1, B: 1, C: 1 }, ['A', 'B', 'C'])).toBe('A');
+  });
+});
+
+describe('one-tool letters T1..T12 (12 Templates doc, 9/29/26)', () => {
+  const pages: Record<string, string> = {
+    T1: '%2Frun%2Fmembers%2Fcourtconnect', T2: '%2Fcourtsheet%2Fstaff', T3: '%2Fmixer%2Fleagues', T4: '%2Fmixer%2Ftournaments',
+    T5: '%2Flessons%2Fopen', T6: '%2Fstringing%2Fjobs', T7: '%2Fcaptain', T8: '%2Fcourtconnect%2Fvault',
+    T9: 'next=%2Fmixer%2Fevents%2Fid', T10: '%2Fconnect', T11: 'as=member&next=%2Fmember', T12: 'next=%2Ftools',
+  };
+  it('each links its own tool in the sample club, with the ref', () => {
+    for (const [v, page] of Object.entries(pages)) {
+      const l = renderLetter('intro', v as never, { club: 'Aberdeen Club', fullName: 'Jane Smith' }, links, 'abc123xyz9')!;
+      expect(l.body, v).toContain(page);
+      expect(l.body, v).toContain('r=abc123xyz9');
+      expect(l.body.startsWith('Hi Jane,'), v).toBe(true);
+      expect(`${l.subject} ${l.body}`, v).not.toMatch(/—|\[|\{\{|Darrin|Kevin|Sleepy Hollow|Founding Team|ClubHub|RecruitingMode|undefined/);
+    }
+  });
+  it('every one but T12 ends on the every-tool link; T12 IS that link', () => {
+    for (const v of Object.keys(pages)) {
+      const l = renderLetter('intro', v as never, { club: 'X Club', fullName: 'Y Z' }, links, 'abc123xyz9')!;
+      const n = l.body.split('next=%2Ftools').length - 1;
+      expect(n, v).toBe(1);
+    }
+  });
+  it('says 17 tools from the product list, not by hand', () => {
+    expect(renderLetter('intro', 'T1', { club: 'X', fullName: 'Y Z' }, links)!.body).toContain('17 tools');
+  });
+  it('rotation: paused letters sit out, C only when on and allowed, never empty', () => {
+    expect(allowedVariants({ paused: [], cOn: true, cOk: true })).toHaveLength(15);
+    expect(allowedVariants({ paused: [], cOn: true, cOk: false })).not.toContain('C');
+    expect(allowedVariants({ paused: ['A', 'T3'], cOn: false, cOk: true })).toEqual(VARIANTS.filter((v) => !['A', 'T3', 'C'].includes(v)));
+    expect(allowedVariants({ paused: [...VARIANTS], cOn: true, cOk: true })).toEqual(['A']);
+    // New letters catch up to the ones that already went out.
+    expect(nextVariant({ A: 3, B: 3, C: 3 }, allowedVariants({ paused: [], cOn: true, cOk: true }))).toBe('T1');
   });
 });
