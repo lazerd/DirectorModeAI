@@ -30,7 +30,10 @@ import { fileURLToPath } from 'url';
 import { createClient } from '@supabase/supabase-js';
 
 const SLUG = 'harbor-view-racquet-club';
-const DEMO_EMAILS = ['sample-demo@clubmode.ai', 'sample-member@clubmode.ai', 'sample-member2@clubmode.ai'];
+const DEMO_EMAILS = [
+  'sample-demo@clubmode.ai', 'sample-member@clubmode.ai', 'sample-member2@clubmode.ai',
+  'sample-pro1@clubmode.ai', 'sample-pro2@clubmode.ai',
+];
 
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 process.chdir(APP_DIR);

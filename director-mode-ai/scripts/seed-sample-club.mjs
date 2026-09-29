@@ -55,6 +55,10 @@ const { createClient } = await import('@supabase/supabase-js');
 const { readFileSync } = await import('fs');
 const { randomBytes } = await import('crypto');
 const { RoundGenerator } = await import('../src/lib/advancedMatchGeneration.ts');
+const { generateRound1, generateNextRound, roundDeadline } = await import('../src/lib/compassBracket.ts');
+const { generateRoundRobin } = await import('../src/lib/roundRobinBracket.ts');
+const { generateTournamentMatches } = await import('../src/lib/tournamentFormats.ts');
+const { default: ICAL } = await import('ical.js');
 
 const SLUG = 'harbor-view-racquet-club';
 const NAME = 'Harbor View Racquet Club';
@@ -96,6 +100,9 @@ const CLUB = {
   timezone: TZ,
   is_public: true,
   accept_join_requests: true,
+  // The club-wide Open Lesson Time page (/open/<slug>) — every pro's open times together.
+  open_lessons_enabled: true,
+  open_lessons_note: 'Pick a length, then any open time with any of our pros. Lessons are on the tennis courts unless noted.',
   // Every email the club would send is held; the site says "Demo Environment".
   demo_mode: true,
 };
@@ -267,7 +274,59 @@ const ACCOUNTS = {
   director: { email: 'sample-demo@clubmode.ai', name: 'Club Director (demo)', role: 'director' },
   member: { email: 'sample-member@clubmode.ai', name: 'Sam Demo', role: 'member' },
   member2: { email: 'sample-member2@clubmode.ai', name: 'Alex Demo', role: 'member' },
+  // Two teaching pros, so LessonMode's club page has more than one instructor.
+  // Never signed in to; they exist because lesson_coaches.profile_id needs a user.
+  pro1: { email: 'sample-pro1@clubmode.ai', name: 'Priya Castellanos', role: 'coach' },
+  pro2: { email: 'sample-pro2@clubmode.ai', name: 'Marcus Velde', role: 'coach' },
 };
+
+/*
+ * LessonMode: each pro's "Open Lesson Time" lives in a published calendar feed
+ * (public/demo-calendars/*.ics, weekly RRULEs, so it never goes stale), read
+ * exactly the way a real Apple/Outlook instructor's feed is. The director login
+ * teaches too, as Jordan Ellery. Invented people, invented club.
+ */
+const LESSON_PROS = [
+  { key: 'director', name: 'Jordan Ellery', file: 'harbor-view-jordan.ics', slug: 'harbor-view-jordan-ellery',
+    rate: '$95 an hour · $50 for 30 minutes', note: 'Stroke work, match strategy, and 4.0+ singles.' },
+  { key: 'pro1', name: 'Priya Castellanos', file: 'harbor-view-priya.ics', slug: 'harbor-view-priya-castellanos',
+    rate: '$90 an hour · $48 for 30 minutes', note: 'Adults 2.5 to 4.0, and juniors moving to green ball.' },
+  { key: 'pro2', name: 'Marcus Velde', file: 'harbor-view-marcus.ics', slug: 'harbor-view-marcus-velde',
+    rate: '$80 an hour (pickleball)', note: 'Pickleball, from first paddle to 4.0 tournament play.' },
+];
+// [pro key, nth open block from now, minutes, client, note]
+const LESSON_BOOKINGS = [
+  ['director', 0, 60, 'Nate Albrecht', 'Second serve, again.'],
+  ['director', 2, 60, 'Dana Kessler', null],
+  ['pro1', 0, 60, 'Hannah Voss', 'Volleys before Tuesday\'s league match.'],
+  ['pro1', 1, 30, 'Ivy Lindgren', null],
+  ['pro1', 3, 60, 'Colin Mayhew', null],
+  ['pro2', 1, 60, 'Rosa Delgado', 'First pickleball lesson.'],
+];
+
+const STRINGS = [
+  ['Luxilon', 'ALU Power 125', 'polyester', '16L', 22],
+  ['Babolat', 'RPM Blast 17', 'polyester', '17', 20],
+  ['Wilson', 'NXT 16', 'multifilament', '16', 22],
+  ['Technifibre', 'X-One Biphase 17', 'multifilament', '17', 24],
+  ['Solinco', 'Hyper-G 16L', 'polyester', '16L', 18],
+  ['Prince', 'Synthetic Gut Duraflex 16', 'synthetic gut', '16', 10],
+  ['Babolat', 'VS Touch 16', 'natural gut', '16', 45],
+];
+// [customer, racket brand, model, pattern, string idx, main, cross, status, hours ago dropped, stringer, extra]
+const STRING_JOBS = [
+  ['Owen Castillo', 'Babolat', 'Pure Aero 98', '16x20', 1, 52, 50, 'pending', 3, null, { notes: 'Plays twice this weekend, wants it by Friday.' }],
+  ['Maya Ferreira', 'Wilson', 'Blade 98 v9', '16x19', 2, 55, 53, 'pending', 6, null, {}],
+  ['Frank Iwasaki', 'Head', 'Speed MP', '16x19', 5, 57, 57, 'pending', 20, null, { arm: 'Tennis elbow — keep it soft.' }],
+  ['Sofia Marchand', 'Yonex', 'EZONE 100', '16x19', 4, 50, 48, 'in_progress', 26, 'Devon (pro shop)', {}],
+  ['Theo Brannigan', 'Wilson', 'Pro Staff 97', '16x19', 0, 48, 46, 'in_progress', 30, 'Jordan Ellery', {}],
+  ['Lena Park', 'Head', 'Gravity MP', '18x20', 3, 54, 52, 'done', 50, 'Devon (pro shop)', { paid: true }],
+  ['Hank Delvecchio', 'Prince', 'Textreme Tour 100P', '18x20', 5, 58, 56, 'done', 56, 'Devon (pro shop)', {}],
+  ['Emily Tran', 'Babolat', 'Pure Drive', '16x19', 6, 58, 56, 'done', 70, 'Jordan Ellery', { paid: true, stringerPaid: true }],
+  ['Isaac Ferrante', 'Yonex', 'VCORE 98', '16x19', 0, 50, 48, 'picked_up', 120, 'Devon (pro shop)', { paid: true, stringerPaid: true }],
+  ['Megan Olsen', 'Wilson', 'Clash 100 v2', '16x19', 2, 54, 52, 'picked_up', 170, 'Jordan Ellery', { paid: true, stringerPaid: true }],
+  ['Andre Kovalenko', 'Head', 'Radical MP', '16x19', 1, 53, 51, 'picked_up', 220, 'Devon (pro shop)', { paid: true }],
+];
 const DEMO_MEMBER_RATING = { member: 3.5, member2: 3.5 };
 
 // [name, age, NTRP]. INVENTED.
@@ -491,7 +550,7 @@ async function main() {
   }
   const directorId = ids.director;
   const demoIds = Object.values(ids);
-  console.log('· 3 demo accounts, seated only at this club');
+  console.log(`· ${Object.keys(ACCOUNTS).length} demo accounts, seated only at this club`);
 
   for (const key of ['member', 'member2']) {
     const email = ACCOUNTS[key].email;
@@ -543,6 +602,11 @@ async function main() {
       await must(db.from('calendar_plans').delete().in('id', planIds), 'reset calendar_plans');
     }
   }
+  // LeagueMode, LessonMode and StringingMode rows, found by the demo logins that own them.
+  await must(db.from('leagues').delete().eq('director_id', directorId), 'reset leagues');
+  await must(db.from('lesson_coaches').delete().in('profile_id', demoIds), 'reset lesson coaches');
+  await must(db.from('stringing_customers').delete().eq('user_id', directorId), 'reset stringing customers');
+  await must(db.from('stringing_catalog').delete().eq('user_id', directorId), 'reset stringing catalog');
   console.log('· wiped prior demo rows');
 
   // --------------------------------------------------------------- vault
@@ -857,6 +921,409 @@ async function main() {
     'CourtConnect games',
   );
   console.log(`· CourtConnect: ${games.length} open games posted by ${ACCOUNTS.member2.name}`);
+
+  // ------------------------------------------------------------ helpers for the rest
+  // A fixed pseudo-random stream, so every nightly rebuild draws the same week.
+  let rngState = 20260929;
+  const rand = () => {
+    rngState = (rngState * 1103515245 + 12345) % 2147483648;
+    return rngState / 2147483648;
+  };
+  /** A believable two-set (or three-set) score, WINNER-FIRST. */
+  const setScore = (close) => {
+    const losers = close ? [4, 5, 6] : [1, 2, 3, 4];
+    const one = () => {
+      const l = losers[Math.floor(rand() * losers.length)];
+      return l === 6 ? '7-6' : l === 5 ? '7-5' : `6-${l}`;
+    };
+    if (close && rand() < 0.35) {
+      const a = one();
+      const [x, y] = one().split('-');
+      return `${a}, ${y}-${x}, 10-${6 + Math.floor(rand() * 3)}`;
+    }
+    return `${one()}, ${one()}`;
+  };
+  /** Flip a winner-first score so side A's games come first. */
+  const aFirst = (score, winnerIsA) =>
+    winnerIsA ? score : score.split(', ').map((s) => s.split('-').reverse().join('-')).join(', ');
+  const COMPOSITE = { 2.5: 1.5, 3: 3, 3.5: 4.25, 4: 6, 4.5: 8, 5: 10 };
+
+  // ------------------------------------------------------------ LeagueMode
+  // Two multi-week leagues in flight: a round robin with a standings table, and
+  // a doubles compass draw part-way through round 2. Built with the app's own
+  // bracket generators so the draw is exactly what the product would make.
+  const leagueEntry = (leagueId, catId, a, b = null) => {
+    const ra = ratingOf.get(a);
+    const rb = b ? ratingOf.get(b) : null;
+    return {
+      league_id: leagueId, category_id: catId,
+      captain_name: a, captain_email: emailOf(a), captain_ntrp: ra,
+      partner_name: b, partner_email: b ? emailOf(b) : null, partner_ntrp: rb,
+      partner_confirmed_at: b ? pt(ymdIn(-40), '10:00') : null,
+      composite_score: b ? (COMPOSITE[ra] + COMPOSITE[rb]) / 2 : COMPOSITE[ra],
+      rating_source: 'ntrp', rating_confidence: 'medium',
+      payment_status: 'paid', entry_status: 'active',
+    };
+  };
+  /** Settle a match: stronger side usually wins; `upset` flips it. */
+  const settle = (m, byId, upset = false) => {
+    const a = byId.get(m.entry_a_id);
+    const b = byId.get(m.entry_b_id);
+    let aWins = Number(a.composite_score ?? 0) >= Number(b.composite_score ?? 0);
+    if (upset) aWins = !aWins;
+    const close = Math.abs(Number(a.composite_score ?? 0) - Number(b.composite_score ?? 0)) < 1.5;
+    return { winner: aWins ? a : b, loser: aWins ? b : a, score: setScore(close) };
+  };
+  const leagueSlug = async (base) => {
+    const { data } = await db.from('leagues').select('id').eq('slug', base).maybeSingle();
+    if (data) throw new Error(`League slug ${base} is taken by a league this script does not own; refusing.`);
+    return base;
+  };
+
+  const leagueCounts = [];
+  {
+    // Round robin: 6 a side, one match every two weeks, round 3 due next week.
+    const start = ymdIn(-33);
+    const league = await ins('leagues', {
+      director_id: directorId, club_id: clubId, name: 'Fall Singles League', slug: await leagueSlug('harbor-view-fall-singles'),
+      description: 'Everyone plays everyone once, a match every two weeks at a time you agree with your opponent. Standings live on the league page.',
+      start_date: start, end_date: ymdIn(-33 + 70), status: 'running', league_type: 'round_robin', format: 'individual',
+      registration_opens_at: pt(ymdIn(-60), '09:00'), registration_closes_at: pt(ymdIn(-35), '21:00'),
+    });
+    const DIVS = [
+      ['men_singles', ['Owen Castillo', 'Isaac Ferrante', 'Nate Albrecht', 'Grant Whitley', 'Victor Esparza', 'Diego Salcedo']],
+      ['women_singles', ['Sofia Marchand', 'Maya Ferreira', 'Lena Park', 'Emily Tran', 'Megan Olsen', 'Yuki Hamada']],
+    ];
+    let matchTotal = 0;
+    for (const [key, names] of DIVS) {
+      const cat = await ins('league_categories', { league_id: league.id, category_key: key, entry_fee_cents: 4000, is_enabled: true });
+      const entries = await insMany('league_entries', names.map((n) => leagueEntry(league.id, cat.id, n)));
+      entries.sort((x, y) => Number(y.composite_score) - Number(x.composite_score));
+      const flight = await ins('league_flights', {
+        league_id: league.id, category_id: cat.id, flight_name: 'A', size: entries.length, num_rounds: entries.length - 1, status: 'running',
+      });
+      for (let i = 0; i < entries.length; i += 1) {
+        await must(db.from('league_entries').update({ flight_id: flight.id, seed_in_flight: i + 1 }).eq('id', entries[i].id), 'rr seeds');
+      }
+      const byId = new Map(entries.map((e) => [e.id, e]));
+      const rr = generateRoundRobin(entries.map((e, i) => ({ id: e.id, seed: i + 1 })));
+      const rows = rr.matches.map((m, i) => {
+        const deadline = roundDeadline(new Date(start), m.round).toISOString().split('T')[0];
+        const row = {
+          flight_id: flight.id, round: m.round, match_index: m.matchIndex, bracket_position: m.bracketPosition,
+          entry_a_id: m.entryAId, entry_b_id: m.entryBId, deadline, status: 'pending',
+        };
+        // Rounds 1-2 done; round 3 part-played (one confirmed, one waiting on
+        // the opponent to confirm); one keen pair already played round 4.
+        const done = m.round <= 2 || (m.round === 3 && m.matchIndex === 0) || (m.round === 4 && m.matchIndex === 1);
+        const reported = m.round === 3 && m.matchIndex === 1;
+        if (!done && !reported) return row;
+        const r = settle(row, byId, (i * 7 + key.length) % 5 === 0);
+        const playedDay = Math.min(-1, Math.round((Date.parse(deadline) - Date.now()) / 864e5) - 3);
+        return {
+          ...row, winner_entry_id: r.winner.id, score: r.score,
+          reported_at: pt(ymdIn(reported ? -1 : playedDay), '19:40'), reported_by_token: r.winner.captain_token,
+          status: reported ? 'reported' : 'confirmed',
+        };
+      });
+      matchTotal += (await insMany('league_matches', rows)).length;
+    }
+    leagueCounts.push(`Fall Singles League (round robin, ${matchTotal} matches)`);
+  }
+  {
+    // Compass draw, doubles: round 1 done, round 2 half played.
+    const start = ymdIn(-20);
+    const league = await ins('leagues', {
+      director_id: directorId, club_id: clubId, name: 'Fall Doubles Compass', slug: await leagueSlug('harbor-view-fall-doubles-compass'),
+      description: 'Eight teams a draw. Win and you move east, lose and you move west; everyone plays three matches, two weeks a round.',
+      start_date: start, end_date: ymdIn(-20 + 42), status: 'running', league_type: 'compass', format: 'individual',
+      registration_opens_at: pt(ymdIn(-50), '09:00'), registration_closes_at: pt(ymdIn(-22), '21:00'),
+    });
+    const DIVS = [
+      ['women_doubles', [
+        ['Maya Ferreira', 'Nina Castellano'], ['Dana Kessler', 'Yuki Hamada'], ['Claire Donnelly', 'Hannah Voss'],
+        ['Julia Okonkwo', 'Beth Hargreaves'], ['Ivy Lindgren', 'Holly Asante'], ['Kate Villanueva', 'Paige Donato'],
+        ['Rachel Stroud', 'Tara Whitfield'], ['Carmen Ruiz', 'Grace Mulroney'],
+      ]],
+      ['men_doubles', [
+        ['Theo Brannigan', 'Leo Marchetti'], ['Andre Kovalenko', 'Sanjay Mehra'], ['Derek Hollis', 'Ben Takahara'],
+        ['Paul Lindqvist', 'Miles Dunmore'], ['Jonah Pratt', 'Eli Rasmussen'], ['Chris Nakamura', 'Gavin Holt'],
+        ['Luis Okafor', 'Kurt Abernathy'], ['Colin Mayhew', 'Russell Ogden'],
+      ]],
+    ];
+    let matchTotal = 0;
+    for (const [key, pairs] of DIVS) {
+      const cat = await ins('league_categories', { league_id: league.id, category_key: key, entry_fee_cents: 6000, is_enabled: true });
+      const entries = await insMany('league_entries', pairs.map(([a, b]) => leagueEntry(league.id, cat.id, a, b)));
+      entries.sort((x, y) => Number(y.composite_score) - Number(x.composite_score));
+      const flight = await ins('league_flights', {
+        league_id: league.id, category_id: cat.id, flight_name: 'A', size: 8, num_rounds: 3, status: 'running',
+      });
+      for (let i = 0; i < entries.length; i += 1) {
+        await must(db.from('league_entries').update({ flight_id: flight.id, seed_in_flight: i + 1 }).eq('id', entries[i].id), 'compass seeds');
+      }
+      const byId = new Map(entries.map((e) => [e.id, e]));
+      const r1 = generateRound1(entries.map((e, i) => ({ id: e.id, seed: i + 1 })), 8);
+      const d1 = roundDeadline(new Date(start), 1).toISOString().split('T')[0];
+      const results = [];
+      const r1Rows = r1.map((m) => {
+        const row = {
+          flight_id: flight.id, round: 1, match_index: m.matchIndex, bracket_position: m.bracketPosition,
+          entry_a_id: m.entryAId, entry_b_id: m.entryBId, deadline: d1,
+        };
+        const r = settle(row, byId, m.matchIndex === (key === 'men_doubles' ? 1 : 2));
+        results.push({ round: 1, matchIndex: m.matchIndex, bracketPosition: m.bracketPosition, winnerId: r.winner.id, loserId: r.loser.id });
+        return {
+          ...row, winner_entry_id: r.winner.id, score: r.score, status: 'confirmed',
+          reported_at: pt(ymdIn(-8 - m.matchIndex), '18:15'), reported_by_token: r.winner.captain_token,
+        };
+      });
+      const d2 = roundDeadline(new Date(start), 2).toISOString().split('T')[0];
+      const r2Rows = generateNextRound(8, 1, results).map((m, i) => {
+        const row = {
+          flight_id: flight.id, round: 2, match_index: m.matchIndex, bracket_position: m.bracketPosition,
+          entry_a_id: m.entryAId, entry_b_id: m.entryBId, deadline: d2, status: 'pending',
+        };
+        if (i === 0 || i === 3) {
+          const r = settle(row, byId);
+          return { ...row, winner_entry_id: r.winner.id, score: r.score, status: 'confirmed', reported_at: pt(ymdIn(-2 - i), '11:30'), reported_by_token: r.winner.captain_token };
+        }
+        if (i === 2) {
+          const r = settle(row, byId);
+          return { ...row, winner_entry_id: r.winner.id, score: r.score, status: 'reported', reported_at: pt(ymdIn(0), '08:05'), reported_by_token: r.winner.captain_token };
+        }
+        return row;
+      });
+      matchTotal += (await insMany('league_matches', [...r1Rows, ...r2Rows])).length;
+    }
+    leagueCounts.push(`Fall Doubles Compass (${matchTotal} matches)`);
+  }
+  console.log(`· LeagueMode: ${leagueCounts.join('; ')}`);
+
+  // ------------------------------------------------------------ TournamentMode
+  // A weekend tournament being played right now (today is day 1), plus one
+  // open for entries. The draw comes from the app's own generator; results are
+  // pushed through winner/loser feeds exactly as the score page does.
+  const tournamentSlug = async (base) => {
+    const { data } = await db.from('events').select('id, user_id').eq('slug', base);
+    if ((data ?? []).some((e) => e.user_id !== directorId)) throw new Error(`Slug ${base} is used by an event this script does not own; refusing.`);
+    return base;
+  };
+  const tourneyCounts = [];
+  const runDraw = async ({ ev, format, entries, plan }) => {
+    const gen = generateTournamentMatches(format, entries.map((e) => e.id));
+    const rows = gen.map((m) => ({
+      event_id: ev.id, bracket: m.bracket, round: m.round, slot: m.slot, match_type: m.match_type,
+      player1_id: m.player1_id, player2_id: m.player2_id, player3_id: m.player3_id, player4_id: m.player4_id,
+      winner_feeds_to: m.winner_feeds_to, loser_feeds_to: m.loser_feeds_to, status: 'pending',
+    }));
+    const key = (b, r, s) => `${b}:${r}:${s}`;
+    const byKey = new Map(rows.map((r) => [key(r.bracket, r.round, r.slot), r]));
+    const seedOf = new Map(entries.map((e) => [e.id, e.seed]));
+    const place = (ref, pid) => {
+      if (!ref) return;
+      const [b, r, s, side] = ref.split(':');
+      const dest = byKey.get(key(b, Number(r), Number(s)));
+      if (!dest) return;
+      if (side === 'a') dest.player1_id = pid;
+      else dest.player3_id = pid;
+    };
+    // plan: [bracket, round, slot, what, extra] in play order.
+    for (const [b, r, s, what, extra = {}] of plan) {
+      const m = byKey.get(key(b, r, s));
+      if (!m || !m.player1_id || !m.player3_id) continue;
+      m.court = extra.court ?? null;
+      m.scheduled_date = ymdIn(extra.day ?? 0);
+      m.scheduled_at = extra.at ?? null;
+      if (what === 'live') { m.status = 'in_progress'; continue; }
+      if (what === 'next') continue;
+      const favA = (seedOf.get(m.player1_id) ?? 99) <= (seedOf.get(m.player3_id) ?? 99);
+      const aWins = what === 'upset' ? !favA : favA;
+      const gap = Math.abs((seedOf.get(m.player1_id) ?? 0) - (seedOf.get(m.player3_id) ?? 0));
+      m.winner_side = aWins ? 'a' : 'b';
+      m.score = aFirst(setScore(gap < 5 || what === 'upset'), aWins);
+      m.status = 'completed';
+      m.reported_at = pt(ymdIn(extra.day ?? 0), extra.done ?? '11:00');
+      m.reported_by_name = 'Tournament desk';
+      place(m.winner_feeds_to, aWins ? m.player1_id : m.player3_id);
+      place(m.loser_feeds_to, aWins ? m.player3_id : m.player1_id);
+    }
+    return insMany('tournament_matches', rows);
+  };
+
+  {
+    // Men's singles, 16 players, first-match-loser consolation.
+    const names = [...MEN].filter(([, , r]) => r >= 3.5).sort((a, b) => b[2] - a[2] || a[1] - b[1]).slice(0, 16).map(([n]) => n);
+    const ev = await ins('events', {
+      user_id: directorId, club_id: clubId, name: "Harbor View Fall Classic — Men's Singles",
+      event_date: ymdIn(0), end_date: ymdIn(1), start_time: '08:30', event_code: await newCode(code6()),
+      slug: await tournamentSlug('harbor-view-fall-classic-mens-singles'), venue: NAME,
+      num_courts: 6, match_format: 'fmlc-singles', scoring_format: 'fixed_games', public_status: 'running',
+      public_registration: true, entry_fee_cents: 4500, max_players: 16,
+      format_notes: 'Two sets, match tiebreak for a third. Lose your first match and you play on in the consolation draw. Finals tomorrow on Court 1.',
+      registration_opens_at: pt(ymdIn(-30), '09:00'), registration_closes_at: pt(ymdIn(-3), '21:00'),
+    }, 'id, event_code');
+    const entries = await insMany('tournament_entries', names.map((n, i) => ({
+      event_id: ev.id, player_name: n, player_email: emailOf(n), gender: 'male', ntrp: ratingOf.get(n),
+      composite_rating: COMPOSITE[ratingOf.get(n)], seed: i + 1, position: 'in_draw', payment_status: 'paid',
+      amount_paid_cents: 4500, registered_at: pt(ymdIn(-28 + i), '12:00'), checked_in_at: pt(ymdIn(0), '08:10'),
+    })));
+    entries.sort((a, b) => a.seed - b.seed);
+    const plan = [
+      ...[1, 2, 3, 4, 5, 6, 7, 8].map((s) => ['main', 1, s, s === 3 || s === 6 ? 'upset' : 'win',
+        { court: String(((s - 1) % 6) + 1), at: s <= 6 ? '08:30' : '10:15', done: s <= 6 ? '10:05' : '11:50' }]),
+      ['main', 2, 1, 'win', { court: '1', at: '12:00', done: '13:40' }],
+      ['main', 2, 2, 'upset', { court: '2', at: '12:00', done: '13:55' }],
+      ['main', 2, 3, 'live', { court: '3', at: '14:00' }],
+      ['main', 2, 4, 'live', { court: '4', at: '14:00' }],
+      ['consolation', 1, 1, 'win', { court: '5', at: '12:00', done: '13:20' }],
+      ['consolation', 1, 2, 'win', { court: '6', at: '12:00', done: '13:35' }],
+      ['consolation', 1, 3, 'live', { court: '5', at: '14:00' }],
+      ['consolation', 1, 4, 'next', { court: '6', at: '15:30' }],
+    ];
+    const matches = await runDraw({ ev, format: 'fmlc-singles', entries, plan });
+    tourneyCounts.push(`Men's Singles ${ev.event_code} (${entries.length} players, ${matches.length} matches)`);
+  }
+  {
+    // Women's doubles, 8 teams, single elimination.
+    const teams = [
+      ['Hannah Voss', 'Julia Okonkwo'], ['Maya Ferreira', 'Lena Park'], ['Claire Donnelly', 'Beth Hargreaves'],
+      ['Emily Tran', 'Megan Olsen'], ['Ivy Lindgren', 'Kate Villanueva'], ['Quinn Harlow', 'Sara Lindell'],
+      ['Jenna Brightwater', 'Wendy Galloway'], ['Laura Pemberly', 'Tina Morrow'],
+    ].map(([a, b]) => ({ a, b, c: (COMPOSITE[ratingOf.get(a)] + COMPOSITE[ratingOf.get(b)]) / 2 })).sort((x, y) => y.c - x.c);
+    const ev = await ins('events', {
+      user_id: directorId, club_id: clubId, name: "Harbor View Fall Classic — Women's Doubles",
+      event_date: ymdIn(0), end_date: ymdIn(1), start_time: '09:00', event_code: await newCode(code6()),
+      slug: await tournamentSlug('harbor-view-fall-classic-womens-doubles'), venue: NAME,
+      num_courts: 4, match_format: 'single-elim-doubles', scoring_format: 'fixed_games', public_status: 'running',
+      public_registration: true, entry_fee_cents: 7000, max_players: 8,
+      format_notes: 'Eight teams, single elimination. Semifinals this afternoon, final tomorrow at 11.',
+      registration_opens_at: pt(ymdIn(-30), '09:00'), registration_closes_at: pt(ymdIn(-3), '21:00'),
+    }, 'id, event_code');
+    const entries = await insMany('tournament_entries', teams.map((t, i) => ({
+      event_id: ev.id, player_name: t.a, player_email: emailOf(t.a), partner_name: t.b, partner_email: emailOf(t.b),
+      gender: 'female', ntrp: ratingOf.get(t.a), partner_ntrp: ratingOf.get(t.b), composite_rating: t.c,
+      seed: i + 1, position: 'in_draw', payment_status: 'paid', amount_paid_cents: 7000,
+      registered_at: pt(ymdIn(-25 + i), '18:00'), checked_in_at: pt(ymdIn(0), '08:40'),
+    })));
+    entries.sort((a, b) => a.seed - b.seed);
+    const plan = [
+      ['main', 1, 1, 'win', { court: '7', at: '09:00', done: '10:25' }],
+      ['main', 1, 2, 'upset', { court: '8', at: '09:00', done: '10:50' }],
+      ['main', 1, 3, 'win', { court: '7', at: '10:45', done: '12:05' }],
+      ['main', 1, 4, 'win', { court: '8', at: '11:00', done: '12:20' }],
+      ['main', 2, 1, 'live', { court: '7', at: '13:30' }],
+      ['main', 2, 2, 'next', { court: '8', at: '15:00' }],
+    ];
+    const matches = await runDraw({ ev, format: 'single-elim-doubles', entries, plan });
+    tourneyCounts.push(`Women's Doubles ${ev.event_code} (${entries.length} teams, ${matches.length} matches)`);
+  }
+  {
+    // Open for entries: a junior round robin later in the fall.
+    const day = nextDow(0, 4);
+    const ev = await ins('events', {
+      user_id: directorId, club_id: clubId, name: 'Junior Halloween Open — 12U Singles',
+      event_date: day, end_date: day, start_time: '10:00', event_code: await newCode(code6()),
+      slug: await tournamentSlug('harbor-view-junior-halloween-open'), venue: NAME,
+      num_courts: 4, match_format: 'rr-singles', scoring_format: 'fixed_games', public_status: 'open',
+      public_registration: true, entry_fee_cents: 3500, max_players: 12,
+      format_notes: 'Round robin groups of four, short sets to 4. Costumes encouraged; candy at the desk.',
+      registration_opens_at: pt(ymdIn(-5), '09:00'), registration_closes_at: pt(nextDow(3, 3), '21:00'),
+    }, 'id, event_code');
+    const kids = ['Mateo Albrecht', 'Ava Castillo', 'Noah Takahara', 'Lily Mehra', 'Ethan Park', 'Chloe Esparza', 'Ryan Hollis'];
+    await insMany('tournament_entries', kids.map((n, i) => ({
+      event_id: ev.id, player_name: n, parent_name: `Parent of ${n.split(' ')[0]}`, parent_email: emailOf(`${n} parent`),
+      gender: i % 2 ? 'female' : 'male', position: 'in_draw', payment_status: 'paid', amount_paid_cents: 3500,
+      registered_at: pt(ymdIn(-4 + Math.floor(i / 2)), '20:00'),
+    })));
+    tourneyCounts.push(`Junior Halloween Open (open, ${kids.length} entries)`);
+  }
+  console.log(`· TournamentMode: ${tourneyCounts.join('; ')}`);
+
+  // ------------------------------------------------------------ LessonMode
+  const now = Date.now();
+  const lessonWindowsTo = now + 45 * 864e5; // OPEN_WINDOW_DAYS
+  const lessonSummary = [];
+  for (const pro of LESSON_PROS) {
+    const icsUrl = `${APP_URL}/demo-calendars/${pro.file}`;
+    const coach = await ins('lesson_coaches', {
+      profile_id: ids[pro.key], club_id: clubId, display_name: pro.name, slug: pro.slug,
+      // @example.com, so a booking notice to the pro is always held (emailGuard).
+      email: emailOf(pro.name),
+      calendar_kind: 'ics', ics_url: icsUrl,
+      // The settings page counts "instructors set up" by google_calendar_id
+      // only; the feed URL here keeps an ICS pro from reading as not set up.
+      google_calendar_id: icsUrl,
+      open_page_enabled: true, open_page_note: pro.note, open_rate_note: pro.rate,
+      open_durations: [30, 60, 90], booking_lead_hours: 3, timezone: TZ, open_synced_at: new Date().toISOString(),
+    });
+    // The same windows the app's sync reads from the feed (same ids), so the
+    // first page view finds them already in place.
+    const comp = new ICAL.Component(ICAL.parse(readFileSync(`public/demo-calendars/${pro.file}`, 'utf8')));
+    const windows = [];
+    for (const ve of comp.getAllSubcomponents('vevent')) {
+      const event = new ICAL.Event(ve);
+      const it = event.iterator();
+      for (let n = 0; n < 400; n += 1) {
+        const next = it.next();
+        if (!next) break;
+        const occ = event.getOccurrenceDetails(next);
+        const s = occ.startDate.toJSDate().getTime();
+        const e = occ.endDate.toJSDate().getTime();
+        if (s >= lessonWindowsTo) break;
+        if (e <= now) continue;
+        windows.push({
+          coach_id: coach.id, club_id: clubId, google_calendar_id: icsUrl,
+          google_event_id: `${event.uid}::${occ.recurrenceId.toString()}`,
+          start_time: new Date(s).toISOString(), end_time: new Date(e).toISOString(),
+          location: ve.getFirstPropertyValue('location') || null,
+        });
+      }
+    }
+    windows.sort((a, b) => a.start_time.localeCompare(b.start_time));
+    await insMany('lesson_open_windows', windows);
+    // Lessons already booked into those windows (past the 3-hour notice).
+    const bookable = windows.filter((w) => Date.parse(w.start_time) > now + 3 * 3600e3);
+    const slots = LESSON_BOOKINGS.filter(([k]) => k === pro.key).map(([, nth, minutes, client, note]) => {
+      const w = bookable[nth];
+      if (!w) return null;
+      return {
+        coach_id: coach.id, start_time: w.start_time,
+        end_time: new Date(Date.parse(w.start_time) + minutes * 60e3).toISOString(),
+        location: w.location, status: 'booked', source: 'open', booked_at: new Date(now - (nth + 1) * 5 * 3600e3).toISOString(),
+        guest_name: client, guest_email: emailOf(client), guest_note: note, window_event_id: w.google_event_id,
+        notifications_sent: true,
+      };
+    }).filter(Boolean);
+    await insMany('lesson_slots', slots);
+    lessonSummary.push(`${pro.name} ${windows.length} open blocks / ${slots.length} booked`);
+  }
+  console.log(`· LessonMode: ${lessonSummary.join('; ')}`);
+
+  // ------------------------------------------------------------ StringingMode
+  const catalog = await insMany('stringing_catalog', STRINGS.map(([brand, name, string_type, gauge, price]) => ({
+    user_id: directorId, club_id: clubId, brand, name, string_type, gauge, price, in_stock: true,
+  })));
+  for (const [who, brand, model, pattern, si, main, cross, status, hoursAgo, stringer, extra] of STRING_JOBS) {
+    const cust = await ins('stringing_customers', {
+      user_id: directorId, club_id: clubId, full_name: who, email: emailOf(who), notes: 'Fictional demo member.',
+    });
+    const racket = await ins('stringing_rackets', { customer_id: cust.id, brand, model, string_pattern: pattern });
+    const dropped = now - hoursAgo * 3600e3;
+    const doneAt = status === 'done' || status === 'picked_up' ? dropped + 22 * 3600e3 : null;
+    await ins('stringing_jobs', {
+      customer_id: cust.id, racket_id: racket.id, string_id: catalog[si].id, main_tension_lbs: main, cross_tension_lbs: cross,
+      status, requested_by_user_id: directorId, created_at: new Date(dropped).toISOString(),
+      quoted_ready_at: new Date(dropped + 48 * 3600e3).toISOString(),
+      completed_at: doneAt ? new Date(doneAt).toISOString() : null,
+      picked_up_at: status === 'picked_up' ? new Date(doneAt + 26 * 3600e3).toISOString() : null,
+      internal_notes: extra.notes ?? null, arm_issues: extra.arm ?? null,
+      stringer_name: stringer,
+      customer_paid_at: extra.paid ? new Date((doneAt ?? dropped) + 3600e3).toISOString() : null,
+      stringer_paid_at: extra.stringerPaid ? new Date((doneAt ?? dropped) + 30 * 3600e3).toISOString() : null,
+    });
+  }
+  console.log(`· StringingMode: ${catalog.length} strings in the catalog, ${STRING_JOBS.length} jobs (pending / in progress / ready / picked up)`);
 
   // ------------------------------------------------------------ demo link
   // ONE link, STABLE token: created once, then only its accounts/labels are
