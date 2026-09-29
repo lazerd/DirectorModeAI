@@ -4,16 +4,15 @@ import { useState } from 'react';
 import { Edit3, Loader2, Trophy, Mail, Wand2, Calendar, PartyPopper } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
-  computeFlightStandings,
   computeQuadFinalStandings,
   isFlightComplete,
-  buildQuadDoublesRound,
   quadScoringLabel,
   autoScheduleQuads,
   formatTimeDisplay,
   resolveCourtList,
   isValidQuadScore,
 } from '@/lib/quads';
+import { syncQuadDoublesRound } from '@/lib/quadDoubles';
 import type { QuadEvent, QuadEntry, QuadFlight, QuadMatch } from '../QuadsAdminDashboard';
 
 export default function QuadsMatchesTab({
@@ -73,7 +72,7 @@ export default function QuadsMatchesTab({
     if (!scoreInput.winner_side) return;
     if (!isValidQuadScore(scoreInput.score)) return; // UI already shows error
     setBusy(m.id);
-    await supabase
+    const { error: saveErr } = await supabase
       .from('quad_matches')
       .update({
         score: scoreInput.score,
@@ -83,42 +82,32 @@ export default function QuadsMatchesTab({
         reported_by_name: 'Director',
       })
       .eq('id', m.id);
+    if (saveErr) {
+      alert(`Score NOT saved: ${saveErr.message}`);
+      setBusy(null);
+      return;
+    }
 
-    // After saving, check if the flight's R1-R3 (singles) are all complete
-    // and there's no R4 yet → auto-create the doubles match.
-    await maybeCreateDoublesRound(m.flight_id);
+    // Create (or re-pair) round 4 from what's now in the database — never
+    // from this component's copy, which doesn't have the score just saved.
+    if (m.match_type === 'singles') {
+      try {
+        const sync = await syncQuadDoublesRound(supabase, m.flight_id);
+        if (sync.action === 'locked' && sync.stalePairing) {
+          alert(
+            'Heads up: this correction changes the singles order, but the round-4 doubles has ' +
+              'already been scored, so its pairing was left as played. Final standings still ' +
+              'count every game correctly.'
+          );
+        }
+      } catch (err: any) {
+        alert(`Score saved, but round 4 could not be set up: ${err?.message || err}. Refresh and try again.`);
+      }
+    }
 
     setEditing(null);
     setBusy(null);
     await onRefresh();
-  };
-
-  const maybeCreateDoublesRound = async (flightId: string) => {
-    const flightMatches = matches
-      .map((mm) => (mm.id === editing ? { ...mm, status: 'completed' } : mm))
-      .filter((mm) => mm.flight_id === flightId);
-    const singles = flightMatches.filter((mm) => mm.match_type === 'singles');
-    const doubles = flightMatches.find((mm) => mm.match_type === 'doubles');
-    if (singles.length !== 6) return;
-    if (singles.some((mm) => mm.status !== 'completed')) return;
-    if (doubles) return;
-
-    const flightEntries = entries
-      .filter((e) => e.flight_id === flightId)
-      .map((e) => ({ id: e.id, flight_seed: e.flight_seed }));
-    const standings = computeFlightStandings(flightEntries, singles as any);
-    const doublesMatch = buildQuadDoublesRound(standings);
-    if (!doublesMatch) return;
-
-    await supabase.from('quad_matches').insert({
-      flight_id: flightId,
-      round: 4,
-      match_type: 'doubles',
-      player1_id: doublesMatch.player1_id,
-      player2_id: doublesMatch.player2_id,
-      player3_id: doublesMatch.player3_id,
-      player4_id: doublesMatch.player4_id,
-    });
   };
 
   const emailScoringLinks = async () => {

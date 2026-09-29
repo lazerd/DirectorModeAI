@@ -159,7 +159,7 @@ export type QuadStanding = {
  *
  * Tiebreakers, in order:
  *   1. match wins (desc)
- *   2. head-to-head (when exactly two are tied at this match-win count)
+ *   2. head-to-head (only when exactly two are tied at this match-win count)
  *   3. sets won (desc)
  *   4. games won (desc)
  *   5. games lost (asc)
@@ -229,12 +229,20 @@ export function computeFlightStandings(
 
   const seedById = new Map(entries.map((e) => [e.id, e.flight_seed ?? 999]));
 
+  // Head-to-head only settles a TWO-way tie. Three players on 2-1 can beat
+  // each other in a circle (A>B, B>C, C>A), and a pairwise comparator then
+  // has no consistent order — the result would depend on row order.
+  const winCounts = new Map<number, number>();
+  for (const s of stats.values()) winCounts.set(s.match_wins, (winCounts.get(s.match_wins) ?? 0) + 1);
+
   const sorted = [...stats.values()].sort((a, b) => {
     if (a.match_wins !== b.match_wins) return b.match_wins - a.match_wins;
-    const aBeatB = h2h.get(a.entry_id)?.has(b.entry_id);
-    const bBeatA = h2h.get(b.entry_id)?.has(a.entry_id);
-    if (aBeatB && !bBeatA) return -1;
-    if (bBeatA && !aBeatB) return 1;
+    if (winCounts.get(a.match_wins) === 2) {
+      const aBeatB = h2h.get(a.entry_id)?.has(b.entry_id);
+      const bBeatA = h2h.get(b.entry_id)?.has(a.entry_id);
+      if (aBeatB && !bBeatA) return -1;
+      if (bBeatA && !aBeatB) return 1;
+    }
     if (a.sets_won !== b.sets_won) return b.sets_won - a.sets_won;
     if (a.games_won !== b.games_won) return b.games_won - a.games_won;
     if (a.games_lost !== b.games_lost) return a.games_lost - b.games_lost;
@@ -347,7 +355,7 @@ export type QuadFinalStanding = {
  * Tiebreakers, in order:
  *   1. games won (desc)          ← primary
  *   2. match wins across all 4 rounds (desc)
- *   3. head-to-head singles
+ *   3. head-to-head singles (only when exactly two are tied)
  *   4. games lost (asc)
  *   5. singles ladder rank (asc) — itself fully deterministic down to seed
  *
@@ -442,13 +450,20 @@ export function computeQuadFinalStandings(
     );
   }
 
+  // As in the singles ladder, head-to-head only settles a two-way tie.
+  const tieKey = (r: QuadFinalStanding) => `${r.games_won}:${r.match_wins}`;
+  const tieCounts = new Map<string, number>();
+  for (const r of rows.values()) tieCounts.set(tieKey(r), (tieCounts.get(tieKey(r)) ?? 0) + 1);
+
   const sorted = [...rows.values()].sort((a, b) => {
     if (a.games_won !== b.games_won) return b.games_won - a.games_won;
     if (a.match_wins !== b.match_wins) return b.match_wins - a.match_wins;
-    const aBeatB = h2h.get(a.entry_id)?.has(b.entry_id);
-    const bBeatA = h2h.get(b.entry_id)?.has(a.entry_id);
-    if (aBeatB && !bBeatA) return -1;
-    if (bBeatA && !aBeatB) return 1;
+    if (tieCounts.get(tieKey(a)) === 2) {
+      const aBeatB = h2h.get(a.entry_id)?.has(b.entry_id);
+      const bBeatA = h2h.get(b.entry_id)?.has(a.entry_id);
+      if (aBeatB && !bBeatA) return -1;
+      if (bBeatA && !aBeatB) return 1;
+    }
     if (a.games_lost !== b.games_lost) return a.games_lost - b.games_lost;
     return (singlesRankById.get(a.entry_id) ?? 99) - (singlesRankById.get(b.entry_id) ?? 99);
   });
