@@ -13,6 +13,7 @@
  */
 
 import { sendQuadInviteExpiredEmail } from './quadEmails';
+import { squareConfigured, getOrder } from './square';
 
 export type ExpiryResult = {
   expired: number;
@@ -28,7 +29,9 @@ export async function expireOverdueQuadInvites(
 
   let query = admin
     .from('quad_entries')
-    .select('id, event_id, player_name, player_email, parent_email, division, payment_due_at')
+    .select(
+      'id, event_id, player_name, player_email, parent_email, division, payment_due_at, square_order_id'
+    )
     .eq('position', 'pending_payment')
     .neq('payment_status', 'paid')
     .neq('payment_status', 'waived')
@@ -37,7 +40,38 @@ export async function expireOverdueQuadInvites(
   if (opts.eventId) query = query.eq('event_id', opts.eventId);
 
   const { data } = await query;
-  const overdue = (data as any[]) || [];
+  const candidates = (data as any[]) || [];
+
+  // Ask Square before releasing anyone. The webhook is what normally marks an
+  // entry paid, and if a delivery is ever missed (it was, for the whole of the
+  // Dunkin' Quads invite window) the row still reads unpaid. A paid order gets
+  // settled here instead of expired; if Square can't be reached we keep the
+  // hold rather than guess, and the director can still release it by hand.
+  const overdue: any[] = [];
+  for (const entry of candidates) {
+    if (entry.square_order_id && squareConfigured()) {
+      let order: any;
+      try {
+        order = await getOrder(entry.square_order_id);
+      } catch {
+        continue;
+      }
+      const paid =
+        (order?.tenders?.length ?? 0) > 0 && (order?.net_amount_due_money?.amount ?? 1) === 0;
+      if (paid) {
+        await admin
+          .from('quad_entries')
+          .update({
+            payment_status: 'paid',
+            amount_paid_cents: order?.total_money?.amount ?? null,
+            position: 'in_flight',
+          })
+          .eq('id', entry.id);
+        continue;
+      }
+    }
+    overdue.push(entry);
+  }
   if (overdue.length === 0) return { expired: 0, emailed: 0, entries: [] };
 
   await admin
