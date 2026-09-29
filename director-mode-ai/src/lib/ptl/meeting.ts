@@ -12,12 +12,16 @@
  *
  *   GENDERED FOUR  Men's and women's singles, men's and women's doubles, all
  *                  four at once across 4 courts — so a four-team night needs
- *                  8. Men never play women. At 2-2 a MIXED DOUBLES decides it,
- *                  which is the moment the league gets remembered for.
+ *                  8. Men never play women. At 2-2 a MIXED DOUBLES 7-POINT
+ *                  TIEBREAK decides it, which is the moment the league gets
+ *                  remembered for.
  *
- * The decider is a LINE, not a tiebreak: it has a score, a court, four players
- * and a winner like any other match. It carries `isDecider` so it is excluded
- * from the count that produces the 2-2 in the first place.
+ * The decider is stored as a LINE (it has a court, four players and a winner)
+ * but it is played as a 7-point tiebreak, so its score is POINTS, not games.
+ * It carries `isDecider` so it is excluded from the count that produces the
+ * 2-2 in the first place, and from total games — a 7-5 tiebreak added to the
+ * games column would hand the standings' games tiebreakers to whoever happened
+ * to reach a 2-2.
  *
  * What both shapes share, and the reason this file is pure: a meeting is never
  * resolved by whoever happens to be typing. Nothing here invents a winner. When
@@ -126,6 +130,35 @@ export function parseGames(score: string | null | undefined): [number, number] {
   return [home, away];
 }
 
+/**
+ * Points from a 7-point tiebreak as typed courtside: "7-5", "[7-5]", "(9-7)".
+ * Null when it isn't a single pair of numbers.
+ */
+export function parseTiebreak(score: string | null | undefined): [number, number] | null {
+  const m = String(score || '')
+    .trim()
+    .replace(/^[\[(]\s*|\s*[\])]$/g, '')
+    .match(/^(\d+)\s*[-–]\s*(\d+)$/);
+  return m ? [Number(m[1]), Number(m[2])] : null;
+}
+
+/**
+ * Why a 7-point tiebreak score is impossible, or null when it's a real one.
+ * First to 7, win by 2 — so the winner has at least 7, and past 7 the margin
+ * is exactly 2 (9-7 ends it; 10-7 never happens).
+ */
+export function tiebreak7Problem(home: number, away: number): string | null {
+  if (!Number.isInteger(home) || !Number.isInteger(away) || home < 0 || away < 0) {
+    return 'Points must be whole numbers.';
+  }
+  const hi = Math.max(home, away);
+  const gap = Math.abs(home - away);
+  if (hi < 7) return 'A 7-point tiebreak is first to 7 — check the points.';
+  if (gap < 2) return 'A tiebreak is won by 2 points — check the score.';
+  if (hi > 7 && gap !== 2) return `Past 7 it ends at a 2-point lead, so ${hi}-${hi - gap} can't happen — check the score.`;
+  return null;
+}
+
 const winnerOf = (h: number, a: number): Side | null => (h > a ? 'home' : a > h ? 'away' : null);
 
 /**
@@ -190,7 +223,7 @@ export function resolveMeeting(
       return {
         state: 'awaiting_decider',
         because:
-          `Level at ${homeLines}-${awayLines} — it goes to a mixed doubles`,
+          `Level at ${homeLines}-${awayLines} — it goes to a mixed doubles 7-point tiebreak`,
       };
     }
     return {
@@ -198,7 +231,7 @@ export function resolveMeeting(
       winner: decider.winner,
       level: 2,
       ...base,
-      because: 'Level on lines, won the mixed doubles decider',
+      because: 'Level on lines, won the mixed doubles tiebreak',
     };
   }
 

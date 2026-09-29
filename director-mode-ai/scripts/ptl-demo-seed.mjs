@@ -408,8 +408,12 @@ async function seedSeasonPlay(ctx, { weeksPlayed, weeksTotal }) {
                 ? (result === 'home' ? 'home' : 'away')
                 : i < homeLines ? 'home' : 'away';
 
-            const lineHomeGames = scored ? (lineWinner === 'home' ? 8 : 5) : null;
-            const lineAwayGames = scored ? (lineWinner === 'home' ? 5 : 8) : null;
+            // The decider is a 7-point tiebreak: points in the score, no games.
+            const lineHomeGames = scored && !isDecider ? (lineWinner === 'home' ? 8 : 5) : null;
+            const lineAwayGames = scored && !isDecider ? (lineWinner === 'home' ? 5 : 8) : null;
+            const lineScore = !scored ? null
+              : isDecider ? (lineWinner === 'home' ? '7-5' : '5-7')
+              : lineWinner === 'home' ? '4-2 4-3' : '2-4 3-4';
 
             await db.query(
               `INSERT INTO ptl_lines
@@ -418,7 +422,7 @@ async function seedSeasonPlay(ctx, { weeksPlayed, weeksTotal }) {
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
               [
                 meeting.id, lineType, lineKind, isDecider,
-                scored ? (lineWinner === 'home' ? '4-2 4-3' : '2-4 3-4') : null,
+                lineScore,
                 lineHomeGames, lineAwayGames, lineWinner,
                 isDecider ? 'Centre court' : `Court ${round * 4 + i + 1}`,
                 token(),

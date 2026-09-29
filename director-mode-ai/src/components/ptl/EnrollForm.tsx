@@ -137,7 +137,7 @@ export default function EnrollForm({ seasonSlug, seasonName, entryCents, isDemo,
           <p className="mt-3 leading-relaxed text-white/60">
             Teams are <strong className="text-white">men and women together</strong>. You&rsquo;ll
             only ever play your own draw — men&rsquo;s singles and doubles, women&rsquo;s singles and
-            doubles — and if a meeting finishes level, a mixed doubles decides it.
+            doubles — and if a meeting finishes level, a mixed doubles 7-point tiebreak decides it.
           </p>
         )}
       </div>
@@ -192,7 +192,7 @@ export default function EnrollForm({ seasonSlug, seasonName, entryCents, isDemo,
             <Field
               id="ptl-gender"
               label="Which draw"
-              hint="Teams are mixed. Men play men, women play women, and mixed doubles decides a tie."
+              hint="Teams are mixed. Men play men, women play women, and a mixed doubles 7-point tiebreak decides a tie."
             >
               <select id="ptl-gender" name="gender" required defaultValue="" className={INPUT}>
                 <option value="" disabled className="bg-[#0B0F14]">Choose one</option>

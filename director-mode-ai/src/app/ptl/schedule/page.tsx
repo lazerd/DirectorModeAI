@@ -161,7 +161,7 @@ export default async function SchedulePage({
                                         && m.decided_at_level >= (gendered ? 2 : 3) && (
                                         <span className="ml-1.5 text-[10px] uppercase tracking-wider text-amber-300/80">
                                           {gendered
-                                            ? 'mixed decided it'
+                                            ? 'mixed tiebreak'
                                             : m.decided_at_level === 3
                                               ? 'tiebreaks'
                                               : m.decided_at_level === 4

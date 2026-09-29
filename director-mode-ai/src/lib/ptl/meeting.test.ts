@@ -3,7 +3,9 @@ import {
   courtsForFormat,
   linesForFormat,
   parseGames,
+  parseTiebreak,
   resolveMeeting,
+  tiebreak7Problem,
   type LineInput,
   type ShootoutInput,
 } from './meeting';
@@ -284,8 +286,38 @@ describe('resolveMeeting — gendered four with a mixed decider', () => {
     }
   });
 
+  it('the mixed tiebreak never adds to total games', () => {
+    // Decider stored as a 7-point tiebreak: no games on the row at all.
+    const tb: LineInput = { lineType: 'doubles', lineKind: 'mixed_doubles', isDecider: true, winner: 'away', homeGames: null, awayGames: null };
+    const o = mixed([...FOUR(['home', 'home', 'away', 'away']), tb]);
+    expect(o).toMatchObject({ state: 'decided', winner: 'away', level: 2, homeGames: 26, awayGames: 26 });
+    if (o.state === 'decided') expect(o.because).toContain('tiebreak');
+  });
+
   it('leaves the original two-line cascade untouched', () => {
     const o = resolveMeeting([line('singles', 'home', 8, 2), line('doubles', 'away', 4, 8)]);
     expect(o).toMatchObject({ state: 'decided', level: 2 });
+  });
+});
+
+describe('the mixed doubles 7-point tiebreak', () => {
+  it('reads the shapes typed courtside', () => {
+    expect(parseTiebreak('7-5')).toEqual([7, 5]);
+    expect(parseTiebreak('[9-7]')).toEqual([9, 7]);
+    expect(parseTiebreak(' (3 - 7) ')).toEqual([3, 7]);
+    expect(parseTiebreak('4-2 4-1')).toBeNull();
+    expect(parseTiebreak('')).toBeNull();
+  });
+
+  it('accepts real tiebreaks', () => {
+    for (const [h, a] of [[7, 0], [7, 5], [5, 7], [9, 7], [12, 14]]) {
+      expect(tiebreak7Problem(h, a)).toBeNull();
+    }
+  });
+
+  it('refuses scores a first-to-7, win-by-2 tiebreak cannot produce', () => {
+    for (const [h, a] of [[6, 4], [7, 6], [7, 7], [10, 7], [8, 5], [-7, 2]]) {
+      expect(tiebreak7Problem(h, a)).not.toBeNull();
+    }
   });
 });

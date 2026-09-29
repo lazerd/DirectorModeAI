@@ -200,7 +200,7 @@ export default async function StandingsPage({
                 A meeting is four lines — men&rsquo;s and women&rsquo;s singles, men&rsquo;s and
                 women&rsquo;s doubles — played at once. Win three and it&rsquo;s yours. Finish{' '}
                 <span className="font-semibold text-white/70">2&ndash;2</span> and a mixed doubles
-                decides it.
+                7-point tiebreak decides it.
               </>
             ) : (
               <>

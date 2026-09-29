@@ -176,7 +176,7 @@ export default async function PtlHomePage({
               ? {
                   n: 'Three',
                   h: 'And if it finishes 2-2',
-                  p: 'A mixed doubles decides it. One man and one woman a side, back on court, the whole meeting riding on it — and the table is complete before anyone reaches the car park.',
+                  p: 'A mixed doubles 7-point tiebreak decides it. One man and one woman a side, first to 7, the whole meeting riding on it — and the table is complete before anyone reaches the car park.',
                 }
               : {
                   n: 'Three',

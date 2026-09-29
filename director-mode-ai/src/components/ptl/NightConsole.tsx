@@ -27,6 +27,15 @@ const KIND_LABEL: Record<string, string> = {
   points23: 'Singles decider (2 of 3 points)',
 };
 
+const LINE_ORDER = ['open', 'mens_singles', 'womens_singles', 'mens_doubles', 'womens_doubles'];
+
+const LINE_NAME: Record<string, string> = {
+  mens_singles: "Men's singles",
+  womens_singles: "Women's singles",
+  mens_doubles: "Men's doubles",
+  womens_doubles: "Women's doubles",
+};
+
 const LEVEL_LABEL: Record<number, string> = {
   1: 'Both lines',
   2: 'Total games',
@@ -98,6 +107,8 @@ export default function NightConsole({ night: initial, origin }: Props) {
            */
           const decided = m.outcome.state === 'decided' ? m.outcome : null;
           const waiting = m.outcome.state === 'awaiting_shootout' ? m.outcome : null;
+          const awaitingDecider = m.outcome.state === 'awaiting_decider' ? m.outcome : null;
+          const deciderLine = m.lines.find((l) => l.is_decider) ?? null;
           const winnerId = decided
             ? decided.winner === 'home'
               ? m.home_team_id
@@ -108,7 +119,7 @@ export default function NightConsole({ night: initial, origin }: Props) {
             <section
               key={m.id}
               className={`rounded-sm border ${
-                waiting
+                waiting || awaitingDecider
                   ? 'border-amber-400/60 bg-amber-400/[0.07]'
                   : decided
                     ? 'border-white/10 bg-white/[0.02]'
@@ -136,28 +147,32 @@ export default function NightConsole({ night: initial, origin }: Props) {
                       {teamCode(winnerId!)} win
                     </div>
                     <div className="text-[11px] uppercase tracking-wider text-white/40">
-                      {LEVEL_LABEL[decided.level]}
+                      {deciderLine
+                        ? decided.level === 1 ? 'On lines' : 'Mixed tiebreak'
+                        : LEVEL_LABEL[decided.level]}
                     </div>
                   </div>
                 )}
               </div>
 
-              {/* ---- the two lines ---- */}
+              {/* ---- the lines (two in the open format, four when gendered) ---- */}
               <div className="divide-y divide-white/[0.07]">
-                {(['singles', 'doubles'] as const).map((type) => {
-                  const line = m.lines.find((l) => l.line_type === type);
-                  if (!line) return null;
+                {m.lines
+                  .filter((l) => !l.is_decider)
+                  .sort((a, b) => LINE_ORDER.indexOf(a.line_kind) - LINE_ORDER.indexOf(b.line_kind))
+                  .map((line) => {
+                  const name = LINE_NAME[line.line_kind] ?? line.line_type;
                   return (
                     <div key={line.id} className="flex flex-wrap items-center gap-3 px-5 py-4">
-                      <div className="min-w-[110px]">
-                        <div className="text-sm font-semibold capitalize">{type}</div>
+                      <div className="min-w-[130px]">
+                        <div className="text-sm font-semibold capitalize">{name}</div>
                         <div className="text-xs text-white/40">{line.court_label || 'Court TBD'}</div>
                       </div>
                       <input
                         id={`score-${line.id}`}
                         defaultValue={line.score || ''}
                         placeholder="4-2 4-1"
-                        aria-label={`${type} score, ${teamCode(m.home_team_id)} first`}
+                        aria-label={`${name} score, ${teamCode(m.home_team_id)} first`}
                         className="min-w-0 flex-1 rounded-sm border border-white/15 bg-white/[0.04] px-3 py-2.5 text-white placeholder:text-white/30 focus:border-teal-400/70 focus:outline-none"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
@@ -212,6 +227,36 @@ export default function NightConsole({ night: initial, origin }: Props) {
                         }
                       />
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ---- 2-2: the mixed doubles 7-point tiebreak ---- */}
+              {deciderLine && (awaitingDecider || deciderLine.score) && (
+                <div
+                  className={`border-t px-5 py-5 ${
+                    awaitingDecider ? 'border-amber-400/30' : 'border-white/10'
+                  }`}
+                >
+                  {awaitingDecider && (
+                    <>
+                      <p className="font-bold text-amber-200">Not decided yet.</p>
+                      <p className="mt-1 text-sm leading-relaxed text-amber-100/80">
+                        {awaitingDecider.because}. One man and one woman a side, first to 7, win by 2.
+                      </p>
+                    </>
+                  )}
+                  <div className={awaitingDecider ? 'mt-5' : ''}>
+                    <ShootoutRow
+                      key={deciderLine.score || 'new'}
+                      label={`Mixed doubles tiebreak (to 7)${deciderLine.score ? ` · ${deciderLine.score}` : ''}`}
+                      homeCode={teamCode(m.home_team_id)}
+                      awayCode={teamCode(m.away_team_id)}
+                      busy={busy === deciderLine.id}
+                      onSave={(h, a) =>
+                        post({ action: 'line', lineId: deciderLine.id, score: `${h}-${a}` }, deciderLine.id)
+                      }
+                    />
                   </div>
                 </div>
               )}

@@ -54,6 +54,17 @@ export async function POST(
       const owns = night.meetings.some((m) => m.lines.some((l) => l.id === lineId));
       if (!owns) return NextResponse.json({ error: 'That line is not on this night.' }, { status: 403 });
 
+      // Same rule as a shootout: the mixed tiebreak is accepted only when the
+      // meeting is sitting at 2-2 waiting for it, or to correct one already in.
+      const meeting = night.meetings.find((m) => m.lines.some((l) => l.id === lineId))!;
+      const target = meeting.lines.find((l) => l.id === lineId)!;
+      if (target.is_decider && meeting.outcome.state !== 'awaiting_decider' && !target.score) {
+        return NextResponse.json(
+          { error: 'The mixed tiebreak is only played when the meeting is level at 2-2.' },
+          { status: 409 },
+        );
+      }
+
       const res = await applyLineScore(lineId, score, reporter);
       if (!res.ok) return NextResponse.json({ error: res.error }, { status: 400 });
       await refreshNightStatus(night.id);

@@ -17,7 +17,9 @@ import 'server-only';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   parseGames,
+  parseTiebreak,
   resolveMeeting,
+  tiebreak7Problem,
   type LineFormat,
   type LineInput,
   type LineKind,
@@ -305,7 +307,7 @@ export async function applyLineScore(
 
   const { data: line } = await db
     .from('ptl_lines')
-    .select('id, meeting_id')
+    .select('id, meeting_id, is_decider')
     .eq('id', lineId)
     .maybeSingle();
   if (!line) return { ok: false, error: 'That line does not exist.' };
@@ -316,6 +318,32 @@ export async function applyLineScore(
     await db
       .from('ptl_lines')
       .update({ score: null, home_games: null, away_games: null, winner: null, status: 'pending' })
+      .eq('id', lineId);
+    const outcome = await recomputeMeeting((line as any).meeting_id);
+    return { ok: true, meetingId: (line as any).meeting_id, outcome };
+  }
+
+  /*
+   * The mixed decider is a 7-point tiebreak, so it's scored in points and
+   * stores no games — resolveMeeting already leaves it out of the totals, and
+   * a null here means nothing downstream can add it back in by accident.
+   */
+  if ((line as any).is_decider) {
+    const pts = parseTiebreak(trimmed);
+    if (!pts) return { ok: false, error: 'Write the tiebreak as points, like "7-5".' };
+    const problem = tiebreak7Problem(pts[0], pts[1]);
+    if (problem) return { ok: false, error: problem };
+    await db
+      .from('ptl_lines')
+      .update({
+        score: `${pts[0]}-${pts[1]}`,
+        home_games: null,
+        away_games: null,
+        winner: pts[0] > pts[1] ? 'home' : 'away',
+        status: 'complete',
+        reported_at: new Date().toISOString(),
+        reported_by_name: reportedBy || null,
+      })
       .eq('id', lineId);
     const outcome = await recomputeMeeting((line as any).meeting_id);
     return { ok: true, meetingId: (line as any).meeting_id, outcome };
