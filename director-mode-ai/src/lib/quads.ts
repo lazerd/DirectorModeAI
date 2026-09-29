@@ -91,6 +91,37 @@ export function parseScoreSets(score: string | null | undefined): Array<[number,
 }
 
 /**
+ * A match's sets as [side A games, side B games], whichever way it was typed.
+ *
+ * People type scores winner-first ("4-2" for whoever won), not left-player
+ * first. Read literally, a side-B win typed "4-2" handed the LOSER the four
+ * games — and the quad winner is decided on games. So once the winner is
+ * known, a score that has the loser ahead is flipped. A score that already
+ * agrees with the winner (A-first, or a win by side A) is left as typed.
+ */
+export function orientedScoreSets(
+  score: string | null | undefined,
+  winnerSide: 'a' | 'b' | null | undefined
+): Array<[number, number]> {
+  const sets = parseScoreSets(score);
+  if (winnerSide !== 'a' && winnerSide !== 'b') return sets;
+  let setsA = 0;
+  let setsB = 0;
+  let gamesA = 0;
+  let gamesB = 0;
+  for (const [a, b] of sets) {
+    gamesA += a;
+    gamesB += b;
+    if (a > b) setsA++;
+    else if (b > a) setsB++;
+  }
+  const aAhead = setsA !== setsB ? setsA > setsB : gamesA > gamesB;
+  const bAhead = setsA !== setsB ? setsB > setsA : gamesB > gamesA;
+  const backwards = (winnerSide === 'a' && bAhead) || (winnerSide === 'b' && aAhead);
+  return backwards ? sets.map(([a, b]) => [b, a] as [number, number]) : sets;
+}
+
+/**
  * Validate a tennis-style score string. Accepts any sequence of "X-Y" pairs
  * (1-3 digits each), optionally separated by commas, with optional tiebreak
  * parens.
@@ -198,7 +229,7 @@ export function computeFlightStandings(
     let setsB = 0;
     let gamesA = 0;
     let gamesB = 0;
-    for (const [a, b] of parseScoreSets(m.score)) {
+    for (const [a, b] of orientedScoreSets(m.score, m.winner_side)) {
       gamesA += a;
       gamesB += b;
       if (a > b) setsA++;
@@ -409,7 +440,7 @@ export function computeQuadFinalStandings(
 
     let gamesA = 0;
     let gamesB = 0;
-    for (const [a, b] of parseScoreSets(m.score)) {
+    for (const [a, b] of orientedScoreSets(m.score, m.winner_side)) {
       gamesA += a;
       gamesB += b;
     }

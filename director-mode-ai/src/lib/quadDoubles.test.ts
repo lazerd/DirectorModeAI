@@ -178,3 +178,53 @@ describe('three-way ties', () => {
     expect(ladder).toEqual(['a', 'b', 'c', 'd']);
   });
 });
+
+describe('winner-first scores', () => {
+  // Darrin's own rehearsal entries (9/29): he picked the winner, then typed
+  // the score winner-first — "4-2" for every match, whichever side won.
+  const s = (round: number, a: string, b: string, w: 'a' | 'b') => ({
+    round,
+    match_type: 'singles',
+    player1_id: a,
+    player3_id: b,
+    score: '4-2',
+    winner_side: w,
+    status: 'completed',
+  });
+  const matches = [
+    s(1, 'ava', 'dee', 'a'),
+    s(1, 'ben', 'cal', 'b'),
+    s(2, 'ava', 'cal', 'a'),
+    s(2, 'ben', 'dee', 'b'),
+    s(3, 'ava', 'ben', 'b'),
+    s(3, 'cal', 'dee', 'a'),
+    {
+      round: 4,
+      match_type: 'doubles',
+      player1_id: 'ava',
+      player2_id: 'ben',
+      player3_id: 'cal',
+      player4_id: 'dee',
+      score: '4-2',
+      winner_side: 'b',
+      status: 'completed',
+    },
+  ] as any[];
+  const entries = ['ava', 'ben', 'cal', 'dee'].map((id, i) => ({ id, flight_seed: i + 1 }));
+
+  it('credit the winner with the bigger number', () => {
+    const rows = computeQuadFinalStandings(entries, matches);
+    expect(rows.map((r) => [r.entry_id, r.games_won])).toEqual([
+      ['cal', 14], // champion — was scored as Ava 16
+      ['ava', 12], // ties Dee on games + wins, beat her head-to-head
+      ['dee', 12],
+      ['ben', 10],
+    ]);
+    expect(rows[0].is_champion).toBe(true);
+  });
+
+  it('read the same whether typed winner-first or left-player-first', () => {
+    const leftFirst = matches.map((m) => (m.winner_side === 'b' ? { ...m, score: '2-4' } : m));
+    expect(computeQuadFinalStandings(entries, leftFirst)).toEqual(computeQuadFinalStandings(entries, matches));
+  });
+});

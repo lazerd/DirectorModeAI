@@ -17,7 +17,9 @@
  *        singles ladder has a three-way head-to-head circle.
  *   13O  director again; the doubles result swings the overall winner away
  *        from the singles winner.
- * Expected standings below were worked out by hand, not by the app's code.
+ * About half the scores are typed winner-first ("4-1" for a side-B win), the
+ * way Darrin typed them on 9/29 — that exposed games being credited to the
+ * loser. Expected standings below were worked out by hand, not by the app.
  */
 import pg from 'pg';
 import { readFileSync, mkdirSync } from 'fs';
@@ -240,7 +242,7 @@ try {
   await directorScore(T('Ben'), T('Dee'), T('Ben'), '4-3');
   await directorScore(T('Ava'), T('Ben'), T('Ava'), '4-0');
   check('no doubles before the last singles', (await doublesRow(0)).length === 0);
-  await directorScore(T('Cal'), T('Dee'), T('Dee'), '1-4'); // last singles: Dee wins
+  await directorScore(T('Cal'), T('Dee'), T('Dee'), '4-1'); // last singles: Dee wins
   let d10 = await doublesRow(0);
   check('doubles created by the director\'s last score', d10.length === 1);
   check('pairing counts that last score: Ava+Cal vs Ben+Dee', d10[0] && teams(d10[0]) === want(T('Ava'), T('Cal'), T('Ben'), T('Dee')), d10[0] && teams(d10[0]));
@@ -254,7 +256,7 @@ try {
   check('correction re-pairs the unplayed doubles: Ava+Dee vs Ben+Cal', d10.length === 1 && teams(d10[0]) === want(T('Ava'), T('Dee'), T('Ben'), T('Cal')), d10[0] && teams(d10[0]));
   check('re-pair kept its court + time', d10[0]?.court === '1' && d10[0]?.t === '13:30');
   const scrollBefore = await page.evaluate(() => window.scrollY);
-  await directorDoubles(`${T('Ben')} + ${T('Cal')}`, '3-4');
+  await directorDoubles(`${T('Ben')} + ${T('Cal')}`, '4-3');
   const scrollAfter = await page.evaluate(() => window.scrollY);
   check('saving a score keeps your place on the page', scrollBefore > 200 && Math.abs(scrollAfter - scrollBefore) < 400, `${scrollBefore} -> ${scrollAfter}`);
   await snap('10u-final');
@@ -265,11 +267,11 @@ try {
   await directorScore(O('Jon'), O('Kit'), O('Jon'), '4-2');
   await directorScore(O('Ivy'), O('Kit'), O('Ivy'), '4-1');
   await directorScore(O('Jon'), O('Lou'), O('Jon'), '4-1');
-  await directorScore(O('Ivy'), O('Jon'), O('Jon'), '3-4');
+  await directorScore(O('Ivy'), O('Jon'), O('Jon'), '4-3');
   await directorScore(O('Kit'), O('Lou'), O('Kit'), '4-3');
   const d13 = await doublesRow(2);
   check('13&O pairing Jon+Lou vs Ivy+Kit, court 5 @ 1:30', d13.length === 1 && teams(d13[0]) === want(O('Jon'), O('Lou'), O('Ivy'), O('Kit')) && d13[0].court === '5' && d13[0].t === '13:30', d13[0] && `${teams(d13[0])} ${d13[0].court}@${d13[0].t}`);
-  await directorDoubles(`${O('Ivy')} + ${O('Kit')}`, '1-4');
+  await directorDoubles(`${O('Ivy')} + ${O('Kit')}`, '4-1');
 
   console.log('\n-- 12U: players score from their own links --');
   const Y = (x) => N(x, '12U');
@@ -288,12 +290,13 @@ try {
     await pp.waitForLoadState('networkidle');
     await card.getByText('Reported').waitFor({ timeout: 20000 });
   }
-  // Seeds Eli1 Fay2 Gus3 Hal4. Scores are side A (lower seed) first.
-  await playerScore(Y('Hal'), Y('Eli'), Y('Hal'), '2-4'); // R1 Hal beats Eli
+  // Seeds Eli1 Fay2 Gus3 Hal4. Some scores are typed winner-first, some
+  // left-player-first — people do both, and both must count the same.
+  await playerScore(Y('Hal'), Y('Eli'), Y('Hal'), '4-2'); // R1 Hal beats Eli
   await playerScore(Y('Fay'), Y('Gus'), Y('Fay'), '4-1');
   await playerScore(Y('Eli'), Y('Gus'), Y('Eli'), '4-2');
   await playerScore(Y('Hal'), Y('Fay'), Y('Fay'), '4-0');
-  await playerScore(Y('Eli'), Y('Fay'), Y('Fay'), '3-4');
+  await playerScore(Y('Eli'), Y('Fay'), Y('Fay'), '4-3');
   await snap('12u-player-page', pp);
   await playerScore(Y('Gus'), Y('Hal'), Y('Gus'), '4-2'); // circle: Eli>Gus>Hal>Eli
   const d12 = await doublesRow(1);
@@ -304,7 +307,7 @@ try {
   check('doubles appears on the player\'s page with court + time', (await dblCard.count()) === 1 && /1:30/.test(await dblCard.innerText()) && /Court 3/.test(await dblCard.innerText()));
   await dblCard.getByRole('button', { name: 'Enter Score' }).click();
   await dblCard.getByRole('button', { name: new RegExp(`${Y('Eli')}.*won$`) }).click();
-  await dblCard.getByPlaceholder(/Score/).fill('2-4');
+  await dblCard.getByPlaceholder(/Score/).fill('4-2');
   await dblCard.getByRole('button', { name: /Submit|Save/ }).click();
   await dblCard.getByText('Reported').waitFor({ timeout: 20000 });
   await snap('12u-doubles-reported', pp);
