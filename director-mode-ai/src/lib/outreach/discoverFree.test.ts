@@ -48,3 +48,13 @@ describe('researchFree', () => {
     expect(r.usage.gemini).toBe(1);
   });
 });
+
+describe('researchFree deadline', () => {
+  it('past its deadline it stops searching and fetching instead of running out the clock', async () => {
+    let fetched = 0;
+    const r = await researchFree(3, ['CA'], { braveKey: 'k', geminiKey: 'k', noPacing: true, deadline: 0, fetcher: async () => { fetched += 1; return ''; } });
+    expect(r.usage.searches).toBe(0);
+    expect(fetched).toBe(0);
+    expect(r.candidates).toEqual([]);
+  });
+});

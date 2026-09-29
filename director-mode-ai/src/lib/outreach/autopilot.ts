@@ -194,6 +194,43 @@ export async function planAutopilot(
     );
   }
 
+  // --------------------------------------------------------------- intros
+  const writeIntros = async (lanes: readonly Lane[]) => {
+    for (const lane of lanes) {
+      if (room[lane] <= 0) continue;
+      const { picks } = selectIntros(
+        candidates.filter((c) => laneOf.get(c.org_id) === lane),
+        { cap: room[lane], today, repEmail: opts.repEmail },
+      );
+      for (const p of picks) {
+        // C (Benchmarks) only for a racquet director at their own address.
+        const allowed = allowedVariants({
+          paused: ap.paused_variants,
+          cOn: ap.variant_c,
+          cOk: canBeSentC({ title: p.contact.title, email: p.contact.email }, { knownDirector: lane === 'dca' }),
+        });
+        const variant = nextVariant(balance[lane], allowed);
+        balance[lane][variant] = (balance[lane][variant] ?? 0) + 1;
+        const ref = newRef();
+        const letter = renderLetter('intro', variant, { club: p.candidate.org_name, fullName: p.contact.full_name }, ap.links, ref);
+        if (!letter) continue;
+        await write(
+          {
+            org_id: p.candidate.org_id, contact_id: p.contact.id, subject: letter.subject, body: letter.body,
+            kind: 'intro', follow_up_of: null, dedupe_key: `${p.candidate.org_id}:intro`, ref,
+            why: `${LANE_LABEL[lane]}, letter ${variant}.`,
+          },
+          { org_name: p.candidate.org_name, to: p.contact.email, lane, variant, kind: 'intro', ...letter },
+        );
+      }
+    }
+  };
+
+  // Directors Club letters first: they need no search, so a slow or failed
+  // club search can never cost them (9/25 and 9/28/26 the search ran past
+  // the 300s limit and the whole run died with nothing written).
+  await writeIntros(['dca']);
+
   // ------------------------------------------------------ top up 'found'
   const eligibleIn = (lane: Lane, list: Candidate[]) =>
     selectIntros(list.filter((c) => laneOf.get(c.org_id) === lane), { cap: 100, today, repEmail: opts.repEmail }).picks.length;
@@ -203,7 +240,8 @@ export async function planAutopilot(
     const short = room.found - eligibleIn('found', candidates);
     if (short > 0) {
       try {
-        const got = await discoverClubs(db, { count: short, dryRun: opts.dryRun });
+        // A deadline well inside the function's 300s, so the found lane still gets written.
+        const got = await discoverClubs(db, { count: short, dryRun: opts.dryRun, free: { deadline: Date.now() + 150_000 } });
         discovered = got.added.length;
         if (discovered && !opts.dryRun) {
           candidates = await loadCandidates(db);
@@ -216,35 +254,7 @@ export async function planAutopilot(
     }
   }
 
-  // --------------------------------------------------------------- intros
-  for (const lane of LANES) {
-    if (room[lane] <= 0) continue;
-    const { picks } = selectIntros(
-      candidates.filter((c) => laneOf.get(c.org_id) === lane),
-      { cap: room[lane], today, repEmail: opts.repEmail },
-    );
-    for (const p of picks) {
-      // C (Benchmarks) only for a racquet director at their own address.
-      const allowed = allowedVariants({
-        paused: ap.paused_variants,
-        cOn: ap.variant_c,
-        cOk: canBeSentC({ title: p.contact.title, email: p.contact.email }, { knownDirector: lane === 'dca' }),
-      });
-      const variant = nextVariant(balance[lane], allowed);
-      balance[lane][variant] = (balance[lane][variant] ?? 0) + 1;
-      const ref = newRef();
-      const letter = renderLetter('intro', variant, { club: p.candidate.org_name, fullName: p.contact.full_name }, ap.links, ref);
-      if (!letter) continue;
-      await write(
-        {
-          org_id: p.candidate.org_id, contact_id: p.contact.id, subject: letter.subject, body: letter.body,
-          kind: 'intro', follow_up_of: null, dedupe_key: `${p.candidate.org_id}:intro`, ref,
-          why: `${LANE_LABEL[lane]}, letter ${variant}.`,
-        },
-        { org_name: p.candidate.org_name, to: p.contact.email, lane, variant, kind: 'intro', ...letter },
-      );
-    }
-  }
+  await writeIntros(['found']);
 
     return { ...base, planned, cards, discovered };
 }

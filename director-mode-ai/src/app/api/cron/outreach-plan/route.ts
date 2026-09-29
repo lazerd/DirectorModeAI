@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   // check the Brave + Gemini keys work in production (their values cannot be
   // read back out of Vercel).
   if (request.nextUrl.searchParams.get('discover') === 'dry') {
-    const r = await discoverClubs(db, { count: 1, dryRun: true });
+    const r = await discoverClubs(db, { count: 1, dryRun: true, free: { deadline: Date.now() + 150_000 } });
     return NextResponse.json({ ok: true, note: r.note, found: (r.accepted ?? []).map((c) => `${c.club} (${c.state})`) });
   }
   // A cron has no signed-in rep. The cards go to whoever is on the allowlist

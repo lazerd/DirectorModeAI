@@ -48,6 +48,8 @@ export interface FreeDeps {
   noPacing?: boolean;
   /** Manual runs: see each page kept and what Gemini said about it. */
   debug?: (line: string) => void;
+  /** Epoch ms to stop by: searching and fetching end, whatever pages we have get read. */
+  deadline?: number;
 }
 
 export interface FreeUsage {
@@ -214,12 +216,14 @@ export async function researchFree(
   if (!braveKey || !geminiKey) return { candidates: [], usage, note: 'BRAVE_API_KEY or GEMINI_API_KEY is not set' };
   const pace = !deps.noPacing;
   const fetcher = deps.fetcher ?? defaultFetch;
+  const late = () => deps.deadline !== undefined && Date.now() > deps.deadline;
 
   // 1. Search.
   const hosts = new Map<string, string>(); // domain -> first URL seen
   try {
     for (const st of states) {
       for (const q of queriesFor(st)) {
+        if (late()) break;
         const urls = await brave(q, braveKey, pace);
         usage.searches += 1;
         for (const u of urls) {
@@ -236,7 +240,7 @@ export async function researchFree(
   const pages: Page[] = [];
   const maxPages = Math.max(8, want * 4);
   for (const [domain, first] of hosts) {
-    if (pages.length >= maxPages) break;
+    if (pages.length >= maxPages || late()) break;
     const origin = (() => {
       try {
         return new URL(first).origin;
@@ -252,6 +256,7 @@ export async function researchFree(
       .slice(0, 5);
     let best: (Page & { score: number }) | null = null;
     for (const url of tries) {
+      if (late()) break;
       const html = await fetcher(url);
       usage.pages += 1;
       if (!html) continue;
@@ -275,6 +280,7 @@ export async function researchFree(
   const candidates: Candidate[] = [];
   let note: string | undefined;
   for (let i = 0; i < pages.length; i += 4) {
+    if (i > 0 && late()) break;
     const batch = pages.slice(i, i + 4);
     let rows: Extracted[] = [];
     try {
