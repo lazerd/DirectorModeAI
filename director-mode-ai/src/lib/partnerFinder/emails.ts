@@ -30,6 +30,8 @@ const GREEN = '#047857';
 
 export const linkUrl = (token: string) => `${APP_URL}/play/i/${token}`;
 export const stopUrl = (token: string) => `${APP_URL}/play/stop/${token}`;
+/** A poster's outside friend has their own page: they are not a member. */
+export const guestUrl = (token: string) => `${APP_URL}/play/g/${token}`;
 
 /**
  * One outgoing message. `sms` is the same news in one short line — unused
@@ -323,6 +325,32 @@ export function hostMessageEmail(
     subject: ascii(`${opts.poster}: about the ${formatWord(g)} ${shortDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`),
     html: shell(club, esc(title), body),
     sms: ascii(`${club.name}: ${opts.poster} re ${headline(g, tz)}: ${opts.message}`).slice(0, 300),
+  };
+}
+
+/**
+ * A poster's own friend from outside the club. It comes from the poster by
+ * name, answers to the poster (Reply-To), and makes no claim that they are on
+ * any club list, because they are not.
+ */
+export function guestInviteEmail(
+  g: Game,
+  club: Club,
+  opts: { to: string; name: string; poster: string; token: string; spotsLeft: number; playing: string[] },
+): GameMessage {
+  const tz = club.timezone;
+  const title = `${opts.poster} invited you to play`;
+  const body = `
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, ${esc(opts.poster)} is playing at ${esc(club.name)} and ${needsLabel(opts.spotsLeft)}. Want to join?</p>
+    ${details(g, club, opts.poster, opts.playing)}
+    <p style="margin:0 0 14px">${button(guestUrl(opts.token), "Yes, I'm in")}</p>
+    <p style="font-size:16px;line-height:1.5;color:${MUTED};margin:0 0 8px">First to tap gets the spot. Can't make it? Tap the button and choose &ldquo;No thanks&rdquo;, or just reply to ${esc(opts.poster)}.</p>`;
+  const when = `${formatWord(g)} ${shortDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`;
+  return {
+    to: opts.to,
+    subject: ascii(`${opts.poster} invited you: ${when} at ${club.name}`),
+    html: shell(club, esc(title), body, `${esc(opts.poster)} sent this through CourtConnect at ${esc(club.name)}. You're getting it because they invited you.`),
+    sms: ascii(`${opts.poster} invited you: ${headline(g, tz)} at ${club.name}. ${guestUrl(opts.token)}`),
   };
 }
 

@@ -27,12 +27,16 @@ import {
   type Club,
   type Db,
   type Game,
+  gameGuestLinks,
   type RosterRow,
 } from './server';
 import {
   gameCancelledEmail,
   gameFullEmail,
+  guestInviteEmail,
+  guestUrl,
   hostMessageEmail,
+  linkUrl,
   inviteEmail,
   reminderEmail,
   someoneJoinedEmail,
@@ -40,6 +44,14 @@ import {
   waitlistSpotEmail,
   type GameMessage,
 } from './emails';
+
+/**
+ * Every builder links to the member page (/play/i/). An outside friend has no
+ * member page, so their copy is pointed at /play/g/ instead.
+ */
+function forGuest(m: GameMessage, token: string): GameMessage {
+  return { ...m, html: m.html.split(linkUrl(token)).join(guestUrl(token)) };
+}
 
 async function deliver(club: Club, messages: GameMessage[], replyTo?: string | null): Promise<number> {
   const real = messages.filter((m) => !!m.to);
@@ -204,6 +216,12 @@ async function sendToGroup(
     .map((m) =>
       build({ to: m.email!, name: m.name, token: links.get(m.personId)!, isPoster: m.isPoster, group }),
     );
+  // A friend the poster invited gets the same news, pointed at their own page.
+  for (const m of group) {
+    if (m.isGuest && m.email && m.guestToken) {
+      messages.push(forGuest(build({ to: m.email, name: m.name, token: m.guestToken, isPoster: false, group }), m.guestToken));
+    }
+  }
   return deliver(club, messages);
 }
 
@@ -250,7 +268,7 @@ export async function afterJoin(
   ]);
 }
 
-export async function afterLeave(db: Db, gameId: string, leaverId: string): Promise<void> {
+export async function afterLeave(db: Db, gameId: string, leaverId: string | null, leaverName?: string): Promise<void> {
   const game = await loadGame(db, gameId);
   if (!game) return;
   const club = await loadClub(db, game.club_id);
@@ -296,7 +314,7 @@ export async function afterLeave(db: Db, gameId: string, leaverId: string): Prom
   await deliver(club, [
     spotOpenedEmail(game, club, {
       to: poster.email,
-      leaver: shortName(leaver?.full_name),
+      leaver: leaver ? shortName(leaver.full_name) : leaverName || 'A player',
       spotsLeft: left,
       token: links.get(game.posted_by)!,
     }),
@@ -315,6 +333,7 @@ export async function afterCancel(db: Db, gameId: string): Promise<void> {
     group
       .filter((m) => !m.isPoster && m.email)
       .map((m) => gameCancelledEmail(game, club, { to: m.email!, name: m.name, poster: poster?.short || 'The poster' })),
+    poster?.email,
   );
 }
 
@@ -408,9 +427,76 @@ export async function messageSignups(
       waiting: p.waiting,
     }),
   );
+  // Outside friends who are in hear it too, at their own page.
+  const friends = group.filter((m) => m.isGuest && m.email && m.guestToken);
+  for (const f of friends) {
+    messages.push(
+      forGuest(
+        hostMessageEmail(game, club, { to: f.email!, name: f.name, poster: posterShort, message, token: f.guestToken!, waiting: false }),
+        f.guestToken!,
+      ),
+    );
+  }
   const subject = messages[0]?.subject ?? '';
-  const recipients = sendable.map((p) => `${shortName(p.name)}${p.waiting ? ' (in line)' : ''}`);
+  const recipients = [
+    ...sendable.map((p) => `${shortName(p.name)}${p.waiting ? ' (in line)' : ''}`),
+    ...friends.map((f) => `${f.name} (your guest)`),
+  ];
   if (!send) return { recipients, subject, sent: 0, noEmail };
   const sent = await deliver(club, messages, poster?.email);
   return { recipients, subject, sent, noEmail };
+}
+
+/**
+ * The poster's own friends from outside the club, by contact id from THEIR
+ * list. `send: false` returns who would get it, built by the same code.
+ * Someone already in, or who already said no, is not asked again.
+ */
+export async function inviteGuests(
+  db: Db,
+  game: Game,
+  club: Club,
+  contactIds: string[],
+  send: boolean,
+): Promise<{ recipients: string[]; subject: string; sent: number; skipped: string[] }> {
+  const roster = await clubRoster(db, club.id);
+  const group = await gameGroup(db, game, roster);
+  const poster = group.find((m) => m.isPoster);
+  const posterPerson = poster?.personId;
+  const { data: contacts } = await db
+    .from('pf_guest_contacts')
+    .select('id, name, email')
+    .eq('owner_person_id', posterPerson ?? '')
+    .in('id', contactIds.length ? contactIds : ['00000000-0000-0000-0000-000000000000']);
+  const mine = (contacts as { id: string; name: string; email: string }[] | null) ?? [];
+  const existing = new Map((await gameGuestLinks(db, game.id)).map((l) => [l.contact_id, l]));
+  const skipped = mine.filter((c) => ['in', 'no'].includes(existing.get(c.id)?.status ?? '')).map((c) => c.name);
+  const targets = mine.filter((c) => !['in', 'no'].includes(existing.get(c.id)?.status ?? ''));
+  const recipients = targets.map((c) => c.name);
+  const left = await spotsLeft(db, game);
+  const playing = group.map((m) => m.short);
+  const posterShort = poster?.short || 'A member';
+  const sample = targets[0]
+    ? guestInviteEmail(game, club, { to: targets[0].email, name: targets[0].name, poster: posterShort, token: 'x', spotsLeft: left, playing })
+    : null;
+  if (!send || !targets.length) return { recipients, subject: sample?.subject ?? '', sent: 0, skipped };
+
+  await db.from('pf_guest_links').upsert(
+    targets.map((c) => ({ game_id: game.id, club_id: game.club_id, contact_id: c.id })),
+    { onConflict: 'game_id,contact_id', ignoreDuplicates: true },
+  );
+  const links = new Map((await gameGuestLinks(db, game.id)).map((l) => [l.contact_id, l.token]));
+  const messages = targets
+    .filter((c) => links.has(c.id))
+    .map((c) =>
+      guestInviteEmail(game, club, { to: c.email, name: c.name, poster: posterShort, token: links.get(c.id)!, spotsLeft: left, playing }),
+    );
+  const sent = await deliver(club, messages, poster?.email);
+  await db
+    .from('pf_guest_links')
+    .update({ emailed_at: new Date().toISOString(), status: 'invited' })
+    .eq('game_id', game.id)
+    .in('contact_id', targets.map((c) => c.id))
+    .in('status', ['invited', 'left']);
+  return { recipients, subject: sample?.subject ?? '', sent, skipped };
 }

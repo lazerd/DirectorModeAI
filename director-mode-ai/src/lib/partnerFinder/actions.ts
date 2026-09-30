@@ -11,8 +11,8 @@ import { background } from './background';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { afterCancel, afterJoin, afterLeave, messageSignups } from './notify';
-import { clubRoster, genderFits, levelFits, loadClub, loadGame, personGender, memberRow, personRow, resolvePlayingClub, type Club, type Db } from './server';
+import { afterCancel, afterJoin, afterLeave, inviteGuests, messageSignups } from './notify';
+import { clubRoster, guestLinkByToken, genderFits, levelFits, loadClub, loadGame, personGender, memberRow, personRow, resolvePlayingClub, type Club, type Db } from './server';
 
 export type ActionOutcome = {
   ok: boolean;
@@ -206,6 +206,102 @@ export async function messageGame(
     message: `Sent to ${r.recipients.join(', ')}. Their replies come straight to your email.`,
     ...r,
   };
+}
+
+/* -------------------------------------------- the poster's outside friends */
+
+/** Only the poster of a live game may touch its friend invites. */
+async function posterGame(db: Db, gameId: string, personId: string) {
+  const game = await loadGame(db, gameId);
+  const club = game ? await loadClub(db, game.club_id) : null;
+  if (!game || !club) return { error: { ok: false, result: 'error', message: say('error') } as ActionOutcome };
+  const roster = await clubRoster(db, club.id);
+  if (roster.find((r) => r.user_id === game.posted_by)?.person_id !== personId) {
+    return { error: { ok: false, result: 'not_poster', message: 'Only the person who posted the game can invite friends to it.' } as ActionOutcome };
+  }
+  if (game.status === 'cancelled') return { error: { ok: false, result: 'cancelled', message: say('cancelled') } as ActionOutcome };
+  if (new Date(game.starts_at).getTime() <= Date.now()) return { error: { ok: false, result: 'past', message: say('past') } as ActionOutcome };
+  return { game, club };
+}
+
+/** Save a friend to the poster's own list. Never a PlayerVault row. */
+export async function saveGuestContact(
+  db: Db,
+  gameId: string,
+  personId: string,
+  input: { name: string; email: string },
+): Promise<ActionOutcome & { contact?: { id: string; name: string; email: string } }> {
+  const ctx = await posterGame(db, gameId, personId);
+  if ('error' in ctx) return ctx.error!;
+  const name = input.name.trim().slice(0, 60);
+  const email = input.email.trim().toLowerCase().slice(0, 200);
+  if (!name) return { ok: false, result: 'need_name', message: 'Type their name.' };
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, result: 'bad_email', message: 'That email address does not look right.' };
+  const { data: existing } = await db
+    .from('pf_guest_contacts')
+    .select('id, name, email')
+    .eq('owner_person_id', personId)
+    .ilike('email', email)
+    .maybeSingle();
+  if (existing) return { ok: true, result: 'exists', message: `${(existing as { name: string }).name} is already on your list.`, contact: existing as never };
+  const { data, error } = await db
+    .from('pf_guest_contacts')
+    .insert({ club_id: ctx.club.id, owner_person_id: personId, name, email })
+    .select('id, name, email')
+    .single();
+  if (error) return { ok: false, result: 'error', message: say('error') };
+  return { ok: true, result: 'saved', message: `Added ${name} to your list.`, contact: data as never };
+}
+
+/** Take a friend off the poster's own list. */
+export async function forgetGuestContact(db: Db, personId: string, contactId: string): Promise<ActionOutcome> {
+  await db.from('pf_guest_contacts').delete().eq('id', contactId).eq('owner_person_id', personId);
+  return { ok: true, result: 'removed', message: 'Removed from your list.' };
+}
+
+export async function inviteGuestContacts(
+  db: Db,
+  gameId: string,
+  personId: string,
+  contactIds: string[],
+  send: boolean,
+): Promise<ActionOutcome & { recipients?: string[]; subject?: string; skipped?: string[] }> {
+  const ctx = await posterGame(db, gameId, personId);
+  if ('error' in ctx) return ctx.error!;
+  if (!contactIds.length) return { ok: false, result: 'none', message: 'Tick at least one friend.' };
+  const r = await inviteGuests(db, ctx.game, ctx.club, contactIds, send);
+  if (!r.recipients.length) {
+    return { ok: false, result: 'nobody', message: 'Everyone you ticked has already answered this game.', ...r };
+  }
+  if (!send) return { ok: true, result: 'preview', message: '', ...r };
+  if (!r.sent) return { ok: false, result: 'error', message: 'That did not send. Please try again.', ...r };
+  return { ok: true, result: 'invited', message: `Invited ${r.recipients.join(', ')}. First to tap gets the spot.`, ...r };
+}
+
+/** The friend's own taps, from /play/g/[token]. */
+export async function guestAct(db: Db, token: string, action: 'join' | 'decline' | 'leave'): Promise<ActionOutcome> {
+  const link = await guestLinkByToken(db, token);
+  if (!link) return { ok: false, result: 'not_found', message: say('not_found') };
+  if (action === 'join') {
+    const { data, error } = await db.rpc('pf_guest_claim', { p_token: token });
+    if (error) return { ok: false, result: 'error', message: say('error') };
+    const r = data as { result: string; now_full?: boolean; name?: string };
+    if (r.result === 'full') return { ok: false, result: 'full', message: 'Sorry, this game just filled up.' };
+    if (r.result !== 'joined') return { ok: r.result === 'already_in', result: r.result, message: say(r.result) };
+    background('guest join emails', () => afterJoin(db, link.game_id, null, !!r.now_full, link.name));
+    return {
+      ok: true,
+      result: 'joined',
+      message: r.now_full ? "You're in, and that fills the game. Everyone's getting the line-up by email." : "You're in! We've let them know.",
+    };
+  }
+  const { data, error } = await db.rpc('pf_guest_answer', { p_token: token, p_answer: action === 'decline' ? 'no' : 'leave' });
+  if (error) return { ok: false, result: 'error', message: say('error') };
+  const r = data as { result: string };
+  if (r.result === 'declined') return { ok: true, result: 'declined', message: "No problem. Thanks for letting them know." };
+  if (r.result !== 'left') return { ok: false, result: r.result, message: say(r.result) };
+  background('guest leave emails', () => afterLeave(db, link.game_id, null, link.name));
+  return { ok: true, result: 'left', message: "Done. You're out, and we've told them." };
 }
 
 export type MemberCtx = {

@@ -34,6 +34,8 @@ type Props = {
   group: { name: string; note: string | null; phone: string | null }[];
   /** Members the host may seat by hand. Empty for everyone but the host. */
   addable: { id: string; name: string }[];
+  /** The poster's own outside friends and their answer for this game. Empty for everyone else. */
+  friends: { id: string; name: string; email: string; status: 'invited' | 'in' | 'no' | 'left' | null }[];
   myLevel: number | null;
   /** What this club calls a level — see lib/levels.ts. */
   scale: LevelScale;
@@ -52,6 +54,11 @@ export default function LinkClient(p: Props) {
   const [pick, setPick] = useState('');
   const [guest, setGuest] = useState('');
   const [writing, setWriting] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [fName, setFName] = useState('');
+  const [fEmail, setFEmail] = useState('');
+  const [invitePreview, setInvitePreview] = useState<null | { recipients: string[]; subject: string; skipped: string[] }>(null);
   const [msg, setMsg] = useState('');
   const [preview, setPreview] = useState<null | { recipients: string[]; subject: string; noEmail: string[] }>(null);
 
@@ -120,6 +127,55 @@ export default function LinkClient(p: Props) {
     setPreview(null);
     setMsg('');
     setWriting(false);
+  }
+
+  /*
+   * The poster's own friends from outside the club. Saved to THEIR list only,
+   * never the club's PlayerVault. Inviting is preview-then-send, like the note.
+   */
+  async function saveFriend() {
+    setBusy(true);
+    setNotice(null);
+    const r = await postJson<Outcome & { contact?: { id: string } }>(`/api/play/link/${p.token}`, {
+      action: 'guest_save',
+      name: fName,
+      email: fEmail,
+    });
+    setBusy(false);
+    if (r.error || !r.ok) return setNotice({ tone: 'bad', text: r.error || r.message });
+    if (r.contact) setPicked((cur) => (cur.includes(r.contact!.id) ? cur : [...cur, r.contact!.id]));
+    setFName('');
+    setFEmail('');
+    setInvitePreview(null);
+    router.refresh();
+  }
+
+  async function forgetFriend(id: string) {
+    await postJson<Outcome>(`/api/play/link/${p.token}`, { action: 'guest_forget', contactId: id });
+    setPicked((cur) => cur.filter((x) => x !== id));
+    setInvitePreview(null);
+    router.refresh();
+  }
+
+  async function inviteFriends(send: boolean) {
+    setBusy(true);
+    setNotice(null);
+    const r = await postJson<Outcome & { recipients?: string[]; subject?: string; skipped?: string[] }>(
+      `/api/play/link/${p.token}`,
+      { action: 'guest_invite', contactIds: picked, send },
+    );
+    setBusy(false);
+    if (r.error) return setNotice({ tone: 'bad', text: r.error });
+    if (!r.ok) {
+      setInvitePreview(null);
+      return setNotice({ tone: 'info', text: r.message });
+    }
+    if (!send) return setInvitePreview({ recipients: r.recipients ?? [], subject: r.subject ?? '', skipped: r.skipped ?? [] });
+    setNotice({ tone: 'good', text: r.message });
+    setInvitePreview(null);
+    setPicked([]);
+    setInviting(false);
+    router.refresh();
   }
 
   async function saveLevel(n: number | null) {
@@ -316,6 +372,104 @@ export default function LinkClient(p: Props) {
           ) : (
             <button onClick={() => setAdding(true)} className={`${secondaryBtn} w-full`}>
               Add someone who said yes
+            </button>
+          )
+        )}
+
+        {/* The poster's own friends from outside the club, e.g. from their other club. */}
+        {p.isPoster && !closedText && p.status === 'open' && (
+          inviting ? (
+            <section className="space-y-4 rounded-3xl border-2 border-emerald-300 bg-white p-6">
+              <h2 className="text-2xl font-bold">Invite your own friends</h2>
+              <p className="text-lg text-slate-600">
+                Friends from outside the club. They get an email from you with an &ldquo;I&rsquo;m in&rdquo; button, and the
+                first to tap gets the spot. Your list is private to you, and they aren&rsquo;t added to the club.
+              </p>
+              {p.friends.length > 0 && (
+                <ul className="space-y-2">
+                  {p.friends.map((f) => {
+                    const settled = f.status === 'in' || f.status === 'no';
+                    const tag =
+                      f.status === 'in' ? 'playing' : f.status === 'no' ? 'said no' : f.status === 'invited' ? 'invited' : f.status === 'left' ? 'dropped out' : null;
+                    return (
+                      <li key={f.id} className="flex items-center gap-3 text-lg">
+                        <input
+                          type="checkbox"
+                          className="h-6 w-6"
+                          disabled={settled}
+                          checked={picked.includes(f.id)}
+                          onChange={(e) => {
+                            setInvitePreview(null);
+                            setPicked((cur) => (e.target.checked ? [...cur, f.id] : cur.filter((x) => x !== f.id)));
+                          }}
+                          aria-label={`Invite ${f.name}`}
+                        />
+                        <span className="font-semibold">{f.name}</span>
+                        <span className="truncate text-slate-500">{f.email}</span>
+                        {tag && <span className="rounded-full bg-slate-100 px-2 text-base text-slate-700">{tag}</span>}
+                        <button onClick={() => forgetFriend(f.id)} className="ml-auto text-base text-slate-500 underline">
+                          remove
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <div className="space-y-2 rounded-2xl bg-slate-50 p-4">
+                <p className="text-lg font-semibold text-slate-700">Add a friend</p>
+                <input
+                  value={fName}
+                  onChange={(e) => setFName(e.target.value)}
+                  placeholder="Their name"
+                  maxLength={60}
+                  className="w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                />
+                <input
+                  value={fEmail}
+                  onChange={(e) => setFEmail(e.target.value)}
+                  placeholder="Their email"
+                  type="email"
+                  inputMode="email"
+                  className="w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                />
+                <button onClick={saveFriend} disabled={busy || !fName.trim() || !fEmail.trim()} className={`${secondaryBtn} w-full`}>
+                  Save to my list
+                </button>
+              </div>
+              {invitePreview ? (
+                <div className="space-y-3 rounded-2xl bg-slate-50 p-4">
+                  <p className="text-lg">
+                    <span className="font-semibold">This goes to:</span> {invitePreview.recipients.join(', ')}
+                  </p>
+                  <p className="text-lg text-slate-600">
+                    <span className="font-semibold">Subject:</span> {invitePreview.subject}
+                  </p>
+                  {invitePreview.skipped.length > 0 && (
+                    <p className="text-base text-slate-500">Already answered, so not asked again: {invitePreview.skipped.join(', ')}</p>
+                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button onClick={() => inviteFriends(true)} disabled={busy} className={`${primaryBtn} flex-1`}>
+                      {busy ? 'Sending…' : 'Send invites'}
+                    </button>
+                    <button onClick={() => setInvitePreview(null)} className={`${secondaryBtn} flex-1`}>
+                      Change
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button onClick={() => inviteFriends(false)} disabled={busy || picked.length === 0} className={`${primaryBtn} flex-1`}>
+                    {busy ? 'One moment…' : picked.length ? `Next (${picked.length} ticked)` : 'Tick who to invite'}
+                  </button>
+                  <button onClick={() => { setInviting(false); setPicked([]); setInvitePreview(null); }} className={`${secondaryBtn} flex-1`}>
+                    Never mind
+                  </button>
+                </div>
+              )}
+            </section>
+          ) : (
+            <button onClick={() => setInviting(true)} className={`${secondaryBtn} w-full`}>
+              Invite your own friends
             </button>
           )
         )}

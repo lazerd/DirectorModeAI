@@ -1,7 +1,8 @@
 /**
  * POST /api/play/link/[token] — the no-login actions behind an emailed link.
  *
- * { action: 'join' | 'decline' | 'leave' | 'cancel' | 'level' | 'add' | 'message', ntrp?, text?, send? }
+ * { action: 'join' | 'decline' | 'leave' | 'cancel' | 'level' | 'add' | 'message'
+ *          | 'guest_save' | 'guest_forget' | 'guest_invite', ... }
  *
  * The token is the credential: it names one game and one person, and it can
  * only act as that person on that game. Same rule as CaptainMode's sub claim.
@@ -10,7 +11,17 @@
  */
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { cancelGame, declineGame, hostAddPlayer, joinGame, leaveGame, messageGame } from '@/lib/partnerFinder/actions';
+import {
+  cancelGame,
+  declineGame,
+  forgetGuestContact,
+  hostAddPlayer,
+  inviteGuestContacts,
+  joinGame,
+  leaveGame,
+  messageGame,
+  saveGuestContact,
+} from '@/lib/partnerFinder/actions';
 import { linkByToken, loadClub, personRow, saveSelfRating } from '@/lib/partnerFinder/server';
 import { isLevelValue } from '@/lib/levels';
 
@@ -41,6 +52,10 @@ export async function POST(req: Request, { params }: { params: { token: string }
     guestName?: unknown;
     text?: unknown;
     send?: unknown;
+    name?: unknown;
+    email?: unknown;
+    contactId?: unknown;
+    contactIds?: unknown;
   };
 
   /*
@@ -63,6 +78,26 @@ export async function POST(req: Request, { params }: { params: { token: string }
   if (body.action === 'message') {
     const text = typeof body.text === 'string' ? body.text : '';
     return NextResponse.json(await messageGame(db, link.game_id, link.person_id, text, body.send === true));
+  }
+
+  /*
+   * The poster's own friends from outside the club: a private list per poster,
+   * never PlayerVault. Each helper checks the token belongs to the poster.
+   */
+  if (body.action === 'guest_save') {
+    return NextResponse.json(
+      await saveGuestContact(db, link.game_id, link.person_id, {
+        name: typeof body.name === 'string' ? body.name : '',
+        email: typeof body.email === 'string' ? body.email : '',
+      }),
+    );
+  }
+  if (body.action === 'guest_forget' && typeof body.contactId === 'string') {
+    return NextResponse.json(await forgetGuestContact(db, link.person_id, body.contactId));
+  }
+  if (body.action === 'guest_invite') {
+    const ids = Array.isArray(body.contactIds) ? body.contactIds.filter((x): x is string => typeof x === 'string').slice(0, 20) : [];
+    return NextResponse.json(await inviteGuestContacts(db, link.game_id, link.person_id, ids, body.send === true));
   }
 
   if (body.action === 'level') {

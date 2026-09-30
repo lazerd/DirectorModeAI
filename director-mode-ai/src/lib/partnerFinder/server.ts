@@ -315,17 +315,34 @@ export type GroupMember = {
    * not a person. No email, no token link, no PlayerVault row, ever.
    */
   isGuest: boolean;
+  /**
+   * A friend the poster invited from outside the club (pf_guest_invites.sql)
+   * has their own link, /play/g/[token], and an email on the poster's list.
+   * Null for a guest the host just typed in by name.
+   */
+  guestToken?: string | null;
 };
 
 /** The poster plus everyone currently in, poster first. */
 export async function gameGroup(db: Db, game: Game, roster?: RosterRow[]): Promise<GroupMember[]> {
   const { data } = await db
     .from('pf_game_players')
-    .select('id, person_id, guest_name, joined_at')
+    .select('id, person_id, guest_name, guest_contact_id, joined_at')
     .eq('game_id', game.id)
     .eq('status', 'in')
     .order('joined_at');
-  const rows = (data as { id: string; person_id: string | null; guest_name: string | null }[] | null) ?? [];
+  const rows =
+    (data as { id: string; person_id: string | null; guest_name: string | null; guest_contact_id: string | null }[] | null) ?? [];
+  // Invited friends: their seat leads back to their link and the poster's contact.
+  const invitedSeats = rows.filter((r) => !r.person_id && r.guest_contact_id).map((r) => r.id);
+  const { data: glinks } = invitedSeats.length
+    ? await db.from('pf_guest_links').select('seat_id, token, pf_guest_contacts(email)').in('seat_id', invitedSeats)
+    : { data: [] };
+  const guestBySeat = new Map(
+    ((glinks as unknown as { seat_id: string; token: string; pf_guest_contacts: { email: string } | null }[] | null) ?? []).map(
+      (l) => [l.seat_id, { token: l.token, email: l.pf_guest_contacts?.email ?? null }],
+    ),
+  );
   const people = roster ?? (await clubRoster(db, game.club_id));
   const byId = new Map(people.map((r) => [r.person_id, r]));
   // posted_by is an ACCOUNT — a game is always posted by someone signed in —
@@ -357,10 +374,11 @@ export async function gameGroup(db: Db, game: Game, roster?: RosterRow[]): Promi
         personId: row.id,
         name: row.guest_name || 'Guest',
         short: row.guest_name || 'Guest',
-        email: null,
+        email: guestBySeat.get(row.id)?.email ?? null,
         phone: null,
         isPoster: false,
         isGuest: true,
+        guestToken: guestBySeat.get(row.id)?.token ?? null,
       });
       continue;
     }
@@ -643,4 +661,57 @@ export async function publicOpenGames(db: Db, clubId: string) {
   const taken = new Map<string, number>();
   for (const p of (players as { game_id: string }[] | null) ?? []) taken.set(p.game_id, (taken.get(p.game_id) ?? 0) + 1);
   return games.map((g) => ({ ...g, spots_left: Math.max(Number(g.spots_needed) - (taken.get(g.id) ?? 0), 0) }));
+}
+
+/* ------------------------------------------------ the poster's outside friends */
+
+export type GuestContact = { id: string; name: string; email: string };
+export type GuestLink = {
+  token: string;
+  game_id: string;
+  club_id: string;
+  contact_id: string;
+  status: 'invited' | 'in' | 'no' | 'left';
+  emailed_at: string | null;
+  name: string;
+  email: string;
+  owner_person_id: string;
+};
+
+/** A poster's own list. Nobody else's page ever loads it. */
+export async function guestContacts(db: Db, ownerPersonId: string): Promise<GuestContact[]> {
+  const { data } = await db
+    .from('pf_guest_contacts')
+    .select('id, name, email')
+    .eq('owner_person_id', ownerPersonId)
+    .order('name');
+  return (data as GuestContact[] | null) ?? [];
+}
+
+/** Who the poster has invited to this game, and what each said. */
+export async function gameGuestLinks(db: Db, gameId: string): Promise<GuestLink[]> {
+  const { data } = await db
+    .from('pf_guest_links')
+    .select('token, game_id, club_id, contact_id, status, emailed_at, pf_guest_contacts(name, email, owner_person_id)')
+    .eq('game_id', gameId)
+    .order('created_at');
+  return flattenGuestLinks(data);
+}
+
+export async function guestLinkByToken(db: Db, token: string): Promise<GuestLink | null> {
+  if (!/^[a-f0-9]{32,64}$/.test(token || '')) return null;
+  const { data } = await db
+    .from('pf_guest_links')
+    .select('token, game_id, club_id, contact_id, status, emailed_at, pf_guest_contacts(name, email, owner_person_id)')
+    .eq('token', token);
+  return flattenGuestLinks(data)[0] ?? null;
+}
+
+function flattenGuestLinks(data: unknown): GuestLink[] {
+  type Row = Omit<GuestLink, 'name' | 'email' | 'owner_person_id'> & {
+    pf_guest_contacts: { name: string; email: string; owner_person_id: string } | null;
+  };
+  return ((data as Row[] | null) ?? [])
+    .filter((r) => r.pf_guest_contacts)
+    .map(({ pf_guest_contacts: c, ...r }) => ({ ...r, name: c!.name, email: c!.email, owner_person_id: c!.owner_person_id }));
 }

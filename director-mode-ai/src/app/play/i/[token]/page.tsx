@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   clubRoster,
   gameGroup,
+  gameGuestLinks,
+  guestContacts,
   levelFits,
   linkByToken,
   loadClub,
@@ -94,6 +96,16 @@ export default async function GameLinkPage({ params }: { params: { token: string
         .sort((a, b) => a.name.localeCompare(b.name))
     : [];
 
+  /*
+   * The poster's own outside friends (pf_guest_invites.sql) with what each has
+   * said about THIS game. Only ever loaded for the poster: it is their list.
+   */
+  const [contacts, guestLinks] = isPoster
+    ? await Promise.all([guestContacts(db, link.person_id), gameGuestLinks(db, game.id)])
+    : [[], []];
+  const answer = new Map(guestLinks.map((l) => [l.contact_id, l.status]));
+  const friends = contacts.map((c) => ({ id: c.id, name: c.name, email: c.email, status: answer.get(c.id) ?? null }));
+
   const level = ratingLabel(game.rating_min, game.rating_max, club.levels);
   const rows: [string, string][] = [
     ['When', `${longDay(game.starts_at, tz)}, ${clockLabel(game.starts_at, tz)}`],
@@ -131,6 +143,7 @@ export default async function GameLinkPage({ params }: { params: { token: string
         phone: isPoster || imIn ? m.phone : null,
       }))}
       addable={addable}
+      friends={friends}
       myLevel={me.ntrp}
       scale={club.levels}
     />
