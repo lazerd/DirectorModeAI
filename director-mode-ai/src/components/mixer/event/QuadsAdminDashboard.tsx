@@ -1,6 +1,7 @@
 'use client';
 
 import ResultsPoster from '@/components/shared/ResultsPoster';
+import { getSponsor } from '@/config/sponsors';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
@@ -268,8 +269,13 @@ export default function QuadsAdminDashboard({ eventId }: { eventId: string }) {
             <ResultsPoster
               url={`/quads/${event.slug}/results`}
               title={event.name}
+              subtitle={[
+                new Date(`${event.event_date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }),
+                event.venue,
+              ].filter(Boolean).join(' · ')}
               tagline="Scan for live results"
               variant="dark"
+              sponsor={getSponsor(event.sponsor_id)}
             />
           </div>
           <p className="text-gray-500 text-sm">

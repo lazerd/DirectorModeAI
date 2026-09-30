@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import QRCode from 'qrcode';
+import type { Sponsor } from '@/config/sponsors';
+import SponsorWordmark from '@/components/quads/SponsorWordmark';
 import { QrCode, Printer, Download, Copy, X, Check } from 'lucide-react';
 
 // One button, every program. Tap it on any MixerMode, TournamentMode or
@@ -20,6 +23,7 @@ export default function ResultsPoster({
   clubName,
   buttonLabel = 'Poster',
   variant = 'light',
+  sponsor = null,
 }: {
   /** Absolute or path-only public URL. Path-only is resolved against the origin. */
   url: string;
@@ -32,6 +36,8 @@ export default function ResultsPoster({
   buttonLabel?: string;
   /** 'light' = bordered button for dark bars; 'dark' = filled for light UIs. */
   variant?: 'light' | 'dark';
+  /** A sponsored event prints in the sponsor's colors (config/sponsors.ts). */
+  sponsor?: Sponsor | null;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -58,6 +64,7 @@ export default function ResultsPoster({
           subtitle={subtitle}
           tagline={tagline}
           clubName={clubName}
+          sponsor={sponsor}
           onClose={() => setOpen(false)}
         />
       )}
@@ -66,9 +73,9 @@ export default function ResultsPoster({
 }
 
 function PosterModal({
-  url, title, subtitle, tagline, clubName, onClose,
+  url, title, subtitle, tagline, clubName, sponsor, onClose,
 }: {
-  url: string; title: string; subtitle?: string; tagline: string; clubName?: string; onClose: () => void;
+  url: string; title: string; subtitle?: string; tagline: string; clubName?: string; sponsor: Sponsor | null; onClose: () => void;
 }) {
   const [qr, setQr] = useState<string>('');
   const [copied, setCopied] = useState(false);
@@ -108,7 +115,14 @@ function PosterModal({
     a.click();
   }
 
-  return (
+  /*
+   * Portaled to <body> so printing can drop the whole app with display:none.
+   * The old version hid the app with visibility:hidden, which still lays it
+   * out: a 3-page admin screen printed 3 pages, and Chrome repeats a
+   * position:fixed overlay on every one of them -- three QR codes.
+   */
+  if (typeof document === 'undefined') return null;
+  return createPortal(
     <div className="rp-overlay fixed inset-0 z-[100] flex items-center justify-center p-4"
          style={{ background: 'rgba(2,12,18,.72)' }} onClick={onClose}>
       <div className="rp-sheet relative w-full max-w-md rounded-2xl overflow-hidden"
@@ -133,6 +147,9 @@ function PosterModal({
         </div>
 
         {/* the poster itself — this is what prints */}
+        {sponsor ? (
+          <SponsorPoster sponsor={sponsor} title={title} subtitle={subtitle} qr={qr} prettyUrl={prettyUrl} />
+        ) : (
         <div className="rp-poster px-8 py-10 text-center">
           {clubName && (
             <div className="text-xs font-bold tracking-[0.18em] uppercase text-slate-400 mb-4">{clubName}</div>
@@ -154,19 +171,104 @@ function PosterModal({
             Powered by ClubMode
           </div>
         </div>
+        )}
       </div>
 
-      {/* Print only the poster; hide the app and the toolbar. */}
+      {/* Print only the poster, on exactly one page. */}
       <style>{`
         @media print {
-          body * { visibility: hidden !important; }
-          .rp-overlay, .rp-overlay * { visibility: visible !important; }
-          .rp-overlay { position: fixed; inset: 0; background: #fff !important; padding: 0 !important; display: block !important; }
-          .rp-sheet { position: absolute; inset: 0; max-width: none !important; box-shadow: none !important; border-radius: 0 !important; }
+          @page { size: letter portrait; margin: 0; }
+          html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+          body > *:not(.rp-overlay) { display: none !important; }
+          .rp-overlay { position: static !important; display: block !important; padding: 0 !important; background: #fff !important; }
+          .rp-sheet { position: static !important; max-width: none !important; width: 100% !important; box-shadow: none !important; border-radius: 0 !important; }
           .rp-tools { display: none !important; }
-          .rp-poster { padding-top: 12vh !important; }
+          .rp-poster { padding-top: 12vh !important; break-inside: avoid; }
+          /* Pinned to the page corner: with the app gone the document is one
+             page, so a fixed element prints exactly once. */
+          .rp-sponsor { position: fixed !important; top: 0; left: 0; width: 8.5in !important; height: 11in !important; box-sizing: border-box; overflow: hidden; }
+          .rp-sponsor * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .rp-sponsor .rp-qr { width: 4.1in !important; height: 4.1in !important; }
+          .rp-sponsor .rp-title { font-size: 38pt !important; }
+          .rp-sponsor .rp-scan { font-size: 26pt !important; }
+          .rp-sponsor .rp-steps { font-size: 14pt !important; max-width: 6.5in !important; }
+          .rp-sponsor .rp-prize { max-width: 6.5in !important; font-size: 15pt !important; }
         }
       `}</style>
+    </div>,
+    document.body,
+  );
+}
+
+/**
+ * The sponsor's version: their palette and wordmark, one big QR, and three
+ * plain steps a 10-year-old can follow. Built for a letter page taped to the
+ * fence; the on-screen preview is the same layout, smaller.
+ */
+function SponsorPoster({
+  sponsor, title, subtitle, qr, prettyUrl,
+}: {
+  sponsor: Sponsor; title: string; subtitle?: string; qr: string; prettyUrl: string;
+}) {
+  const c = sponsor.colors;
+  const rounded = 'ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Segoe UI", system-ui, sans-serif';
+  const dots = ['#FF6E0C', '#DA1884', '#FFC0DC', '#FFB066', '#8B5A2B'];
+  return (
+    <div className="rp-sponsor relative flex flex-col text-center" style={{ background: c.cream, color: c.ink, fontFamily: rounded }}>
+      {/* sprinkle band */}
+      <div className="h-3 w-full" style={{ background: `repeating-linear-gradient(90deg, ${c.primary} 0 28px, ${c.secondary} 28px 56px)` }} />
+
+      <div className="px-6 pt-5 pb-4" style={{ background: c.primary, color: '#fff' }}>
+        <div className="text-[11px] font-bold uppercase tracking-[0.25em] opacity-90">{sponsor.presentedBy}</div>
+        <div className="mt-1"><SponsorWordmark sponsor={sponsor} size="lg" onDark /></div>
+      </div>
+
+      <div className="flex-1 flex flex-col items-center px-6 pt-5 pb-4">
+        <h1 className="rp-title text-3xl font-extrabold leading-[1.05]" style={{ color: c.ink, textWrap: 'balance' as never, letterSpacing: '-0.02em' }}>
+          {title}
+        </h1>
+        {subtitle && <p className="mt-2 text-base font-semibold" style={{ color: c.secondary }}>{subtitle}</p>}
+
+        <p className="rp-scan mt-4 text-2xl font-extrabold" style={{ color: c.primary }}>
+          Scan for live scores &amp; standings
+        </p>
+
+        <div className="relative mt-3">
+          {/* donut ring around the code */}
+          <div className="rounded-[28px] p-3" style={{ background: c.surface, border: `10px solid ${c.primary}`, boxShadow: `0 0 0 6px ${c.secondary}` }}>
+            {qr
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={qr} alt="Scan for live scores and standings" className="rp-qr w-52 h-52 block" />
+              : <div className="rp-qr w-52 h-52 grid place-items-center text-sm" style={{ color: c.primary }}>generating…</div>}
+          </div>
+          {dots.map((d, i) => (
+            <span key={i} aria-hidden className="absolute rounded-full" style={{
+              background: d, width: 10, height: 4, transform: `rotate(${i * 37}deg)`,
+              top: ['-14px', '18%', '96%', '44%', '-10px'][i], left: ['12%', '-18px', '30%', 'calc(100% + 10px)', '82%'][i],
+            }} />
+          ))}
+        </div>
+
+        <ol className="rp-steps mt-5 grid grid-cols-3 gap-3 text-sm font-bold w-full max-w-md">
+          {[['📱', 'Point your camera here'], ['🔎', 'Find your name'], ['🏆', 'Follow your quad live']].map(([e, t], i) => (
+            <li key={t} className="rounded-2xl px-2 py-3" style={{ background: c.surface, border: `2px solid ${i === 1 ? c.secondary : c.primary}` }}>
+              <div className="text-2xl leading-none">{e}</div>
+              <div className="mt-1 leading-tight">{t}</div>
+            </li>
+          ))}
+        </ol>
+
+        <div className="rp-prize mt-4 rounded-2xl px-4 py-3 w-full max-w-md" style={{ background: c.secondary, color: '#fff' }}>
+          <div className="text-base font-extrabold">🍩 {sponsor.prize.headline}</div>
+        </div>
+
+        <p className="mt-3 text-xs font-semibold break-all" style={{ color: c.ink, opacity: 0.6 }}>{prettyUrl}</p>
+      </div>
+
+      <div className="px-6 pb-3 text-[9px] leading-snug" style={{ color: c.ink, opacity: 0.55 }}>
+        {sponsor.legal}
+      </div>
+      <div className="h-3 w-full" style={{ background: `repeating-linear-gradient(90deg, ${c.secondary} 0 28px, ${c.primary} 28px 56px)` }} />
     </div>
   );
 }
