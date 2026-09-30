@@ -299,6 +299,33 @@ export function gameCancelledEmail(
   };
 }
 
+/**
+ * A note from the poster to everyone who signed up ("only two of us so far,
+ * are you OK with singles?"). Sent with Reply-To set to the poster, so the
+ * answer goes straight back to them and not to the club office.
+ */
+export function hostMessageEmail(
+  g: Game,
+  club: Club,
+  opts: { to: string; name: string; poster: string; message: string; token: string; waiting: boolean },
+): GameMessage {
+  const tz = club.timezone;
+  const title = `A note from ${opts.poster} about the ${headline(g, tz)}`;
+  const text = esc(opts.message).replace(/\n/g, '<br>');
+  const body = `
+    <p style="font-size:18px;line-height:1.5;margin:0 0 12px">Hi ${esc(firstName(opts.name))}, ${esc(opts.poster)} sent this to everyone ${opts.waiting ? 'in line for' : 'signed up for'} the game:</p>
+    <p style="font-size:19px;line-height:1.55;margin:0 0 18px;padding:14px 18px;border-left:4px solid ${GREEN};background:#f0fdf4">${text}</p>
+    <p style="font-size:18px;line-height:1.5;margin:0 0 18px"><strong>Just hit reply</strong> to answer ${esc(opts.poster)} directly.</p>
+    ${details(g, club)}
+    <p style="margin:0 0 8px">${button(linkUrl(opts.token), 'Open the game')}</p>`;
+  return {
+    to: opts.to,
+    subject: ascii(`${opts.poster}: about the ${formatWord(g)} ${shortDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`),
+    html: shell(club, esc(title), body),
+    sms: ascii(`${club.name}: ${opts.poster} re ${headline(g, tz)}: ${opts.message}`).slice(0, 300),
+  };
+}
+
 /** Morning-of reminder to the group. */
 export function reminderEmail(
   g: Game,

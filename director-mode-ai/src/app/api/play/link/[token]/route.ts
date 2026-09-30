@@ -1,7 +1,7 @@
 /**
  * POST /api/play/link/[token] — the no-login actions behind an emailed link.
  *
- * { action: 'join' | 'decline' | 'leave' | 'cancel' | 'level', ntrp? }
+ * { action: 'join' | 'decline' | 'leave' | 'cancel' | 'level' | 'add' | 'message', ntrp?, text?, send? }
  *
  * The token is the credential: it names one game and one person, and it can
  * only act as that person on that game. Same rule as CaptainMode's sub claim.
@@ -10,7 +10,7 @@
  */
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { cancelGame, declineGame, hostAddPlayer, joinGame, leaveGame } from '@/lib/partnerFinder/actions';
+import { cancelGame, declineGame, hostAddPlayer, joinGame, leaveGame, messageGame } from '@/lib/partnerFinder/actions';
 import { linkByToken, loadClub, personRow, saveSelfRating } from '@/lib/partnerFinder/server';
 import { isLevelValue } from '@/lib/levels';
 
@@ -39,6 +39,8 @@ export async function POST(req: Request, { params }: { params: { token: string }
     ntrp?: unknown;
     personId?: unknown;
     guestName?: unknown;
+    text?: unknown;
+    send?: unknown;
   };
 
   /*
@@ -52,6 +54,15 @@ export async function POST(req: Request, { params }: { params: { token: string }
     return NextResponse.json(
       await hostAddPlayer(db, link.game_id, link.person_id, { personId, guestName }),
     );
+  }
+
+  /*
+   * The poster's note to everyone signed up. Without `send: true` this is the
+   * preview (who it goes to, the subject), built by the same code that sends.
+   */
+  if (body.action === 'message') {
+    const text = typeof body.text === 'string' ? body.text : '';
+    return NextResponse.json(await messageGame(db, link.game_id, link.person_id, text, body.send === true));
   }
 
   if (body.action === 'level') {

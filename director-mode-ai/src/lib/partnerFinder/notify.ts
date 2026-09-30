@@ -32,6 +32,7 @@ import {
 import {
   gameCancelledEmail,
   gameFullEmail,
+  hostMessageEmail,
   inviteEmail,
   reminderEmail,
   someoneJoinedEmail,
@@ -40,7 +41,7 @@ import {
   type GameMessage,
 } from './emails';
 
-async function deliver(club: Club, messages: GameMessage[]): Promise<number> {
+async function deliver(club: Club, messages: GameMessage[], replyTo?: string | null): Promise<number> {
   const real = messages.filter((m) => !!m.to);
   if (!real.length) return 0;
   try {
@@ -58,7 +59,8 @@ async function deliver(club: Club, messages: GameMessage[]): Promise<number> {
         subject: m.subject,
         html: m.html,
         fromName: club.name,
-        ...(club.contactEmail ? { replyTo: club.contactEmail } : {}),
+        // A poster's own note is answered by the poster, not the club office.
+        ...(replyTo || club.contactEmail ? { replyTo: (replyTo || club.contactEmail)! } : {}),
         // clubId lets a demo club's blast be held back (lib/demo/emailGuard.ts).
         clubId: club.id,
       })),
@@ -358,4 +360,57 @@ export async function runHousekeeping(db: Db): Promise<{ expired: number; remind
     reminded++;
   }
   return { expired: (expired as number) ?? 0, reminded, emails };
+}
+
+/**
+ * The poster's note to everyone who signed up: those in, then those in line.
+ * `send: false` builds the exact same list and messages and returns them
+ * unsent. That is the preview the host confirms before anything goes out.
+ */
+export async function messageSignups(
+  db: Db,
+  game: Game,
+  club: Club,
+  message: string,
+  send: boolean,
+): Promise<{ recipients: string[]; subject: string; sent: number; noEmail: string[] }> {
+  const roster = await clubRoster(db, club.id);
+  const group = await gameGroup(db, game, roster);
+  const poster = group.find((m) => m.isPoster);
+  const { data: waitRows } = await db
+    .from('pf_game_players')
+    .select('person_id')
+    .eq('game_id', game.id)
+    .eq('status', 'wait')
+    .order('joined_at');
+  const byId = new Map(roster.map((r) => [r.person_id, r]));
+  const people = [
+    ...group
+      .filter((m) => !m.isPoster && !m.isGuest)
+      .map((m) => ({ id: m.personId, name: m.name, email: m.email, waiting: false })),
+    ...((waitRows as { person_id: string }[] | null) ?? [])
+      .map((w) => byId.get(w.person_id))
+      .filter((r): r is RosterRow => !!r)
+      .map((r) => ({ id: r.person_id, name: r.full_name || 'A member', email: r.email, waiting: true })),
+  ];
+  const reachable = people.filter((p) => !!p.email);
+  const noEmail = people.filter((p) => !p.email).map((p) => shortName(p.name));
+  const posterShort = poster?.short || 'The organizer';
+  const links = await ensureLinks(db, game, reachable.map((p) => p.id));
+  const sendable = reachable.filter((p) => links.has(p.id));
+  const messages = sendable.map((p) =>
+    hostMessageEmail(game, club, {
+      to: p.email!,
+      name: p.name,
+      poster: posterShort,
+      message,
+      token: links.get(p.id)!,
+      waiting: p.waiting,
+    }),
+  );
+  const subject = messages[0]?.subject ?? '';
+  const recipients = sendable.map((p) => `${shortName(p.name)}${p.waiting ? ' (in line)' : ''}`);
+  if (!send) return { recipients, subject, sent: 0, noEmail };
+  const sent = await deliver(club, messages, poster?.email);
+  return { recipients, subject, sent, noEmail };
 }

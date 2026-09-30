@@ -11,8 +11,8 @@ import { background } from './background';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { afterCancel, afterJoin, afterLeave } from './notify';
-import { genderFits, levelFits, loadGame, personGender, memberRow, personRow, resolvePlayingClub, type Club, type Db } from './server';
+import { afterCancel, afterJoin, afterLeave, messageSignups } from './notify';
+import { clubRoster, genderFits, levelFits, loadClub, loadGame, personGender, memberRow, personRow, resolvePlayingClub, type Club, type Db } from './server';
 
 export type ActionOutcome = {
   ok: boolean;
@@ -170,6 +170,42 @@ export async function cancelGame(db: Db, gameId: string, personId: string): Prom
   if (r.result !== 'cancelled') return { ok: false, result: r.result, message: say(r.result) };
   background('cancel emails', () => afterCancel(db, gameId));
   return { ok: true, result: 'game_cancelled', message: say('game_cancelled') };
+}
+
+/**
+ * The poster writing to everyone who signed up. Only the poster: the token
+ * proves who is asking, and posted_by (an account) is matched to that person.
+ * `send: false` is the preview: same recipients, same message, nothing sent.
+ */
+export async function messageGame(
+  db: Db,
+  gameId: string,
+  personId: string,
+  text: string,
+  send: boolean,
+): Promise<ActionOutcome & { recipients?: string[]; subject?: string; noEmail?: string[] }> {
+  const message = text.trim().slice(0, 1000);
+  if (!message) return { ok: false, result: 'empty', message: 'Type a message first.' };
+  const game = await loadGame(db, gameId);
+  const club = game ? await loadClub(db, game.club_id) : null;
+  if (!game || !club) return { ok: false, result: 'error', message: say('error') };
+  const roster = await clubRoster(db, club.id);
+  if (roster.find((r) => r.user_id === game.posted_by)?.person_id !== personId) {
+    return { ok: false, result: 'not_poster', message: 'Only the person who posted the game can message the players.' };
+  }
+  if (game.status === 'cancelled') return { ok: false, result: 'cancelled', message: say('cancelled') };
+  const r = await messageSignups(db, game, club, message, send);
+  if (!r.recipients.length) {
+    return { ok: false, result: 'nobody', message: 'Nobody has signed up yet, so there is no one to message.', ...r };
+  }
+  if (!send) return { ok: true, result: 'preview', message: '', ...r };
+  if (!r.sent) return { ok: false, result: 'error', message: 'That did not send. Please try again.', ...r };
+  return {
+    ok: true,
+    result: 'messaged',
+    message: `Sent to ${r.recipients.join(', ')}. Their replies come straight to your email.`,
+    ...r,
+  };
 }
 
 export type MemberCtx = {

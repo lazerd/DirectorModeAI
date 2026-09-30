@@ -51,6 +51,9 @@ export default function LinkClient(p: Props) {
   const [adding, setAdding] = useState(false);
   const [pick, setPick] = useState('');
   const [guest, setGuest] = useState('');
+  const [writing, setWriting] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [preview, setPreview] = useState<null | { recipients: string[]; subject: string; noEmail: string[] }>(null);
 
   async function act(action: 'join' | 'decline' | 'leave' | 'cancel') {
     setBusy(true);
@@ -90,6 +93,33 @@ export default function LinkClient(p: Props) {
       setAdding(false);
     }
     router.refresh();
+  }
+
+  /*
+   * The host's note to everyone signed up. First press shows exactly who it
+   * goes to (built by the same server code that sends); only the second sends.
+   */
+  async function sendMessage(send: boolean) {
+    if (!msg.trim()) return setNotice({ tone: 'bad', text: 'Type a message first.' });
+    setBusy(true);
+    setNotice(null);
+    const r = await postJson<Outcome & { recipients?: string[]; subject?: string; noEmail?: string[] }>(
+      `/api/play/link/${p.token}`,
+      { action: 'message', text: msg, send },
+    );
+    setBusy(false);
+    if (r.error) return setNotice({ tone: 'bad', text: r.error });
+    if (!r.ok) {
+      setPreview(null);
+      return setNotice({ tone: 'info', text: r.message });
+    }
+    if (!send) {
+      return setPreview({ recipients: r.recipients ?? [], subject: r.subject ?? '', noEmail: r.noEmail ?? [] });
+    }
+    setNotice({ tone: 'good', text: r.message });
+    setPreview(null);
+    setMsg('');
+    setWriting(false);
   }
 
   async function saveLevel(n: number | null) {
@@ -290,11 +320,70 @@ export default function LinkClient(p: Props) {
           )
         )}
 
+        {/* The host writing to everyone who signed up, e.g. to ask about singles. */}
+        {p.isPoster && !closedText && (
+          writing ? (
+            <section className="space-y-3 rounded-3xl border-2 border-emerald-300 bg-white p-6">
+              <h2 className="text-2xl font-bold">Message the players</h2>
+              <p className="text-lg text-slate-600">
+                Goes by email to everyone who signed up. When they reply, it comes straight to you.
+              </p>
+              <textarea
+                value={msg}
+                onChange={(e) => {
+                  setMsg(e.target.value);
+                  setPreview(null);
+                }}
+                rows={4}
+                maxLength={1000}
+                placeholder="Only two of us so far. Would you be OK playing singles?"
+                className="w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+              />
+              {preview ? (
+                <div className="space-y-3 rounded-2xl bg-slate-50 p-4">
+                  <p className="text-lg">
+                    <span className="font-semibold">This goes to:</span> {preview.recipients.join(', ')}
+                  </p>
+                  <p className="text-lg text-slate-600">
+                    <span className="font-semibold">Subject:</span> {preview.subject}
+                  </p>
+                  {preview.noEmail.length > 0 && (
+                    <p className="text-base text-slate-500">
+                      No email on file for {preview.noEmail.join(', ')}, so they won&rsquo;t get it.
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button onClick={() => sendMessage(true)} disabled={busy} className={`${primaryBtn} flex-1`}>
+                      {busy ? 'Sending…' : 'Send it'}
+                    </button>
+                    <button onClick={() => setPreview(null)} className={`${secondaryBtn} flex-1`}>
+                      Edit
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button onClick={() => sendMessage(false)} disabled={busy} className={`${primaryBtn} flex-1`}>
+                    {busy ? 'One moment…' : 'Next'}
+                  </button>
+                  <button onClick={() => { setWriting(false); setMsg(''); setPreview(null); }} className={`${secondaryBtn} flex-1`}>
+                    Never mind
+                  </button>
+                </div>
+              )}
+            </section>
+          ) : (
+            <button onClick={() => setWriting(true)} className={`${secondaryBtn} w-full`}>
+              Message the players
+            </button>
+          )
+        )}
+
         {p.isPoster && !closedText && (
           confirming === 'cancel' ? (
             <div className="space-y-3 rounded-3xl border-2 border-rose-200 bg-white p-6">
               <p className="text-xl font-semibold">Cancel this game?</p>
-              <p className="text-lg text-slate-600">Everyone who joined gets an email saying it&rsquo;s off.</p>
+              <p className="text-lg text-slate-600">Not enough players? Everyone who signed up gets an email saying it&rsquo;s off.</p>
               <div className="flex flex-col gap-3 sm:flex-row">
                 <button onClick={() => act('cancel')} disabled={busy} className={`${dangerBtn} flex-1`}>
                   Yes, cancel it
