@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { gateTeam } from '@/lib/captain/access';
-import { committedCounts, playedCounts, singlesCounts } from '@/lib/captain/server';
+import { committedCounts, playedCounts, singlesCounts, soFarCounts } from '@/lib/captain/server';
 import MatchWorkspace, { type MatchPlayer } from '@/components/captain/MatchWorkspace';
 import HostEmailPanel from '@/components/captain/HostEmailPanel';
 import HostNotePanel from '@/components/captain/HostNotePanel';
@@ -91,10 +91,11 @@ export default async function MatchPage({
    * on screen right now, so the count moves as courts are swapped, before
    * anything is saved.
    */
-  const [played, committed, singlesBefore] = await Promise.all([
+  const [played, committed, singlesBefore, soFar] = await Promise.all([
     playedCounts(db, params.teamId),
     committedCounts(db, params.teamId, params.matchId),
     singlesCounts(db, params.teamId, params.matchId),
+    soFarCounts(db, params.teamId, params.matchId),
   ]);
 
   const answers = (avail as { player_id: string; status: string; note: string | null }[]) || [];
@@ -117,6 +118,7 @@ export default async function MatchPage({
     availability: statusOf(p.id as string) as MatchPlayer['availability'],
     availabilityNote: noteOf(p.id as string),
     played: played[p.id as string] ?? 0,
+    playedSoFar: soFar[p.id as string] ?? 0,
     committedElsewhere: committed[p.id as string] ?? 0,
     singlesBefore: singlesBefore[p.id as string] ?? 0,
   }));

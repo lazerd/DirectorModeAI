@@ -43,6 +43,11 @@ export type MatchPlayer = {
   /** Matches this player has actually played, defaulted courts excluded. */
   played: number;
   /**
+   * Matches already past with this player in the lineup, marked played or
+   * not (soFarCounts). What the sub picker ranks on: who has had the least tennis.
+   */
+  playedSoFar?: number;
+  /**
    * Saved lineups naming this player on EVERY OTHER match of the season.
    * This match is excluded on purpose so the workspace can add whoever is on
    * screen right now — the count then moves as courts are swapped, which is
@@ -1545,7 +1550,18 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
           const court = courts.find((c) => c.courtNumber === subFor.courtNumber);
           if (!court) return null;
           const outId = subFor.slot === 1 ? court.player1Id : court.player2Id;
-          const spares = spareFor(court.courtType, outId);
+          /*
+           * Fewest matches played first, so the match goes to whoever has had
+           * the least tennis (Darrin, 2026-09-30, filling Leena's B2/B3 seat).
+           * Lineups break a tie, then strength.
+           */
+          const byStrong = byStrength(court.courtType);
+          const soFar = (p: MatchPlayer) => p.playedSoFar ?? p.played;
+          const spares = [...spareFor(court.courtType, outId)].sort(
+            (a, b) => soFar(a) - soFar(b) || lineupsFor(a) - lineupsFor(b) || byStrong(a, b),
+          );
+          const fewest = spares.length ? soFar(spares[0]) : 0;
+          const tiedAtFewest = spares.filter((p) => soFar(p) === fewest).length;
           return (
             <div
               className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-6"
@@ -1561,7 +1577,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                 <p className="text-white/50 text-sm mt-1">
                   {labelOf(court)} · {spares.length}{' '}
                   {spares.length === 1 ? 'player said yes and is' : 'players said yes and are'} not
-                  on the sheet. Strongest first.
+                  on the sheet. Fewest matches played first.
                 </p>
 
                 {outId && (
@@ -1598,12 +1614,21 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                         className="w-full text-left px-3 py-2.5 rounded-xl bg-[#001820] border border-white/10 hover:border-[#D3FB52]/50 disabled:opacity-40 transition"
                       >
                         <div className="flex items-baseline justify-between gap-3">
-                          <span className="text-white font-semibold text-sm">{p.name}</span>
-                          <span className="text-[#D3FB52] text-xs tabular-nums shrink-0">
-                            {w != null ? `WTN ${w}` : p.rating != null ? `${p.rating}` : 'unrated'}
+                          <span className="text-white font-semibold text-sm">
+                            {p.name}
+                            {spares.length > 1 && soFar(p) === fewest && tiedAtFewest < spares.length && (
+                              <span className="ml-2 rounded-full bg-[#D3FB52] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#002838]">
+                                played least
+                              </span>
+                            )}
+                          </span>
+                          <span className="text-white text-sm font-bold tabular-nums shrink-0">
+                            {soFar(p)} {soFar(p) === 1 ? 'match' : 'matches'} so far
                           </span>
                         </div>
-                        <div className="text-white/40 text-xs mt-0.5">{loadLabel(p)}</div>
+                        <div className="text-white/40 text-xs mt-0.5">
+                          {w != null ? `WTN ${w}` : p.rating != null ? `${p.rating}` : 'unrated'} · {loadLabel(p)}
+                        </div>
                         {p.availabilityNote && (
                           <div className="text-amber-300/80 text-xs mt-0.5 italic">
                             &ldquo;{p.availabilityNote}&rdquo;

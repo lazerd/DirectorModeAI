@@ -407,3 +407,36 @@ export async function matchLineNames(db: SupabaseClient, matchId: string): Promi
     })),
   );
 }
+
+/**
+ * Matches each player has had so far: every match whose start time has
+ * passed, marked played or not, defaulted courts skipped, cancelled matches
+ * and this one left out.
+ *
+ * playedCounts only credits matches a captain marked 'played', and plenty
+ * never get marked -- B2/B3's 9/22 match was still 'scheduled' on 9/30. The
+ * sub picker asks "who has had the least tennis?", and an unmarked match that
+ * happened is still tennis somebody played.
+ */
+export async function soFarCounts(
+  db: SupabaseClient,
+  teamId: string,
+  excludeMatchId?: string,
+): Promise<Record<string, number>> {
+  const { data: matches } = await db
+    .from('captain_matches')
+    .select('id')
+    .eq('team_id', teamId)
+    .neq('status', 'cancelled')
+    .lt('match_at', new Date().toISOString());
+  const ids = ((matches as { id: string }[]) || []).map((m) => m.id).filter((id) => id !== excludeMatchId);
+  if (!ids.length) return {};
+  const [{ data: rows }, { data: defaults }] = await Promise.all([
+    db.from('captain_lineups').select('player1_id, player2_id, match_id, court_number').in('match_id', ids),
+    db.from('captain_results').select('match_id, court_number').in('match_id', ids).eq('defaulted', true),
+  ]);
+  const skip = new Set(
+    ((defaults as { match_id: string; court_number: number }[]) || []).map((d) => `${d.match_id}:${d.court_number}`),
+  );
+  return countDistinctMatches(rows as LineupRow[], skip);
+}
