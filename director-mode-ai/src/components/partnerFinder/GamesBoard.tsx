@@ -317,9 +317,15 @@ function GameCard({
               </button>
             </div>
           ) : (
-            <button onClick={() => setConfirm(true)} className={`${secondaryBtn} w-full sm:w-auto`}>
-              Cancel this game
-            </button>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              {/* The poster's page: add someone who said yes, invite your own friends, message the players. */}
+              <a href={`/api/play/games/${g.id}/manage`} className={`${secondaryBtn} w-full text-center sm:w-auto`}>
+                Add players or invite friends
+              </a>
+              <button onClick={() => setConfirm(true)} className={`${secondaryBtn} w-full sm:w-auto`}>
+                Cancel this game
+              </button>
+            </div>
           )
         ) : g.imIn ? (
           confirm ? (
