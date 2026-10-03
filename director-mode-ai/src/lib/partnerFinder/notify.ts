@@ -335,6 +335,24 @@ export async function afterCancel(db: Db, gameId: string): Promise<void> {
       .map((m) => gameCancelledEmail(game, club, { to: m.email!, name: m.name, poster: poster?.short || 'The poster' })),
     poster?.email,
   );
+  await cancelPendingInvites(db, game, club, poster?.short || 'The poster', poster?.email);
+}
+
+/**
+ * Outside friends the poster invited who hadn't answered yet. They aren't in the
+ * group, so the cancel above misses them — but the poster asked them personally,
+ * and they may be planning on it (Walden, 10/2/26).
+ */
+export async function cancelPendingInvites(db: Db, game: Game, club: Club, poster: string, replyTo?: string | null): Promise<number> {
+  const { data } = await db
+    .from('pf_guest_links')
+    .select('pf_guest_contacts(name, email)')
+    .eq('game_id', game.id)
+    .eq('status', 'invited');
+  const friends = ((data as unknown as { pf_guest_contacts: { name: string; email: string } | null }[] | null) ?? [])
+    .map((r) => r.pf_guest_contacts)
+    .filter((c): c is { name: string; email: string } => !!c?.email);
+  return deliver(club, friends.map((c) => gameCancelledEmail(game, club, { to: c.email, name: c.name, poster })), replyTo);
 }
 
 /**
