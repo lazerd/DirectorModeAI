@@ -42,7 +42,7 @@ export default function GuestClient(p: Props) {
 
   const closedText =
     p.status === 'cancelled'
-      ? 'This game was cancelled.'
+      ? 'Sorry, this game was cancelled.'
       : p.status === 'past' || p.status === 'expired'
         ? 'This game has already started.'
         : null;
