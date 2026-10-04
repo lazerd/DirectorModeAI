@@ -2015,7 +2015,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                   disabled={!!busy}
                   className={ghost}
                 >
-                  Copy for the group chat
+                  Send to the group chat
                 </button>
                 {/* Paper for the clipboard at the courts. The browser's print
                     dialog also has "Save as PDF". */}
@@ -2145,7 +2145,17 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
               className="mt-3 w-full px-3 py-2 rounded-lg bg-[#001820] border border-white/10 text-sm font-mono leading-relaxed focus:border-[#D3FB52]/50 focus:outline-none"
             />
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <button onClick={() => copyShareText(shareText)} className={primary}>
+              {/* Opens WhatsApp on the captain's own phone with the message typed in;
+                  they pick the team's group and hit send. Free, no Business API. */}
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(shareText)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={primary}
+              >
+                Send to WhatsApp
+              </a>
+              <button onClick={() => copyShareText(shareText)} className={ghost}>
                 {copied ? 'Copied ✓' : 'Copy'}
               </button>
               <span className="text-white/35 text-xs">
