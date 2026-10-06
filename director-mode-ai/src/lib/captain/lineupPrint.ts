@@ -98,7 +98,7 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
         // Not on the scorecard: no opponents to write in, no score to record.
         return `<tr class="exh">${roundCellFor(c)}${COURT_CELL}<td class="line">${lineLabel(c)}</td><td class="names">${names
           .map(esc)
-          .join(', ')}</td><td class="opp muted">${c.label ? 'resting' : 'exhibition'}</td><td class="score muted">not scored</td></tr>`;
+          .join(', ')}</td><td class="opp muted">${c.label ? 'out' : 'exhibition'}</td><td class="score muted">not scored</td></tr>`;
       }
       const roundCell = roundCellFor(c);
       // Blank write-in lines for whoever the other captain puts out — one per

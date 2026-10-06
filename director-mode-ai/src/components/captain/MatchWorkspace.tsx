@@ -2628,7 +2628,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                       <p className="mt-1.5 text-white text-sm">{ids.map((id) => nameOf(id)).join(', ')}</p>
                       {resting.length > 0 && (
                         <p className="mt-1 text-white/50 text-xs">
-                          Resting this round: {resting.map((id) => nameOf(id)).join(', ')}
+                          Out this round: {resting.map((id) => nameOf(id)).join(', ')}
                         </p>
                       )}
                     </div>
