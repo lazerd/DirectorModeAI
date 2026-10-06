@@ -428,7 +428,7 @@ export type ExhibitionRow = {
 };
 
 export const EXHIBITION_LABEL = 'Exhibition court';
-export const RESTING_LABEL = 'Out this round';
+export const RESTING_LABEL = 'Resting this round';
 
 /**
  * Rows per round for the exhibition court and, when the squad is bigger than
