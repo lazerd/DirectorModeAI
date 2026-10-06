@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createServiceClient } from '@/lib/supabase/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { MIN_GROUP_SIZE } from '@/lib/benchmarks/aggregate';
 
 // GET — anonymous aggregate of the total-comp dataset (the moat's proof point):
 // how much the real package runs above the public 990 base, by department.
@@ -7,7 +8,9 @@ import { createServiceClient } from '@/lib/supabase/server';
 const median = (a: number[]) => (a.length ? a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)] : null);
 
 export async function GET() {
-  const svc = await createServiceClient();
+  // Admin client, not createServiceClient(): that one forwards a signed-in
+  // user's cookie, so RLS would limit the medians to their own row.
+  const svc = getSupabaseAdmin();
   const { data } = await svc
     .from('benchmark_profiles')
     .select('dept, total_package, ninety_base')
@@ -23,8 +26,9 @@ export async function GET() {
       .map((r) => ((r.total_package as number) - (r.ninety_base as number)) / (r.ninety_base as number));
     byDept[dept] = {
       n: d.length,
-      medianTotal: median(totals),
-      medianPremiumPct: premiums.length ? median(premiums) : null,
+      // A median of one or two people is just their package, so hold it back.
+      medianTotal: totals.length >= MIN_GROUP_SIZE ? median(totals) : null,
+      medianPremiumPct: premiums.length >= MIN_GROUP_SIZE ? median(premiums) : null,
     };
   }
 
