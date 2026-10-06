@@ -384,7 +384,7 @@ export default function MatchWorkspace({
    */
   const exhibitionOf =
     format != null && isHome
-      ? new Map(exhibitionByRound(courts, format).map((r) => [r.round, r.playerIds]))
+      ? new Map(exhibitionByRound(courts, format).map((r) => [r.round, r]))
       : null;
   const exhibitionExtra =
     format != null && isHome ? exhibitionRows(courts, format, (id) => nameOf(id)) : [];
@@ -2613,8 +2613,10 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                 (i === displayCourts.length - 1 ||
                   roundOf.get(displayCourts[i + 1].courtNumber) !== roundOf.get(c.courtNumber)) &&
                 (() => {
-                  const ids = exhibitionOf.get(roundOf.get(c.courtNumber)!) ?? [];
-                  if (!ids.length) return null;
+                  const r = exhibitionOf.get(roundOf.get(c.courtNumber)!);
+                  const ids = r?.playerIds ?? [];
+                  const resting = r?.restingIds ?? [];
+                  if (!ids.length && !resting.length) return null;
                   return (
                     <div className="mt-2 rounded-xl border border-dashed border-[#D3FB52]/30 bg-[#D3FB52]/[0.04] p-4">
                       <div className="flex items-baseline justify-between gap-3 flex-wrap">
@@ -2624,6 +2626,11 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                         <span className="text-white/40 text-[11px]">not scored · off a line this round</span>
                       </div>
                       <p className="mt-1.5 text-white text-sm">{ids.map((id) => nameOf(id)).join(', ')}</p>
+                      {resting.length > 0 && (
+                        <p className="mt-1 text-white/50 text-xs">
+                          Resting this round: {resting.map((id) => nameOf(id)).join(', ')}
+                        </p>
+                      )}
                     </div>
                   );
                 })()}

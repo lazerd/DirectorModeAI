@@ -305,13 +305,15 @@ export type LineupRow = {
   names: string[];
   /** JTT: the round the line is played in. Groups the table by round when set. */
   round?: number | null;
+  /** JTT home: "Resting this round" on the row of children who take a round off. */
+  label?: string;
 };
 
 /** Labels from the whole sheet: Singles 1–4, Doubles 1–4 (see lineNames). */
 const lineupLabeller = (rows: LineupRow[]) => {
   const names = lineNames(rows.filter((r) => r.courtType !== 'exhibition'));
   return (row: LineupRow) =>
-    row.courtType === 'exhibition' ? 'Exhibition court' : (names.get(row.courtNumber) ?? `Line ${row.courtNumber}`);
+    row.courtType === 'exhibition' ? (row.label ?? 'Exhibition court') : (names.get(row.courtNumber) ?? `Line ${row.courtNumber}`);
 };
 
 /** Singles, then doubles, then the exhibition court, within a round. */
@@ -429,7 +431,8 @@ export function lineupEmail(
     : '';
 
   // A JTT child can be on up to three lines — name every one, with its round.
-  const mine = ordered.filter((row) => row.names.includes(r.name));
+  // The resting row is not a court they are on.
+  const mine = ordered.filter((row) => !row.label && row.names.includes(r.name));
   const courtLabel = mine.length
     ? mine.map((row) => `${lineupLineLabel(row)}${row.round ? ` (round ${row.round})` : ''}`).join(', ')
     : null;

@@ -28,6 +28,7 @@ import {
   EXHIBITION_SEATS,
   exhibitionRows,
   homeSquadMax,
+  homeRoundCapacity,
   jttRoundPlan,
   roundPlanText,
   roundsByCourt,
@@ -290,13 +291,15 @@ export async function POST(req: Request) {
     }
     if (multiLine && isHome) {
       summary.push(
-        `Home match, so everyone who said yes comes (up to ${squadMax}) and nobody waits: each round, whoever is not on a scored line plays an exhibition on the extra court beside the match courts. The exhibition is not on the scorecard. Lines were shared out first — fewest matches so far get the extra line.`,
+        available.length > homeRoundCapacity(courtFormat, singlesCourts, doublesCourts)
+          ? `Home match, so everyone who said yes comes (up to ${squadMax}). More came than the match courts plus the ${EXHIBITION_SEATS}-player exhibition court hold at once, so the exhibition court rotates: every child gets at least one scored line and one exhibition round, and whoever is on neither in a round takes that round off. The exhibition is not on the scorecard. Lines were shared out first — fewest matches so far get the extra line.`
+          : `Home match, so everyone who said yes comes (up to ${squadMax}) and nobody waits: each round, whoever is not on a scored line plays an exhibition on the extra court beside the match courts. The exhibition is not on the scorecard. Lines were shared out first — fewest matches so far get the extra line.`,
       );
     }
     if (result.sitting?.length) {
       summary.push(
         isHome
-          ? `${squadMax} is the most the match courts plus a ${EXHIBITION_SEATS}-player exhibition court can hold in one round, so ${result.sitting
+          ? `${squadMax} is the most a home match can bring while every child still gets a scored line and an exhibition round, so ${result.sitting
               .map((s) => nameOf(s.id) ?? 'someone')
               .join(', ')} ${result.sitting.length === 1 ? 'sits' : 'sit'} this one. Who plays: fewest matches so far first, then whoever can make the fewest other dates, then whoever signed up first.`
           : `The team brings ${squadMax} at most, so ${result.sitting

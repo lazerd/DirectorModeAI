@@ -21,6 +21,8 @@ export type TextLineupCourt = {
   names: string[];
   /** JTT: which round the line is played in. Groups the post by round when set. */
   round?: number | null;
+  /** JTT home: "Resting this round" on the row of children who take a round off. */
+  label?: string;
 };
 
 export type TextLineupInput = {
@@ -62,7 +64,7 @@ function whenLine(matchAt: string, timeZone?: string): string {
 const labeller = (courts: TextLineupCourt[]) => {
   const names = lineNames(courts.filter((c) => c.courtType !== 'exhibition'));
   return (c: TextLineupCourt) =>
-    c.courtType === 'exhibition' ? 'Exhibition court' : (names.get(c.courtNumber) ?? `Line ${c.courtNumber}`);
+    c.courtType === 'exhibition' ? (c.label ?? 'Exhibition court') : (names.get(c.courtNumber) ?? `Line ${c.courtNumber}`);
 };
 
 /**

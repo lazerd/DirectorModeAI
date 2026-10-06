@@ -19,6 +19,8 @@ export type PrintCourt = {
   names: string[];
   /** JTT: the round this line is played in. Adds a Round column when set. */
   round?: number | null;
+  /** JTT home: "Resting this round" on the row of children who take a round off. */
+  label?: string;
 };
 
 export type PrintLineupInput = {
@@ -46,7 +48,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ESC[c]);
 const labeller = (courts: PrintCourt[]) => {
   const names = lineNames(courts.filter((c) => c.courtType !== 'exhibition'));
   return (c: PrintCourt) =>
-    c.courtType === 'exhibition' ? 'Exhibition / out' : (names.get(c.courtNumber) ?? `Line ${c.courtNumber}`);
+    c.courtType === 'exhibition' ? (c.label ?? 'Exhibition / out') : (names.get(c.courtNumber) ?? `Line ${c.courtNumber}`);
 };
 
 /** A complete HTML document that prints itself on load. */
@@ -96,7 +98,7 @@ export function lineupPrintHtml(input: PrintLineupInput): string {
         // Not on the scorecard: no opponents to write in, no score to record.
         return `<tr class="exh">${roundCellFor(c)}${COURT_CELL}<td class="line">${lineLabel(c)}</td><td class="names">${names
           .map(esc)
-          .join(', ')}</td><td class="opp muted">exhibition</td><td class="score muted">not scored</td></tr>`;
+          .join(', ')}</td><td class="opp muted">${c.label ? 'resting' : 'exhibition'}</td><td class="score muted">not scored</td></tr>`;
       }
       const roundCell = roundCellFor(c);
       // Blank write-in lines for whoever the other captain puts out — one per

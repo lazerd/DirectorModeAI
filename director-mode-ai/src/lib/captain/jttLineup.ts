@@ -81,8 +81,9 @@ export type JttLineupInput = {
   /**
    * Home match with an exhibition court beside the match courts. Everyone the
    * squad cap lets in comes — the cap is the caller's (homeSquadMax) — and
-   * whoever is off a scored line in a round plays the exhibition, so a child
-   * on one line is not a child who drove over to watch.
+   * whoever is off a scored line in a round plays the exhibition, rotating
+   * when there are more than it holds (see exhibitionByRound), so a child on
+   * one line is not a child who drove over to watch.
    */
   exhibition?: boolean;
   squad?: {
@@ -452,7 +453,7 @@ export function generateJttLineup(input: JttLineupInput): LineupResult {
       .join(', ');
     warnings.push(
       input.exhibition
-        ? `${input.available.length} said yes — ${cap} is the most the match courts plus the exhibition court hold in a round. Sitting: ${names}. To sit someone else instead, mark them Out and Regenerate.`
+        ? `${input.available.length} said yes — ${cap} is the most a home match can bring while every child gets a scored line and an exhibition round. Sitting: ${names}. To sit someone else instead, mark them Out and Regenerate.`
         : `${input.available.length} said yes — bringing ${cap} so nobody drives there for one short set. Sitting: ${names}. To sit someone else instead, mark them Out and Regenerate.`,
     );
   }

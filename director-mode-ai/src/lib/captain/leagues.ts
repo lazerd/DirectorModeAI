@@ -274,10 +274,16 @@ export function roundClashes(
  *
  * An away match brings at most 6 — past that somebody drives there for a
  * single short set. At home the drive is not the problem, waiting is, and the
- * 4th court solves it: every round, whoever is not on a scored line plays an
- * exhibition on it. It holds a doubles, so home brings as many as fill the
- * match courts in the quietest round plus four — 8 in the 3-court format
- * (every round seats 4 on the match courts), 7 in the 2-court (3 per round).
+ * extra court solves it: it holds a doubles, so four children who are off a
+ * scored line play an exhibition there each round.
+ *
+ * When more come than the match courts plus those four seats hold in a round,
+ * the exhibition court ROTATES and the rest take that round off — nobody sits
+ * out the whole match (Darrin, 2026-10-06: "each player still gets 2 rounds,
+ * 1 against the real opponent and 1 exhibition, and sits a round"). So home
+ * brings as many as can each get one scored line and one exhibition round:
+ * no more than the sheet has slots (12), and no more than the rounds have room
+ * for two rounds each.
  */
 export const EXHIBITION_SEATS = 4;
 
@@ -288,38 +294,127 @@ export function homeSquadMax(
 ): number {
   const plan = jttRoundPlan(courtFormat, singles, doubles);
   if (!plan.length) return EXHIBITION_SEATS;
-  const perRound = Math.min(...plan.map((r) => r.singles.length + r.doubles.length * 2));
-  return perRound + EXHIBITION_SEATS;
+  const slots = singles + doubles * 2;
+  const roomForTwoEach = Math.floor(
+    plan.reduce((n, r) => n + r.singles.length + r.doubles.length * 2 + EXHIBITION_SEATS, 0) / 2,
+  );
+  return Math.min(slots, roomForTwoEach);
+}
+
+/** Most children a home round holds at once without anybody resting. */
+export function homeRoundCapacity(
+  courtFormat: number | null | undefined,
+  singles: number,
+  doubles: number,
+): number {
+  const plan = jttRoundPlan(courtFormat, singles, doubles);
+  if (!plan.length) return EXHIBITION_SEATS;
+  return Math.min(...plan.map((r) => r.singles.length + r.doubles.length * 2)) + EXHIBITION_SEATS;
 }
 
 /**
- * Who is on the exhibition court in each round: every child on the sheet who
- * is not on a scored line that round. Worked out from the sheet, never stored,
- * so a swap on the match page moves the exhibition with it and a saved sheet
- * reads back the same. Names in sheet order (lowest court first).
+ * Each round: who plays the exhibition court (at most EXHIBITION_SEATS) and
+ * who rests. Worked out from the sheet, never stored, so a swap on the match
+ * page moves the exhibition with it and a saved sheet reads back the same.
+ *
+ * When everyone off a line fits on the court, they all play — the common case.
+ * When they don't, seats go first to whoever still lacks a second round of
+ * tennis (one scored line + one exhibition), found by a small exact search so
+ * a tight sheet still gets everyone there; the seats left over go to whoever
+ * has played the fewest rounds, then sheet order. Names in sheet order.
  */
 export function exhibitionByRound(
   courts: (SheetLine & { player1Id: string | null; player2Id: string | null })[],
   courtFormat: number | null | undefined,
-): { round: number; playerIds: string[] }[] {
+  seats: number = EXHIBITION_SEATS,
+): { round: number; playerIds: string[]; restingIds: string[] }[] {
   const rounds = roundsByCourt(courts, courtFormat);
   const sorted = [...courts].sort((a, b) => a.courtNumber - b.courtNumber);
   const squad: string[] = [];
+  const lines = new Map<string, number>();
   for (const c of sorted) {
-    for (const id of [c.player1Id, c.player2Id]) if (id && !squad.includes(id)) squad.push(id);
+    for (const id of [c.player1Id, c.player2Id]) {
+      if (!id) continue;
+      if (!squad.includes(id)) squad.push(id);
+      lines.set(id, (lines.get(id) ?? 0) + 1);
+    }
   }
   const roundNums = [...new Set(rounds.values())].sort((a, b) => a - b);
-  return roundNums
-    .map((round) => {
-      const on = new Set<string>();
-      for (const c of courts) {
-        if (rounds.get(c.courtNumber) !== round) continue;
-        if (c.player1Id) on.add(c.player1Id);
-        if (c.player2Id) on.add(c.player2Id);
+  const off = new Map<number, string[]>();
+  for (const round of roundNums) {
+    const on = new Set<string>();
+    for (const c of courts) {
+      if (rounds.get(c.courtNumber) !== round) continue;
+      if (c.player1Id) on.add(c.player1Id);
+      if (c.player2Id) on.add(c.player2Id);
+    }
+    off.set(round, squad.filter((id) => !on.has(id)));
+  }
+
+  const ex = new Map<number, Set<string>>(roundNums.map((r) => [r, new Set<string>()]));
+  if (roundNums.every((r) => off.get(r)!.length <= seats)) {
+    for (const r of roundNums) for (const id of off.get(r)!) ex.get(r)!.add(id);
+  } else {
+    // 1. Everyone short of two rounds of tennis gets the exhibition rounds they need.
+    const offRounds = (id: string) => roundNums.filter((r) => off.get(r)!.includes(id));
+    const need = new Map(
+      squad.map((id) => [id, Math.min(Math.max(0, 2 - (lines.get(id) ?? 0)), offRounds(id).length)]),
+    );
+    const order = squad
+      .filter((id) => need.get(id)! > 0)
+      .sort(
+        (a, b) =>
+          offRounds(a).length - need.get(a)! - (offRounds(b).length - need.get(b)!) ||
+          squad.indexOf(a) - squad.indexOf(b),
+      );
+    let steps = 0;
+    const place = (i: number): boolean => {
+      if (i === order.length) return true;
+      if (++steps > 50_000) return false;
+      const id = order[i];
+      const want = need.get(id)!;
+      const opts = offRounds(id)
+        .filter((r) => ex.get(r)!.size < seats)
+        .sort((a, b) => ex.get(a)!.size - ex.get(b)!.size || a - b);
+      const choose = (from: number, picked: number[]): boolean => {
+        if (picked.length === want) {
+          for (const r of picked) ex.get(r)!.add(id);
+          if (place(i + 1)) return true;
+          for (const r of picked) ex.get(r)!.delete(id);
+          return false;
+        }
+        for (let k = from; k < opts.length; k++) {
+          if (choose(k + 1, [...picked, opts[k]])) return true;
+        }
+        return false;
+      };
+      return choose(0, []);
+    };
+    if (!place(0)) for (const r of roundNums) ex.get(r)!.clear();
+
+    // 2. Fill the seats left, fewest rounds of tennis first.
+    const played = (id: string) =>
+      (lines.get(id) ?? 0) + roundNums.filter((r) => ex.get(r)!.has(id)).length;
+    for (const r of roundNums) {
+      const seat = ex.get(r)!;
+      const waiting = off
+        .get(r)!
+        .filter((id) => !seat.has(id))
+        .sort((a, b) => played(a) - played(b) || squad.indexOf(a) - squad.indexOf(b));
+      for (const id of waiting) {
+        if (seat.size >= seats) break;
+        seat.add(id);
       }
-      return { round, playerIds: squad.filter((id) => !on.has(id)) };
-    })
-    .filter((r) => r.playerIds.length > 0);
+    }
+  }
+
+  return roundNums
+    .map((round) => ({
+      round,
+      playerIds: off.get(round)!.filter((id) => ex.get(round)!.has(id)),
+      restingIds: off.get(round)!.filter((id) => !ex.get(round)!.has(id)),
+    }))
+    .filter((r) => r.playerIds.length > 0 || r.restingIds.length > 0);
 }
 
 /** An exhibition-court row, in the shape the email, printout and group text all take. */
@@ -328,22 +423,30 @@ export type ExhibitionRow = {
   courtType: 'exhibition';
   names: string[];
   round: number;
+  /** Set on the "resting this round" row; the exhibition court itself has none. */
+  label?: string;
 };
 
 export const EXHIBITION_LABEL = 'Exhibition court';
+export const RESTING_LABEL = 'Resting this round';
 
-/** One row per round for whoever is on the exhibition court. Callers gate on home. */
+/**
+ * Rows per round for the exhibition court and, when the squad is bigger than
+ * the court holds, who rests that round. Callers gate on home.
+ */
 export function exhibitionRows(
   courts: (SheetLine & { player1Id: string | null; player2Id: string | null })[],
   courtFormat: number | null | undefined,
   nameOf: (id: string) => string,
 ): ExhibitionRow[] {
-  return exhibitionByRound(courts, courtFormat).map((r) => ({
-    courtNumber: 0,
-    courtType: 'exhibition',
-    names: r.playerIds.map(nameOf),
-    round: r.round,
-  }));
+  return exhibitionByRound(courts, courtFormat).flatMap((r) => [
+    ...(r.playerIds.length
+      ? [{ courtNumber: 0, courtType: 'exhibition' as const, names: r.playerIds.map(nameOf), round: r.round }]
+      : []),
+    ...(r.restingIds.length
+      ? [{ courtNumber: 0, courtType: 'exhibition' as const, names: r.restingIds.map(nameOf), round: r.round, label: RESTING_LABEL }]
+      : []),
+  ]);
 }
 
 /** "Round 1: Singles 1, Singles 2, Doubles 5 · Round 2: …" — numbered the way the sheet shows them. */
