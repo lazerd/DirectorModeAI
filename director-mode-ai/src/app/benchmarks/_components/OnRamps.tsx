@@ -3,6 +3,17 @@
 export default function OnRamps() {
   return (
     <>
+      {/* Director Pulse — the give-to-get exchange for what the 990 can't see */}
+      <a href="/benchmarks/pulse" className="block mb-4">
+        <div className="rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 to-white px-5 py-4 flex items-center justify-between gap-4 transition hover:border-teal-300">
+          <div>
+            <div className="font-semibold text-slate-900">🔒 Director Pulse: what pros really charge and keep</div>
+            <div className="text-sm text-slate-600 mt-0.5">Lesson rates, your split with the club, clinic pay, all-in income. Share yours anonymously and see everyone else&apos;s.</div>
+          </div>
+          <span className="shrink-0 inline-flex items-center gap-1 text-sm font-medium text-slate-900">Share & unlock →</span>
+        </div>
+      </a>
+
       {/* Two on-ramps: individuals (Score) + clubs (Advisor) */}
       <div className="mb-4 grid sm:grid-cols-2 gap-4">
         <a href="/benchmarks/score" className="block">
