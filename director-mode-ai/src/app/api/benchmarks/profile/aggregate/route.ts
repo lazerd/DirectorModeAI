@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { MIN_GROUP_SIZE } from '@/lib/benchmarks/aggregate';
 
 // GET — anonymous aggregate of the total-comp dataset (the moat's proof point):
 // how much the real package runs above the public 990 base, by department.
@@ -26,9 +25,8 @@ export async function GET() {
       .map((r) => ((r.total_package as number) - (r.ninety_base as number)) / (r.ninety_base as number));
     byDept[dept] = {
       n: d.length,
-      // A median of one or two people is just their package, so hold it back.
-      medianTotal: totals.length >= MIN_GROUP_SIZE ? median(totals) : null,
-      medianPremiumPct: premiums.length >= MIN_GROUP_SIZE ? median(premiums) : null,
+      medianTotal: median(totals),
+      medianPremiumPct: premiums.length ? median(premiums) : null,
     };
   }
 

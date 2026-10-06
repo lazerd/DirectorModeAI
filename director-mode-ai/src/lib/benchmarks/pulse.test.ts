@@ -46,17 +46,16 @@ const rows = (n: number, over: Partial<PulseRow> = {}): PulseRow[] =>
     ...ok(), total_income: 100_000 + i * 20_000, private_rate: 100 + i * 10, ...over,
   }));
 
-describe('pulseResults — privacy', () => {
-  it('locks every metric below 5 answers but still reports the count', () => {
-    const res = pulseResults(rows(4), null);
+describe('pulseResults', () => {
+  it('shows results from the very first submission', () => {
+    const res = pulseResults(rows(1), null);
     const income = res.metrics.find((m) => m.key === 'total_income')!;
-    expect(income.stat).toBeNull();
-    expect(income.have).toBe(4);
-    expect(res.mixes.every((m) => m.shares === null)).toBe(true);
-    expect(res.breakdowns).toHaveLength(0);
+    expect(income.stat).not.toBeNull();
+    expect(income.stat!.n).toBe(1);
+    expect(res.breakdowns.length).toBeGreaterThan(0);
   });
 
-  it('unlocks at 5 with rounded figures', () => {
+  it('rounds published figures', () => {
     const s = statOf([101_234, 120_000, 140_000, 160_000, 180_000], 'usd')!;
     expect(s.median).toBe(140_000);
     expect(s.p25 % 1000).toBe(0);
@@ -72,9 +71,9 @@ describe('pulseResults — privacy', () => {
     expect(income.myPercentile).toBeGreaterThanOrEqual(90);
   });
 
-  it('only shows breakdown groups that clear the threshold', () => {
+  it('breaks down only the groups that have answers', () => {
     const all = [...rows(5, { role: 'Director' }), ...rows(2, { role: 'Head Pro' })];
     const byRole = pulseResults(all, null).breakdowns.find((b) => b.by === 'role' && b.metric === 'total_income')!;
-    expect(byRole.cells.map((c) => c.group)).toEqual(['Director']);
+    expect(byRole.cells.map((c) => c.group)).toEqual(['Director', 'Head Pro']);
   });
 });

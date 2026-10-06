@@ -8,9 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from '@/components/ui/select';
-import {
   ROLES, CLUB_TYPES, SIZE_BANDS, YEARS_BANDS, EMPLOYMENT,
   type PulseRow, type PulseResults, type MetricResult, type Stat,
 } from '@/lib/benchmarks/pulse';
@@ -19,14 +16,17 @@ import {
 // else's. The server only ever returns blinded stats, and only once you've
 // contributed (see /api/benchmarks/pulse).
 
-const inputStyle = { color: '#0f172a' };
-const MIN = 5;
+// Inline colors on purpose: globals.css styles form controls with unlayered
+// CSS that beats Tailwind classes, which left these dark-on-dark.
+const inputStyle = { color: '#0f172a', backgroundColor: '#fff' };
 
 type Payload = {
   signedIn: boolean;
   contributors: number;
   ninetySeed: { n: number; median: number; p25: number; p75: number } | null;
   mine: PulseRow | null;
+  myEmail: string | null;
+  myLink: string | null;
   results: PulseResults | null;
 };
 
@@ -59,7 +59,9 @@ export default function PulsePage() {
   const [copied, setCopied] = useState(false);
 
   async function load() {
-    const res = await fetch('/api/benchmarks/pulse', { cache: 'no-store' });
+    // ?t= is the private link from the results email; the API turns it into a cookie.
+    const t = new URLSearchParams(window.location.search).get('t');
+    const res = await fetch(`/api/benchmarks/pulse${t ? `?t=${encodeURIComponent(t)}` : ''}`, { cache: 'no-store' });
     const d: Payload = await res.json();
     setData(d);
     if (d.mine) {
@@ -108,7 +110,7 @@ export default function PulsePage() {
           <Users className="h-4 w-4 text-teal-600" /> {data.contributors} pro{data.contributors === 1 ? '' : 's'} have shared
         </span>
         <span className="inline-flex items-center gap-1.5 rounded-full border bg-white px-3 py-1 text-slate-700">
-          <ShieldCheck className="h-4 w-4 text-teal-600" /> No names, no clubs. Groups under {MIN} are never shown.
+          <ShieldCheck className="h-4 w-4 text-teal-600" /> Anonymous: no names, no clubs.
         </span>
       </div>
 
@@ -121,23 +123,21 @@ export default function PulsePage() {
       )}
 
       {unlocked ? (
-        <Results r={data.results!} onEdit={() => setEditing(true)} onInvite={invite} copied={copied} />
-      ) : !data.signedIn ? (
-        <Card>
-          <CardContent className="py-8 text-center">
-            <Lock className="h-6 w-6 mx-auto text-slate-400" />
-            <p className="mt-2 text-slate-700">Sign in to add your numbers and unlock the results. It takes about two minutes.</p>
-            <Link href="/login?redirect=/benchmarks/pulse"><Button className="mt-4">Sign in to contribute</Button></Link>
-          </CardContent>
-        </Card>
+        <Results r={data.results!} myLink={data.myLink} signedIn={data.signedIn} onEdit={() => setEditing(true)} onInvite={invite} copied={copied} />
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
+            <CardTitle className="text-base flex items-center gap-2" style={{ color: '#0f172a' }}>
               <Lock className="h-4 w-4 text-teal-600" /> {data.mine ? 'Update your numbers' : 'Add yours to unlock'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
+            {!data.signedIn && !data.mine && (
+              <Section title="Where to send your results">
+                <Num label="Email *" k="email" f={f} set={set} placeholder="you@yourclub.com" hint="We email you a private link to your results. Never shown to anyone." />
+              </Section>
+            )}
+
             <Section title="About your job">
               <Pick label="Role *" value={f.role} onChange={set('role')} options={opts(ROLES)} />
               <Pick label="Club type *" value={f.club_type} onChange={set('club_type')} options={opts(CLUB_TYPES)} />
@@ -156,7 +156,7 @@ export default function PulsePage() {
             <Section title="Pricing & splits">
               <Num label="Private lesson, 60 min ($) *" k="private_rate" f={f} set={set} placeholder="140" hint="What the member pays" />
               <Num label="% of private fee you keep" k="private_share_pct" f={f} set={set} placeholder="70" />
-              <Num label="Adult clinic, per player/hour ($)" k="clinic_price_hr" f={f} set={set} placeholder="40" />
+              <Num label="4-player adult clinic: price per player/hour ($)" k="clinic_price_hr" f={f} set={set} placeholder="40" />
               <Pick label="How you're paid for clinics" value={f.clinic_pay_model} onChange={set('clinic_pay_model')} options={CLINIC_MODELS} />
               {f.clinic_pay_model === 'percent' && <Num label="Your % of clinic revenue" k="clinic_pay_value" f={f} set={set} placeholder="50" />}
               {f.clinic_pay_model === 'hourly' && <Num label="Your clinic $/hour" k="clinic_pay_value" f={f} set={set} placeholder="60" />}
@@ -178,7 +178,7 @@ export default function PulsePage() {
               {err && <span className="text-sm text-red-600">{err}</span>}
             </div>
             <p className="text-xs text-slate-500">
-              We never show your row to anyone. Results are medians and ranges, rounded, and only for groups of {MIN} or more. Your sign-in is how we stop duplicate entries. It is never attached to what others see.
+              We never show your row to anyone. Results are medians and ranges, rounded. Come back any time with the private link we email you; the numbers update as more pros share. Your email is never attached to anything others see.
             </p>
           </CardContent>
         </Card>
@@ -187,15 +187,14 @@ export default function PulsePage() {
   );
 }
 
-function Results({ r, onEdit, onInvite, copied }: { r: PulseResults; onEdit: () => void; onInvite: () => void; copied: boolean }) {
+function Results({ r, myLink, signedIn, onEdit, onInvite, copied }: { r: PulseResults; myLink: string | null; signedIn: boolean; onEdit: () => void; onInvite: () => void; copied: boolean }) {
   const shown = r.metrics.filter((m) => m.stat);
-  const locked = r.metrics.filter((m) => !m.stat && m.have > 0);
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50 to-emerald-50 p-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="font-semibold text-slate-900 flex items-center gap-2"><Unlock className="h-4 w-4 text-teal-600" /> You&apos;re in. Thanks for sharing.</div>
-          <div className="text-sm text-slate-600 mt-0.5">Every pro you invite unlocks more of this page for everyone.</div>
+          <div className="text-sm text-slate-600 mt-0.5">Come back any time. These numbers update as more pros share, and every pro you invite makes them sharper.</div>
         </div>
         <div className="flex gap-2">
           <Button onClick={onInvite} className="gap-1"><Share2 className="h-4 w-4" /> {copied ? 'Link copied!' : 'Invite a pro'}</Button>
@@ -203,36 +202,26 @@ function Results({ r, onEdit, onInvite, copied }: { r: PulseResults; onEdit: () 
         </div>
       </div>
 
+      {myLink && !signedIn && (
+        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+          <strong>Your private results link</strong> (we emailed it to you too):{' '}
+          <a href={myLink} className="text-teal-700 underline break-all">{myLink}</a>
+        </div>
+      )}
+
       {shown.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">The numbers</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base" style={{ color: '#0f172a' }}>The numbers</CardTitle></CardHeader>
           <CardContent className="divide-y">
             {shown.map((m, i) => <MetricRow key={i} m={m} />)}
           </CardContent>
         </Card>
       )}
 
-      {locked.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle className="text-base flex items-center gap-2"><Lock className="h-4 w-4 text-slate-400" /> Still locked</CardTitle></CardHeader>
-          <CardContent className="space-y-3">
-            {locked.map((m, i) => (
-              <div key={i}>
-                <div className="flex justify-between text-sm text-slate-700">
-                  <span>{m.label}</span><span className="text-slate-500">{m.have} of {MIN}</span>
-                </div>
-                <div className="mt-1 h-2 rounded-full bg-slate-100">
-                  <div className="h-2 rounded-full bg-teal-500" style={{ width: `${Math.min(100, (m.have / MIN) * 100)}%` }} />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
 
       {r.mixes.some((x) => x.shares) && (
         <Card>
-          <CardHeader><CardTitle className="text-base">How programs are set up</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base" style={{ color: '#0f172a' }}>How programs are set up</CardTitle></CardHeader>
           <CardContent className="grid sm:grid-cols-2 gap-4">
             {r.mixes.filter((x) => x.shares).map((x, i) => (
               <div key={i}>
@@ -252,7 +241,7 @@ function Results({ r, onEdit, onInvite, copied }: { r: PulseResults; onEdit: () 
 
       {r.breakdowns.length > 0 && (
         <Card>
-          <CardHeader><CardTitle className="text-base">Breakdowns</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base" style={{ color: '#0f172a' }}>Breakdowns</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             {r.breakdowns.map((b, i) => (
               <div key={i}>
@@ -271,8 +260,20 @@ function Results({ r, onEdit, onInvite, copied }: { r: PulseResults; onEdit: () 
         </Card>
       )}
 
+      {/* The funnel: a pro who just benchmarked their program is the person who runs it. */}
+      <div className="rounded-xl border border-teal-200 bg-teal-50 p-5">
+        <div className="font-semibold text-slate-900">Charging less than your peers? Run a tighter program.</div>
+        <p className="text-sm text-slate-600 mt-1">
+          ClubMode is the director&apos;s back office: lessons and clinic sign-ups, mixers, team captains, stringing and court sheets in one place. Founding clubs use it free during beta and lock in founding pricing.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Link href="/register?next=/start"><Button className="gap-1">Start free as a founding club</Button></Link>
+          <Link href="/pricing"><Button variant="outline">See what&apos;s included</Button></Link>
+        </div>
+      </div>
+
       <p className="text-xs text-slate-400">
-        Self-reported by signed-in pros, {r.contributors} so far. Medians and middle-half ranges, rounded. Groups under {MIN} are hidden.
+        Self-reported by pros, {r.contributors} so far. Medians and middle-half ranges, rounded. Updates live as more pros share.
       </p>
     </div>
   );
@@ -313,10 +314,15 @@ function Pick({ label, value, onChange, options }: { label: string; value?: stri
   return (
     <div>
       <Label className="text-xs text-slate-500 mb-1 block">{label}</Label>
-      <Select value={value || ''} onValueChange={onChange}>
-        <SelectTrigger style={inputStyle}><SelectValue placeholder="Choose…" /></SelectTrigger>
-        <SelectContent>{options.map((o) => <SelectItem key={o.v} value={o.v}>{o.l}</SelectItem>)}</SelectContent>
-      </Select>
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm"
+        style={{ ...inputStyle, color: value ? '#0f172a' : '#94a3b8' }}
+      >
+        <option value="" disabled>Choose…</option>
+        {options.map((o) => <option key={o.v} value={o.v} style={{ color: '#0f172a' }}>{o.l}</option>)}
+      </select>
     </div>
   );
 }

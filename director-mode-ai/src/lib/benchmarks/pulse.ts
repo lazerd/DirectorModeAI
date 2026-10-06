@@ -2,11 +2,13 @@
 //
 // A pro shares their own pay, lesson rate, split with the club, clinic pricing
 // and so on; once they have, they see everyone else's — as blinded statistics,
-// never rows. Same privacy rules as the public 990 view (aggregate.ts): any
-// group under MIN_GROUP_SIZE is withheld, and published figures are rounded so
-// a number can't be matched back to one submission.
+// never rows. Everything shows from the first submission (Darrin's call: early
+// contributors should see results right away and come back as it fills in).
+// Figures are rounded and no name or club is ever stored or returned.
 
-import { MIN_GROUP_SIZE, percentile } from './aggregate';
+import { percentile } from './aggregate';
+
+const MIN_GROUP_SIZE = 1;
 
 export const ROLES = ['Director', 'Head Pro', 'Staff Pro'] as const;
 export const CLUB_TYPES = [
@@ -110,7 +112,7 @@ export const METRICS: { key: keyof PulseRow; label: string; unit: Unit; where?: 
   { key: 'bonus', label: 'Bonus', unit: 'usd' },
   { key: 'private_rate', label: 'Private lesson rate (60 min)', unit: 'rate' },
   { key: 'private_share_pct', label: 'Pro keeps of the private fee', unit: 'pct' },
-  { key: 'clinic_price_hr', label: 'Adult clinic, per player/hour', unit: 'rate' },
+  { key: 'clinic_price_hr', label: '4-player adult clinic, per player/hour', unit: 'rate' },
   { key: 'clinic_pay_value', label: 'Clinic pay (percent model)', unit: 'pct', where: (r) => r.clinic_pay_model === 'percent' },
   { key: 'clinic_pay_value', label: 'Clinic pay (hourly model)', unit: 'rate', where: (r) => r.clinic_pay_model === 'hourly' },
   { key: 'junior_price_hr', label: 'Junior program, per player/hour', unit: 'rate' },
