@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { recordAiUsage } from '@/lib/billing';
 import { resolvePacks } from '@/lib/assistant/registry';
+import { routePacks, ROUTER_MODEL } from '@/lib/assistant/router';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveBillingUserId } from '@/lib/billing';
 import { resolveActiveClub } from '@/lib/clubs/activeClub';
@@ -10,6 +11,7 @@ import { isPlatformOwnerEmail } from '@/lib/platformOwner';
 import { sendBilledEmail } from '@/lib/email';
 import {
   addUsage,
+  costMicro,
   emptyUsage,
   monthBilledMicro,
   overCap,
@@ -22,6 +24,8 @@ import { AI_INCLUDED_USD, AI_MONTHLY_CAP_USD, ASK_CLAUDE_PLAN_USD } from '@/conf
 import { buildCheckoutUrl } from '@/lib/lemonsqueezy';
 
 export const dynamic = 'force-dynamic';
+// A confirmed member email goes out at ~2/sec (comms pack caps a send at 300).
+export const maxDuration = 300;
 
 const MODEL = process.env.AI_MODEL_AGENT ?? 'claude-sonnet-4-6';
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY ?? process.env.AI_API_KEY;
@@ -156,7 +160,12 @@ export async function POST(req: Request) {
 
   // Resolve which domain packs are available for this user on this page. Each
   // pack carries its own tools, guidance, and executor (bound to its context).
-  const packs = await resolvePacks(user.id, page);
+  const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
+  const available = await resolvePacks(user.id, page);
+  // Only the packs this request needs — see lib/assistant/router.
+  const routed = await routePacks(client, available.map((p) => p.domain), message, history, page);
+  const packs = routed.domains ? available.filter((p) => routed.domains!.includes(p.domain)) : available;
+  const routerUsage = addUsage(emptyUsage(), routed.usage);
   const canAct = packs.length > 0;
   const tools: Anthropic.Messages.Tool[] = packs.flatMap((p) => p.toolSchemas);
   // Cache the tool list + system prompt: they are identical on every round of the
@@ -187,8 +196,6 @@ export async function POST(req: Request) {
     },
     ...(page ? [{ type: 'text', text: `The director is currently on this page: ${page}` }] : []),
   ] as unknown as Anthropic.Messages.TextBlockParam[];
-
-  const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
 
   // Tool-use loop: let the model call JTT tools, execute them, feed results back,
   // until it produces a final text answer. Capped so a loop can't run away.
@@ -233,11 +240,11 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     console.error('Assistant chat model call failed:', err);
-    const meter = await meterRequest(bill, user.id, page, usage, rounds).catch(() => null);
+    const meter = await meterRequest(bill, user.id, page, usage, rounds, routerUsage).catch(() => null);
     return NextResponse.json({ kind: 'error', message: 'The assistant had trouble responding. Please try again.', meter }, { status: 502 });
   }
 
-  const meter = await meterRequest(bill, user.id, page, usage, rounds).catch((e) => {
+  const meter = await meterRequest(bill, user.id, page, usage, rounds, routerUsage).catch((e) => {
     console.error('Ask Claude meter failed:', e);
     return null;
   });
@@ -251,6 +258,7 @@ async function meterRequest(
   page: string | undefined,
   usage: ReturnType<typeof emptyUsage>,
   rounds: number,
+  routerUsage: ReturnType<typeof emptyUsage>,
 ) {
   if (rounds === 0) return null;
   const { active } = await resolveActiveClub(userId, null).catch(() => ({ active: null as { id: string } | null }));
@@ -261,6 +269,7 @@ async function meterRequest(
     model: MODEL,
     rounds,
     usage,
+    extraCostMicro: costMicro(ROUTER_MODEL, routerUsage),
     page: page ?? null,
     exempt: bill.exempt,
     payg: bill.payg,

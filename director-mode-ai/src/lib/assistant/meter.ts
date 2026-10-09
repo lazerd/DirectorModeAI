@@ -184,9 +184,11 @@ export async function recordRequest(
     page: string | null;
     exempt: boolean;
     payg?: boolean;
+    /** Cost of side calls in the same request (the pack router), micro-dollars. */
+    extraCostMicro?: number;
   },
 ): Promise<MeterSnapshot & { noticeStep?: number }> {
-  const cost = costMicro(args.model, args.usage);
+  const cost = costMicro(args.model, args.usage) + Math.max(0, args.extraCostMicro ?? 0);
   const billed = billedMicro(cost);
   const before = await monthBilledMicro(db, args.billingUserId);
   await db.from('ai_usage_events').insert({
