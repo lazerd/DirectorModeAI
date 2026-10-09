@@ -24,6 +24,8 @@ interface Meter {
   capUsd: number;
   thisRequestUsd?: number;
   exempt: boolean;
+  payg: boolean;
+  needsPayg: boolean;
   notice?: string;
 }
 
@@ -79,6 +81,10 @@ export default function AssistantWidget() {
   const [error, setError] = useState<string | null>(null);
   const [meter, setMeter] = useState<Meter | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [paygUrl, setPaygUrl] = useState<string | null>(null);
+  // null = not known yet; false = not on the $75 plan, show the upgrade card.
+  const [entitled, setEntitled] = useState<boolean | null>(null);
+  const [upgrade, setUpgrade] = useState<{ message: string; url: string | null } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -91,10 +97,19 @@ export default function AssistantWidget() {
 
   // Show the meter the moment the panel opens, before anything is spent.
   useEffect(() => {
-    if (!open || meter) return;
+    if (!open || meter || entitled === false) return;
     fetch('/api/assistant/chat')
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => j?.meter && setMeter(j.meter))
+      .then((j) => {
+        if (j?.entitled === false) {
+          setEntitled(false);
+          setUpgrade({ message: j.message, url: j.upgradeUrl ?? null });
+          return;
+        }
+        if (j?.entitled) setEntitled(true);
+        if (j?.meter) setMeter(j.meter);
+        if (j?.paygUrl) setPaygUrl(j.paygUrl);
+      })
       .catch(() => {});
   }, [open, meter]);
 
@@ -117,6 +132,12 @@ export default function AssistantWidget() {
         }),
       });
       const data = await res.json().catch(() => null);
+      if (data?.kind === 'upgrade') {
+        setEntitled(false);
+        setUpgrade({ message: data.message, url: data.upgradeUrl ?? null });
+        return;
+      }
+      if (data?.paygUrl) setPaygUrl(data.paygUrl);
       if (data?.meter) {
         setMeter(data.meter);
         if (data.meter.notice) setNotice(data.meter.notice);
@@ -193,10 +214,35 @@ export default function AssistantWidget() {
                 <Loader2 size={14} className="animate-spin" /> Thinking…
               </div>
             )}
+            {entitled === false && upgrade && (
+              <div className="rounded-xl border border-yellow-300/30 bg-yellow-300/[0.06] p-3 text-sm text-white/85 space-y-2.5">
+                <p>{upgrade.message}</p>
+                {upgrade.url && (
+                  <a
+                    href={upgrade.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block rounded-lg bg-yellow-300 text-[#001820] font-medium text-center px-3 py-2 hover:bg-yellow-200"
+                  >
+                    Upgrade to unlock Ask Claude
+                  </a>
+                )}
+              </div>
+            )}
             {notice && (
               <div className="rounded-lg bg-yellow-300/10 border border-yellow-300/30 text-yellow-100 text-sm px-3 py-2">
                 {notice}
               </div>
+            )}
+            {meter?.needsPayg && paygUrl && (
+              <a
+                href={paygUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block rounded-lg bg-yellow-300 text-[#001820] text-sm font-medium text-center px-3 py-2 hover:bg-yellow-200"
+              >
+                Turn on pay-as-you-go
+              </a>
             )}
             {error && (
               <div className="rounded-lg bg-red-500/10 border border-red-500/20 text-red-200 text-sm px-3 py-2">

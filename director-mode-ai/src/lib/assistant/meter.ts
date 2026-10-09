@@ -90,13 +90,19 @@ export type MeterSnapshot = {
   /** This request alone, dollars (absent when reading the meter cold). */
   thisRequestUsd?: number;
   exempt: boolean;
+  /** The club owner has turned on pay-as-you-go, so usage may run past the allowance. */
+  payg: boolean;
+  /** The allowance is spent and pay-as-you-go is off: Ask Claude is paused. */
+  needsPayg: boolean;
   /** Set when this request carried the club past another $10 of overage. */
   notice?: string;
 };
 
-export function snapshot(spentMicro: number, exempt: boolean, thisMicro?: number): MeterSnapshot {
+export function snapshot(spentMicro: number, exempt: boolean, thisMicro?: number, payg = false): MeterSnapshot {
   const spentUsd = spentMicro / MICRO;
   return {
+    payg,
+    needsPayg: !exempt && !payg && spentUsd >= AI_INCLUDED_USD,
     spentUsd,
     includedUsd: AI_INCLUDED_USD,
     overageUsd: Math.max(0, spentUsd - AI_INCLUDED_USD),
@@ -112,8 +118,34 @@ export function noticeStep(spentMicro: number): number {
   return over <= 0 ? 0 : Math.floor(over / AI_NOTICE_STEP_USD);
 }
 
-export function overCap(spentMicro: number, exempt: boolean): boolean {
-  return !exempt && spentMicro / MICRO >= AI_MONTHLY_CAP_USD;
+/**
+ * Whether Ask Claude must stop for this club this month. Without pay-as-you-go
+ * the ceiling is the included allowance; with it, the monthly safety cap.
+ */
+export function overCap(spentMicro: number, exempt: boolean, payg = false): boolean {
+  if (exempt) return false;
+  return spentMicro / MICRO >= (payg ? AI_MONTHLY_CAP_USD : AI_INCLUDED_USD);
+}
+
+/** Is this billing account on the $75 plan that includes Ask Claude? */
+export async function askClaudeEntitled(db: Db, billingUserId: string): Promise<boolean> {
+  const { data } = await db
+    .from('ask_claude_entitlements')
+    .select('status')
+    .eq('user_id', billingUserId)
+    .maybeSingle();
+  return (data as { status: string } | null)?.status === 'active';
+}
+
+/** Has this billing account turned on Ask Claude pay-as-you-go? */
+export async function paygActive(db: Db, billingUserId: string): Promise<boolean> {
+  const { data } = await db
+    .from('ai_payg_subscriptions')
+    .select('status, ls_subscription_item_id')
+    .eq('user_id', billingUserId)
+    .maybeSingle();
+  const row = data as { status: string; ls_subscription_item_id: string | null } | null;
+  return !!row && row.status === 'active' && !!row.ls_subscription_item_id;
 }
 
 /** First instant of the current month, UTC — the meter's period. */
@@ -151,6 +183,7 @@ export async function recordRequest(
     usage: TokenUsage;
     page: string | null;
     exempt: boolean;
+    payg?: boolean;
   },
 ): Promise<MeterSnapshot & { noticeStep?: number }> {
   const cost = costMicro(args.model, args.usage);
@@ -169,7 +202,7 @@ export async function recordRequest(
     page: args.page,
   });
   const after = before + billed;
-  const snap = snapshot(after, args.exempt, billed);
+  const snap = snapshot(after, args.exempt, billed, !!args.payg);
 
   const step = noticeStep(after);
   if (!args.exempt && step > noticeStep(before)) {

@@ -127,6 +127,12 @@ export const CAPTAIN_MAX_TEAMS = 6;
  *
  * Applies even in FOUNDING_MODE — founding unlocks features, not free AI.
  */
+/**
+ * Ask Claude is only on the top plan (Darrin, 2026-10-09): a $25 club spending
+ * $5 of AI is a fifth of its fee gone, and the assistant is the reason to
+ * upgrade. LemonSqueezy price_key 'pro_ai'.
+ */
+export const ASK_CLAUDE_PLAN_USD = 75;
 /** Included Ask Claude usage per club per month, in dollars. */
 export const AI_INCLUDED_USD = 5;
 /** A notice goes out each time a club's overage crosses another multiple of this. */

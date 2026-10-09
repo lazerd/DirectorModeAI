@@ -35,7 +35,13 @@ export type PriceKey =
   // 'captain_solo' is the $20 standalone rate. Which one a captain gets is
   // resolved server-side (see resolveCaptainRate) — never from the client.
   | 'captain_club'
-  | 'captain_solo';
+  | 'captain_solo'
+  // Ask Claude pay-as-you-go: a metered $0.01/unit subscription, one unit per
+  // cent of AI overage. Separate from Pro; never touches plan_tier.
+  | 'ai_usage'
+  // The $75/month plan: Pro + Ask Claude. Grants plan_tier 'pro' AND the Ask
+  // Claude entitlement; plain Pro ($25 founding / $49 list) does not get AI.
+  | 'pro_ai';
 
 /** CaptainMode price keys, and the rate_type each maps to. */
 export const CAPTAIN_PRICE_KEYS: Record<string, 'club_linked' | 'standalone'> = {
@@ -79,6 +85,8 @@ function buyLinks(): Record<PriceKey, string | null> {
     // it isn't configured.
     captain_club: process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_CLUB || null,
     captain_solo: process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_SOLO || null,
+    ai_usage: process.env.LEMONSQUEEZY_BUY_LINK_AI_USAGE || null,
+    pro_ai: process.env.LEMONSQUEEZY_BUY_LINK_PRO_AI || null,
   };
 }
 
@@ -245,6 +253,28 @@ export async function createCheckout(args: {
   const url = data?.data?.attributes?.url;
   if (!url) throw new Error('LemonSqueezy did not return a checkout URL.');
   return url;
+}
+
+/**
+ * Add usage to a metered subscription item. `quantity` is in units — for Ask
+ * Claude, cents of overage. Always 'increment': the caller tracks what it has
+ * already sent, so a retry after a timeout can at worst double one day's delta,
+ * never re-send the month.
+ */
+export async function reportUsage(subscriptionItemId: string, quantity: number): Promise<void> {
+  if (quantity <= 0) return;
+  await lsFetch('/usage-records', {
+    method: 'POST',
+    body: JSON.stringify({
+      data: {
+        type: 'usage-records',
+        attributes: { quantity, action: 'increment' },
+        relationships: {
+          'subscription-item': { data: { type: 'subscription-items', id: String(subscriptionItemId) } },
+        },
+      },
+    }),
+  });
 }
 
 export async function getSubscription(id: string): Promise<any> {

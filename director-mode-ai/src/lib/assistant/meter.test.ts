@@ -37,9 +37,20 @@ describe('Ask Claude meter', () => {
     expect(noticeStep(25.01 * M)).toBe(2);
   });
 
-  it('pauses at the monthly cap, except for exempt accounts', () => {
-    expect(overCap(100 * M, false)).toBe(true);
-    expect(overCap(99 * M, false)).toBe(false);
+  it('without pay-as-you-go, stops at the $5 allowance', () => {
+    expect(overCap(4.99 * M, false)).toBe(false);
+    expect(overCap(5 * M, false)).toBe(true);
+    expect(snapshot(5 * M, false).needsPayg).toBe(true);
+  });
+
+  it('with pay-as-you-go, runs to the monthly cap', () => {
+    expect(overCap(50 * M, false, true)).toBe(false);
+    expect(overCap(100 * M, false, true)).toBe(true);
+    expect(snapshot(50 * M, false, undefined, true).needsPayg).toBe(false);
+  });
+
+  it('never pauses exempt accounts', () => {
     expect(overCap(500 * M, true)).toBe(false);
+    expect(snapshot(500 * M, true).needsPayg).toBe(false);
   });
 });

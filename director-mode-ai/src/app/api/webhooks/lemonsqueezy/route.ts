@@ -107,6 +107,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, captain: true });
     }
 
+    // ---- Ask Claude pay-as-you-go: its own metered subscription. Must never
+    // touch plan_tier — a club turning on AI overage is not buying Pro.
+    if (SUBSCRIPTION_LIFECYCLE.has(eventName) && custom.price_key === 'ai_usage') {
+      const aiUserId: string | null = custom.user_id || (await lookupUserByCustomer(attrs.customer_id));
+      if (aiUserId) {
+        const { grantsAccess } = mapSubscriptionStatus(String(attrs.status || ''));
+        const { error: aiErr } = await service.from('ai_payg_subscriptions').upsert(
+          {
+            user_id: aiUserId,
+            ls_subscription_id: String(data.id),
+            ls_subscription_item_id: attrs.first_subscription_item?.id ? String(attrs.first_subscription_item.id) : null,
+            status: grantsAccess ? 'active' : 'canceled',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id' },
+        );
+        if (aiErr) console.error('[lemonsqueezy/webhook] ai_payg upsert failed:', aiErr.message);
+      }
+      await service.from('billing_events').insert({
+        user_id: aiUserId,
+        event_type: eventName,
+        stripe_event_id: eventKey,
+        metadata: attrs,
+      });
+      return NextResponse.json({ received: true, ai_usage: true });
+    }
+
     if (SUBSCRIPTION_LIFECYCLE.has(eventName)) {
       const userId = custom.user_id || (await lookupUserByCustomer(attrs.customer_id));
       if (userId) {
@@ -114,7 +141,7 @@ export async function POST(request: NextRequest) {
         // With buy-link checkout we pass price_key in custom data, so derive the
         // tier from that (no variant env var needed); fall back to variant id.
         const tier =
-          custom.price_key === 'pro_monthly' || custom.price_key === 'pro_annual'
+          custom.price_key === 'pro_monthly' || custom.price_key === 'pro_annual' || custom.price_key === 'pro_ai'
             ? 'pro'
             : variantIdToTier(attrs.variant_id);
         const periodEnd = attrs.renews_at || attrs.ends_at || null;
@@ -129,6 +156,21 @@ export async function POST(request: NextRequest) {
           })
           .eq('id', userId);
         if (updErr) console.error('[lemonsqueezy/webhook] profile update failed:', updErr.message);
+
+        // The $75 plan also carries Ask Claude.
+        if (custom.price_key === 'pro_ai') {
+          const { error: entErr } = await service.from('ask_claude_entitlements').upsert(
+            {
+              user_id: userId,
+              ls_subscription_id: String(data.id),
+              status: grantsAccess ? 'active' : 'canceled',
+              current_period_end: periodEnd,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'user_id' },
+          );
+          if (entErr) console.error('[lemonsqueezy/webhook] ask_claude entitlement upsert failed:', entErr.message);
+        }
       }
     } else if (eventName === 'order_created') {
       // One-time Day Pass — flip the event's paid flag.

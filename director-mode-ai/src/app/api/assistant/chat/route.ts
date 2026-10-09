@@ -13,10 +13,13 @@ import {
   emptyUsage,
   monthBilledMicro,
   overCap,
+  askClaudeEntitled,
+  paygActive,
   recordRequest,
   snapshot,
 } from '@/lib/assistant/meter';
-import { AI_INCLUDED_USD, AI_MONTHLY_CAP_USD } from '@/config/pricing';
+import { AI_INCLUDED_USD, AI_MONTHLY_CAP_USD, ASK_CLAUDE_PLAN_USD } from '@/config/pricing';
+import { buildCheckoutUrl } from '@/lib/lemonsqueezy';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,7 +73,39 @@ async function billingFor(user: { id: string; email?: string | null }) {
     ownerEmail = data?.user?.email ?? null;
   }
   const exempt = isPlatformOwnerEmail(user.email) || isPlatformOwnerEmail(ownerEmail);
-  return { db, billingUserId, ownerEmail, exempt };
+  const entitled = exempt || (await askClaudeEntitled(db, billingUserId));
+  const payg = exempt ? false : await paygActive(db, billingUserId);
+  const isOwner = billingUserId === user.id;
+  // Not on the $75 plan: the owner gets an upgrade checkout, staff get told who can.
+  const upgradeUrl =
+    !entitled && isOwner ? buildCheckoutUrl('pro_ai', { userId: billingUserId, email: ownerEmail }) : null;
+  // Only the payer can turn pay-as-you-go on; the checkout is attached to them.
+  const paygUrl =
+    !exempt && !payg && isOwner
+      ? buildCheckoutUrl('ai_usage', { userId: billingUserId, email: ownerEmail })
+      : null;
+  return { db, billingUserId, ownerEmail, exempt, entitled, payg, isOwner, paygUrl, upgradeUrl };
+}
+
+function upgradeMessage(b: Awaited<ReturnType<typeof billingFor>>): string {
+  if (!b.isOwner) {
+    return `Ask Claude is part of the $${ASK_CLAUDE_PLAN_USD}/month ClubMode plan. Your club owner can upgrade to turn it on.`;
+  }
+  return b.upgradeUrl
+    ? `Ask Claude is part of the $${ASK_CLAUDE_PLAN_USD}/month ClubMode plan: tell it what you need ("set up a Tuesday clinic", "tonight's attendance was…", "block courts 3-6 Saturday") and it does it. $${AI_INCLUDED_USD} of use is included every month.`
+    : `Ask Claude is part of the $${ASK_CLAUDE_PLAN_USD}/month ClubMode plan, which isn't on sale just yet.`;
+}
+
+function pausedMessage(b: Awaited<ReturnType<typeof billingFor>>): string {
+  if (b.payg) {
+    return `Ask Claude has reached this month's $${AI_MONTHLY_CAP_USD} limit for your club, so it is paused until the 1st. Everything else in ClubMode still works.`;
+  }
+  if (!b.isOwner) {
+    return `Your club has used its $${AI_INCLUDED_USD} of Ask Claude for this month. Your club owner can turn on pay-as-you-go from the Ask Claude panel to keep going.`;
+  }
+  return b.paygUrl
+    ? `You've used this month's $${AI_INCLUDED_USD} of included Ask Claude. Turn on pay-as-you-go to keep going: you're only billed for what you use, a few cents a request, and you'll see the meter the whole time.`
+    : `You've used this month's $${AI_INCLUDED_USD} of included Ask Claude. Pay-as-you-go isn't available yet; it resets on the 1st.`;
 }
 
 /** The meter, for the widget to show before the first message is sent. */
@@ -79,7 +114,14 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ meter: null }, { status: 401 });
   const b = await billingFor(user);
-  return NextResponse.json({ meter: snapshot(await monthBilledMicro(b.db, b.billingUserId), b.exempt) });
+  if (!b.entitled) {
+    return NextResponse.json({ meter: null, entitled: false, message: upgradeMessage(b), upgradeUrl: b.upgradeUrl });
+  }
+  return NextResponse.json({
+    meter: snapshot(await monthBilledMicro(b.db, b.billingUserId), b.exempt, undefined, b.payg),
+    entitled: true,
+    paygUrl: b.paygUrl,
+  });
 }
 
 export async function POST(req: Request) {
@@ -90,12 +132,19 @@ export async function POST(req: Request) {
   if (!ANTHROPIC_KEY) return NextResponse.json({ kind: 'error', message: 'Assistant not configured (missing ANTHROPIC_API_KEY).' }, { status: 503 });
 
   const bill = await billingFor(user);
+  if (!bill.entitled) {
+    return NextResponse.json(
+      { kind: 'upgrade', message: upgradeMessage(bill), upgradeUrl: bill.upgradeUrl },
+      { status: 402 },
+    );
+  }
   const spentBefore = await monthBilledMicro(bill.db, bill.billingUserId);
-  if (overCap(spentBefore, bill.exempt)) {
+  if (overCap(spentBefore, bill.exempt, bill.payg)) {
     return NextResponse.json({
       kind: 'error',
-      message: `Ask Claude has reached this month's $${AI_MONTHLY_CAP_USD} limit for your club, so it is paused until the 1st. Everything else in ClubMode still works.`,
-      meter: snapshot(spentBefore, bill.exempt),
+      message: pausedMessage(bill),
+      meter: snapshot(spentBefore, bill.exempt, undefined, bill.payg),
+      paygUrl: bill.paygUrl,
     }, { status: 402 });
   }
 
@@ -214,6 +263,7 @@ async function meterRequest(
     usage,
     page: page ?? null,
     exempt: bill.exempt,
+    payg: bill.payg,
   });
   if (meter.notice && bill.ownerEmail) {
     await sendBilledEmail(null, {
