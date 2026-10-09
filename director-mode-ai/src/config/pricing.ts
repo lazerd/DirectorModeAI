@@ -114,3 +114,30 @@ export const CAPTAIN_SOLO_PRICE_USD = 20;
  * Enforced by the teams route via MAX_TEAMS_PER_CAPTAIN in lib/captain/access.
  */
 export const CAPTAIN_MAX_TEAMS = 6;
+
+/* ------------------------------ Ask Claude ----------------------------- */
+/**
+ * The in-app assistant is METERED, and says so on every answer.
+ *
+ * Darrin, 2026-10-09: AI is not bundled into the subscription. A director who
+ * ran $25 of AI on a $75 plan would eat a third of the margin, so every club
+ * gets a small allowance and pays for the rest on top of the plan, watching a
+ * live meter the whole time. The meter is the selling point, not a disclaimer:
+ * a typical request costs pennies, and seeing that is what makes people use it.
+ *
+ * Applies even in FOUNDING_MODE — founding unlocks features, not free AI.
+ */
+/** Included Ask Claude usage per club per month, in dollars. */
+export const AI_INCLUDED_USD = 5;
+/** A notice goes out each time a club's overage crosses another multiple of this. */
+export const AI_NOTICE_STEP_USD = 10;
+/**
+ * What a club pays per dollar of model cost. 1.5 = cost + 50%. Tuned so a busy
+ * director's ~200 requests a month lands around $15 — see lib/assistant/meter.
+ */
+export const AI_MARKUP = 1.5;
+/**
+ * Hard stop for the month, in dollars billed. Protects both sides from a
+ * runaway loop or a surprise bill; the director is told plainly when it hits.
+ */
+export const AI_MONTHLY_CAP_USD = 100;

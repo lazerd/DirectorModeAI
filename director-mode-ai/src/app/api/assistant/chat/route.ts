@@ -3,6 +3,20 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 import { recordAiUsage } from '@/lib/billing';
 import { resolvePacks } from '@/lib/assistant/registry';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { resolveBillingUserId } from '@/lib/billing';
+import { resolveActiveClub } from '@/lib/clubs/activeClub';
+import { isPlatformOwnerEmail } from '@/lib/platformOwner';
+import { sendBilledEmail } from '@/lib/email';
+import {
+  addUsage,
+  emptyUsage,
+  monthBilledMicro,
+  overCap,
+  recordRequest,
+  snapshot,
+} from '@/lib/assistant/meter';
+import { AI_INCLUDED_USD, AI_MONTHLY_CAP_USD } from '@/config/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,12 +54,48 @@ const ACTIONS_PREAMBLE = `You can take real actions in ClubMode using your tools
 
 interface ClientMessage { role: 'user' | 'assistant'; content: string }
 
+/**
+ * Who pays for this person's Ask Claude, and whether they pay at all.
+ * The club owner's account is the pool (same as texts and emails). The platform
+ * owner's own clubs are metered so the numbers are real, but never billed.
+ */
+async function billingFor(user: { id: string; email?: string | null }) {
+  const db = getSupabaseAdmin();
+  const billingUserId = await resolveBillingUserId(user.id);
+  let ownerEmail: string | null = user.email ?? null;
+  if (billingUserId !== user.id) {
+    const { data } = await db.auth.admin.getUserById(billingUserId);
+    ownerEmail = data?.user?.email ?? null;
+  }
+  const exempt = isPlatformOwnerEmail(user.email) || isPlatformOwnerEmail(ownerEmail);
+  return { db, billingUserId, ownerEmail, exempt };
+}
+
+/** The meter, for the widget to show before the first message is sent. */
+export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ meter: null }, { status: 401 });
+  const b = await billingFor(user);
+  return NextResponse.json({ meter: snapshot(await monthBilledMicro(b.db, b.billingUserId), b.exempt) });
+}
+
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ kind: 'error', message: 'Please log in to use the assistant.' }, { status: 401 });
   if (!checkRateLimit(user.id)) return NextResponse.json({ kind: 'error', message: 'You are sending messages too fast — give it a moment.' }, { status: 429 });
   if (!ANTHROPIC_KEY) return NextResponse.json({ kind: 'error', message: 'Assistant not configured (missing ANTHROPIC_API_KEY).' }, { status: 503 });
+
+  const bill = await billingFor(user);
+  const spentBefore = await monthBilledMicro(bill.db, bill.billingUserId);
+  if (overCap(spentBefore, bill.exempt)) {
+    return NextResponse.json({
+      kind: 'error',
+      message: `Ask Claude has reached this month's $${AI_MONTHLY_CAP_USD} limit for your club, so it is paused until the 1st. Everything else in ClubMode still works.`,
+      meter: snapshot(spentBefore, bill.exempt),
+    }, { status: 402 });
+  }
 
   const body = await req.json().catch(() => null);
   const message = (body?.message as string | undefined)?.trim();
@@ -57,7 +107,10 @@ export async function POST(req: Request) {
   // pack carries its own tools, guidance, and executor (bound to its context).
   const packs = await resolvePacks(user.id, page);
   const canAct = packs.length > 0;
-  const tools = packs.flatMap((p) => p.toolSchemas);
+  const tools: Anthropic.Messages.Tool[] = packs.flatMap((p) => p.toolSchemas);
+  // Cache the tool list + system prompt: they are identical on every round of the
+  // loop and across a director's messages, and cached input costs a tenth.
+  if (tools.length) tools[tools.length - 1] = { ...tools[tools.length - 1], cache_control: { type: 'ephemeral' } } as Anthropic.Messages.Tool;
   const dispatch = new Map<string, (typeof packs)[number]>();
   for (const p of packs) for (const s of p.toolSchemas) dispatch.set(s.name, p);
 
@@ -82,8 +135,11 @@ export async function POST(req: Request) {
   // Tool-use loop: let the model call JTT tools, execute them, feed results back,
   // until it produces a final text answer. Capped so a loop can't run away.
   let finalText = '';
+  let usage = emptyUsage();
+  let rounds = 0;
   try {
     for (let round = 0; round < 6; round++) {
+      rounds = round + 1;
       const response: Anthropic.Messages.Message = await client.messages.create({
         model: MODEL,
         max_tokens: 1024,
@@ -91,6 +147,7 @@ export async function POST(req: Request) {
         messages,
         ...(tools.length ? { tools } : {}),
       });
+      usage = addUsage(usage, response.usage);
       await recordAiUsage(user.id, response.usage?.input_tokens ?? 0, response.usage?.output_tokens ?? 0);
 
       if (response.stop_reason === 'tool_use') {
@@ -118,8 +175,44 @@ export async function POST(req: Request) {
     }
   } catch (err) {
     console.error('Assistant chat model call failed:', err);
-    return NextResponse.json({ kind: 'error', message: 'The assistant had trouble responding. Please try again.' }, { status: 502 });
+    const meter = await meterRequest(bill, user.id, page, usage, rounds).catch(() => null);
+    return NextResponse.json({ kind: 'error', message: 'The assistant had trouble responding. Please try again.', meter }, { status: 502 });
   }
 
-  return NextResponse.json({ kind: 'message', text: finalText || "Done." });
+  const meter = await meterRequest(bill, user.id, page, usage, rounds).catch((e) => {
+    console.error('Ask Claude meter failed:', e);
+    return null;
+  });
+  return NextResponse.json({ kind: 'message', text: finalText || "Done.", meter });
+}
+
+/** Write the request to the meter; email the payer if it crossed a $10 step. */
+async function meterRequest(
+  bill: Awaited<ReturnType<typeof billingFor>>,
+  userId: string,
+  page: string | undefined,
+  usage: ReturnType<typeof emptyUsage>,
+  rounds: number,
+) {
+  if (rounds === 0) return null;
+  const { active } = await resolveActiveClub(userId, null).catch(() => ({ active: null as { id: string } | null }));
+  const meter = await recordRequest(bill.db, {
+    billingUserId: bill.billingUserId,
+    userId,
+    clubId: active?.id ?? null,
+    model: MODEL,
+    rounds,
+    usage,
+    page: page ?? null,
+    exempt: bill.exempt,
+  });
+  if (meter.notice && bill.ownerEmail) {
+    await sendBilledEmail(null, {
+      to: bill.ownerEmail,
+      operational: true,
+      subject: `Ask Claude: $${meter.overageUsd.toFixed(2)} over your monthly allowance`,
+      html: `<p>${meter.notice}</p><p>So far this month: <b>$${meter.spentUsd.toFixed(2)}</b> of Ask Claude, with $${AI_INCLUDED_USD.toFixed(2)} included in your plan. You'll get another note every $10.</p><p>You can see the meter any time at the bottom of the Ask Claude panel.</p>`,
+    }).catch((e) => console.error('Ask Claude notice email failed:', e));
+  }
+  return meter;
 }

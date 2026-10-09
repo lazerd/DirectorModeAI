@@ -16,6 +16,23 @@ interface Msg {
   content: string;
 }
 
+/** Mirrors MeterSnapshot in lib/assistant/meter. */
+interface Meter {
+  spentUsd: number;
+  includedUsd: number;
+  overageUsd: number;
+  capUsd: number;
+  thisRequestUsd?: number;
+  exempt: boolean;
+  notice?: string;
+}
+
+/** "4¢" under a dollar, "$1.23" above — a request should read as pennies. */
+function money(usd: number): string {
+  if (usd < 1) return `${Math.max(0, Math.round(usd * 100 * 10) / 10)}¢`;
+  return `$${usd.toFixed(2)}`;
+}
+
 // Context-aware greeting — the matchup-action pitch only makes sense on a JTT
 // matchup page; everywhere else it's confusing, so lead with general help.
 function greetingFor(path: string | null): string {
@@ -60,6 +77,8 @@ export default function AssistantWidget() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [meter, setMeter] = useState<Meter | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -69,6 +88,15 @@ export default function AssistantWidget() {
       inputRef.current?.focus();
     }
   }, [open, messages, sending]);
+
+  // Show the meter the moment the panel opens, before anything is spent.
+  useEffect(() => {
+    if (!open || meter) return;
+    fetch('/api/assistant/chat')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => j?.meter && setMeter(j.meter))
+      .catch(() => {});
+  }, [open, meter]);
 
   async function send() {
     const text = input.trim();
@@ -89,6 +117,10 @@ export default function AssistantWidget() {
         }),
       });
       const data = await res.json().catch(() => null);
+      if (data?.meter) {
+        setMeter(data.meter);
+        if (data.meter.notice) setNotice(data.meter.notice);
+      }
       if (!res.ok || data?.kind === 'error') {
         setError(data?.message ?? 'Something went wrong. Please try again.');
       } else {
@@ -161,6 +193,11 @@ export default function AssistantWidget() {
                 <Loader2 size={14} className="animate-spin" /> Thinking…
               </div>
             )}
+            {notice && (
+              <div className="rounded-lg bg-yellow-300/10 border border-yellow-300/30 text-yellow-100 text-sm px-3 py-2">
+                {notice}
+              </div>
+            )}
             {error && (
               <div className="rounded-lg bg-red-500/10 border border-red-500/20 text-red-200 text-sm px-3 py-2">
                 {error}
@@ -189,13 +226,43 @@ export default function AssistantWidget() {
                 <Send size={18} />
               </button>
             </div>
-            <p className="mt-1.5 text-[10px] text-white/30 text-center">
-              Each answer counts as one AI action on your plan.
-            </p>
+            <MeterBar meter={meter} />
           </div>
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * The live meter. Darrin, 2026-10-09: it has to be obvious that Ask Claude costs
+ * money, and seeing that a request costs a few cents is what makes it enticing.
+ */
+function MeterBar({ meter }: { meter: Meter | null }) {
+  if (!meter) {
+    return <p className="mt-1.5 text-[10px] text-white/30 text-center">Ask Claude is metered: $5 a month included.</p>;
+  }
+  const pct = Math.min(100, (meter.spentUsd / meter.includedUsd) * 100);
+  const over = meter.overageUsd > 0;
+  return (
+    <div className="mt-2 px-0.5">
+      <div className="h-1 rounded-full bg-white/10 overflow-hidden">
+        <div
+          className={`h-full ${over ? 'bg-orange-400' : 'bg-yellow-300'}`}
+          style={{ width: `${over ? 100 : pct}%` }}
+        />
+      </div>
+      <div className="mt-1 flex items-center justify-between text-[10px] text-white/45">
+        <span>
+          {meter.exempt
+            ? `This month ${money(meter.spentUsd)} · your club is not billed`
+            : over
+              ? `This month ${money(meter.spentUsd)} · ${money(meter.overageUsd)} over $${meter.includedUsd} included, billed with your plan`
+              : `This month ${money(meter.spentUsd)} of $${meter.includedUsd} included`}
+        </span>
+        {meter.thisRequestUsd !== undefined && <span>last answer {money(meter.thisRequestUsd)}</span>}
+      </div>
+    </div>
   );
 }
 
