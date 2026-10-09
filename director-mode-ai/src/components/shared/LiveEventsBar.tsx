@@ -73,6 +73,10 @@ const HIDDEN = [
   '/member',
   '/swim-family',
   '/pathway/p',
+  // CourtConnect game invites, guest links and "stop" pages are what a player
+  // opens from a text or email. A director answering one as a player landed
+  // under his demo club's events (10/9/26) — the operator's bar has no place there.
+  '/play',
 ];
 
 /** "in 3 weeks" / "tomorrow" / "today" — how a person says it. */
