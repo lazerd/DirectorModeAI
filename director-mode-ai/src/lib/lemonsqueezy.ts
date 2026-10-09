@@ -206,7 +206,7 @@ async function lsFetch(path: string, init?: RequestInit): Promise<any> {
     headers: {
       Accept: 'application/vnd.api+json',
       'Content-Type': 'application/vnd.api+json',
-      Authorization: `Bearer ${process.env.LEMONSQUEEZY_API_KEY}`,
+      Authorization: `Bearer ${(process.env.LEMONSQUEEZY_API_KEY || "").trim()}`,
       ...(init?.headers || {}),
     },
     cache: 'no-store',
