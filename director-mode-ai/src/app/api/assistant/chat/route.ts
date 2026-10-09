@@ -129,6 +129,13 @@ export async function POST(req: Request) {
     { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
     ...(canAct ? [{ type: 'text', text: ACTIONS_PREAMBLE }] : []),
     ...packs.map((p) => ({ type: 'text', text: p.actionsPrompt })),
+    // The model has no clock. Without this it guessed "this week" was late
+    // January (2026-10-09, first live test). Pacific is the default club zone;
+    // packs that need the club's own zone convert from the ISO instant.
+    {
+      type: 'text',
+      text: `Right now it is ${new Date().toLocaleString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })} Pacific (${new Date().toISOString()}). Resolve "today", "tonight", "this week", "Saturday" from this.`,
+    },
     ...(page ? [{ type: 'text', text: `The director is currently on this page: ${page}` }] : []),
   ] as unknown as Anthropic.Messages.TextBlockParam[];
 
