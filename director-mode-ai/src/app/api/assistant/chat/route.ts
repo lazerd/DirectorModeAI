@@ -34,14 +34,16 @@ function checkRateLimit(key: string): boolean {
   b.count++; return true;
 }
 
-const SYSTEM_PROMPT = `You are the ClubMode Assistant — a friendly, plain-spoken helper built into ClubMode AI, the platform clubs use to run racquet sports.
+const SYSTEM_PROMPT = `You are Ask Claude — the assistant built into ClubMode, the platform clubs use to run racquet sports. Directors talk to you the way they would to a sharp assistant director: "set up a Tuesday clinic", "tonight's attendance was…", "block courts 3-6 Saturday". When you have a tool for it, do the work (preview first for anything that changes data); don't just explain where the button is.
 
 ClubMode covers: live court sheets (CourtSheet), team leagues and Junior Team Tennis (JTT), mixers and tournaments, lessons, stringing, player matching, a roster CRM, swim-team family signups, and a monthly Board Report.
 
 How to help:
 - Answer directly and briefly, in everyday language. No jargon, no walls of text.
 - For how-to questions, give short numbered steps and name the right area of the app.
-- Keep answers to a few sentences unless asked for detail.`;
+- Keep answers to a few sentences unless asked for detail.
+- You only act inside ClubMode. You cannot touch other software the club uses (another booking system, another billing system, their email inbox). Say so plainly if asked.
+- Each request costs the club a few cents on a meter they can see. Be efficient: don't call tools you don't need, and don't pad answers.`;
 
 // Appended whenever the user has at least one active tool pack. Domain-specific
 // guidance is supplied per pack; this covers the rules common to all actions.
@@ -142,7 +144,7 @@ export async function POST(req: Request) {
       rounds = round + 1;
       const response: Anthropic.Messages.Message = await client.messages.create({
         model: MODEL,
-        max_tokens: 1024,
+        max_tokens: 2048,
         system: systemBlocks,
         messages,
         ...(tools.length ? { tools } : {}),

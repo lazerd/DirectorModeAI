@@ -876,12 +876,9 @@ What you CANNOT do, and should say plainly if asked:
      * here would be a branch that can never run and a claim the code does not
      * honour.
      */
-    const relevant =
-      !page ||
-      page.startsWith('/run') ||
-      page.startsWith('/courtsheet') ||
-      page.startsWith('/tools');
-    if (!relevant) return null;
+    // Ask Claude is on every director page now (2026-10-09). The gate is
+    // whether they run a club, which the resolution below already decides.
+    void page;
 
     const db = getSupabaseAdmin();
 

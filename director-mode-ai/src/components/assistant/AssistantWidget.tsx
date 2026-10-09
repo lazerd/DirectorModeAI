@@ -37,9 +37,9 @@ function money(usd: number): string {
 // matchup page; everywhere else it's confusing, so lead with general help.
 function greetingFor(path: string | null): string {
   if (path && path.includes('/jtt/matchup/')) {
-    return "Hi! I'm your ClubMode Assistant. On this matchup I can actually do it for you — e.g. \"check in the MCC 13s\" or \"add Brooke McGuire to MCC 12s.\" Or ask me how to do anything in ClubMode.";
+    return "Hi! I'm Ask Claude. On this matchup I can do it for you — \"check in the MCC 13s\" or \"add Brooke McGuire to MCC 12s.\"";
   }
-  return "Hi! I'm your ClubMode Assistant. Ask me how to do anything in ClubMode — events, courts, leagues, billing, whatever you're stuck on. (On a JTT match day I can even check players in and manage lineups for you.)";
+  return "Hi! I'm Ask Claude. Tell me what you need and I'll do it — \"set up a Tuesday 6pm clinic for 10 weeks\", \"tonight's attendance was…\", \"block courts 3-6 Saturday afternoon\", \"what's happening today?\" I'll show you before I change anything.";
 }
 
 // Public marketing surfaces — the live assistant is for directors inside the app,
@@ -148,13 +148,13 @@ export default function AssistantWidget() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          aria-label="Open ClubMode Assistant"
+          aria-label="Open Ask Claude"
           // Above the demo bar when there is one (DemoBanner sets the var).
           style={{ bottom: 'calc(1.25rem + var(--demo-bar-h, 0px))' }}
           className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-full bg-yellow-300 text-[#001820] shadow-lg shadow-black/30 px-4 py-3 font-medium hover:bg-yellow-200 transition-colors"
         >
           <Sparkles size={18} />
-          <span className="hidden sm:inline text-sm">Ask ClubMode</span>
+          <span className="hidden sm:inline text-sm">Ask Claude</span>
         </button>
       )}
 
@@ -169,7 +169,7 @@ export default function AssistantWidget() {
               <div className="w-7 h-7 rounded-lg bg-yellow-300/20 flex items-center justify-center">
                 <Sparkles size={15} className="text-yellow-300" />
               </div>
-              <span className="font-medium text-sm">ClubMode Assistant</span>
+              <span className="font-medium text-sm">Ask Claude</span>
             </div>
             <button
               onClick={() => setOpen(false)}
@@ -214,7 +214,7 @@ export default function AssistantWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
                 rows={1}
-                placeholder="Ask anything about running your club…"
+                placeholder="Tell me what you need done…"
                 className="flex-1 resize-none bg-transparent text-sm placeholder-white/30 focus:outline-none max-h-24"
               />
               <button

@@ -161,7 +161,14 @@ export function detectConflicts(input: DetectInput): Conflict[] {
   return conflicts;
 }
 
-/** Half-open interval overlap: [aStart, aEnd) ∩ [bStart, bEnd). */
+/**
+ * Half-open interval overlap: [aStart, aEnd) ∩ [bStart, bEnd).
+ *
+ * Compared as instants, not strings. Candidates are built with toISOString()
+ * ("…T18:00:00.000Z") but rows read back from PostgREST look like
+ * "…T18:00:00+00:00", and '+' sorts before '.', so a string compare called a
+ * block ending at 6:00 and a booking starting at 6:00 an overlap.
+ */
 function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string): boolean {
-  return aStart < bEnd && bStart < aEnd;
+  return Date.parse(aStart) < Date.parse(bEnd) && Date.parse(bStart) < Date.parse(aEnd);
 }
