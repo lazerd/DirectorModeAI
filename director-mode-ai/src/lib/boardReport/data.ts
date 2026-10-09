@@ -50,7 +50,7 @@ function fmtHourWindow(hour: number): string {
   return `${h12(hour)}–${h12((hour + 2) % 24)}`;
 }
 
-async function buildCourts(
+export async function buildCourts(
   db: SupabaseClient<any, "public", any>,
   clubId: string,
   tz: string,

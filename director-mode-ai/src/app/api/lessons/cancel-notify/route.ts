@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { sendBilledEmail, resolveCoachUserId, creditLimitResponse, CreditLimitError } from '@/lib/email';
+import { lessonCancelEmail } from '@/lib/lessons/cancelEmail';
 
-import { APP_URL } from '@/lib/appUrl';
 export async function POST(request: NextRequest) {
   try {
     const {
@@ -21,44 +21,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
-    const isCoachNotification = cancelledBy === 'client';
-    
-    const subject = isCoachNotification 
-      ? `Lesson Cancelled: ${otherPartyName} cancelled their booking`
-      : `Lesson Cancelled: Your lesson with ${otherPartyName} has been cancelled`;
-
-    const heading = isCoachNotification
-      ? 'Lesson Cancelled by Client'
-      : 'Your Lesson Has Been Cancelled';
-
-    const message = isCoachNotification
-      ? `<p><strong>${otherPartyName}</strong> has cancelled their lesson with you:</p>`
-      : `<p><strong>${otherPartyName}</strong> has cancelled your scheduled lesson:</p>`;
-
-    const dashboardUrl = isCoachNotification
-      ? `${APP_URL}/lessons/dashboard`
-      : `${APP_URL}/client/dashboard`;
-
-    const buttonText = isCoachNotification ? 'View Dashboard' : 'Book Another Lesson';
-
+    // The message itself is built in lib/lessons/cancelEmail.ts, shared with the assistant.
     await sendBilledEmail(ownerUserId, {
-      from: 'LessonMode <noreply@mail.clubmode.ai>',
+      ...lessonCancelEmail({ recipientName, cancelledBy, otherPartyName, slotDate, slotTime, location }),
       to: recipientEmail,
-      subject,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #dc2626;">❌ ${heading}</h2>
-          <p>Hi ${recipientName || 'there'},</p>
-          ${message}
-          <div style="background: #fef2f2; padding: 16px; border-radius: 8px; margin: 16px 0; border-left: 4px solid #dc2626;">
-            <p style="margin: 0;"><strong>Date:</strong> ${slotDate}</p>
-            <p style="margin: 8px 0 0 0;"><strong>Time:</strong> ${slotTime}</p>
-            ${location ? `<p style="margin: 8px 0 0 0;"><strong>Location:</strong> ${location}</p>` : ''}
-          </div>
-          <p>This time slot is now available again.</p>
-          <a href="${dashboardUrl}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; margin-top: 16px;">${buttonText}</a>
-        </div>
-      `
     });
 
     return NextResponse.json({ success: true });

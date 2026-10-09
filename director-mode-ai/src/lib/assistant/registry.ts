@@ -10,6 +10,9 @@ import { courtsTodayPack } from './packs/courtsToday';
 import { captainPack } from './packs/captain';
 import { leaguesPack } from './packs/leagues';
 import { commsPack } from './packs/comms';
+import { eventsPack } from './packs/events';
+import { peoplePack } from './packs/people';
+import { opsPack } from './packs/ops';
 
 // The set of domain packs the assistant can draw on. To give a new page
 // conversational actions, write a pack (src/lib/assistant/packs/<domain>.ts)
@@ -25,6 +28,9 @@ const PROVIDERS: DomainPack<any>[] = [
   captainPack,
   leaguesPack,
   commsPack,
+  eventsPack,
+  peoplePack,
+  opsPack,
 ];
 
 /**
