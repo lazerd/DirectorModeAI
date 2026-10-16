@@ -8,6 +8,7 @@ const PRODUCT_MAP: Record<string, string> = {
   '/vault': 'vault',
   '/book': 'lessons',
   '/event': 'mixer',
+  '/try': 'mixer',
   '/coach': 'lessons',
   '/find-coach': 'lessons',
   '/client': 'lessons',

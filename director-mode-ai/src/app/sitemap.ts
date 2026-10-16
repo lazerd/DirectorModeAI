@@ -15,6 +15,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
  */
 const PAGES: { path: string; priority: number }[] = [
   { path: '/', priority: 1 },
+  { path: '/mixermode', priority: 0.9 },
+  { path: '/try', priority: 0.8 },
   { path: '/pricing', priority: 0.9 },
   { path: '/captainmode', priority: 0.8 },
   { path: '/find-coach', priority: 0.5 },

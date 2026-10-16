@@ -90,3 +90,49 @@ export function ShareCard() {
     </div>
   );
 }
+
+export const MIXER_SHARE_CARD_ALT = 'MixerMode by ClubMode — More play. Less planning. Run a free club mixer.';
+
+/** The /mixermode campaign page's link preview: one product, one invitation. */
+export function MixerShareCard() {
+  return (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        padding: '72px 80px',
+        background: `linear-gradient(135deg, ${BRAND.ink} 0%, ${BRAND.deep} 100%)`,
+        color: '#ffffff',
+        fontFamily: 'sans-serif',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 24 }}>
+        <BrandMark size={88} />
+        <div style={{ display: 'flex', fontSize: 52, fontWeight: 700, letterSpacing: -1 }}>
+          <span>ClubMode</span>
+          <span style={{ color: BRAND.lime, marginLeft: 14 }}>AI</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', fontSize: 30, fontWeight: 600, color: BRAND.lime }}>
+          Meet MixerMode by ClubMode
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', marginTop: 18, fontSize: 92, fontWeight: 700, letterSpacing: -2, lineHeight: 1.02 }}>
+          <span>More play.</span>
+          <span style={{ color: 'rgba(255,255,255,0.5)' }}>Less planning.</span>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', fontSize: 28, color: 'rgba(255,255,255,0.55)' }}>
+          Run your next club mixer free. No account needed.
+        </div>
+        <div style={{ display: 'flex', fontSize: 30, fontWeight: 700, color: BRAND.lime }}>clubmode.ai</div>
+      </div>
+    </div>
+  );
+}
