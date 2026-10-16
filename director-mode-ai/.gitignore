@@ -6,3 +6,5 @@
 scripts/_wtn-*.json
 scripts/_wtn-*.log
 .quads-shots/
+
+.season-shots/

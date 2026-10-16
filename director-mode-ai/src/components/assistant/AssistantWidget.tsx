@@ -61,6 +61,8 @@ const PUBLIC = [
   '/leagues/confirm-partner', '/quads/match', '/quads/player', '/swim-family',
   '/captain/availability', '/captain/intake', '/captain/claim', '/captain/confirm',
   '/pathway/p', '/pathway/curriculum', '/book', '/join', '/event', '/nps',
+  // Season Builder sign-up links (a member answering a club email).
+  '/season',
   // Premier Tennis League. A standalone product — a bubble offering to help
   // with "events, courts, leagues, billing" on a league site is an advert for
   // a different product, and on the projected draft board it is a bug.

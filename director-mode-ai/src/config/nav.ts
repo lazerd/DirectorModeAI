@@ -243,6 +243,18 @@ export const SECTIONS: Section[] = [
         tag: 'MATCHING',
         badge: 'NEW',
       },
+      {
+        name: 'Season Builder',
+        href: '/run/members/season-builder',
+        match: '/run/members/season-builder',
+        description: 'Before you register USTA teams: who wants to play, at what level, day or night, and who will captain.',
+        pitch: 'One email to every member. Each answers in a minute — league, level, schedule, captain or not, USTA membership date. You get a live head count by team and level, captains named, renewals flagged, and one click turns a group into a CaptainMode team.',
+        icon: ClipboardList,
+        color: '#a78bfa',
+        product: true,
+        tag: 'LEAGUES',
+        badge: 'NEW',
+      },
     ],
   },
   {

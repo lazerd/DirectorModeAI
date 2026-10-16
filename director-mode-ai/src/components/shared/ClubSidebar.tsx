@@ -162,6 +162,8 @@ const PUBLIC_PREFIXES = [
   '/leagues/join',
   // CourtConnect's emailed links ("I'm in", "stop these emails"). No login.
   '/play',
+  // Season Builder sign-ups (personal emailed link + public newsletter link).
+  '/season',
   '/enter',
   '/pathway/p',
   '/pathway/curriculum',
