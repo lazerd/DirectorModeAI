@@ -101,10 +101,10 @@ export async function POST(req: Request) {
   // Only empty fields are filled — a re-paste never overwrites what is there.
   const { data: existing } = await ctx.db
     .from('captain_players')
-    .select('id, name, email, phone, rating')
+    .select('id, name, email, phone, rating, active')
     .eq('team_id', ctx.teamId);
   const byName = new Map(
-    ((existing as { id: string; name: string; email: string | null; phone: string | null; rating: number | null }[]) ||
+    ((existing as { id: string; name: string; email: string | null; phone: string | null; rating: number | null; active: boolean }[]) ||
       []).map((p) => [p.name.trim().toLowerCase(), p]),
   );
 
@@ -132,6 +132,14 @@ export async function POST(req: Request) {
     }
 
     const patch: Record<string, unknown> = {};
+    // Adding back someone who was removed brings them back. Without this a
+    // captain who removes a player to fix a missing email and re-adds her gets
+    // the email filled in on a row that stays hidden from every roster and
+    // availability list (Amanda Coyne, 10/16).
+    if (!already.active) {
+      patch.active = true;
+      patch.updated_at = new Date().toISOString();
+    }
     if (!already.email && p.email?.trim()) patch.email = p.email.trim();
     if (!already.phone && p.phone?.trim()) patch.phone = p.phone.trim();
     if (already.rating == null && p.rating != null) patch.rating = p.rating;

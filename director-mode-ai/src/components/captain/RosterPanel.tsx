@@ -369,6 +369,21 @@ export default function RosterPanel({
 
                       {isEditing && (
                         <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="col-span-2">
+                            {/* A player added without an email can't be polled,
+                                so the fix has to live here, not in remove-and-re-add. */}
+                            <label className="block text-xs text-white/50 mb-1">Email</label>
+                            <input
+                              type="email"
+                              defaultValue={p.email ?? ''}
+                              placeholder="name@example.com"
+                              onBlur={(ev) => {
+                                const v = ev.target.value.trim() || null;
+                                if (v !== (p.email ?? null)) patch(p.id, { email: v });
+                              }}
+                              className={field}
+                            />
+                          </div>
                           <div>
                             <label className="block text-xs text-white/50 mb-1">Mobile</label>
                             <input
