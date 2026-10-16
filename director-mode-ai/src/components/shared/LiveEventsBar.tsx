@@ -77,6 +77,8 @@ const HIDDEN = [
   // opens from a text or email. A director answering one as a player landed
   // under his demo club's events (10/9/26) — the operator's bar has no place there.
   '/play',
+  // Season Builder sign-up forms are what members open from the club email.
+  '/season',
 ];
 
 /** "in 3 weeks" / "tomorrow" / "today" — how a person says it. */
