@@ -21,6 +21,7 @@ import {
 } from '@/lib/mixer/guestMixer';
 import { trackEvent } from '@/lib/analytics';
 import OtherToolsLine from '@/components/mixer/OtherToolsLine';
+import { landingRef, logLanding } from '@/lib/landing';
 
 const STORAGE_KEY = 'clubmode_free_mixer_v1';
 const NUDGE_KEY = 'clubmode_free_mixer_nudge_closed';
@@ -52,6 +53,7 @@ export default function FreeMixerPage() {
       setViewRound(Math.max(0, saved.rounds.length - 1));
     }
     setNudgeClosed(load(NUDGE_KEY) === '1');
+    landingRef(); // keep a letter's ?r= for this tab, in case they came straight here
     setReady(true);
     trackEvent('feature_use', 'free_mixer_open', 'mixer', { resumed: !!saved });
   }, []);
@@ -74,6 +76,7 @@ export default function FreeMixerPage() {
       setMixer((m) => ({ ...m, rounds: [...m.rounds, r] }));
       setViewRound(mixer.rounds.length);
       setTab('courts');
+      if (r.number === 1) logLanding('mixermode', 'first_round');
       trackEvent('feature_use', r.number === 1 ? 'free_mixer_first_round' : 'free_mixer_next_round', 'mixer', {
         round: r.number, players: activePlayers(mixer).length, courts: mixer.courts, format: mixer.format,
       });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { allowedVariants, canBeSentC, linkFor, newRef, nextVariant, renderLetter, VARIANTS } from './variants';
+import { PRODUCT_COUNT } from '@/config/nav';
+import { allowedVariants, canBeSentC, FREE_ALLOWED, linkFor, newRef, nextVariant, renderLetter, VARIANTS } from './variants';
 
 const links = { demo_url: 'https://clubmode.ai/demo/TOKEN', mixer_url: 'https://clubmode.ai/demo/TOKEN/enter?as=director&next=%2Fmixer%2Fevents%2Fid%3Ftab%3Drounds' };
 
@@ -24,7 +25,7 @@ describe('letters', () => {
   });
   it('never says free or no cost (reads as free software, Darrin 9/24)', () => {
     for (const kind of ['intro', 'followup'] as const) {
-      for (const v of VARIANTS) {
+      for (const v of VARIANTS.filter((x) => !FREE_ALLOWED.includes(x))) {
         const l = renderLetter(kind, v, { club: 'X Club', fullName: 'Y Z' }, links, 'abc123xyz9')!;
         expect(`${l.subject} ${l.body}`).not.toMatch(/\bfree\b|no cost|no charge|costs? (you )?nothing/i);
       }
@@ -94,15 +95,43 @@ describe('one-tool letters T1..T12 (12 Templates doc, 9/29/26)', () => {
       expect(n, v).toBe(1);
     }
   });
-  it('says 17 tools from the product list, not by hand', () => {
-    expect(renderLetter('intro', 'T1', { club: 'X', fullName: 'Y Z' }, links)!.body).toContain('17 tools');
+  it('says N tools from the product list, not by hand', () => {
+    expect(renderLetter('intro', 'T1', { club: 'X', fullName: 'Y Z' }, links)!.body).toContain(`${PRODUCT_COUNT} tools`);
   });
   it('rotation: paused letters sit out, C only when on and allowed, never empty', () => {
-    expect(allowedVariants({ paused: [], cOn: true, cOk: true })).toHaveLength(15);
+    expect(allowedVariants({ paused: [], cOn: true, cOk: true })).toHaveLength(VARIANTS.length);
     expect(allowedVariants({ paused: [], cOn: true, cOk: false })).not.toContain('C');
     expect(allowedVariants({ paused: ['A', 'T3'], cOn: false, cOk: true })).toEqual(VARIANTS.filter((v) => !['A', 'T3', 'C'].includes(v)));
     expect(allowedVariants({ paused: [...VARIANTS], cOn: true, cOk: true })).toEqual(['A']);
     // New letters catch up to the ones that already went out.
-    expect(nextVariant({ A: 3, B: 3, C: 3 }, allowedVariants({ paused: [], cOn: true, cOk: true }))).toBe('T1');
+    expect(nextVariant({ A: 3, B: 3, C: 3, M: 3, P: 3 }, allowedVariants({ paused: [], cOn: true, cOk: true }))).toBe('T1');
+  });
+});
+
+describe('letters M and P (landing-page split test, 10/16/26)', () => {
+  it('link the public landing pages with the ref, not the sample club', () => {
+    const m = renderLetter('intro', 'M', { club: 'X Club', fullName: 'Jane Smith' }, links, 'abc123xyz9')!;
+    const p = renderLetter('intro', 'P', { club: 'X Club', fullName: 'Jane Smith' }, links, 'abc123xyz9')!;
+    expect(m.body).toContain('/mixermode?r=abc123xyz9');
+    expect(p.body).toContain('/pulse?r=abc123xyz9');
+    for (const l of [m, p]) {
+      expect(l.body.startsWith('Hi Jane,')).toBe(true);
+      expect(l.body).not.toContain('/demo/');
+      expect(l.body).not.toMatch(/—|\{\{|Darrin|Kevin|Sleepy Hollow/);
+    }
+  });
+  it('only P stays held to the no-"free" rule; M may say it', () => {
+    const p = renderLetter('intro', 'P', { club: 'X Club', fullName: 'Y Z' }, links, 'r')!;
+    expect(`${p.subject} ${p.body}`).not.toMatch(/free/i);
+    expect(FREE_ALLOWED).toEqual(['M']);
+  });
+  it('a pure M/P test reaches only directors, and skips everyone else', () => {
+    const others = VARIANTS.filter((v) => v !== 'M' && v !== 'P');
+    expect(allowedVariants({ paused: others, cOn: true, cOk: true })).toEqual(['M', 'P']);
+    expect(allowedVariants({ paused: others, cOn: true, cOk: false })).toEqual([]);
+    expect(nextVariant({ M: 3, P: 2 }, ['M', 'P'])).toBe('P');
+  });
+  it('everything paused still falls back to A', () => {
+    expect(allowedVariants({ paused: [...VARIANTS], cOn: true, cOk: false })).toEqual(['A']);
   });
 });

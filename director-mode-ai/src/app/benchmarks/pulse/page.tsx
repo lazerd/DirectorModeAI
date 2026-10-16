@@ -1,5 +1,6 @@
 'use client';
 
+import { logLanding } from '@/lib/landing';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, Lock, Unlock, Share2, ShieldCheck, Users } from 'lucide-react';
@@ -84,7 +85,7 @@ export default function PulsePage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(f),
     });
     if (!res.ok) setErr((await res.json().catch(() => ({}))).error || 'Save failed.');
-    else { setEditing(false); await load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
+    else { if (!data?.mine) logLanding('pulse', 'submitted'); setEditing(false); await load(); window.scrollTo({ top: 0, behavior: 'smooth' }); }
     setSaving(false);
   }
 

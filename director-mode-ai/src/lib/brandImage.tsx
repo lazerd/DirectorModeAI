@@ -93,8 +93,8 @@ export function ShareCard() {
 
 export const MIXER_SHARE_CARD_ALT = 'MixerMode by ClubMode — More play. Less planning. Run a free club mixer.';
 
-/** The /mixermode campaign page's link preview: one product, one invitation. */
-export function MixerShareCard() {
+/** A campaign landing page's link preview: one product, one invitation. */
+function CampaignShareCard({ eyebrow, line1, line2, foot }: { eyebrow: string; line1: string; line2: string; foot: string }) {
   return (
     <div
       style={{
@@ -119,20 +119,30 @@ export function MixerShareCard() {
 
       <div style={{ display: 'flex', flexDirection: 'column' }}>
         <div style={{ display: 'flex', fontSize: 30, fontWeight: 600, color: BRAND.lime }}>
-          Meet MixerMode by ClubMode
+          {eyebrow}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', marginTop: 18, fontSize: 92, fontWeight: 700, letterSpacing: -2, lineHeight: 1.02 }}>
-          <span>More play.</span>
-          <span style={{ color: 'rgba(255,255,255,0.5)' }}>Less planning.</span>
+          <span>{line1}</span>
+          <span style={{ color: 'rgba(255,255,255,0.5)' }}>{line2}</span>
         </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', fontSize: 28, color: 'rgba(255,255,255,0.55)' }}>
-          Run your next club mixer free. No account needed.
+          {foot}
         </div>
         <div style={{ display: 'flex', fontSize: 30, fontWeight: 700, color: BRAND.lime }}>clubmode.ai</div>
       </div>
     </div>
   );
+}
+
+export function MixerShareCard() {
+  return <CampaignShareCard eyebrow="Meet MixerMode by ClubMode" line1="More play." line2="Less planning." foot="Run your next club mixer free. No account needed." />;
+}
+
+export const PULSE_SHARE_CARD_ALT = 'Director Pulse by ClubMode — What they make. What they charge.';
+
+export function PulseShareCard() {
+  return <CampaignShareCard eyebrow="Meet Director Pulse by ClubMode" line1="What they make." line2="What they charge." foot="Anonymous pay and pricing from racquet pros." />;
 }

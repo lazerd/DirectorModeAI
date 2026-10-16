@@ -14,12 +14,17 @@ import Link from 'next/link';
 import { ArrowRight, LayoutGrid, Zap } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import OtherToolsLine from '@/components/mixer/OtherToolsLine';
+import { logLanding } from '@/lib/landing';
 
 const TRY_HREF = '/try';
 
 export default function MixerModeLandingPage() {
   const [user, setUser] = useState<{ email?: string } | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    logLanding('mixermode', 'view');
+  }, []);
 
   useEffect(() => {
     // .catch + .finally so an expired session can't leave the header stuck
@@ -59,6 +64,7 @@ export default function MixerModeLandingPage() {
             )}
             <Link
               href={TRY_HREF}
+              onClick={() => logLanding('mixermode', 'cta')}
               className="hidden sm:inline-flex px-4 py-2 rounded-full bg-white text-[#001820] font-medium hover:bg-white/90 transition-colors"
             >
               Try MixerMode
@@ -97,6 +103,7 @@ export default function MixerModeLandingPage() {
             <div className="hm-fade-up mt-10 flex flex-col items-center gap-3" style={{ animationDelay: '0.15s' }}>
               <Link
                 href={TRY_HREF}
+                onClick={() => logLanding('mixermode', 'cta')}
                 className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 h-14 rounded-full bg-[#D3FB52] text-[#002838] font-semibold text-base hover:bg-[#c5f035] transition-colors"
               >
                 Start a free mixer <ArrowRight size={18} />
@@ -158,6 +165,7 @@ export default function MixerModeLandingPage() {
             </p>
             <Link
               href={TRY_HREF}
+              onClick={() => logLanding('mixermode', 'cta')}
               className="mt-9 inline-flex items-center justify-center gap-2 w-full sm:w-auto px-8 h-14 rounded-full bg-[#D3FB52] text-[#002838] font-semibold text-base hover:bg-[#c5f035] transition-colors"
             >
               Start a free mixer <ArrowRight size={18} />

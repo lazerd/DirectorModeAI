@@ -16,12 +16,20 @@
  *      own address (canBeSentC): a GM or board president sets the director's
  *      pay, and a club info@ inbox may be read by exactly those people.
  *
+ *   M  MixerMode landing (/mixermode): run a free mixer now, no account.
+ *   P  Director Pulse landing (/pulse): what other pros make and charge.
+ *      M and P are the 10/16/26 landing-page split test. Both go only to the
+ *      people C may reach (canBeSentC) so the two arms reach the same kind of
+ *      person, and neither links the sample club: they land on public pages.
+ *      M is the one letter allowed to say "free" (Darrin, 10/16/26).
+ *
  * The link is a real URL merged in by code. The sample club is invented and
  * says so on its first screen, so nobody mistakes it for a club we run.
  */
 
 import { firstNameOf } from '@/lib/crm/compose';
 import { PRODUCT_COUNT } from '@/config/nav';
+import { APP_URL } from '@/lib/appUrl';
 
 /**
  * T1..T12: the one-tool letters from the "12 Templates 9.26.26" Google Doc
@@ -32,13 +40,15 @@ import { PRODUCT_COUNT } from '@/config/nav';
  * tracker), "ClubHub" is unlinked so T11 shows My Tennis, and the T2 schedule
  * is CourtSheet with CalendarMode for the year. Em dashes out, per his rule.
  */
-export type Variant = 'A' | 'B' | 'C' | 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8' | 'T9' | 'T10' | 'T11' | 'T12';
-export const VARIANTS: readonly Variant[] = ['A', 'B', 'C', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'];
+export type Variant = 'A' | 'B' | 'C' | 'M' | 'P' | 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8' | 'T9' | 'T10' | 'T11' | 'T12';
+export const VARIANTS: readonly Variant[] = ['A', 'B', 'C', 'M', 'P', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'T8', 'T9', 'T10', 'T11', 'T12'];
 
 export const VARIANT_LABEL: Record<Variant, string> = {
   A: 'A: the whole platform',
   B: 'B: one tool (MixerMode) alongside what they use',
   C: 'C: Benchmarks, for the director personally',
+  M: 'M: MixerMode landing page (split test)',
+  P: 'P: Director Pulse landing page (split test)',
   T1: 'T1: CourtConnect, members find games',
   T2: 'T2: CourtSheet + CalendarMode, scheduling',
   T3: 'T3: LeagueMode, leagues and ladders',
@@ -91,7 +101,39 @@ interface Letter {
 /** The small last line every intro ends on: every tool, same sample club. */
 const toolsLine = (tools: string | null) => (tools ? [`Every tool we've built, in the same sample club: ${tools}`] : []);
 
-const INTRO: Record<'A' | 'B' | 'C', Letter> = {
+/** Variants that may only go to a racquet director or head pro at their own address. */
+export const DIRECTOR_ONLY: readonly Variant[] = ['C', 'M', 'P'];
+
+/** Variants whose letter may say "free". Everything else is held to the 9/24 rule. */
+export const FREE_ALLOWED: readonly Variant[] = ['M'];
+
+/** The public landing page each split-test letter links, ?r= carried for the scoreboard. */
+const LANDING: Partial<Record<Variant, string>> = { M: '/mixermode', P: '/pulse' };
+
+const INTRO: Record<'A' | 'B' | 'C' | 'M' | 'P', Letter> = {
+  M: {
+    subject: (club) => `A mixer idea for ${club}`,
+    body: ({ first, link }) =>
+      [
+        `Hi ${first},`,
+        `We built a little tool called MixerMode that turns a list of players into a whole mixer. Partners rotate, sit-outs get shared around, and you can keep score as you go.`,
+        `It's free and you can run one right now. No account, no sign-up:`,
+        link,
+        `If you try it at your next social, we'd love to hear how it went.`,
+      ].join('\n\n'),
+  },
+  P: {
+    subject: () => `What other directors make (and charge)`,
+    body: ({ first, link }) =>
+      [
+        `Hi ${first},`,
+        `Every director we know wonders what everyone else makes and what they charge for a private. So we built something to find out.`,
+        `It's called Director Pulse. You add your numbers anonymously, no name and no club, and you see how they stack up: pay, private rates, what pros keep, clinic and junior pricing.`,
+        `Here it is:`,
+        link,
+        `The more of us who share, the better it gets for everyone.`,
+      ].join('\n\n'),
+  },
   A: {
     subject: (club) => `Something we built for clubs like ${club}`,
     body: ({ first, club, link, tools }) =>
@@ -263,6 +305,12 @@ function sampleLink(links: Links, next: string, ref?: string | null, as: 'member
 
 /** The link a variant sends. B and T9 fall back to the tour if the mixer is not set. */
 export function linkFor(variant: Variant, links: Links, ref?: string | null): string | null {
+  const landing = LANDING[variant];
+  if (landing) {
+    const u = new URL(APP_URL + landing);
+    if (ref) u.searchParams.set('r', ref);
+    return u.toString();
+  }
   if (variant === 'C') return sampleLink(links, '/benchmarks/score', ref);
   const page = TOOL_PAGE[variant];
   if (page) return sampleLink(links, page.next, ref, page.as);
@@ -300,8 +348,9 @@ export function renderLetter(
   const link = linkFor(variant, links, ref);
   if (!link) return null;
   const first = firstNameOf(facts.fullName) || facts.fullName;
-  const letter = kind === 'followup' ? FOLLOW_UP : (ONE_TOOL[variant] ?? INTRO[variant as 'A' | 'B' | 'C']);
-  const tools = kind === 'intro' ? toolsLinkFor(links, ref) : null;
+  const letter = kind === 'followup' ? FOLLOW_UP : (ONE_TOOL[variant] ?? INTRO[variant as 'A' | 'B' | 'C' | 'M' | 'P']);
+  // M and P are one page, one ask: the landing page carries its own "other tools" line.
+  const tools = kind === 'intro' && !LANDING[variant] ? toolsLinkFor(links, ref) : null;
   return { subject: letter.subject(facts.club), body: letter.body({ first, club: facts.club, link, tools }) };
 }
 
@@ -317,12 +366,18 @@ export function nextVariant(sentSoFar: Partial<Record<Variant, number>>, allowed
 
 /**
  * The letters in rotation for one contact: every letter not paused on
- * /crm/autopilot, C only when it is switched on AND this contact may get it.
- * Everything paused falls back to A so a planned slot still has a letter.
+ * /crm/autopilot; C only when it is switched on AND this contact may get it;
+ * M and P only for a contact who may get C.
+ *
+ * Everything paused falls back to A so a planned slot still has a letter. But
+ * when letters ARE running and this contact just can't get any of them (the
+ * M/P test with a club info@ inbox), the answer is none: the planner skips the
+ * contact rather than slipping a paused letter into the test.
  */
 export function allowedVariants(opts: { paused: readonly string[]; cOn: boolean; cOk: boolean }): Variant[] {
-  const out = VARIANTS.filter((v) => !opts.paused.includes(v) && (v !== 'C' || (opts.cOn && opts.cOk)));
-  return out.length ? out : ['A'];
+  const running = VARIANTS.filter((v) => !opts.paused.includes(v) && (v !== 'C' || opts.cOn));
+  if (!running.length) return ['A'];
+  return running.filter((v) => !DIRECTOR_ONLY.includes(v) || opts.cOk);
 }
 
 export function isVariant(v: unknown): v is Variant {

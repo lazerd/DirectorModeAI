@@ -209,6 +209,8 @@ export async function planAutopilot(
           cOn: ap.variant_c,
           cOk: canBeSentC({ title: p.contact.title, email: p.contact.email }, { knownDirector: lane === 'dca' }),
         });
+        // None allowed: a test is running that this contact can't be in.
+        if (!allowed.length) continue;
         const variant = nextVariant(balance[lane], allowed);
         balance[lane][variant] = (balance[lane][variant] ?? 0) + 1;
         const ref = newRef();
@@ -261,12 +263,17 @@ export async function planAutopilot(
 
 // ------------------------------------------------------------ scoreboard
 
+/** landing_visits events that count as actually using the product. */
+const TRIED_EVENTS = ['first_round', 'submitted'];
+
 export interface ScoreRow {
   lane: Lane | 'all';
   variant: Variant;
   sent: number;
   /** Clubs whose letter link was opened (demo_visits by ref). Link scanners can inflate this. */
   clicked: number;
+  /** M/P only: ran a mixer round, or shared numbers on Pulse (landing_visits). */
+  tried: number;
   replied: number;
 }
 
@@ -283,7 +290,17 @@ export async function scoreboard(db: Db): Promise<ScoreRow[]> {
     db.from('demo_visits').select('ref').not('ref', 'is', null).limit(10000),
     db.from('crm_outreach_queue').select('org_id, ref').not('ref', 'is', null).limit(10000),
   ]);
-  const clickedRefs = new Set(((visits as { ref: string }[] | null) ?? []).map((v) => v.ref));
+  // The M/P letters land on public pages, which log to landing_visits instead.
+  const { data: landed } = await db.from('landing_visits').select('ref, event').not('ref', 'is', null).limit(10000);
+  const triedRefs = new Set(
+    ((landed as { ref: string; event: string }[] | null) ?? []).filter((v) => TRIED_EVENTS.includes(v.event)).map((v) => v.ref),
+  );
+  const triedOrgs = new Set(
+    ((refs as { org_id: string; ref: string }[] | null) ?? []).filter((q) => triedRefs.has(q.ref)).map((q) => q.org_id),
+  );
+  const clickedRefs = new Set(
+    [...((visits as { ref: string }[] | null) ?? []), ...((landed as { ref: string }[] | null) ?? [])].map((v) => v.ref),
+  );
   const clickedOrgs = new Set(
     ((refs as { org_id: string; ref: string }[] | null) ?? []).filter((q) => clickedRefs.has(q.ref)).map((q) => q.org_id),
   );
@@ -293,11 +310,12 @@ export async function scoreboard(db: Db): Promise<ScoreRow[]> {
     if (!cur || r.received_at < cur) firstReply.set(r.org_id, r.received_at);
   }
   const rows = new Map<string, ScoreRow>();
-  const bump = (lane: Lane | 'all', variant: Variant, replied: boolean, clicked: boolean) => {
+  const bump = (lane: Lane | 'all', variant: Variant, replied: boolean, clicked: boolean, tried: boolean) => {
     const k = `${lane}:${variant}`;
-    const row = rows.get(k) ?? { lane, variant, sent: 0, clicked: 0, replied: 0 };
+    const row = rows.get(k) ?? { lane, variant, sent: 0, clicked: 0, tried: 0, replied: 0 };
     row.sent += 1;
     if (clicked) row.clicked += 1;
+    if (tried) row.tried += 1;
     if (replied) row.replied += 1;
     rows.set(k, row);
   };
@@ -305,12 +323,13 @@ export async function scoreboard(db: Db): Promise<ScoreRow[]> {
     const r = firstReply.get(s.org_id);
     const replied = !!r && r >= s.sent_at;
     const clicked = clickedOrgs.has(s.org_id);
-    bump(s.lane ?? 'dca', s.variant, replied, clicked);
-    bump('all', s.variant, replied, clicked);
+    const tried = triedOrgs.has(s.org_id);
+    bump(s.lane ?? 'dca', s.variant, replied, clicked, tried);
+    bump('all', s.variant, replied, clicked, tried);
   }
   const out: ScoreRow[] = [];
   for (const lane of ['all', ...LANES] as const) {
-    for (const v of VARIANTS) out.push(rows.get(`${lane}:${v}`) ?? { lane, variant: v, sent: 0, clicked: 0, replied: 0 });
+    for (const v of VARIANTS) out.push(rows.get(`${lane}:${v}`) ?? { lane, variant: v, sent: 0, clicked: 0, tried: 0, replied: 0 });
   }
   return out;
 }

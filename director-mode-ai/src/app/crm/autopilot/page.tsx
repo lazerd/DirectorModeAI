@@ -46,7 +46,11 @@ export default async function AutopilotPage() {
   ]);
   const orgBy = new Map(((orgs as Org[] | null) ?? []).map((o) => [o.id, o]));
   const contactBy = new Map(((contacts as Contact[] | null) ?? []).map((c) => [c.id, c]));
-  const clicked = new Set(((visits as { ref: string }[] | null) ?? []).map((v) => v.ref));
+  // M/P letters land on public pages that log to landing_visits, not demo_visits.
+  const { data: landed } = await db.from('landing_visits').select('ref').not('ref', 'is', null).limit(10000);
+  const clicked = new Set(
+    [...((visits as { ref: string }[] | null) ?? []), ...((landed as { ref: string }[] | null) ?? [])].map((v) => v.ref),
+  );
   const replied = new Set(((inbound as { org_id: string }[] | null) ?? []).map((v) => v.org_id));
 
   const preview = (row: QueueRow) => {
@@ -84,7 +88,7 @@ export default async function AutopilotPage() {
           <h2 className="font-display text-lg text-white">Split test</h2>
           <table className="mt-3 w-full text-sm">
             <thead className="text-left text-white/40">
-              <tr><th className="py-1 font-medium">Letter</th><th className="font-medium">Sent</th><th className="font-medium">Opened link</th><th className="font-medium">Replied</th><th className="font-medium">In rotation</th></tr>
+              <tr><th className="py-1 font-medium">Letter</th><th className="font-medium">Sent</th><th className="font-medium">Opened link</th><th className="font-medium">Tried it</th><th className="font-medium">Replied</th><th className="font-medium">In rotation</th></tr>
             </thead>
             <tbody>
               {all.map((s) => (
@@ -92,6 +96,7 @@ export default async function AutopilotPage() {
                   <td className="py-2 text-white/80">{VARIANT_LABEL[s.variant]}</td>
                   <td>{s.sent}</td>
                   <td>{s.clicked}</td>
+                  <td>{s.tried || ''}</td>
                   <td>{s.replied}{s.sent ? ` (${Math.round((100 * s.replied) / s.sent)}%)` : ''}</td>
                   <td>{s.variant === 'C' && !ap.variant_c ? <span className="text-white/35">off</span> : <LetterToggle variant={s.variant} on={!ap.paused_variants.includes(s.variant)} />}</td>
                 </tr>
