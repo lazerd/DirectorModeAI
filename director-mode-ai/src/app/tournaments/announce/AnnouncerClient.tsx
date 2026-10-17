@@ -22,9 +22,22 @@ import {
   announcementText, type NormalisedMatch,
 } from '@/lib/ondeck/servetennis';
 import { computeWaitBoard, bucketOf, DEFAULT_LENGTHS, type Observation, type MatchLengths } from '@/lib/ondeck/board';
-import { pickVoice, speak as speakShared, stopSpeaking as stopShared } from '@/lib/ondeck/speech';
+import { pickVoice, speak as speakShared, stopSpeaking as stopShared, reportToDeskText } from '@/lib/ondeck/speech';
+import { spokenName } from '@/lib/ondeck/topdog';
 
-const TOURNAMENT_ID = '55882F65-8F6E-4791-8847-4BEB310376BE';
+/**
+ * The event this page is pointed at. Taken from the Tournament Desk URL
+ * (…/tournament/<id>/schedule), so a new weekend is a paste, not a deploy.
+ * Remembered per browser; ?t= wins when it is there.
+ */
+const DEFAULT_TOURNAMENT_ID = '0078A88E-A9CB-4092-83E9-BD8DE4117227';
+const TID_KEY = 'ondeck.tournamentId';
+
+/** Pull the tournament id out of anything Darrin is likely to paste. */
+export function tournamentIdFrom(text: string): string | null {
+  const m = text.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+  return m ? m[0].toUpperCase() : null;
+}
 /**
  * How often we read Serve Tennis. This is what decides how quickly the PA
  * calls a match after a court is assigned, so it stays short — a minute of
@@ -40,10 +53,15 @@ const POLL_MS = 20_000;
  */
 const PUBLISH_HEARTBEAT_MS = 90_000;
 const TOKEN_KEY = 'ondeck.token';
+/** Off by design: the PA speaks when Darrin presses a button, never on its own. */
+const AUTO_KEY = 'ondeck.autoCall';
 const OBS_KEY = 'ondeck.observations';
-/** Slug the public wait board is published under. */
-const BOARD_SLUG = 'sh-level5-aug-2026';
-const BOARD_TITLE = 'Sleepy Hollow Level 5 — Order of Play';
+/**
+ * The public wait board gets a slug of its own tournament, so two events can
+ * never publish over each other's board.
+ */
+const boardSlug = (tournamentId: string) => `st-${tournamentId.slice(0, 8).toLowerCase()}`;
+const BOARD_TITLE = 'Order of play';
 const VOICE_KEY = 'ondeck.voice';
 const SETTINGS_KEY = 'ondeck.settings';
 
@@ -51,6 +69,14 @@ interface LogLine { at: string; text: string; kind: 'call' | 'info' | 'error' }
 
 export default function AnnouncerClient() {
   const [token, setToken] = useState<string | null>(null);
+  const [tournamentId, setTournamentId] = useState<string>(DEFAULT_TOURNAMENT_ID);
+  const [idInput, setIdInput] = useState('');
+  /**
+   * Announce a match the moment Serve Tennis gets a court? Off: Darrin calls
+   * players to the desk and hands them the court there — a court read out
+   * over the PA on its own confuses more than it helps.
+   */
+  const [autoCall, setAutoCall] = useState(false);
   const [armed, setArmed] = useState(false);           // audio unlocked by a user gesture
   const [live, setLive] = useState<NormalisedMatch[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +95,7 @@ export default function AnnouncerClient() {
   const announced = useRef<Set<string>>(new Set());
   // Read inside the poll loop, which must not re-subscribe when arming flips.
   const armedRef = useRef(false);
+  const autoCallRef = useRef(false);
   // Read inside the poll loop, which must not re-subscribe on every keystroke.
   const settingsRef = useRef({ courtCount: 9, lengths: DEFAULT_LENGTHS });
   const prevLive = useRef<NormalisedMatch[]>([]);
@@ -80,6 +107,33 @@ export default function AnnouncerClient() {
     const at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setLog((l) => [{ at, text, kind }, ...l].slice(0, 60));
   }, []);
+
+  // --- which tournament ---------------------------------------------------
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hash = new URLSearchParams(window.location.hash.slice(1));
+    const fromUrl = tournamentIdFrom(params.get('t') ?? hash.get('t') ?? '');
+    const saved = localStorage.getItem(TID_KEY);
+    const id = fromUrl ?? saved ?? DEFAULT_TOURNAMENT_ID;
+    setTournamentId(id);
+    try { localStorage.setItem(TID_KEY, id); } catch { /* private mode */ }
+    try { setAutoCall(localStorage.getItem(AUTO_KEY) === '1'); } catch { /* */ }
+  }, []);
+
+  useEffect(() => { autoCallRef.current = autoCall; }, [autoCall]);
+
+  const useTournament = useCallback((text: string) => {
+    const id = tournamentIdFrom(text);
+    if (!id) { setError('That link has no tournament id in it.'); return; }
+    try { localStorage.setItem(TID_KEY, id); } catch { /* */ }
+    announced.current = new Set();
+    prevLive.current = [];
+    setLive([]);
+    setTournamentId(id);
+    setIdInput('');
+    setError(null);
+    addLog(`Reading tournament ${id.slice(0, 8)}…`);
+  }, [addLog]);
 
   // --- token: from the bookmarklet's #token=..., else whatever we stored --
   useEffect(() => {
@@ -191,19 +245,19 @@ export default function AnnouncerClient() {
       const res = await fetch('/api/ondeck/snapshot', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ slug: BOARD_SLUG, title: BOARD_TITLE, payload: board }),
+        body: JSON.stringify({ slug: boardSlug(tournamentId), title: BOARD_TITLE, payload: board }),
       });
       setPublishState(res.status === 401 ? 'signed_out' : res.ok ? 'ok' : 'failed');
     } catch {
       setPublishState('failed');
     }
-  }, []);
+  }, [tournamentId]);
 
   // --- polling -----------------------------------------------------------
   const poll = useCallback(async (isFirst: boolean) => {
     if (!token) return;
     try {
-      const feed = await fetchFeed(TOURNAMENT_ID, token);
+      const feed = await fetchFeed(tournamentId, token);
       const { live: nextLive } = normaliseFeed(feed);
       setError(null); setTokenExpired(false); setLastPoll(new Date());
 
@@ -232,7 +286,8 @@ export default function AnnouncerClient() {
       }
       for (const m of toAnnounce) {
         addLog(`Court ${m.court}: ${m.playerA} vs ${m.playerB}`, 'call');
-        if (armedRef.current) void speak(announcementText(m));
+        // Logged always, spoken only if he has asked for automatic calls.
+        if (armedRef.current && autoCallRef.current) void speak(announcementText(m));
       }
 
       prevLive.current = nextLive;
@@ -247,19 +302,31 @@ export default function AnnouncerClient() {
         setError(err.message);
       }
     }
-  }, [token, addLog, speak, publishBoard]);
+  }, [token, tournamentId, addLog, speak, publishBoard]);
 
   // Polling starts on the token alone. "Start announcing" only unlocks
   // audio — gating the public board on it meant a page left on the arm
   // screen published nothing at all, which is exactly what happened on
   // tournament morning.
   useEffect(() => {
-    if (!token) return;
+    if (!token || !tournamentId) return;
     let cancelled = false;
     void poll(true);
     const t = setInterval(() => { if (!cancelled) void poll(false); }, POLL_MS);
     return () => { cancelled = true; clearInterval(t); };
-  }, [token, poll]);
+  }, [token, tournamentId, poll]);
+
+  /** "Report to the desk" for one match, read twice. Names without initials. */
+  const callToDesk = useCallback((m: NormalisedMatch) => {
+    const text = reportToDeskText(spokenName(m.playerA), spokenName(m.playerB));
+    addLog(text, 'call');
+    void speak(text);
+  }, [addLog, speak]);
+
+  const callToCourt = useCallback((m: NormalisedMatch) => {
+    addLog(`Court ${m.court}: ${m.playerA} v ${m.playerB}`, 'call');
+    void speak(announcementText(m));
+  }, [addLog, speak]);
 
   // --- derived view ------------------------------------------------------
   const onCourt = live
@@ -373,6 +440,33 @@ export default function AnnouncerClient() {
           Test the PA
         </button>
 
+        <label style={S.label} title="Off: nothing is said unless you press a call button">
+          <input
+            type="checkbox"
+            checked={autoCall}
+            onChange={(e) => {
+              setAutoCall(e.target.checked);
+              try { localStorage.setItem(AUTO_KEY, e.target.checked ? '1' : '0'); } catch { /* */ }
+            }}
+          />{' '}
+          Announce courts automatically
+        </label>
+
+        <label style={S.label}>
+          Tournament{' '}
+          <input
+            style={S.textInput}
+            placeholder="Paste the Tournament Desk link"
+            value={idInput}
+            onChange={(e) => setIdInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') useTournament(idInput); }}
+          />
+        </label>
+        <button style={S.button} onClick={() => useTournament(idInput)} disabled={!idInput.trim()}>
+          Use this one
+        </button>
+        <span style={S.muted}>Reading {tournamentId.slice(0, 8)}…</span>
+
         <button
           style={speaking ? S.stopButtonActive : S.stopButton}
           onClick={stopSpeaking}
@@ -380,7 +474,7 @@ export default function AnnouncerClient() {
           ■ Stop
         </button>
 
-        <a href={`/tournaments/wait/${BOARD_SLUG}`} target="_blank" rel="noreferrer" style={S.button}>
+        <a href={`/tournaments/wait/${boardSlug(tournamentId)}`} target="_blank" rel="noreferrer" style={S.button}>
           Open public board
         </a>
 
@@ -448,8 +542,11 @@ export default function AnnouncerClient() {
                 <div style={S.players}>{m.playerA} <span style={S.vs}>v</span> {m.playerB}</div>
                 <div style={S.meta}>{m.event} · {m.round} · started {m.startTime ?? '—'}</div>
               </div>
-              <button style={S.smallButton} onClick={() => void speak(announcementText(m))} title="Announce again">
+              <button style={S.smallButton} onClick={() => callToCourt(m)} title={`Call them to court ${m.court}`}>
                 🔊
+              </button>
+              <button style={S.smallButton} onClick={() => callToDesk(m)} title="Call them to the tournament desk">
+                📣
               </button>
             </div>
           ))}
@@ -464,6 +561,14 @@ export default function AnnouncerClient() {
                 <div style={S.players}>{m.playerA} <span style={S.vs}>v</span> {m.playerB}</div>
                 <div style={S.meta}>{m.event} · {m.round} · sched {m.scheduledTime ?? '—'}</div>
               </div>
+              {m.court && (
+                <button style={S.smallButton} onClick={() => callToCourt(m)} title={`Call them to court ${m.court}`}>
+                  🔊
+                </button>
+              )}
+              <button style={S.smallButton} onClick={() => callToDesk(m)} title="Call them to the tournament desk">
+                📣
+              </button>
             </div>
           ))}
           {upcoming.length > 14 && <p style={S.muted}>+{upcoming.length - 14} more</p>}
@@ -516,6 +621,7 @@ const S: Record<string, React.CSSProperties> = {
   logLine: { fontSize: 14, padding: '5px 0', borderBottom: '1px solid #f3f4f6' },
   logTime: { color: '#9ca3af', marginRight: 8, fontVariantNumeric: 'tabular-nums' },
   // Colour set inline: globals.css otherwise renders inputs white-on-white.
+  textInput: { padding: '6px 8px', borderRadius: 6, border: '1px solid #d1d5db', width: 230, color: '#111827', background: '#fff' },
   numInput: { width: 62, padding: '6px 8px', borderRadius: 6, border: '1px solid #d1d5db', fontSize: 14, color: '#111827', background: '#fff', fontWeight: 700 },
   warnPill: { fontSize: 13, background: '#fef3c7', color: '#92400e', padding: '5px 10px', borderRadius: 999, fontWeight: 600 },
   kbd: { background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: 4, padding: '2px 7px', fontFamily: 'ui-monospace, monospace', fontSize: 14 },
