@@ -1,14 +1,15 @@
 /**
  * POST /api/billing/portal
  *
- * Returns the LemonSqueezy customer portal URL for the club owner's
- * subscription (update card / cancel). Replaces /api/stripe/portal.
+ * Returns the LemonSqueezy customer portal URL for the club owner's card:
+ * their "ClubMode usage" subscription first, else a legacy Pro subscription.
  */
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { resolveBillingUserId, } from '@/lib/billing';
 import { lsConfigured, getSubscription } from '@/lib/lemonsqueezy';
 import { blockIfDemo } from '@/lib/demo/server';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,8 +26,14 @@ export async function POST() {
     const demo = await blockIfDemo(user.id);
     if (demo) return demo;
 
-    // The subscription lives on the club owner's profile.
+    // The card lives on the club owner's usage subscription (the only thing
+    // ClubMode bills now); a legacy Pro subscription on the profile is the fallback.
     const ownerId = await resolveBillingUserId(user.id);
+    const { data: usageSub } = await getSupabaseAdmin()
+      .from('ai_payg_subscriptions')
+      .select('ls_subscription_id')
+      .eq('user_id', ownerId)
+      .maybeSingle();
     const service = await createServiceClient();
     const { data: profile } = await service
       .from('profiles')
@@ -34,7 +41,7 @@ export async function POST() {
       .eq('id', ownerId)
       .single();
 
-    const subId = profile?.stripe_subscription_id;
+    const subId = (usageSub as { ls_subscription_id: string | null } | null)?.ls_subscription_id || profile?.stripe_subscription_id;
     if (!subId) {
       return NextResponse.json({ error: 'no_subscription' }, { status: 400 });
     }

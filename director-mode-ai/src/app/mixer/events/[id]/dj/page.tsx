@@ -2,10 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { eventCanUsePremium } from '@/lib/billing';
-import UpgradeButton from '@/components/billing/UpgradeButton';
 import DJConsole from '@/components/mixer/event/DJConsole';
-import DayPassButton from '@/components/billing/DayPassButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,39 +57,6 @@ export default async function DJConsolePage({ params }: { params: Promise<{ id: 
       </div>
     );
   }
-
-  const allowed = await eventCanUsePremium(user.id, eventId, 'dj_console');
-  if (!allowed) {
-    return (
-      <div className="px-6 py-12 max-w-2xl mx-auto text-white">
-        <Link
-          href={`/mixer/events/${eventId}`}
-          className="inline-flex items-center gap-2 text-white/60 hover:text-white text-sm mb-6"
-        >
-          <ArrowLeft size={16} /> Back to event
-        </Link>
-        <div className="rounded-2xl border border-yellow-300/30 bg-yellow-300/5 p-8">
-          <div className="flex items-center gap-2 text-yellow-300 text-sm font-medium uppercase tracking-wider mb-2">
-            <Sparkles size={14} />
-            Premium feature
-          </div>
-          <h1 className="font-display text-3xl mb-2">DJ Console</h1>
-          <p className="text-white/70 mb-6">
-            Walk-on songs and a hype announcer voice for every player. Like Ballpark DJ — but for tennis. DJ Console isn&apos;t included on your club&apos;s current plan.
-          </p>
-          <div className="flex flex-col sm:flex-row flex-wrap gap-3">
-            <UpgradeButton />
-            <DayPassButton eventId={eventId} />
-          </div>
-          <div className="mt-3">
-            <Link href="/pricing" className="text-xs text-white/40 hover:text-white/70">Compare plans</Link>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-
 
   const isTournament = TOURNAMENT_FORMATS.has(event.match_format ?? '');
 

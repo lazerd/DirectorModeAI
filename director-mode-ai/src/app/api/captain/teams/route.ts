@@ -1,7 +1,7 @@
 /**
  * Teams.
  *   GET  — teams this user captains or co-captains
- *   POST — create a team (enforces the 3-owned-team subscription limit)
+ *   POST — create a team (enforces the CAPTAIN_MAX_TEAMS owned-team limit)
  */
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
   if (owned >= MAX_TEAMS_PER_CAPTAIN) {
     return NextResponse.json(
       {
-        error: `Your subscription covers ${MAX_TEAMS_PER_CAPTAIN} teams. Archive one to add another.`,
+        error: `You can run up to ${MAX_TEAMS_PER_CAPTAIN} teams of your own. Archive one to add another.`,
       },
       { status: 400 },
     );

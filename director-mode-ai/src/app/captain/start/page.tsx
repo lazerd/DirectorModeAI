@@ -1,8 +1,6 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
-import { getCaptainAccess, TRIAL_DAYS } from '@/lib/captain/access';
-import { CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD } from '@/config/pricing';
-import StartTrialButton from '@/components/captain/StartTrialButton';
+import { EMAIL_PRICE_CENTS, TEXT_PRICE_CENTS } from '@/config/pricing';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,21 +12,14 @@ export const dynamic = 'force-dynamic';
  * page has one job and one button, and it says what the thing costs before
  * asking for anything.
  *
- * It is deliberately OUTSIDE /captain/(app): that layout gates on a
- * subscription and would bounce this exact visitor to the paywall, which is the
- * one thing the link must never do.
+ * It is deliberately OUTSIDE /captain/(app): that layout requires a sign-in,
+ * and this visitor should read the page before being asked for anything.
  */
-export default async function StartTrial({
-  searchParams,
-}: {
-  searchParams: { ref?: string; from?: string };
-}) {
+export default async function StartCaptainMode() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-
-  const source = (searchParams.ref || searchParams.from || '').slice(0, 120);
 
   /*
    * A signed-out visitor sees the page, NOT the login form.
@@ -37,11 +28,9 @@ export default async function StartTrial({
    * never heard of ClubMode. Bouncing them to /login before they have read a
    * word asks them to create an account for something they cannot yet see —
    * which is where almost all of them would stop. They sign in when they press
-   * the button, and land back here.
+   * the button, and land in their teams.
    */
-  const access = user
-    ? await getCaptainAccess(user.id)
-    : { active: false, onTrial: false, trialExpired: false, trialDaysLeft: 0 };
+  const startHref = user ? '/captain' : `/login?redirect=${encodeURIComponent('/captain')}`;
 
   return (
     <div className="min-h-screen bg-[#001820] px-6 py-14">
@@ -53,33 +42,14 @@ export default async function StartTrial({
           Captaining a team, without the group text
         </h1>
 
-        {access.active ? (
+        {user ? (
           <div className="mt-8 rounded-2xl border border-[#D3FB52]/30 bg-[#D3FB52]/[0.07] p-6">
-            <div className="text-[#D3FB52] font-semibold text-lg">
-              {access.onTrial
-                ? `Your trial is running — ${access.trialDaysLeft} ${
-                    access.trialDaysLeft === 1 ? 'day' : 'days'
-                  } left`
-                : "You're already set up"}
-            </div>
+            <div className="text-[#D3FB52] font-semibold text-lg">You&rsquo;re all set — it&rsquo;s free</div>
             <Link
-              href="/captain"
+              href={startHref}
               className="inline-block mt-4 px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold"
             >
               Go to my teams
-            </Link>
-          </div>
-        ) : access.trialExpired ? (
-          <div className="mt-8 rounded-2xl border border-white/[0.08] bg-[#002838] p-6">
-            <div className="text-white font-semibold text-lg">Your free trial has ended</div>
-            <p className="text-white/55 mt-1 text-sm">
-              Your teams, rosters and schedules are all still here.
-            </p>
-            <Link
-              href="/captain/subscribe"
-              className="inline-block mt-4 px-5 py-2.5 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold"
-            >
-              See the plans
             </Link>
           </div>
         ) : (
@@ -99,12 +69,18 @@ export default async function StartTrial({
             </ul>
 
             <div className="mt-8 rounded-2xl border border-white/[0.08] bg-[#002838] p-6">
-              <StartTrialButton source={source} signedIn={!!user} />
+              <Link
+                href={startHref}
+                className="inline-block w-full sm:w-auto text-center px-6 py-3 rounded-xl bg-[#D3FB52] text-[#001820] font-semibold hover:brightness-95 transition"
+              >
+                Start free
+              </Link>
               {/* Said before the click, not after. A captain who finds out the
                   price on the far side of a signup does not come back. */}
               <p className="text-white/45 text-[13px] mt-3">
-                {TRIAL_DAYS} days free, no card. After that it&rsquo;s ${CAPTAIN_SOLO_PRICE_USD} a
-                month, or ${CAPTAIN_CLUB_PRICE_USD} if your club is on ClubMode. Cancel any time.
+                CaptainMode is free. Your club pays only for the messages you send —{' '}
+                {EMAIL_PRICE_CENTS}&cent; an email, {TEXT_PRICE_CENTS}&cent; a text — or you do, on
+                your own card, if you&rsquo;re not with a club.
               </p>
             </div>
           </>

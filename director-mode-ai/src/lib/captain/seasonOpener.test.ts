@@ -115,8 +115,8 @@ describe('seasonOpenerEmail — the referral line', () => {
     ref: 'opener-abc',
   });
 
-  it('links to the page that actually grants the trial, not to pricing', () => {
-    // A captain who clicks "free for 14 days" and lands on a checkout form is
+  it('links to the free CaptainMode start page, not to pricing', () => {
+    // A captain who clicks "free" and lands on a checkout form is
     // the small betrayal that costs a professional relationship.
     expect(email.html).toContain('/captain/start?ref=opener-abc');
     expect(email.html).not.toContain('/captain/subscribe');
@@ -124,7 +124,8 @@ describe('seasonOpenerEmail — the referral line', () => {
   });
 
   it('promises exactly what the landing page delivers', () => {
-    expect(email.html).toContain('Free for 14 days, no card.');
+    expect(email.html).toContain('Free for captains.');
+    expect(email.html).not.toMatch(/14 days|trial/i);
   });
 
   it('keeps the pitch to one line, below the captain’s own words', () => {

@@ -30,10 +30,9 @@ export type PriceKey =
   | 'pro_monthly'
   | 'pro_annual'
   | 'day_pass'
-  // CaptainMode — a per-captain subscription, separate from the club's Pro plan.
-  // 'captain_club' is the $10 rate for captains whose club is on ClubMode Pro;
-  // 'captain_solo' is the $20 standalone rate. Which one a captain gets is
-  // resolved server-side (see resolveCaptainRate) — never from the client.
+  // CaptainMode — LEGACY. CaptainMode is free (2026-10-21) and checkout refuses
+  // these keys; they stay so webhooks for subscriptions sold before then
+  // ('captain_club' $10, 'captain_solo' $20) still resolve.
   | 'captain_club'
   | 'captain_solo'
   // Ask Claude pay-as-you-go: a metered $0.01/unit subscription, one unit per
@@ -79,10 +78,7 @@ function buyLinks(): Record<PriceKey, string | null> {
     pro_monthly: process.env.LEMONSQUEEZY_BUY_LINK_PRO_MONTHLY || TEST_BUY_LINK_PRO_MONTHLY,
     pro_annual: process.env.LEMONSQUEEZY_BUY_LINK_PRO_ANNUAL || null,
     day_pass: process.env.LEMONSQUEEZY_BUY_LINK_DAY_PASS || null,
-    // CaptainMode: two products, $10/mo (club on Pro) and $20/mo (standalone).
-    // Deliberately no test fallback — there is no CaptainMode product yet, and
-    // a checkout that silently charges nothing is worse than one that admits
-    // it isn't configured.
+    // CaptainMode: legacy, never sold now (checkout refuses captain keys).
     captain_club: process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_CLUB || null,
     captain_solo: process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_SOLO || null,
     ai_usage: process.env.LEMONSQUEEZY_BUY_LINK_AI_USAGE || null,
@@ -101,18 +97,6 @@ export function lsCheckoutMode(): 'live' | 'test' {
   return process.env.LEMONSQUEEZY_BUY_LINK_PRO_MONTHLY ? 'live' : 'test';
 }
 
-/**
- * Whether CaptainMode can be sold at all. Both rate products need a buy link —
- * until then a captain whose trial ends keeps access (see getCaptainAccess)
- * rather than hitting a checkout that can only fail.
- */
-export function captainCheckoutConfigured(): boolean {
-  return (
-    !!process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_CLUB &&
-    !!process.env.LEMONSQUEEZY_BUY_LINK_CAPTAIN_SOLO
-  );
-}
-
 /** Build a hosted-checkout URL for a plan with the account id attached. */
 export function buildCheckoutUrl(
   priceKey: PriceKey,
@@ -120,7 +104,7 @@ export function buildCheckoutUrl(
     userId: string;
     email?: string | null;
     eventId?: string | null;
-    /** CaptainMode: the club whose Pro status set the rate, stored on the sub */
+    /** Legacy CaptainMode club id, passed through to the webhook. */
     clubId?: string | null;
   }
 ): string | null {

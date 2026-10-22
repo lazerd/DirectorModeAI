@@ -3,7 +3,6 @@ import "./globals.css";
 import AnalyticsTracker from "@/components/shared/AnalyticsTracker";
 import AssistantWidget from "@/components/assistant/AssistantWidget";
 import ClubSidebar from "@/components/shared/ClubSidebar";
-import TrialBanner from "@/components/billing/TrialBanner";
 import SendPaywall from "@/components/billing/SendPaywall";
 import ViewAsBanner from "@/components/shared/ViewAsBanner";
 import DemoBanner from "@/components/demo/DemoBanner";
@@ -59,7 +58,6 @@ export default function RootLayout({
             when nothing is, and never on a club's own public site. */}
         <LiveEventsBar />
         {children}
-        <TrialBanner />
         {/* Add-a-card prompt: renders nothing unless this club's sends are waiting on a card. */}
         <SendPaywall />
         {/* Renders nothing unless this browser is borrowing someone's session. */}

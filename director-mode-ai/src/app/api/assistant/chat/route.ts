@@ -15,12 +15,11 @@ import {
   emptyUsage,
   monthBilledMicro,
   overCap,
-  askClaudeEntitled,
   paygActive,
   recordRequest,
   snapshot,
 } from '@/lib/assistant/meter';
-import { AI_INCLUDED_USD, AI_MONTHLY_CAP_USD, ASK_CLAUDE_PLAN_USD } from '@/config/pricing';
+import { AI_MONTHLY_CAP_USD } from '@/config/pricing';
 import { buildCheckoutUrl } from '@/lib/lemonsqueezy';
 
 export const dynamic = 'force-dynamic';
@@ -82,27 +81,16 @@ async function billingFor(user: { id: string; email?: string | null }) {
     ownerEmail = data?.user?.email ?? null;
   }
   const exempt = isPlatformOwnerEmail(user.email) || isPlatformOwnerEmail(ownerEmail);
-  const entitled = exempt || (await askClaudeEntitled(db, billingUserId));
+  // No plan gates Ask Claude any more: every club can use it once a card is on file.
+  const entitled = true;
   const payg = exempt ? false : await paygActive(db, billingUserId);
   const isOwner = billingUserId === user.id;
-  // Not on the $75 plan: the owner gets an upgrade checkout, staff get told who can.
-  const upgradeUrl =
-    !entitled && isOwner ? buildCheckoutUrl('pro_ai', { userId: billingUserId, email: ownerEmail }) : null;
   // Only the payer can turn pay-as-you-go on; the checkout is attached to them.
   const paygUrl =
     !exempt && !payg && isOwner
       ? buildCheckoutUrl('ai_usage', { userId: billingUserId, email: ownerEmail })
       : null;
-  return { db, billingUserId, ownerEmail, exempt, entitled, payg, isOwner, paygUrl, upgradeUrl };
-}
-
-function upgradeMessage(b: Awaited<ReturnType<typeof billingFor>>): string {
-  if (!b.isOwner) {
-    return `Ask Claude is part of the $${ASK_CLAUDE_PLAN_USD}/month ClubMode plan. Your club owner can upgrade to turn it on.`;
-  }
-  return b.upgradeUrl
-    ? `Ask Claude is part of the $${ASK_CLAUDE_PLAN_USD}/month ClubMode plan: tell it what you need ("set up a Tuesday clinic", "tonight's attendance was…", "block courts 3-6 Saturday") and it does it. $${AI_INCLUDED_USD} of use is included every month.`
-    : `Ask Claude is part of the $${ASK_CLAUDE_PLAN_USD}/month ClubMode plan, which isn't on sale just yet.`;
+  return { db, billingUserId, ownerEmail, exempt, entitled, payg, isOwner, paygUrl };
 }
 
 function pausedMessage(b: Awaited<ReturnType<typeof billingFor>>): string {
@@ -110,11 +98,11 @@ function pausedMessage(b: Awaited<ReturnType<typeof billingFor>>): string {
     return `Ask Claude has reached this month's $${AI_MONTHLY_CAP_USD} limit for your club, so it is paused until the 1st. Everything else in ClubMode still works.`;
   }
   if (!b.isOwner) {
-    return `Your club has used its $${AI_INCLUDED_USD} of Ask Claude for this month. Your club owner can turn on pay-as-you-go from the Ask Claude panel to keep going.`;
+    return `Ask Claude is billed per request, and your club doesn't have a card on file yet. Your club owner can add one from the Ask Claude panel.`;
   }
   return b.paygUrl
-    ? `You've used this month's $${AI_INCLUDED_USD} of included Ask Claude. Turn on pay-as-you-go to keep going: you're only billed for what you use, a few cents a request, and you'll see the meter the whole time.`
-    : `You've used this month's $${AI_INCLUDED_USD} of included Ask Claude. Pay-as-you-go isn't available yet; it resets on the 1st.`;
+    ? `Ask Claude is billed per request: a few cents each, with the meter in front of you the whole time. Add a card to start. It's the same card that covers your club's emails and texts.`
+    : `Ask Claude is billed per request, and card checkout isn't available just yet.`;
 }
 
 /** The meter, for the widget to show before the first message is sent. */
@@ -123,9 +111,6 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ meter: null }, { status: 401 });
   const b = await billingFor(user);
-  if (!b.entitled) {
-    return NextResponse.json({ meter: null, entitled: false, message: upgradeMessage(b), upgradeUrl: b.upgradeUrl });
-  }
   return NextResponse.json({
     meter: snapshot(await monthBilledMicro(b.db, b.billingUserId), b.exempt, undefined, b.payg),
     entitled: true,
@@ -141,12 +126,6 @@ export async function POST(req: Request) {
   if (!ANTHROPIC_KEY) return NextResponse.json({ kind: 'error', message: 'Assistant not configured (missing ANTHROPIC_API_KEY).' }, { status: 503 });
 
   const bill = await billingFor(user);
-  if (!bill.entitled) {
-    return NextResponse.json(
-      { kind: 'upgrade', message: upgradeMessage(bill), upgradeUrl: bill.upgradeUrl },
-      { status: 402 },
-    );
-  }
   const spentBefore = await monthBilledMicro(bill.db, bill.billingUserId);
   if (overCap(spentBefore, bill.exempt, bill.payg)) {
     return NextResponse.json({
@@ -284,7 +263,7 @@ async function meterRequest(
       to: bill.ownerEmail,
       operational: true,
       subject: `Ask Claude: $${meter.overageUsd.toFixed(2)} over your monthly allowance`,
-      html: `<p>${meter.notice}</p><p>So far this month: <b>$${meter.spentUsd.toFixed(2)}</b> of Ask Claude, with $${AI_INCLUDED_USD.toFixed(2)} included in your plan. You'll get another note every $10.</p><p>You can see the meter any time at the bottom of the Ask Claude panel.</p>`,
+      html: `<p>${meter.notice}</p><p>So far this month: <b>$${meter.spentUsd.toFixed(2)}</b> of Ask Claude, billed with your club's monthly usage. You'll get another note every $10.</p><p>You can see the meter any time at the bottom of the Ask Claude panel.</p>`,
     }).catch((e) => console.error('Ask Claude notice email failed:', e));
   }
   return meter;

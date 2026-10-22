@@ -2,9 +2,9 @@
  * The Ask Claude meter — what each assistant request cost, and what the club has
  * spent this month.
  *
- * Pricing is Darrin's (2026-10-09, constants in config/pricing): every club gets
- * AI_INCLUDED_USD a month, anything beyond is billed on top of the plan, a
- * notice goes out at every AI_NOTICE_STEP_USD of overage, and the director sees
+ * Pricing is Darrin's (2026-10-09, updated 2026-10-21; constants in
+ * config/pricing): AI_INCLUDED_USD is now 0, so every request is billed on the
+ * club's usage charge once a card is on file, a notice goes out at every AI_NOTICE_STEP_USD of overage, and the director sees
  * the running total on every answer. The platform owner's own clubs are metered
  * for visibility but never billed.
  *
@@ -218,7 +218,7 @@ export async function recordRequest(
       return {
         ...snap,
         noticeStep: step,
-        notice: `Heads up: Ask Claude is now $${(step * AI_NOTICE_STEP_USD).toFixed(0)} over your $${AI_INCLUDED_USD} monthly allowance. That will be added to this month's bill.`,
+        notice: `Heads up: your club has now spent $${(step * AI_NOTICE_STEP_USD).toFixed(0)} on Ask Claude this month. It's added to this month's usage bill.`,
       };
     }
   }

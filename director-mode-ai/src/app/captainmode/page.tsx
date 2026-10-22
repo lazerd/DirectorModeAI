@@ -5,7 +5,7 @@ import {
   ShieldCheck, CalendarClock, ArrowRight, Trophy, RefreshCw, Sparkles,
 } from 'lucide-react';
 import { APP_HOST } from '@/lib/appUrl';
-import { CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD, CAPTAIN_MAX_TEAMS } from '@/config/pricing';
+import { CAPTAIN_MAX_TEAMS, EMAIL_PRICE_CENTS, TEXT_PRICE_CENTS } from '@/config/pricing';
 import ProductShots from '@/components/captain/ProductShots';
 
 /**
@@ -18,8 +18,8 @@ import ProductShots from '@/components/captain/ProductShots';
  *
  * So the page is written for that person and no one else. It leads with their
  * week rather than our feature list, every claim is something the product
- * actually does (see CAPTAINMODE_SPEC.md), and the pricing is stated plainly
- * because a volunteer paying out of their own pocket will not chase a quote.
+ * actually does (see CAPTAINMODE_SPEC.md), and the price is stated plainly:
+ * CaptainMode is free, and only the messages it sends are metered.
  */
 
 export const metadata: Metadata = {
@@ -255,35 +255,38 @@ export default function CaptainModePage() {
       {/* ============================ PRICING ============================ */}
       <section className="border-t border-white/[0.06] px-5 py-16 sm:px-8 sm:py-20">
         <div className="mx-auto max-w-3xl text-center">
-          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">You pay, not your club</h2>
+          <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">CaptainMode is free</h2>
           <p className="mx-auto mt-3 max-w-lg text-[15px] leading-relaxed text-white/50">
-            Your own card, no committee, no approval. Up to {CAPTAIN_MAX_TEAMS} teams. Co-captains are free.
+            No subscription, no trial, nothing held back. Up to {CAPTAIN_MAX_TEAMS} teams. Co-captains are free.
           </p>
 
           <div className="mt-9 grid gap-4 sm:grid-cols-2">
             <div className="rounded-2xl border border-[#D3FB52]/30 bg-[#D3FB52]/[0.05] p-7 text-left">
               <p className="text-[13px] font-semibold uppercase tracking-widest text-[#D3FB52]">
-                Your club uses ClubMode
+                Emails
               </p>
               <p className="mt-3 text-4xl font-bold">
-                ${CAPTAIN_CLUB_PRICE_USD}<span className="text-base font-normal text-white/40"> / month</span>
+                {EMAIL_PRICE_CENTS}&cent;<span className="text-base font-normal text-white/40"> each</span>
               </p>
               <p className="mt-3 text-[14px] leading-relaxed text-white/55">
-                A little less, because your club already carries the platform.
+                Polls, lineups, reminders — only what you actually send.
               </p>
             </div>
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-7 text-left">
               <p className="text-[13px] font-semibold uppercase tracking-widest text-white/40">
-                Your club doesn&apos;t
+                Texts
               </p>
               <p className="mt-3 text-4xl font-bold">
-                ${CAPTAIN_SOLO_PRICE_USD}<span className="text-base font-normal text-white/40"> / month</span>
+                {TEXT_PRICE_CENTS}&cent;<span className="text-base font-normal text-white/40"> each</span>
               </p>
               <p className="mt-3 text-[14px] leading-relaxed text-white/55">
-                Works exactly the same. Nothing is held back.
+                Sub requests and match-day nudges, when email is too slow.
               </p>
             </div>
           </div>
+          <p className="mx-auto mt-5 max-w-lg text-[13.5px] leading-relaxed text-white/45">
+            Your club pays for the messages you send. Not with a club? You pay on your own card.
+          </p>
 
           <div className="mt-10">
             <Link

@@ -84,7 +84,7 @@ export default function AssistantWidget() {
   const [meter, setMeter] = useState<Meter | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [paygUrl, setPaygUrl] = useState<string | null>(null);
-  // null = not known yet; false = not on the $75 plan, show the upgrade card.
+  // null = not known yet; false = legacy plan gate (never sent now).
   const [entitled, setEntitled] = useState<boolean | null>(null);
   const [upgrade, setUpgrade] = useState<{ message: string; url: string | null } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -243,7 +243,7 @@ export default function AssistantWidget() {
                 rel="noopener noreferrer"
                 className="block rounded-lg bg-yellow-300 text-[#001820] text-sm font-medium text-center px-3 py-2 hover:bg-yellow-200"
               >
-                Turn on pay-as-you-go
+                Add a card to use Ask Claude
               </a>
             )}
             {error && (
@@ -288,25 +288,20 @@ export default function AssistantWidget() {
  */
 function MeterBar({ meter }: { meter: Meter | null }) {
   if (!meter) {
-    return <p className="mt-1.5 text-[10px] text-white/30 text-center">Ask Claude is metered: $5 a month included.</p>;
+    return <p className="mt-1.5 text-[10px] text-white/30 text-center">Ask Claude is metered: a few cents a request, billed monthly.</p>;
   }
-  const pct = Math.min(100, (meter.spentUsd / meter.includedUsd) * 100);
-  const over = meter.overageUsd > 0;
+  // The bar fills toward the monthly safety cap; there is no included allowance.
+  const pct = meter.capUsd > 0 ? Math.min(100, (meter.spentUsd / meter.capUsd) * 100) : 0;
   return (
     <div className="mt-2 px-0.5">
       <div className="h-1 rounded-full bg-white/10 overflow-hidden">
-        <div
-          className={`h-full ${over ? 'bg-orange-400' : 'bg-yellow-300'}`}
-          style={{ width: `${over ? 100 : pct}%` }}
-        />
+        <div className="h-full bg-yellow-300" style={{ width: `${pct}%` }} />
       </div>
       <div className="mt-1 flex items-center justify-between text-[10px] text-white/45">
         <span>
           {meter.exempt
             ? `This month ${money(meter.spentUsd)} · your club is not billed`
-            : over
-              ? `This month ${money(meter.spentUsd)} · ${money(meter.overageUsd)} over $${meter.includedUsd} included, billed with your plan`
-              : `This month ${money(meter.spentUsd)} of $${meter.includedUsd} included`}
+            : `This month ${money(meter.spentUsd)} · billed with your club's usage`}
         </span>
         {meter.thisRequestUsd !== undefined && <span>last answer {money(meter.thisRequestUsd)}</span>}
       </div>

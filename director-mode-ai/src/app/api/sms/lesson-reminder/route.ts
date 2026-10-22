@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
-    // Through hasFeature so FOUNDING_MODE applies, like every other gate.
+    // hasFeature is always true now (ClubMode is free); texts are metered in sendSms.
     if (!(await hasFeature(user.id, 'sms'))) {
       return NextResponse.json(
         { error: 'sms_locked', message: 'SMS lesson reminders require Pro.', upgradeUrl: '/pricing' },

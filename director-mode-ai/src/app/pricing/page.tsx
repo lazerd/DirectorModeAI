@@ -4,35 +4,99 @@ import Link from 'next/link';
 import {
   Sparkles,
   ArrowRight,
-  MessageSquare,
   Check,
   Globe,
+  Mail,
+  MessageSquare,
+  LayoutGrid,
 } from 'lucide-react';
 import {
-  PRO_PRICE_USD, FOUNDING_PRICE_USD, FOUNDING_LOCK_MONTHS, RATE_CHANGE_NOTICE_DAYS,
-  CAPTAIN_CLUB_PRICE_USD, CAPTAIN_SOLO_PRICE_USD, CAPTAIN_MAX_TEAMS,
-  SITE_SERVICE_PRICE_USD, SITE_SERVICE_LIST_USD, SITE_SERVICE_MIN_MONTHS,
+  EMAIL_PRICE_CENTS,
+  TEXT_PRICE_CENTS,
+  AI_MARKUP,
+  AI_NOTICE_STEP_USD,
+  AI_MONTHLY_CAP_USD,
+  RATE_CHANGE_NOTICE_DAYS,
+  SITE_SERVICE_PRICE_USD,
+  SITE_SERVICE_MIN_MONTHS,
 } from '@/config/pricing';
 import { PRODUCT_COUNT } from '@/config/nav';
 
 /*
- * One founding card, not a Free/Pro pair. Payments can't be taken yet
- * (FOUNDING_MODE), so the old layout advertised a "14-day Pro trial" that no
- * code grants, email caps the app never enforces, a text-spend cap that was
- * never built, and card entry fees through Square that only work for one club.
- * Every line below is something a new club gets today.
+ * ClubMode is free (Darrin, 2026-10-21). No plans, tiers, trials or day passes.
+ * A club pays only for what it sends, billed monthly on one metered charge.
+ * Every number on this page comes from config/pricing so the page and the
+ * invoice can't drift apart.
  */
-const FOUNDING_FEATURES = [
+
+const AI_MARKUP_PCT = Math.round((AI_MARKUP - 1) * 100);
+
+const PLATFORM_FEATURES = [
   `All ${PRODUCT_COUNT} ClubMode tools — nothing held back`,
   'Unlimited events, round robins, leagues & JTT',
-  'Live event screen — court assignments, scores & standings on any phone',
-  'CourtSheet, including the AI command bar',
-  'LessonMode booking and CoachMode AI lesson recaps',
-  'StringingMode job tracking and AI string recommendations',
-  'DJ Console on every event',
+  'CourtSheet, LessonMode, StringingMode, DJ Console',
   'PlayerVault roster CRM with CSV import',
-  'Staff logins for your whole team',
-  'Email included',
+  'Unlimited staff logins',
+  'Members are always free',
+  'CaptainMode free for every team captain',
+];
+
+const FAQ: { q: string; a: React.ReactNode }[] = [
+  {
+    q: 'Why usage pricing instead of a plan?',
+    a: (
+      <>
+        Because a club&apos;s busy season and quiet season shouldn&apos;t cost the same. You get
+        every tool for free, and the only thing that costs us money to deliver — sending emails,
+        texts and AI requests — is what you pay for. A quiet month costs almost nothing.
+      </>
+    ),
+  },
+  {
+    q: 'What counts as an email?',
+    a: (
+      <>
+        Every email your club sends through ClubMode, including automatic ones like
+        confirmations, reminders and score updates. One email to one person is one email. Sign-in
+        and password-reset emails are not billed.
+      </>
+    ),
+  },
+  {
+    q: 'Do I need a card to start?',
+    a: (
+      <>
+        No. Set up your club, import members and build events without one. The club owner adds a
+        card the first time you send. Emails you send before that are saved and go out as soon as
+        the card is on file; texts need the card first.
+      </>
+    ),
+  },
+  {
+    q: 'How does Ask Claude billing work? Is there a cap?',
+    a: (
+      <>
+        Ask Claude is billed at the AI model&apos;s cost plus {AI_MARKUP_PCT}%. A live dollar meter
+        sits on every answer, so you always see what a request cost and what you&apos;ve spent this
+        month. You get a notice every ${AI_NOTICE_STEP_USD}, and Ask Claude stops for the month at $
+        {AI_MONTHLY_CAP_USD} so a runaway month can&apos;t surprise you.
+      </>
+    ),
+  },
+  {
+    q: 'Is CaptainMode free too?',
+    a: (
+      <>
+        Yes. CaptainMode is free for every captain. Their emails and texts are metered at the same
+        rates, to their club&apos;s card (or their own if they don&apos;t have a club on
+        ClubMode).
+      </>
+    ),
+  },
+  {
+    q: 'Can the prices change?',
+    a: <>Only with {RATE_CHANGE_NOTICE_DAYS} days&apos; notice before a new rate applies.</>,
+  },
 ];
 
 export default function PricingPage() {
@@ -53,197 +117,102 @@ export default function PricingPage() {
       {/* Hero */}
       <section className="max-w-3xl mx-auto px-6 pt-16 pb-8 text-center">
         <div className="inline-flex items-center gap-2 text-xs font-medium text-yellow-300/90 bg-yellow-300/10 border border-yellow-300/20 rounded-full px-3 py-1">
-          <Sparkles size={13} /> Founding clubs — free during beta
+          <Sparkles size={13} /> No plans. No tiers. No trials.
         </div>
         <h1 className="mt-5 font-display text-4xl md:text-5xl tracking-tight">
-          Every ClubMode tool.{' '}
-          <span className="text-yellow-300">Free while you help us build it.</span>
+          Free.{' '}
+          <span className="text-yellow-300">Pay only for what you send.</span>
         </h1>
         <p className="mt-4 text-white/60 max-w-xl mx-auto">
-          All {PRODUCT_COUNT} tools to run your racquet-sports club, in one login, for your whole
-          staff. No card to start.
+          All {PRODUCT_COUNT} tools to run your racquet-sports club, for your whole staff, at no
+          cost. You pay a few cents per email and text, billed monthly.
         </p>
       </section>
 
-      {/* The one plan */}
+      {/* Price table */}
       <section className="max-w-xl mx-auto px-6 pb-4">
-        <div className="rounded-2xl border border-yellow-300/40 bg-yellow-300/[0.05] p-7 flex flex-col relative">
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 text-[11px] font-semibold uppercase tracking-wide bg-yellow-300 text-[#001820] rounded-full px-3 py-1">
-            Founding club
-          </div>
-          <div className="font-display text-xl">Founding Club — free during beta.</div>
-          <div className="mt-2 flex items-baseline gap-1">
-            <span className="font-display text-4xl">$0</span>
-            <span className="text-white/40 text-sm">/ month during beta</span>
-          </div>
-          <p className="mt-3 text-white/60 text-sm leading-relaxed">
-            Every ClubMode tool, unlocked for your whole staff. No card, no trial clock. When paid
-            plans launch, founding clubs get{' '}
-            <strong className="text-white">
-              ${FOUNDING_PRICE_USD}/month locked for {FOUNDING_LOCK_MONTHS} months
-            </strong>{' '}
-            (list ${PRO_PRICE_USD}) — and {RATE_CHANGE_NOTICE_DAYS} days&apos; notice before anything
-            is ever charged. Nothing converts automatically.
-          </p>
-          <ul className="mt-5 space-y-2.5 flex-1">
-            {FOUNDING_FEATURES.map((f) => (
+        <div className="rounded-2xl border border-yellow-300/40 bg-yellow-300/[0.05] p-7 flex flex-col">
+          <PriceRow
+            icon={<LayoutGrid size={18} className="text-yellow-300" />}
+            label="Platform"
+            note="All features, unlimited staff, members always free"
+            price="$0"
+          />
+          <PriceRow
+            icon={<Mail size={18} className="text-blue-400" />}
+            label="Email"
+            note="Every email your club sends"
+            price={`${EMAIL_PRICE_CENTS}¢`}
+            unit="each"
+          />
+          <PriceRow
+            icon={<MessageSquare size={18} className="text-emerald-400" />}
+            label="Text"
+            note="Every text your club sends"
+            price={`${TEXT_PRICE_CENTS}¢`}
+            unit="each"
+          />
+          <PriceRow
+            icon={<Sparkles size={18} className="text-pink-400" />}
+            label="Ask Claude"
+            note={`Model cost + ${AI_MARKUP_PCT}%, live meter, $${AI_MONTHLY_CAP_USD}/mo cap`}
+            price="Metered"
+            last
+          />
+
+          <ul className="mt-6 space-y-2.5">
+            {PLATFORM_FEATURES.map((f) => (
               <Bullet key={f} gold>{f}</Bullet>
             ))}
           </ul>
+
           <Link
             href="/register"
             className="mt-6 px-5 py-3 rounded-xl font-medium bg-yellow-300 text-[#001820] hover:bg-yellow-200 flex items-center justify-center gap-2"
           >
             Start free <ArrowRight size={16} />
           </Link>
-          <p className="mt-2 text-center text-white/40 text-xs">No card required.</p>
-        </div>
-      </section>
-
-      {/* Texting — honest about where it is. Email is included, full stop. */}
-      <section className="max-w-4xl mx-auto px-6 pt-8">
-        <div className="rounded-2xl border border-white/10 bg-[#002838] p-7">
-          <div className="flex items-center gap-2 text-yellow-300">
-            <MessageSquare size={18} />
-            <span className="font-display text-xl">Texting is rolling out.</span>
-          </div>
-          <p className="mt-3 text-white/60 text-sm max-w-2xl">
-            Carrier registration is in progress; email, events, CourtSheet and AI work today.
-            Email is included — it never meters.
+          <p className="mt-2 text-center text-white/50 text-xs">
+            No card to start. Add one the first time you send.
           </p>
         </div>
       </section>
 
-      {/* Custom club site — the one SERVICE tier.
-          
-          No buy button, on purpose. Everything else on this page is software
-          that costs nothing to hand to one more club; this includes someone's
-          time, so it is agreed in a conversation. There is no LemonSqueezy
-          variant behind it, and a price with no product behind it is exactly
-          how the page and the invoice end up disagreeing.
-          
-          The two prices are shown separately rather than as one $75, so a club
-          can see the founding discount they would lose — and so the add-on
-          reads as cancellable. A club that realises it can click its own skip
-          dates should drop to Pro and stay, not leave. */}
-      <section className="max-w-4xl mx-auto px-6 pt-8">
-        <div className="rounded-2xl border border-yellow-300/25 bg-yellow-300/[0.04] p-7">
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2 text-yellow-300">
-                <Globe size={18} />
-                <h2 className="font-display text-xl">Your own club website, kept up to date</h2>
-              </div>
-              <p className="mt-2 text-white/60 text-sm max-w-xl">
-                We build your club its own public site — your colours, your logo, your programs,
-                your court pricing — and keep it current. You can still change anything yourself,
-                any day. Most clubs stop asking us by the second season.
-              </p>
+      {/* FAQ */}
+      <section className="max-w-3xl mx-auto px-6 pt-12">
+        <h2 className="font-display text-2xl mb-4">Questions</h2>
+        <div className="space-y-3">
+          {FAQ.map((f) => (
+            <div key={f.q} className="rounded-2xl border border-white/10 bg-[#002838] p-5">
+              <div className="font-medium text-white">{f.q}</div>
+              <p className="mt-2 text-sm text-white/60 leading-relaxed">{f.a}</p>
             </div>
-            <div className="text-right">
-              <p className="font-display text-3xl whitespace-nowrap">
-                ${SITE_SERVICE_PRICE_USD}
-                <span className="text-sm font-normal text-white/40"> / month</span>
-              </p>
-              <p className="mt-0.5 text-xs text-white/35">list ${SITE_SERVICE_LIST_USD}</p>
-            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Custom club site — sold by conversation only. No buy button, on
+          purpose: it includes someone's time, and there is no LemonSqueezy
+          product behind it. */}
+      <section className="max-w-3xl mx-auto px-6 pt-8 pb-20">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-start gap-3 max-w-lg">
+            <Globe size={18} className="text-yellow-300 mt-0.5 flex-shrink-0" />
+            <p className="text-sm text-white/60">
+              <span className="text-white font-medium">Want us to build and run your club website?</span>{' '}
+              ${SITE_SERVICE_PRICE_USD}/month, {SITE_SERVICE_MIN_MONTHS}-month minimum. It includes
+              our time, so we talk first.
+            </p>
           </div>
-
-          {/* The split, so the discount is visible rather than absorbed. */}
-          <div className="mt-5 rounded-xl border border-white/10 bg-[#001820] p-4 text-sm">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-white/70">ClubMode Pro</span>
-              <span className="text-white/70">
-                ${FOUNDING_PRICE_USD}/mo{' '}
-                <span className="text-white/35">founding — list ${PRO_PRICE_USD}</span>
-              </span>
-            </div>
-            <div className="mt-1.5 flex items-baseline justify-between gap-3">
-              <span className="text-white/70">Custom site + updates</span>
-              <span className="text-white/70">
-                ${SITE_SERVICE_PRICE_USD - FOUNDING_PRICE_USD}/mo
-              </span>
-            </div>
-            <div className="mt-2.5 flex items-baseline justify-between gap-3 border-t border-white/10 pt-2.5 font-semibold">
-              <span>Together</span>
-              <span>${SITE_SERVICE_PRICE_USD}/mo</span>
-            </div>
-          </div>
-
-          <ul className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-6">
-            <Bullet gold>Everything in ClubMode Pro</Bullet>
-            <Bullet gold>Your branding on every page members see</Bullet>
-            <Bullet gold>We set up your classes, prices and skip dates</Bullet>
-            <Bullet gold>Send changes any time — we batch them weekly</Bullet>
-            <Bullet gold>Online class registration and court booking</Bullet>
-            <Bullet gold>CaptainMode free for every one of your team captains</Bullet>
-            <Bullet gold>No setup fee &middot; {SITE_SERVICE_MIN_MONTHS}-month minimum</Bullet>
-          </ul>
-
-          <p className="mt-5 text-white/45 text-xs">
-            Sold by conversation, not by card — it includes our time, so we talk first.
-          </p>
           <Link
             href="mailto:hello@clubmode.ai?subject=Custom%20club%20website"
-            className="mt-2 inline-flex items-center gap-2 rounded-xl border border-yellow-300/40 px-5 py-2.5 text-sm font-semibold text-yellow-300 hover:bg-yellow-300/10"
+            className="inline-flex items-center gap-2 rounded-xl border border-yellow-300/40 px-4 py-2 text-sm font-semibold text-yellow-300 hover:bg-yellow-300/10 whitespace-nowrap"
           >
-            Talk to us about a site <ArrowRight size={15} />
+            Talk to us <ArrowRight size={15} />
           </Link>
         </div>
       </section>
 
-      {/* CaptainMode — a separate subscription, bought by the captain, not the
-          club. Prices and the team limit come from config/pricing, the same
-          constants the subscribe page and the teams route enforce. */}
-      <section className="max-w-4xl mx-auto px-6 pt-8 pb-20">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-7">
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <div>
-              <h2 className="font-display text-xl">CaptainMode — for your team captains</h2>
-              <p className="mt-1 text-white/55 text-sm max-w-xl">
-                A separate tool for the volunteer running a league team: availability polls,
-                lineups, confirmations and last-minute subs. Captains pay for it themselves —
-                no club approval, no line on your budget. Clubs on the custom-site plan get it
-                free for every captain.
-              </p>
-            </div>
-            <Link
-              href="/captainmode"
-              className="text-sm text-yellow-300 hover:text-yellow-200 whitespace-nowrap"
-            >
-              See CaptainMode →
-            </Link>
-          </div>
-
-          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-yellow-300/30 bg-yellow-300/[0.05] p-5">
-              <p className="text-xs uppercase tracking-widest text-yellow-300 font-semibold">
-                Your club is on ClubMode
-              </p>
-              <p className="mt-2 font-display text-3xl">
-                ${CAPTAIN_CLUB_PRICE_USD}
-                <span className="text-sm font-normal text-white/40"> / month</span>
-              </p>
-              <p className="mt-2 text-sm text-white/55">
-                Per captain, up to {CAPTAIN_MAX_TEAMS} teams. Co-captains free.
-              </p>
-            </div>
-            <div className="rounded-xl border border-white/10 p-5">
-              <p className="text-xs uppercase tracking-widest text-white/40 font-semibold">
-                Your club isn&apos;t
-              </p>
-              <p className="mt-2 font-display text-3xl">
-                ${CAPTAIN_SOLO_PRICE_USD}
-                <span className="text-sm font-normal text-white/40"> / month</span>
-              </p>
-              <p className="mt-2 text-sm text-white/55">Identical product. Nothing held back.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* This page had no footer at all — so no Terms and no Privacy link on the
-          one page a payment processor and a club's finance lead both read. */}
       <footer className="border-t border-white/[0.06] px-6 py-10">
         <div className="mx-auto flex max-w-4xl flex-col items-center justify-between gap-3 text-[13px] text-white/30 sm:flex-row">
           <p>&copy; {new Date().getFullYear()} ClubMode AI</p>
@@ -255,6 +224,40 @@ export default function PricingPage() {
           </div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function PriceRow({
+  icon,
+  label,
+  note,
+  price,
+  unit,
+  last,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  note: string;
+  price: string;
+  unit?: string;
+  last?: boolean;
+}) {
+  return (
+    <div
+      className={`flex items-center justify-between gap-4 py-3.5 ${last ? '' : 'border-b border-white/10'}`}
+    >
+      <div className="flex items-start gap-3 min-w-0">
+        <div className="mt-0.5 flex-shrink-0">{icon}</div>
+        <div className="min-w-0">
+          <div className="font-medium text-white">{label}</div>
+          <div className="text-xs text-white/50">{note}</div>
+        </div>
+      </div>
+      <div className="text-right whitespace-nowrap">
+        <span className="font-display text-2xl">{price}</span>
+        {unit && <span className="text-white/40 text-xs"> {unit}</span>}
+      </div>
     </div>
   );
 }

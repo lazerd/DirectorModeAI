@@ -25,22 +25,20 @@ describe('Ask Claude meter', () => {
     expect(billedMicro(10_000)).toBe(15_000);
   });
 
-  it('splits the month into included and overage', () => {
-    expect(snapshot(3 * M, false).overageUsd).toBe(0);
-    expect(snapshot(7.5 * M, false).overageUsd).toBeCloseTo(2.5);
+  it('bills everything: nothing is included', () => {
+    expect(snapshot(3 * M, false).overageUsd).toBeCloseTo(3);
+    expect(snapshot(7.5 * M, false).overageUsd).toBeCloseTo(7.5);
   });
 
-  it('steps a notice at every $10 over the $5 allowance', () => {
-    expect(noticeStep(5 * M)).toBe(0);
-    expect(noticeStep(14.99 * M)).toBe(0);
-    expect(noticeStep(15 * M)).toBe(1);
+  it('steps a notice at every $10 spent', () => {
+    expect(noticeStep(9.99 * M)).toBe(0);
+    expect(noticeStep(10 * M)).toBe(1);
     expect(noticeStep(25.01 * M)).toBe(2);
   });
 
-  it('without pay-as-you-go, stops at the $5 allowance', () => {
-    expect(overCap(4.99 * M, false)).toBe(false);
-    expect(overCap(5 * M, false)).toBe(true);
-    expect(snapshot(5 * M, false).needsPayg).toBe(true);
+  it('without a card, stops before the first request', () => {
+    expect(overCap(0, false)).toBe(true);
+    expect(snapshot(0, false).needsPayg).toBe(true);
   });
 
   it('with pay-as-you-go, runs to the monthly cap', () => {

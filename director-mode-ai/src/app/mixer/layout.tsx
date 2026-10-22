@@ -3,8 +3,6 @@ import { Shuffle, Plus, Calendar, Settings, CreditCard, Zap, Trophy } from 'luci
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import MixerMobileNav from '@/components/mixer/MixerMobileNav';
-import PlanBadge from '@/components/billing/PlanBadge';
-import GrandfatherTrialBanner from '@/components/billing/GrandfatherTrialBanner';
 import SuggestionBox from '@/components/SuggestionBox';
 
 export default async function MixerLayout({
@@ -57,9 +55,6 @@ export default async function MixerLayout({
               <div className="text-xs text-white/40 truncate">{user.email}</div>
             </div>
           </div>
-          <div className="mt-3">
-            <PlanBadge />
-          </div>
         </div>
 
         {/* Navigation */}
@@ -106,7 +101,6 @@ export default async function MixerLayout({
 
       {/* Main Content - with left margin on desktop for sidebar */}
       <main className="md:ml-64 pt-16 md:pt-0 min-h-screen">
-        <GrandfatherTrialBanner />
         {children}
       </main>
 

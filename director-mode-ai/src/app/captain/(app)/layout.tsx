@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { ClipboardList, Users, Settings, Zap } from 'lucide-react';
+import { ClipboardList, Users, Zap } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { isCaptainOnly } from '@/lib/postLogin';
 
@@ -61,9 +61,6 @@ export default async function CaptainLayout({ children }: { children: React.Reac
           <ul className="space-y-1">
             <NavItem href="/captain" icon={Users}>
               My Teams
-            </NavItem>
-            <NavItem href="/captain/subscribe" icon={Settings}>
-              Subscription
             </NavItem>
           </ul>
         </nav>

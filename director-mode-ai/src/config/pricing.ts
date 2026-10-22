@@ -18,36 +18,13 @@
  */
 
 /**
- * FOUNDING MODE — everything is unlocked for everyone.
- *
- * ClubMode has zero paying customers. Enforcing caps against nobody costs real
- * engineering time and can only ever produce one outcome: a new director hits a
- * wall on their first afternoon and leaves. So every feature gate, every usage
- * cap and every upgrade prompt is inert while this is on, and the account state
- * reads "Founding club — everything unlocked".
- *
- * Lives here (client-safe) rather than in src/lib/billing.ts so 'use client'
- * banners and buttons can hide themselves too; billing.ts re-exports it. The
- * machinery is deliberately left standing — the limits in TIER_LIMITS are the
- * real published numbers, so turning this off is a one-line change that starts
- * enforcing the plan as advertised.
+ * ClubMode is free (Darrin, 2026-10-21). There are no plans, tiers, trials or
+ * day passes: every feature is open to every club, and a club pays only for
+ * what it sends (usage pricing below) and for Ask Claude. The plan_tier /
+ * subscription columns and the LemonSqueezy Pro products are legacy; nothing
+ * reads them to decide what a club may do.
  */
-export const FOUNDING_MODE = true;
-
-/** Shown wherever the plan state is surfaced while FOUNDING_MODE is on. */
-export const FOUNDING_LABEL = 'Founding club — everything unlocked';
-
-/** ClubMode Pro, per month, list price. */
-export const PRO_PRICE_USD = 49;
-
-/** Founding-club rate: first N clubs, locked for M months. */
-export const FOUNDING_PRICE_USD = 25;
-export const FOUNDING_CLUB_LIMIT = 25;
-export const FOUNDING_LOCK_MONTHS = 24;
-
-/** Texts included in Pro each month, and the per-text rate beyond that. */
-export const INCLUDED_TEXTS = 300;
-export const TEXT_OVERAGE_CENTS = 2;
+export const PLATFORM_LABEL = 'Free · pay only for what you send';
 
 /* --------------------------- Usage pricing ----------------------------- */
 /**
@@ -102,30 +79,11 @@ export const SITE_SERVICE_MIN_MONTHS = 12;
 /** Not published. The point at which this stops being offered to new clubs. */
 export const SITE_SERVICE_CLUB_LIMIT = 10;
 
-/**
- * There is no annual plan. It was removed when Pro moved to $49 — the discount
- * was doing nothing except complicating the page and creating a second SKU to
- * keep in sync. `pro_annual` still exists as a PriceKey in lemonsqueezy.ts so
- * that historical webhooks for anyone who bought one still resolve to Pro, but
- * nothing in the UI may offer it: its buy link is null, so the checkout would
- * fail.
- */
-export const ANNUAL_PLAN_OFFERED = false;
-
 /* ----------------------------- CaptainMode ----------------------------- */
 /**
- * CaptainMode is billed to the CAPTAIN, not the club, and the rate depends on
- * whether their club is on ClubMode (Pro, or any club while FOUNDING_MODE is
- * on). Which rate applies is resolved server-side in resolveCaptainRate() —
- * never chosen by the client.
- *
- * These are the ONLY CaptainMode numbers. /pricing, /captainmode, /captain/start
- * and /captain/subscribe used to type their own ($12 vs $20, "3 teams" vs the 6
- * the teams route enforces); every surface now reads these.
+ * CaptainMode is free like the rest of ClubMode; a captain's emails and texts
+ * are metered to their club's card (or their own, with no club).
  */
-export const CAPTAIN_CLUB_PRICE_USD = 10;
-export const CAPTAIN_SOLO_PRICE_USD = 20;
-
 /**
  * Owned teams per CaptainMode subscription (co-captained teams don't count).
  * Enforced by the teams route via MAX_TEAMS_PER_CAPTAIN in lib/captain/access.
@@ -136,22 +94,14 @@ export const CAPTAIN_MAX_TEAMS = 6;
 /**
  * The in-app assistant is METERED, and says so on every answer.
  *
- * Darrin, 2026-10-09: AI is not bundled into the subscription. A director who
- * ran $25 of AI on a $75 plan would eat a third of the margin, so every club
- * gets a small allowance and pays for the rest on top of the plan, watching a
- * live meter the whole time. The meter is the selling point, not a disclaimer:
+ * Darrin, 2026-10-09 / 2026-10-21: AI is never free. Every request is billed
+ * on the club's usage charge, and the director watches a live meter the whole
+ * time. The meter is the selling point, not a disclaimer:
  * a typical request costs pennies, and seeing that is what makes people use it.
- *
- * Applies even in FOUNDING_MODE — founding unlocks features, not free AI.
+
  */
-/**
- * Ask Claude is only on the top plan (Darrin, 2026-10-09): a $25 club spending
- * $5 of AI is a fifth of its fee gone, and the assistant is the reason to
- * upgrade. LemonSqueezy price_key 'pro_ai'.
- */
-export const ASK_CLAUDE_PLAN_USD = 75;
-/** Included Ask Claude usage per club per month, in dollars. */
-export const AI_INCLUDED_USD = 5;
+/** Included Ask Claude usage per club per month, in dollars. Nothing is free: billed from the first request. */
+export const AI_INCLUDED_USD = 0;
 /** A notice goes out each time a club's overage crosses another multiple of this. */
 export const AI_NOTICE_STEP_USD = 10;
 /**

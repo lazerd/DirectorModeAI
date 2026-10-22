@@ -5,7 +5,7 @@
  */
 import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
-import { getCaptainAccess, gateTeam } from './access';
+import { gateTeam } from './access';
 import {
   pairRecordsFrom,
   type CaptainingStyle,
@@ -52,7 +52,7 @@ export function isError<T>(v: T | RouteError): v is RouteError {
   return !!v && typeof v === 'object' && 'error' in (v as object);
 }
 
-/** Auth + subscription + team-membership in one call. */
+/** Auth + team-membership in one call. */
 export async function requireTeam(teamId: string): Promise<CaptainCtx | RouteError> {
   const supabase = await createClient();
   const {
@@ -62,17 +62,8 @@ export async function requireTeam(teamId: string): Promise<CaptainCtx | RouteErr
     return { error: NextResponse.json({ error: 'Not signed in.' }, { status: 401 }) };
   }
 
-  // Co-captains ride on the team owner's subscription, so this is one
-  // team-scoped check rather than "does the viewer pay" + "is the viewer on it".
+  // CaptainMode is free: the only check is that the viewer runs this team.
   const gate = await gateTeam(user.id, teamId);
-  if (gate === 'needs_subscription') {
-    return {
-      error: NextResponse.json(
-        { error: 'CaptainMode subscription required.', upgrade_url: '/captain/subscribe' },
-        { status: 402 },
-      ),
-    };
-  }
   if (gate !== 'ok') {
     return { error: NextResponse.json({ error: 'Team not found.' }, { status: 404 }) };
   }
@@ -84,7 +75,7 @@ export async function requireTeam(teamId: string): Promise<CaptainCtx | RouteErr
   return { userId: user.id, teamId, team: data as TeamRow, db };
 }
 
-/** Auth + subscription only (for routes that create a team). */
+/** Auth only (for routes that create a team). */
 export async function requireCaptain(): Promise<
   { userId: string; db: SupabaseClient } | RouteError
 > {
@@ -95,15 +86,7 @@ export async function requireCaptain(): Promise<
   if (!user) {
     return { error: NextResponse.json({ error: 'Not signed in.' }, { status: 401 }) };
   }
-  const access = await getCaptainAccess(user.id);
-  if (!access.active) {
-    return {
-      error: NextResponse.json(
-        { error: 'CaptainMode subscription required.', upgrade_url: '/captain/subscribe' },
-        { status: 402 },
-      ),
-    };
-  }
+  // CaptainMode is free; the owned-team limit is checked by the teams route.
   return { userId: user.id, db: await createServiceClient() };
 }
 

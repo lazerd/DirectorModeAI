@@ -1147,23 +1147,23 @@ export function seasonOpenerEmail(
     to: string;
     subject: string;
     bodyText: string;
-    /** Tag on the trial link, so a signup can be traced back to this send. */
+    /** Tag on the CaptainMode link, so a signup can be traced back to this send. */
     ref?: string;
   },
 ): { to: string; subject: string; html: string } {
   /*
    * The referral line.
    *
-   * It links to /captain/start, which grants a real 14-day trial with no card —
-   * NOT to a pricing page. A captain who clicks "free trial" and lands on a
-   * checkout form is the kind of small betrayal that costs a professional
+   * It links to /captain/start, which says CaptainMode is free and lets them
+   * straight in — NOT to a pricing page. A captain who clicks "free" and lands
+   * on a checkout form is the kind of small betrayal that costs a professional
    * relationship, and these recipients are colleagues before they are leads.
    */
   const promo =
     `Every part of this — the schedule, the lineups, the reminders — was handled by ` +
     `<a href="${BASE}/captain/start?ref=${encodeURIComponent(opts.ref || 'season-opener')}" ` +
     `style="color:#64748b;text-decoration:underline">CaptainMode</a>. ` +
-    `Free for 14 days, no card.`;
+    `Free for captains.`;
 
   return {
     to: opts.to,
