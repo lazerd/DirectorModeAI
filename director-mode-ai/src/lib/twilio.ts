@@ -1,6 +1,7 @@
 import twilio from 'twilio';
 import { consumeSmsCredits, CreditLimitError } from '@/lib/billing';
 import { demoSmsHold } from '@/lib/demo/suppress';
+import { recordSendUsage } from '@/lib/usageMeter';
 
 /** What a held demo text reports, in the words the captain's screen shows. */
 export const DEMO_SMS_REASON = 'Demo: text not sent.';
@@ -155,6 +156,7 @@ export async function sendSms(userId: string, to: string, body: string): Promise
       ...sender(),
       to: number,
     });
+    await recordSendUsage({ userId, kind: 'sms', units: 1 });
     return { to: number, status: 'sent', sid: msg.sid };
   } catch (err: any) {
     return { to: number, status: 'failed', reason: describeSmsError(err?.code, err?.message) };
@@ -208,5 +210,6 @@ export async function sendSmsBatch(userId: string, recipients: { phone: string; 
   const skipped = recipients.length - valid.length;
   const sent = results.filter((r) => r.status === 'sent').length;
   const failed = results.filter((r) => r.status === 'failed').length;
+  await recordSendUsage({ userId, kind: 'sms', units: sent });
   return { sent, skipped, failed, overageCents, results };
 }

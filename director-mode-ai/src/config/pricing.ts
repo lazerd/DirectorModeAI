@@ -49,6 +49,23 @@ export const FOUNDING_LOCK_MONTHS = 24;
 export const INCLUDED_TEXTS = 300;
 export const TEXT_OVERAGE_CENTS = 2;
 
+/* --------------------------- Usage pricing ----------------------------- */
+/**
+ * ClubMode is free; clubs pay only for what they send (Darrin, 2026-10-21).
+ * Every email and every text is billed, with no free allowance. Sign-in and
+ * password emails are not ClubMode sends (Supabase auth) and never appear here.
+ */
+export const EMAIL_PRICE_CENTS = 2;
+export const TEXT_PRICE_CENTS = 3;
+
+/**
+ * While false, sends are priced and recorded in usage_events but never blocked
+ * or invoiced. Flip it once the add-card paywall and the "ClubMode usage"
+ * product are live; until then a club without a card would simply stop
+ * receiving its own emails.
+ */
+export const METERING_ENFORCED = false;
+
 /** Notice period before an overage rate changes. */
 export const RATE_CHANGE_NOTICE_DAYS = 30;
 

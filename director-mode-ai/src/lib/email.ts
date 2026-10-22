@@ -4,6 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { safeResendSend, type SafeSendResult } from '@/lib/emailUnsubscribe';
 import { demoEmailHold, logDemoHold } from '@/lib/demo/suppress';
 import { clubFromLine } from '@/lib/emailText';
+import { recordSendUsage } from '@/lib/usageMeter';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -80,7 +81,11 @@ export async function sendBilledEmail(userId: string | null, payload: EmailPaylo
   if (userId) {
     await consumeEmailCredits(userId, 1);
   }
-  return safeResendSend(resend, toSend(userId, payload));
+  const r = await safeResendSend(resend, toSend(userId, payload));
+  if (userId && r.sent && !r.demo) {
+    await recordSendUsage({ userId, kind: 'email', units: 1, clubId: payload.clubId });
+  }
+  return r;
 }
 
 /**
@@ -136,6 +141,12 @@ export async function sendBilledEmails(userId: string | null, payloads: EmailPay
 
     pending = retry;
     if (pending.length) await sleep(SEND_GAP_MS * attempt); // back off before the next sweep
+  }
+
+  // Bill only what actually went out: not unsubscribed, failed or demo-held sends.
+  if (userId) {
+    const sent = results.filter((r, i) => r?.sent && !r.demo && !holds[i]).length;
+    await recordSendUsage({ userId, kind: 'email', units: sent, clubId: payloads[0]?.clubId });
   }
 
   return results;

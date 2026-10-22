@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { reportUsage, lsConfigured } from '@/lib/lemonsqueezy';
-import { AI_INCLUDED_USD } from '@/config/pricing';
+import { AI_INCLUDED_USD, METERING_ENFORCED } from '@/config/pricing';
 
-// GET /api/cron/ai-usage-report — Ask Claude overage → LemonSqueezy.
+// GET /api/cron/ai-usage-report — Ask Claude overage, plus emails and texts
+// once METERING_ENFORCED is on, → LemonSqueezy.
 //
 // Daily (Vercel Hobby allows once a day). For every club owner with
 // pay-as-you-go on, works out this month's overage in cents (billed beyond the
@@ -51,7 +52,19 @@ export async function GET(request: NextRequest) {
         .gte('created_at', start.toISOString())
         .lt('created_at', end.toISOString());
       const billedMicro = ((rows as { billed_micro: number }[] | null) ?? []).reduce((a, r) => a + Number(r.billed_micro || 0), 0);
-      const overageCents = Math.max(0, Math.floor(billedMicro / 10_000) - AI_INCLUDED_USD * 100);
+      const aiCents = Math.max(0, Math.floor(billedMicro / 10_000) - AI_INCLUDED_USD * 100);
+      let sendCents = 0;
+      if (METERING_ENFORCED) {
+        const { data: sends } = await db
+          .from('usage_events')
+          .select('billed_cents')
+          .eq('billing_user_id', s.user_id)
+          .eq('exempt', false)
+          .gte('created_at', start.toISOString())
+          .lt('created_at', end.toISOString());
+        sendCents = ((sends as { billed_cents: number }[] | null) ?? []).reduce((a, r) => a + Number(r.billed_cents || 0), 0);
+      }
+      const overageCents = aiCents + sendCents;
 
       const period = start.toISOString().slice(0, 10);
       const { data: rep } = await db
