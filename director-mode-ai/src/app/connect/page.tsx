@@ -133,6 +133,9 @@ export default function ConnectLanding() {
         Looking for the raw comp data?{' '}
         <Link href="/benchmarks" className="text-teal-400 underline">Browse the benchmarks →</Link>
       </p>
+      <p className="mt-3 text-center text-xs text-slate-500">
+        <Link href="/connect/privacy" className="underline hover:text-slate-300">Candidate privacy notice</Link>
+      </p>
     </div>
   );
 }

@@ -9,6 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { STAGE_LABEL, isStage } from '@/lib/connect/placement';
+import { JOB_BOARD_ONLY_LABEL } from '@/lib/connect/feeScope';
+import { PRIVACY_PATH } from '@/lib/connect/privacy';
+
+const PrivacyNote = () => (
+  <p className="text-xs text-slate-500">
+    Your current pay is never shown to clubs. <Link href={PRIVACY_PATH} className="text-teal-700 underline">How we handle your information</Link>
+  </p>
+);
 
 type Job = {
   id: string; club_name: string | null; title: string | null; dept: string;
@@ -27,6 +35,7 @@ type SourcedJob = {
   city: string | null; state: string | null; comp_min: number | null; comp_max: number | null;
   comp_text: string | null; est_comp: number | null; summary: string | null; requirements: string | null;
   apply_url: string | null; posted_at: string | null; deadline: string | null;
+  fee_eligible?: boolean;
 };
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
@@ -186,6 +195,7 @@ export default function JobDetailPage() {
             </>
           )}
           {msg && <p className="text-sm text-slate-700">{msg}</p>}
+          <PrivacyNote />
         </CardContent>
       </Card>
     </div>
@@ -285,6 +295,24 @@ function SourcedJobView({ job, me, reload }: { job: SourcedJob; me: Me; reload: 
         </CardContent>
       </Card>
 
+      {job.fee_eligible === false ? (
+        <Card className="bg-white">
+          <CardHeader><CardTitle className="text-base text-slate-900">{JOB_BOARD_ONLY_LABEL}</CardTitle></CardHeader>
+          <CardContent className="space-y-3 text-sm text-slate-700">
+            <p>
+              We list this role so you can see it, but ClubMode doesn&apos;t present candidates for it. Apply directly on
+              {club === 'this club' ? ' the club’s' : ` ${club}’s`} posting{applyLink ? '' : ' (search the club’s website)'}.
+            </p>
+            {applyLink && (
+              <a href={applyLink} target="_blank" rel="noreferrer noopener"><Button>Apply on the posting <ExternalLink className="h-3.5 w-3.5 ml-1" /></Button></a>
+            )}
+            <p>
+              Looking for a director-level role? <Link href="/connect/candidate" className="text-teal-700 underline">Keep your profile open to work</Link> and
+              we&apos;ll tell you when one fits.
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
       <Card className="bg-white">
         <CardHeader><CardTitle className="text-base text-slate-900">I&apos;m interested. Present me to this club.</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -327,7 +355,10 @@ function SourcedJobView({ job, me, reload }: { job: SourcedJob; me: Me; reload: 
               </div>
               <label className="flex items-start gap-2 text-sm text-slate-800">
                 <input type="checkbox" className="mt-1" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
-                <span>OK to present my profile to {club} for this role.</span>
+                <span>
+                  OK to present my profile and résumé to {club} for this role. Nothing goes to any other club, and your current pay is never shown.{' '}
+                  <Link href={PRIVACY_PATH} className="text-teal-700 underline">Privacy notice</Link>
+                </span>
               </label>
               <div className="flex items-center gap-3">
                 <Button onClick={raiseHand} disabled={busy || !consent}>
@@ -338,8 +369,10 @@ function SourcedJobView({ job, me, reload }: { job: SourcedJob; me: Me; reload: 
             </>
           )}
           {msg && <p className="text-sm text-slate-700">{msg}</p>}
+          <PrivacyNote />
         </CardContent>
       </Card>
+      )}
     </div>
   );
 }

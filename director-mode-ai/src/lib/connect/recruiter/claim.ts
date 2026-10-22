@@ -15,6 +15,8 @@ import { scoreApplication } from '@/lib/connect/aiFit';
 import { background } from '@/lib/partnerFinder/background';
 import { PLACEMENT_TERMS_VERSION } from '@/lib/connect/placement';
 import { zipToLatLng } from '@/lib/geo';
+import { feeEligible, JOB_BOARD_ONLY_HINT } from '@/lib/connect/feeScope';
+import { logStageEvents, type ActorRole } from '@/lib/connect/events';
 import { deptFor, type Evaluation } from './evaluate';
 
 const FREE_MAIL = new Set(['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'icloud.com', 'me.com', 'msn.com', 'live.com', 'comcast.net', 'verizon.net', 'att.net', 'protonmail.com']);
@@ -43,7 +45,7 @@ export class ClaimError extends Error {
 }
 
 /** Move interested candidates into the opening's pipeline. Idempotent. */
-export async function moveInterests(sourcedJobId: string): Promise<number> {
+export async function moveInterests(sourcedJobId: string, actor: { id: string | null; role: ActorRole } = { id: null, role: 'system' }): Promise<number> {
   const db = getSupabaseAdmin();
   const { data: job } = await db.from('connect_sourced_jobs').select('opening_id').eq('id', sourcedJobId).maybeSingle();
   if (!job?.opening_id) return 0;
@@ -75,6 +77,9 @@ export async function moveInterests(sourcedJobId: string): Promise<number> {
   if (error) throw new ClaimError(error.message, 500);
   await db.from('connect_job_interests').update({ status: 'presented' }).in('id', interests.map((i) => i.id));
   const ids = (apps ?? []).map((a) => a.id as string);
+  await logStageEvents(
+    ids.map((id) => ({ application_id: id, from_stage: null, to_stage: 'applied', actor_id: actor.id, actor_role: actor.role, note: 'introduced on claim (candidate consented on the job page)', at: now })),
+  );
   background('recruiting claim scoring', async () => {
     for (const id of ids) await scoreApplication(id);
   });
@@ -99,6 +104,8 @@ export async function claimSourcedJob(
     throw new ClaimError('This job has already been claimed by the club. If that wasn\'t you, reply to our email and we\'ll sort it out.', 409);
   }
   if (job.status !== 'active') throw new ClaimError('This job is no longer active.', 410);
+  // The pay-on-hire terms cover director-level leadership only.
+  if (!feeEligible(job.role_level, job.title)) throw new ClaimError(`This role is on our job board only. ${JOB_BOARD_ONLY_HINT}`, 409);
 
   const evaluation = job.evaluation as Evaluation | null;
   const compMax = opts.compMax && opts.compMax > 0 ? Math.round(opts.compMax) : job.comp_max || job.est_comp || evaluation?.target_comp || null;
@@ -131,6 +138,7 @@ export async function claimSourcedJob(
       status: 'open',
       is_public: true,
       terms_accepted_at: now,
+      terms_accepted_by: user.id,
       terms_version: PLACEMENT_TERMS_VERSION,
     })
     .select('id')
@@ -151,7 +159,7 @@ export async function claimSourcedJob(
 
   const { data: contacts } = await db.from('connect_club_contacts').select('email, club_website').eq('sourced_job_id', job.id);
   const verified = claimVerified(user.email, contacts ?? []);
-  const moved = verified ? await moveInterests(job.id) : 0;
+  const moved = verified ? await moveInterests(job.id, { id: user.id, role: 'club' }) : 0;
   // Pending prospect targets carry over so the opening's ranker doesn't start cold.
   await db.from('connect_prospect_targets').update({ opening_id: opening.id }).eq('sourced_job_id', job.id);
   return { openingId: opening.id, verified, moved };

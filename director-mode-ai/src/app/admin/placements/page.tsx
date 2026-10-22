@@ -27,7 +27,7 @@ export default async function PlacementsPage() {
   const db = getSupabaseAdmin();
   const { data: placements } = await db
     .from('connect_placements')
-    .select('id, opening_id, candidate_id, club_owner_id, fee_cents, terms_version, start_date, status, guarantee_until, invoice_ref, created_at')
+    .select('id, application_id, opening_id, candidate_id, candidate_name, club_owner_id, fee_cents, terms_version, start_date, status, guarantee_until, invoice_ref, created_at')
     .order('created_at', { ascending: false });
   const rows = placements || [];
 
@@ -75,6 +75,7 @@ export default async function PlacementsPage() {
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium">Guarantee until</th>
                 <th className="px-3 py-2 font-medium">Invoice</th>
+                <th className="px-3 py-2 font-medium">Record</th>
               </tr>
             </thead>
             <tbody>
@@ -89,7 +90,7 @@ export default async function PlacementsPage() {
                     </td>
                     <td className="px-3 py-2">{o.title || o.dept || '—'}</td>
                     <td className="px-3 py-2">
-                      <div>{c.full_name || '—'}</div>
+                      <div>{c.full_name || p.candidate_name || '—'}</div>
                       <div className="text-xs text-white/50">{c.email || ''}</div>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">{usd(p.fee_cents)}</td>
@@ -97,6 +98,10 @@ export default async function PlacementsPage() {
                     <td className="px-3 py-2">{p.status}</td>
                     <td className="px-3 py-2">{fmt(p.guarantee_until)}</td>
                     <td className="px-3 py-2 text-white/70">{p.invoice_ref || '—'}</td>
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <a href={`/api/connect/applications/${p.application_id}/record`} className="text-teal-300 underline">Download record</a>
+                      <a href={`/api/connect/applications/${p.application_id}/record?format=json`} className="ml-2 text-xs text-white/50 underline">JSON</a>
+                    </td>
                   </tr>
                 );
               })}

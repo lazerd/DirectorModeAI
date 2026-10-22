@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { feeEligible, JOB_BOARD_ONLY_HINT } from '@/lib/connect/feeScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 async function candidateFor(userId: string) {
   const svc = getSupabaseAdmin();
-  const { data } = await svc.from('connect_candidates').select('id, resume_path').eq('profile_id', userId).maybeSingle();
+  const { data } = await svc.from('connect_candidates').select('id, resume_path').eq('profile_id', userId).is('deleted_at', null).maybeSingle();
   return data as { id: string; resume_path: string | null } | null;
 }
 
@@ -32,10 +33,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const svc = getSupabaseAdmin();
   const { data: job } = await svc
     .from('connect_sourced_jobs')
-    .select('id, status')
+    .select('id, status, role_level, title')
     .eq('id', params.id)
     .maybeSingle();
   if (!job || job.status !== 'active') return NextResponse.json({ error: 'This job is no longer listed.' }, { status: 404 });
+  // We only present candidates for director-level roles; the rest are job board only.
+  if (!feeEligible(job.role_level, job.title)) return NextResponse.json({ error: JOB_BOARD_ONLY_HINT }, { status: 400 });
 
   const cand = await candidateFor(user.id);
   if (!cand) return NextResponse.json({ error: 'Complete your candidate profile first.', needs: 'profile' }, { status: 400 });

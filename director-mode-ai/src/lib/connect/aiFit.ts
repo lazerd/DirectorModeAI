@@ -62,8 +62,19 @@ const txt = (s: string | null | undefined, max = 4000) => {
 };
 
 /**
+ * Pay fit without the number: the club reads the AI summary, and a candidate's pay
+ * is never shown to a club (see /connect/privacy). Pure.
+ */
+export function compFitPhrase(opening: Pick<FitOpening, 'comp_min' | 'comp_max'>, candidate: Pick<FitCandidate, 'current_comp' | 'min_comp'>): string {
+  const floor = candidate.min_comp ?? candidate.current_comp;
+  if (floor == null || !Number.isFinite(Number(floor)) || !opening.comp_max) return 'unknown';
+  return Number(floor) <= opening.comp_max ? "within the role's pay band" : "above the top of the role's pay band";
+}
+
+/**
  * Build the scoring prompt. Pure. Deliberately excludes the candidate's name,
- * email, phone and LinkedIn: identity is not job-related evidence.
+ * email, phone and LinkedIn (identity is not job-related evidence) and every pay
+ * figure of theirs (only whether their floor fits the band).
  */
 export function buildFitPrompt(opening: FitOpening, candidate: FitCandidate): string {
   const where = [opening.city, opening.state].filter(Boolean).join(', ') || opening.zip || 'not stated';
@@ -78,6 +89,7 @@ export function buildFitPrompt(opening: FitOpening, candidate: FitCandidate): st
     '- Every strength and every gap must cite the candidate\'s own stated information (quote or paraphrase it). If there is no evidence, say so as a gap or question; never assume.',
     '- Where information is missing, mark it as unknown and lower confidence; do not penalise beyond the uncertainty.',
     '- Be concise and professional; the hiring club reads this.',
+    '- Never state or estimate any pay figure for the candidate.',
     '',
     '## Opening',
     `Club: ${txt(opening.club_name, 200)}`,
@@ -91,8 +103,7 @@ export function buildFitPrompt(opening: FitOpening, candidate: FitCandidate): st
     `Headline: ${txt(candidate.headline, 300)}`,
     `Department: ${txt(candidate.dept, 100)}`,
     `Years of experience: ${candidate.years_experience ?? 'not stated'}`,
-    `Current compensation: ${money(candidate.current_comp)}`,
-    `Minimum compensation sought: ${money(candidate.min_comp ?? candidate.current_comp)}`,
+    `Pay expectation: ${compFitPhrase(opening, candidate)}`,
     `Home ZIP: ${txt(candidate.home_zip, 20)}; willing to relocate up to ${candidate.radius_miles ?? 'not stated'} miles`,
     `Certifications: ${txt(candidate.certifications, 1000)}`,
     `Experience summary: ${txt(candidate.experience_summary, 6000)}`,

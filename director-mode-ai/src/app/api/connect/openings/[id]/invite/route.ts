@@ -5,6 +5,7 @@ import { rankCandidatesForOpening } from '@/lib/connect/aiFit';
 import { sendBilledEmails } from '@/lib/email';
 import { background } from '@/lib/partnerFinder/background';
 import { APP_URL } from '@/lib/appUrl';
+import { privacyEmailLine } from '@/lib/connect/privacy';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -81,7 +82,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
 <p><strong>${esc(club)}</strong> is hiring a <strong>${esc(role)}</strong>, and your ClubMode profile is a strong match on role, location and pay.</p>
 <p>The club hasn't seen your profile. Nothing is shared until you apply — and applying takes one click with the résumé on your profile.</p>
 <p><a href="${link}" style="display:inline-block;background:#0d9488;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">See the opening and apply</a></p>
-<p style="color:#64748b;font-size:13px">You're getting this because you marked yourself open to work on ClubMode Recruiting. Turn that off on your candidate profile any time.</p>`,
+<p style="color:#64748b;font-size:13px">You're getting this because you marked yourself open to work on ClubMode Recruiting. Turn that off on your candidate profile any time.</p>
+${privacyEmailLine(APP_URL)}`,
         };
       }),
     ),

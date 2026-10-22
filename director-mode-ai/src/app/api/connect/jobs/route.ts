@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { SOURCED_PUBLIC_COLS } from '@/lib/connect/scout/labels';
+import { feeEligible } from '@/lib/connect/feeScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,10 +39,11 @@ export async function GET() {
 
   const jobs = (data || []).map((j: any) => ({
     ...j,
+    fee_eligible: feeEligible(null, j.title),
     description: trim(j.description, 400),
     requirements: trim(j.requirements, 400),
   }));
   // Sourced ids carry an "s-" prefix so they never collide with retained ids in /connect/jobs/[id].
-  const sourcedJobs = (sourced.data || []).map((j: any) => ({ ...j, id: `s-${j.id}`, summary: trim(j.summary, 400) }));
+  const sourcedJobs = (sourced.data || []).map((j: any) => ({ ...j, id: `s-${j.id}`, summary: trim(j.summary, 400), fee_eligible: feeEligible(j.role_level, j.title) }));
   return NextResponse.json({ jobs, sourced: sourcedJobs });
 }

@@ -12,6 +12,8 @@ import {
   isStage,
   withinAttribution,
 } from '@/lib/connect/placement';
+import { feeEligible } from '@/lib/connect/feeScope';
+import { logStageEvent } from '@/lib/connect/events';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -93,6 +95,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     .maybeSingle();
   if (moveErr) return NextResponse.json({ error: moveErr.message }, { status: 500 });
   if (!moved) return NextResponse.json({ error: 'This application changed — refresh and try again.' }, { status: 409 });
+  await logStageEvent({ application_id: id, from_stage: app.stage, to_stage: to, actor_id: user.id, actor_role: 'club', at: now.toISOString() });
 
   const { data: cand } = await db
     .from('connect_candidates')
@@ -107,7 +110,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (to === 'hired') {
     const startDate = body.start_date as string;
     const introducedAt = new Date(app.introduced_at || app.consent_at || app.created_at);
-    const attributable = withinAttribution(introducedAt, now);
+    // The fee covers director-level leadership only; other hires are free (job board only).
+    const attributable = withinAttribution(introducedAt, now) && feeEligible(null, opening.title);
     let placement: any = null;
 
     if (attributable) {
@@ -119,6 +123,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
             application_id: app.id,
             opening_id: opening.id,
             candidate_id: app.candidate_id,
+            candidate_name: cand?.full_name ?? null,
             club_owner_id: opening.owner_id,
             fee_cents: fee,
             terms_version: opening.terms_version,

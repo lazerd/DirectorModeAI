@@ -33,7 +33,7 @@ export async function GET() {
     const candidateIds = Array.from(new Set((rawMatches || []).map((m) => m.candidate_id)));
     const { data: candidates } = await svc
       .from('connect_candidates')
-      .select('id, full_name, email, phone, headline, dept, years_experience, current_comp, home_zip, reveal_mode')
+      .select('id, full_name, email, phone, headline, dept, years_experience, reveal_mode')
       .in('id', candidateIds.length ? candidateIds : ['00000000-0000-0000-0000-000000000000']);
 
     const byId = new Map((candidates || []).map((c) => [c.id, c]));
@@ -43,13 +43,16 @@ export async function GET() {
       const revealed = m.status === 'revealed';
       return {
         ...m,
+        // comp_delta = ceiling - their current pay: would reveal it, so clubs never get it.
+        comp_delta: null,
         candidate: {
           // Always-safe summary fields:
           headline: c.headline ?? null,
           dept: c.dept ?? null,
           years_experience: c.years_experience ?? null,
-          current_comp: c.current_comp ?? null,
-          home_zip: c.home_zip ?? null,
+          // A candidate's pay is never shown to a club (see /connect/privacy).
+          current_comp: null,
+          home_zip: null, // distance is enough; a ZIP can identify someone
           // Contact released only on reveal:
           full_name: revealed ? c.full_name ?? null : null,
           email: revealed ? c.email ?? null : null,

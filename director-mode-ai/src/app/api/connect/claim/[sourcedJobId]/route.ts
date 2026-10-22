@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { PLACEMENT_FEE_USD, PLACEMENT_TERMS, PLACEMENT_TERMS_VERSION } from '@/lib/connect/placement';
 import { claimSourcedJob, ClaimError } from '@/lib/connect/recruiter/claim';
+import { feeEligible } from '@/lib/connect/feeScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export async function GET(_req: Request, { params }: { params: { sourcedJobId: s
   const db = getSupabaseAdmin();
   const { data: job } = await db
     .from('connect_sourced_jobs')
-    .select('id, club_name, title, city, state, comp_min, comp_max, est_comp, status, opening_id, evaluation')
+    .select('id, club_name, title, role_level, city, state, comp_min, comp_max, est_comp, status, opening_id, evaluation')
     .eq('id', params.sourcedJobId)
     .maybeSingle();
   if (!job) return NextResponse.json({ error: 'not found' }, { status: 404 });
@@ -46,6 +47,8 @@ export async function GET(_req: Request, { params }: { params: { sourcedJobId: s
       comp_posted: !!job.comp_max,
       radius: ev?.bands?.maxRadiusMiles ?? null,
       active: job.status === 'active' && !job.opening_id,
+      // Assistant / teaching / coaching roles: on the job board only, never claimable for the fee.
+      fee_eligible: feeEligible(job.role_level, job.title),
       claimed: !!job.opening_id,
       opening_id: mine ? job.opening_id : null,
     },

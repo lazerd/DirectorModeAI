@@ -47,6 +47,14 @@ describe('buildFitPrompt', () => {
     expect(p).toContain('up to $100,000');
   });
 
+  it('never includes the candidate pay figure, only whether it fits the band', () => {
+    const p = buildFitPrompt(opening, candidate);
+    expect(p).not.toContain('120,000');
+    expect(p).toContain("Pay expectation: within the role's pay band");
+    expect(buildFitPrompt(opening, { ...candidate, min_comp: 250000 })).toContain('above the top');
+    expect(buildFitPrompt(opening, { dept: 'Tennis/Racquets' })).toContain('Pay expectation: unknown');
+  });
+
   it('never includes identity fields', () => {
     const p = buildFitPrompt(opening, { ...candidate, ...({ full_name: 'Jane Q', email: 'jane@x.com' } as object) });
     expect(p).not.toContain('Jane Q');

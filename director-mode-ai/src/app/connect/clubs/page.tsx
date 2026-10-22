@@ -402,7 +402,7 @@ export default function ClubsPage() {
                     <div className="text-sm text-slate-500 flex flex-wrap gap-x-3">
                       <span><MapPin className="h-3 w-3 inline" /> {Math.round(m.distance_miles)} mi away</span>
                       {m.candidate.years_experience != null && <span>{m.candidate.years_experience} yrs exp</span>}
-                      <span className="text-emerald-700">{usd(m.comp_delta)} below your ceiling</span>
+                      <span className="text-emerald-700">Your pay band fits</span>
                     </div>
                     {m.status === 'revealed' && (m.candidate.email || m.candidate.phone) ? (
                       <div className="mt-2 text-sm text-slate-800 bg-emerald-50 rounded-md px-3 py-2 inline-block">

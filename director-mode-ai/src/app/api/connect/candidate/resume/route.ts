@@ -20,6 +20,7 @@ async function callerCandidate() {
     .from('connect_candidates')
     .select('id, resume_path, resume_filename, resume_uploaded_at')
     .eq('profile_id', user.id)
+    .is('deleted_at', null)
     .maybeSingle();
   return { user, cand } as const;
 }

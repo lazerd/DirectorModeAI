@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 type Data = {
   job: {
     id: string; club_name: string | null; title: string | null; city: string | null; state: string | null;
-    comp_max: number | null; comp_posted: boolean; active: boolean; claimed: boolean; opening_id: string | null;
+    comp_max: number | null; comp_posted: boolean; active: boolean; claimed: boolean; opening_id: string | null; fee_eligible: boolean;
   };
   counts: { interested: number };
   terms: { fee: number; version: string; lines: string[] };
@@ -101,6 +101,12 @@ export default function ClaimJobPage() {
         <Card className="bg-white"><CardContent className="pt-6 text-slate-800">
           <p className="mb-3">You already accepted the terms for this role.</p>
           <Link href={`/connect/clubs/${job.opening_id}`}><Button>Open the pipeline</Button></Link>
+        </CardContent></Card>
+      ) : !job.fee_eligible ? (
+        <Card className="bg-white"><CardContent className="pt-6 text-slate-800 space-y-2">
+          <p className="font-medium">This role is on our job board only.</p>
+          <p className="text-sm">ClubMode&apos;s pay-on-hire terms cover director-level leadership: Director of Tennis or Racquets, equivalent department heads, and head pros who run the program. There&apos;s nothing to accept here, and no fee applies to this role.</p>
+          <p className="text-sm">Hiring a director? <Link href="/connect/clubs" className="text-teal-700 underline">Post the opening</Link>.</p>
         </CardContent></Card>
       ) : !job.active ? (
         <Card className="bg-white"><CardContent className="pt-6 text-slate-800">

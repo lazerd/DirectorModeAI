@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireOwner } from '@/lib/connect/recruiter/adminAuth';
 import { MIN_CONFIRMED_FOR_PITCH } from '@/lib/connect/recruiter/policy';
+import { topReferrers } from '@/lib/connect/referrals';
+import { feeEligible } from '@/lib/connect/feeScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +67,7 @@ export async function GET() {
       est_comp: j.est_comp,
       status: j.status,
       opening_id: j.opening_id,
+      boardOnly: !feeEligible(j.role_level, j.title),
       evaluation: ev
         ? {
             target_comp: ev.target_comp,
@@ -105,6 +108,15 @@ export async function GET() {
       .order('updated_at', { ascending: false })
       .limit(150),
   ]);
+  // Founding network: how many candidates joined through someone's invite link, and who brought them.
+  const { data: refRows } = await db.from('connect_referrals').select('referrer_candidate_id').limit(5000);
+  const top = topReferrers((refRows as { referrer_candidate_id: string }[] | null) ?? [], 5);
+  const { data: topNames } = top.length
+    ? await db.from('connect_candidates').select('id, full_name, deleted_at').in('id', top.map((t) => t.candidate_id))
+    : { data: [] as Row[] };
+  const nameOf = new Map(((topNames as Row[] | null) ?? []).map((c) => [c.id, c.deleted_at ? '(deleted profile)' : c.full_name || '(no name)']));
+  const referrals = { total: refRows?.length ?? 0, top: top.map((t) => ({ name: nameOf.get(t.candidate_id) ?? '(unknown)', count: t.count })) };
+
   const clubOf = new Map(jobRows.map((j) => [j.id, j.club_name]));
   const label = (r: Row) => clubOf.get(r.sourced_job_id) ?? null;
 
@@ -113,5 +125,6 @@ export async function GET() {
     queue: ((queue as Row[] | null) ?? []).map((r) => ({ ...r, club: label(r) })),
     sent: ((sent as Row[] | null) ?? []).map((r) => ({ ...r, club: label(r) })),
     minConfirmedForPitch: MIN_CONFIRMED_FOR_PITCH,
+    referrals,
   });
 }

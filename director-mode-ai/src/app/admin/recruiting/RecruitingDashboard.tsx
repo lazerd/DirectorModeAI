@@ -15,12 +15,16 @@ type Job = {
   funnel: { ranked: number; contacted: number; confirmed: number; pitched: number; claimed: boolean };
   pitchReady: boolean;
   pendingVerification: boolean;
+  boardOnly?: boolean;
 };
 type Out = {
   id: string; kind: string; club: string | null; to_name: string | null; to_email: string | null; subject: string | null; body_html?: string | null;
   status: string; auto: boolean; touch_number: number; created_at?: string; sent_at?: string | null; updated_at?: string; error?: string | null;
 };
-type Data = { jobs: Job[]; queue: Out[]; sent: Out[]; minConfirmedForPitch: number };
+type Data = {
+  jobs: Job[]; queue: Out[]; sent: Out[]; minConfirmedForPitch: number;
+  referrals?: { total: number; top: { name: string; count: number }[] };
+};
 
 const k = (n: number | null | undefined) => (n ? `$${Math.round(n / 1000)}k` : '—');
 const KIND: Record<string, string> = { candidate_invite: 'Candidate invite', prospect_recruit: '990 prospect', club_pitch: 'Club pitch' };
@@ -82,6 +86,14 @@ export default function RecruitingDashboard() {
         Candidates are contacted on their own. A club is pitched only after {data.minConfirmedForPitch}+ candidates confirm interest, and every club email waits for your approval here.
       </p>
       {note && <p className="mt-2 text-sm text-amber-200">{note}</p>}
+      {data.referrals && (
+        <p className="mt-2 text-sm text-white/70">
+          Founding network referrals: <strong className="text-white">{data.referrals.total}</strong>
+          {data.referrals.top.length > 0 && (
+            <> · top: {data.referrals.top.map((r) => `${r.name} (${r.count})`).join(', ')}</>
+          )}
+        </p>
+      )}
 
       <div className="mt-5 flex gap-2 text-sm">
         {(['jobs', 'queue', 'sent'] as const).map((t) => (
@@ -103,7 +115,8 @@ export default function RecruitingDashboard() {
                 <span className="text-sm text-white/60">{j.place}</span>
                 <span className="text-sm text-white/60">{j.comp || (j.est_comp ? `est. ${k(j.est_comp)}` : 'pay not posted')}</span>
                 <a href={j.source_url} target="_blank" rel="noreferrer" className="text-xs text-teal-300 underline">{j.source}</a>
-                {j.pitchReady && !j.funnel.claimed && <span className="rounded bg-emerald-700 px-2 text-xs">pitch-ready</span>}
+                {j.boardOnly && <span className="rounded bg-white/10 px-2 text-xs text-white/70">job board only</span>}
+                {j.pitchReady && !j.funnel.claimed && !j.boardOnly && <span className="rounded bg-emerald-700 px-2 text-xs">pitch-ready</span>}
                 {j.status === 'claimed' && <span className="rounded bg-teal-700 px-2 text-xs">claimed</span>}
               </div>
               <Funnel f={j.funnel} />

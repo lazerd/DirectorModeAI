@@ -14,6 +14,7 @@ import {
   clubCanMove,
   type Stage,
 } from '@/lib/connect/placement';
+import { feeEligible } from '@/lib/connect/feeScope';
 
 type Fit = { summary?: string; strengths?: string[]; gaps?: string[]; questions?: string[] };
 type Application = {
@@ -136,7 +137,7 @@ export default function PipelinePage() {
                 {STAGE_LABEL[g.stage]} <span className="text-slate-400 font-normal">({g.items.length})</span>
               </h2>
               <div className="space-y-3">
-                {g.items.map((a) => <ApplicantCard key={a.id} app={a} onChanged={load} />)}
+                {g.items.map((a) => <ApplicantCard key={a.id} app={a} onChanged={load} feeApplies={feeEligible(null, opening.title)} />)}
               </div>
             </section>
           ))}
@@ -146,7 +147,7 @@ export default function PipelinePage() {
   );
 }
 
-function ApplicantCard({ app, onChanged }: { app: Application; onChanged: () => Promise<void> }) {
+function ApplicantCard({ app, onChanged, feeApplies }: { app: Application; onChanged: () => Promise<void>; feeApplies: boolean }) {
   const c = app.candidate;
   const name = c.full_name || 'Candidate';
   const [open, setOpen] = useState(false);
@@ -258,6 +259,7 @@ function ApplicantCard({ app, onChanged }: { app: Application; onChanged: () => 
             {app.placement
               ? ` Placement fee $${(app.placement.fee_cents / 100).toLocaleString()} due on the start date${app.placement.guarantee_until ? `; replacement guarantee through ${fmtDate(app.placement.guarantee_until)}` : ''}.`
               : ' No placement fee applies to this hire.'}
+            <a href={`/api/connect/applications/${app.id}/record`} className="ml-2 font-medium text-emerald-800 underline">Download record</a>
           </div>
         )}
 
@@ -299,7 +301,11 @@ function ApplicantCard({ app, onChanged }: { app: Application; onChanged: () => 
                     onChange={(e) => setStartDate(e.target.value)}
                     className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900"
                   />
-                  <p className="mt-2">Hiring {name} confirms the ${PLACEMENT_FEE_USD.toLocaleString()} placement fee, due on their start date.</p>
+                  <p className="mt-2">
+                    {feeApplies
+                      ? `Hiring ${name} confirms the $${PLACEMENT_FEE_USD.toLocaleString()} placement fee, due on their start date.`
+                      : `No placement fee applies: this role is on our job board only.`}
+                  </p>
                   <Button size="sm" className="mt-2" onClick={move} disabled={busy || !startDate}>{busy ? 'Saving…' : `Confirm hire`}</Button>
                 </div>
               )}

@@ -24,6 +24,8 @@ import rawData from '@/app/benchmarks/_data/benchmarks.json';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { APP_URL } from '@/lib/appUrl';
 import { PLACEMENT_FEE_USD } from '@/lib/connect/placement';
+import { feeEligible } from '@/lib/connect/feeScope';
+import { privacyEmailLine } from '@/lib/connect/privacy';
 import { CONTACT_PRIORITY, planClubTouch, shouldPitchClub, type Offer } from './policy';
 import { SOURCED_JOB_FIELDS, type SourcedJob } from './evaluate';
 import { OPENING_FIELDS, type OpeningRow } from './prospects';
@@ -47,6 +49,7 @@ const placeOf = (j: { city?: string | null; state?: string | null }) => [j.city,
 const button = (href: string, label: string) =>
   `<p><a href="${href}" style="display:inline-block;background:#0d9488;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:600">${esc(label)}</a></p>`;
 const sign = `<p>${SIGNER.name}<br/>${SIGNER.org}</p>`;
+const privacy = () => privacyEmailLine(APP_URL);
 const offersMarker = (offers: Offer[]) => `<!-- cm-offers:${offers.join(',')} -->`;
 
 /** Offers recorded on an earlier club email. */
@@ -65,9 +68,16 @@ type JobLike = { club_name: string | null; title: string | null; city?: string |
 /**
  * `retained` = the club is a ClubMode client (accepted terms on a connect_openings row).
  * A sourced job is just a public posting: the email must not imply the club asked for
- * the candidate or works with us.
+ * the candidate or works with us. `boardOnly` = a non-director role (see feeScope): we
+ * never present candidates for it, so the email points them at the club's posting.
  */
-export function candidateInviteEmail(job: JobLike, name: string | null, link: string, retained = false): { subject: string; html: string } {
+export function candidateInviteEmail(
+  job: JobLike,
+  name: string | null,
+  link: string,
+  retained = false,
+  boardOnly = false,
+): { subject: string; html: string } {
   const club = job.club_name || 'A private club';
   const first = firstName(name);
   const where = placeOf(job);
@@ -76,14 +86,18 @@ export function candidateInviteEmail(job: JobLike, name: string | null, link: st
   const body = retained
     ? `<p>${what}, hiring through ClubMode Recruiting, and it lines up with your profile on role, location and pay.</p>
 <p>The club hasn't seen your profile. Nothing is shared until you apply, and applying takes one click with the résumé on your profile.</p>`
-    : `<p>${what}. They posted the job publicly, and it lines up with your ClubMode profile on role, location and pay.</p>
+    : boardOnly
+      ? `<p>${what}. They posted the job publicly, and it lines up with your ClubMode profile on role, location and pay.</p>
+<p>The club isn't working with us. If it interests you, apply on their posting; the job page has the link. We haven't shared anything about you.</p>`
+      : `<p>${what}. They posted the job publicly, and it lines up with your ClubMode profile on role, location and pay.</p>
 <p>The club hasn't asked for you and isn't working with us yet. If you're interested, tell us on the job page and we can present you to them. Nothing is shared with the club unless you say so.</p>`;
   return {
     subject: `${club} is hiring a ${roleOf(job)}`,
     html: `<p>${first ? `Hi ${esc(first)},` : 'Hi,'}</p>
 ${body}
 ${button(link, 'See the job')}
-<p style="color:#64748b;font-size:13px">You're getting this because you marked yourself open to work on ClubMode Recruiting. Turn that off on your candidate profile any time.</p>`,
+<p style="color:#64748b;font-size:13px">You're getting this because you marked yourself open to work on ClubMode Recruiting. Turn that off on your candidate profile any time.</p>
+${privacy()}`,
   };
 }
 
@@ -100,7 +114,8 @@ export function prospectRecruitEmail(job: JobLike, p: { name: string; club: stri
 <p>Here's the job: <a href="${link}">${esc(club)}, ${esc(roleOf(job))}</a>. ${posted}.</p>
 <p>If you'd like that, set up a free profile <a href="${profileLink()}">here</a>. It takes a couple of minutes, and nothing goes to any club unless you say yes to that specific job.</p>
 <p>Either way, no reply needed.</p>
-${sign}`,
+${sign}
+${privacy()}`,
   };
 }
 
@@ -208,7 +223,7 @@ const PENDING = ['draft', 'approved', 'needs_email', 'sending'];
  * Ranked prospects are deliberately NOT a parameter: only confirmed interests count.
  */
 export function planClubPitch(i: {
-  job: { club_name: string | null; title: string | null; status: string; opening_id: string | null; deadline: string | null };
+  job: { club_name: string | null; title: string | null; role_level?: string | null; status: string; opening_id: string | null; deadline: string | null };
   interests: { created_at: string; status: string }[];
   contacts: PitchContact[];
   pitches: PitchHistory[];
@@ -216,6 +231,8 @@ export function planClubPitch(i: {
   claimUrl: string;
   now: Date;
 }): { draft: { contact: PitchContact; touch: number; offers: Offer[]; subject: string; html: string } | null; skipped: string[] } {
+  // Assistant / teaching / coaching roles stay on the job board: never pitched, never billed.
+  if (!feeEligible(i.job.role_level, i.job.title)) return { draft: null, skipped: ['club_pitch: job board only (not a director-level role)'] };
   const confirmed = i.interests.filter((x) => x.status === 'interested');
   if (!shouldPitchClub(confirmed.length)) return { draft: null, skipped: [`club_pitch: ${confirmed.length} confirmed interested (need 2+)`] };
   if (i.pitches.some((p) => PENDING.includes(p.status))) return { draft: null, skipped: ['club_pitch: a pitch is already awaiting approval'] };
@@ -296,6 +313,7 @@ export async function draftForSourcedJob(job: SourcedJob, now = new Date()): Pro
   const interests = (iRows as { candidate_id: string; created_at: string; status: string }[] | null) ?? [];
   const touched = new Set(outreach.filter((o) => o.target_id).map((o) => `${o.kind}|${o.target_id}`));
   const raisedHand = new Set(interests.map((i) => i.candidate_id));
+  const boardOnly = !feeEligible(job.role_level, job.title);
   const inserts: Record<string, unknown>[] = [];
 
   // (a) opted-in candidates: auto, no club involvement
@@ -304,12 +322,12 @@ export async function draftForSourcedJob(job: SourcedJob, now = new Date()): Pro
   for (const t of cand) {
     const c = emails.get(t.candidate_id!);
     if (!c?.email || !c.open_to_work) continue;
-    inserts.push({ kind: 'candidate_invite', sourced_job_id: job.id, target_id: t.id, to_name: c.full_name, to_email: c.email, ...pick(candidateInviteEmail(job, c.full_name, sourcedJobLink(job.id))), status: 'draft', auto: true });
+    inserts.push({ kind: 'candidate_invite', sourced_job_id: job.id, target_id: t.id, to_name: c.full_name, to_email: c.email, ...pick(candidateInviteEmail(job, c.full_name, sourcedJobLink(job.id), false, boardOnly)), status: 'draft', auto: true });
     counts.candidate_invite++;
   }
 
-  // (b) 990 directors: never auto, no invented emails
-  for (const t of targets.filter((t) => t.prospect_ein && (t.fit_score ?? 0) >= RECRUIT_MIN_SCORE && !touched.has(`prospect_recruit|${t.id}`)).slice(0, RECRUIT_MAX_PER_JOB)) {
+  // (b) 990 directors: never auto, no invented emails. Not for job-board-only roles.
+  for (const t of boardOnly ? [] : targets.filter((t) => t.prospect_ein && (t.fit_score ?? 0) >= RECRUIT_MIN_SCORE && !touched.has(`prospect_recruit|${t.id}`)).slice(0, RECRUIT_MAX_PER_JOB)) {
     inserts.push({ kind: 'prospect_recruit', sourced_job_id: job.id, target_id: t.id, to_name: t.prospect_name, to_email: null, ...pick(prospectRecruitEmail(job, { name: t.prospect_name || '', club: t.prospect_club }, sourcedJobLink(job.id))), status: 'needs_email', auto: false });
     counts.prospect_recruit++;
   }
@@ -353,6 +371,7 @@ export async function draftForOpening(o: OpeningRow): Promise<DraftCounts> {
   const touched = new Set(((oRows as OutRow[] | null) ?? []).map((r) => `${r.kind}|${r.target_id}`));
   const inPipeline = new Set((apps ?? []).map((a) => a.candidate_id as string));
   const job: JobLike = { club_name: o.club_name, title: o.title, comp_max: o.comp_max };
+  const boardOnly = !feeEligible(null, o.title);
   const inserts: Record<string, unknown>[] = [];
   const cand = targets.filter((t) => t.candidate_id && (t.fit_score ?? 0) >= INVITE_MIN_SCORE && !touched.has(`candidate_invite|${t.id}`) && !inPipeline.has(t.candidate_id!));
   const emails = await candidateEmails(cand.map((t) => t.candidate_id!));
@@ -362,7 +381,7 @@ export async function draftForOpening(o: OpeningRow): Promise<DraftCounts> {
     inserts.push({ kind: 'candidate_invite', opening_id: o.id, target_id: t.id, to_name: c.full_name, to_email: c.email, ...pick(candidateInviteEmail(job, c.full_name, openingLink(o.id), true)), status: 'draft', auto: true });
     counts.candidate_invite++;
   }
-  for (const t of targets.filter((t) => t.prospect_ein && (t.fit_score ?? 0) >= RECRUIT_MIN_SCORE && !touched.has(`prospect_recruit|${t.id}`)).slice(0, RECRUIT_MAX_PER_JOB)) {
+  for (const t of boardOnly ? [] : targets.filter((t) => t.prospect_ein && (t.fit_score ?? 0) >= RECRUIT_MIN_SCORE && !touched.has(`prospect_recruit|${t.id}`)).slice(0, RECRUIT_MAX_PER_JOB)) {
     inserts.push({ kind: 'prospect_recruit', opening_id: o.id, target_id: t.id, to_name: t.prospect_name, to_email: null, ...pick(prospectRecruitEmail(job, { name: t.prospect_name || '', club: t.prospect_club }, openingLink(o.id), true)), status: 'needs_email', auto: false });
     counts.prospect_recruit++;
   }

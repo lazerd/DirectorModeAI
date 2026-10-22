@@ -11,6 +11,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendBilledEmail } from '@/lib/email';
 import { MIN_CONFIRMED_FOR_PITCH } from './policy';
 import { refreshInterestedCount } from './outreach';
+import { feeEligible } from '@/lib/connect/feeScope';
 
 const GAP_MS = 600;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -70,7 +71,8 @@ export async function sendQueue(opts: { limit?: number; ids?: string[]; deadline
       subject: r.subject || 'An opportunity from ClubMode Recruiting',
       html,
       fromName: 'ClubMode Recruiting',
-      ...(process.env.RECRUITING_REPLY_TO ? { replyTo: process.env.RECRUITING_REPLY_TO } : {}),
+      // Same as the CRM outreach: replies land in Darrin's inbox unless overridden.
+      replyTo: process.env.RECRUITING_REPLY_TO || process.env.RECRUITING_LEADS_EMAIL || 'darrinjco@gmail.com',
     }).catch((e: unknown) => ({ sent: false as const, reason: 'error' as const, error: String((e as Error)?.message || e) }));
     const now = new Date().toISOString();
     if (res.sent) {
@@ -96,8 +98,9 @@ export async function sendQueue(opts: { limit?: number; ids?: string[]; deadline
 async function skipReason(r: Row): Promise<string | null> {
   const db = getSupabaseAdmin();
   if (r.sourced_job_id) {
-    const { data: j } = await db.from('connect_sourced_jobs').select('status, opening_id, deadline').eq('id', r.sourced_job_id).maybeSingle();
+    const { data: j } = await db.from('connect_sourced_jobs').select('status, opening_id, deadline, role_level, title').eq('id', r.sourced_job_id).maybeSingle();
     if (!j) return 'job gone';
+    if (r.kind === 'club_pitch' && !feeEligible(j.role_level, j.title)) return 'job board only (not a director-level role)';
     // A claimed job's candidates are moved into the pipeline; a pitch to a claimed club is moot.
     if (r.kind === 'club_pitch' && (j.status !== 'active' || j.opening_id)) return `job ${j.opening_id ? 'claimed' : j.status}`;
     if (r.kind !== 'club_pitch' && j.status !== 'active') return `job ${j.status}`;

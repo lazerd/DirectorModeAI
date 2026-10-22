@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     if (acceptTerms && !saved.terms_accepted_at) {
       const { data: accepted } = await svc
         .from('connect_openings')
-        .update({ terms_accepted_at: new Date().toISOString(), terms_version: PLACEMENT_TERMS_VERSION })
+        .update({ terms_accepted_at: new Date().toISOString(), terms_accepted_by: user.id, terms_version: PLACEMENT_TERMS_VERSION })
         .eq('id', saved.id)
         .eq('owner_id', user.id)
         .is('terms_accepted_at', null)
@@ -102,6 +102,7 @@ export async function POST(req: Request) {
     }
     row.terms_accepted_at = new Date().toISOString();
     row.terms_version = PLACEMENT_TERMS_VERSION;
+    row.terms_accepted_by = user.id;
     const { data, error } = await svc
       .from('connect_openings')
       .insert(row)

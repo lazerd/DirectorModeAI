@@ -6,6 +6,7 @@ import { APP_URL } from '@/lib/appUrl';
 import { candidateCanMove, isStage, STAGE_LABEL } from '@/lib/connect/placement';
 import { scoreApplication } from '@/lib/connect/aiFit';
 import { background } from '@/lib/partnerFinder/background';
+import { logStageEvent } from '@/lib/connect/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     .from('connect_candidates')
     .select('id, full_name, headline, years_experience, resume_path')
     .eq('profile_id', user.id)
+    .is('deleted_at', null)
     .maybeSingle();
   if (!cand) {
     return NextResponse.json({ error: 'Complete your candidate profile before applying.', needs: 'profile' }, { status: 400 });
@@ -89,6 +91,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       .eq('stage', 'invited'); // guard against a concurrent move
     if (error) return NextResponse.json({ error: 'Could not submit your application.' }, { status: 500 });
     applicationId = existing.id;
+    await logStageEvent({ application_id: applicationId, from_stage: existing.stage, to_stage: 'applied', actor_id: user.id, actor_role: 'candidate', note: 'applied with consent', at: now });
   } else {
     const { data: inserted, error } = await svc
       .from('connect_applications')
@@ -112,6 +115,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return NextResponse.json({ error: 'Could not submit your application.' }, { status: 500 });
     }
     applicationId = inserted.id;
+    await logStageEvent({ application_id: applicationId, from_stage: null, to_stage: 'applied', actor_id: user.id, actor_role: 'candidate', note: 'applied with consent', at: now });
   }
 
   // Tell the club. Platform-paid (null) — never billed to the club or candidate.

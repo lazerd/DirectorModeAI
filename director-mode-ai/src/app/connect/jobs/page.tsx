@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Loader2, MapPin, CalendarClock, Briefcase, ShieldCheck, Search, Globe } from 'lucide-react';
 import { sourceLabel } from '@/lib/connect/scout/labels';
+import { JOB_BOARD_ONLY_HINT, JOB_BOARD_ONLY_LABEL } from '@/lib/connect/feeScope';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 
@@ -11,6 +12,7 @@ type Job = {
   id: string; club_name: string | null; title: string | null; dept: string;
   comp_min: number | null; comp_max: number | null; city: string | null; state: string | null; zip: string | null;
   deadline: string | null; description: string | null; requirements: string | null; created_at: string;
+  fee_eligible?: boolean;
 };
 // A job the Scout found on a public board (id is "s-<uuid>").
 type SourcedJob = {
@@ -18,7 +20,15 @@ type SourcedJob = {
   role_level: string | null; city: string | null; state: string | null;
   comp_min: number | null; comp_max: number | null; comp_text: string | null; est_comp: number | null;
   summary: string | null; requirements: string | null; deadline: string | null; first_seen_at: string;
+  fee_eligible?: boolean;
 };
+
+// Assistant / teaching / coaching roles: listed for candidates, but ClubMode doesn't present anyone for them.
+const BoardOnly = ({ hint = JOB_BOARD_ONLY_HINT }: { hint?: string }) => (
+  <span title={hint} className="text-[11px] font-medium rounded-full px-2 py-0.5 bg-slate-100 text-slate-600 border border-slate-200">
+    {JOB_BOARD_ONLY_LABEL}
+  </span>
+);
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
 const compBand = (j: { comp_min: number | null; comp_max: number | null }) =>
@@ -88,7 +98,8 @@ export default function JobBoardPage() {
         <ShieldCheck className="h-5 w-5 text-teal-700 shrink-0 mt-0.5" />
         <div className="text-sm text-teal-900">
           <strong>Applying is free.</strong> Your contact details go only to clubs you apply to.{' '}
-          <Link href="/connect/candidate" className="underline">Set up your profile and résumé</Link> once, then apply in one click.
+          <Link href="/connect/candidate" className="underline">Set up your profile and résumé</Link> once, then apply in one click.{' '}
+          <Link href="/connect/privacy" className="underline">Privacy</Link>
         </div>
       </div>
 
@@ -144,9 +155,10 @@ export default function JobBoardPage() {
                         <span className="shrink-0 text-xs font-medium rounded-full px-2 py-1 bg-emerald-100 text-emerald-800">{band}</span>
                       )}
                     </div>
-                    <div className="mt-1.5 text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
+                    <div className="mt-1.5 text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
                       {place && <span><MapPin className="h-3 w-3 inline" /> {place}</span>}
                       {j.deadline && <span><CalendarClock className="h-3 w-3 inline" /> Apply by {fmtDate(j.deadline)}</span>}
+                      {j.fee_eligible === false && <BoardOnly hint="Listed on our job board. Apply here; the club sees your application." />}
                     </div>
                     {j.description && <p className="mt-2 text-sm text-slate-700 line-clamp-2">{j.description}</p>}
                   </CardContent>
@@ -178,10 +190,11 @@ export default function JobBoardPage() {
                               <span className="shrink-0 text-xs font-medium rounded-full px-2 py-1 bg-slate-100 text-slate-700">{pay}</span>
                             )}
                           </div>
-                          <div className="mt-1.5 text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
+                          <div className="mt-1.5 text-xs text-slate-500 flex flex-wrap items-center gap-x-3 gap-y-1">
                             {place && <span><MapPin className="h-3 w-3 inline" /> {place}</span>}
                             {j.deadline && <span><CalendarClock className="h-3 w-3 inline" /> Apply by {fmtDate(j.deadline)}</span>}
                             <span><Globe className="h-3 w-3 inline" /> Found on {sourceLabel(j.source)}</span>
+                            {j.fee_eligible === false && <BoardOnly />}
                           </div>
                           {j.summary && <p className="mt-2 text-sm text-slate-700 line-clamp-2">{j.summary}</p>}
                         </CardContent>

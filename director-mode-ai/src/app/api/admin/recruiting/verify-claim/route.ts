@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   if (typeof body.sourcedJobId !== 'string') return NextResponse.json({ error: 'sourcedJobId required' }, { status: 400 });
   try {
-    const moved = await moveInterests(body.sourcedJobId);
+    const moved = await moveInterests(body.sourcedJobId, { id: gate.user.id, role: 'platform' });
     return NextResponse.json({ ok: true, moved });
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });

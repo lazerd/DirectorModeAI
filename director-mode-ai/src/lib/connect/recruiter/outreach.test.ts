@@ -81,3 +81,26 @@ describe('candidate invite honesty', () => {
     expect(e.html).not.toMatch(/invited you|asked us to reach out|working with us on/i);
   });
 });
+
+describe('role scope (job board only)', () => {
+  it('an assistant / teaching pro job never gets a club pitch, however many candidates confirm', () => {
+    const many = [interest(), interest(), interest(), interest()];
+    for (const title of ['Assistant Tennis Professional', 'Teaching Pro', 'Tennis Coach']) {
+      const p = planClubPitch({ ...base, job: { ...job, title }, interests: many });
+      expect(p.draft).toBeNull();
+      expect(p.skipped.join(' ')).toContain('job board only');
+    }
+    expect(planClubPitch({ ...base, job: { ...job, title: null, role_level: 'assistant' }, interests: many }).draft).toBeNull();
+    expect(planClubPitch({ ...base, job: { ...job, title: 'Head Tennis Professional', role_level: 'head_pro' }, interests: many }).draft).not.toBeNull();
+  });
+
+  it('a job-board-only invite points the candidate at the posting and never offers to present them', () => {
+    const e = candidateInviteEmail({ club_name: 'Lakeside', title: 'Assistant Pro' }, 'sam', 'https://x/jobs/s-2', false, true);
+    expect(e.html).toContain('apply on their posting');
+    expect(e.html).not.toMatch(/present you/i);
+  });
+
+  it('candidate emails link the privacy notice', () => {
+    expect(candidateInviteEmail({ club_name: 'C', title: 'Director' }, 'sam', 'https://x').html).toContain('/connect/privacy');
+  });
+});

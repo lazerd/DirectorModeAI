@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Search, CheckCircle2, Loader2, TrendingUp, MapPin, FileText, Upload, Briefcase, Mail } from 'lucide-react';
+import { Search, CheckCircle2, Loader2, TrendingUp, MapPin, FileText, Upload, Briefcase, Mail, Copy, Users, Trash2, ShieldCheck } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { STAGE_LABEL, isStage, candidateCanMove } from '@/lib/connect/placement';
+import { normalizeRefCode, referralPath } from '@/lib/connect/referrals';
+import { PRIVACY_PATH } from '@/lib/connect/privacy';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '@/components/ui/select';
@@ -73,6 +75,13 @@ export default function CandidatePage() {
   const [revealMode, setRevealMode] = useState<'auto' | 'approve'>('auto');
   const [claimedEin, setClaimedEin] = useState('');
   const [hasProfile, setHasProfile] = useState(false);
+
+  // Founding network: this person's private invite link, and the ref they arrived with.
+  const [referral, setReferral] = useState<{ code: string; joined: number } | null>(null);
+  const [arrivedRef, setArrivedRef] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState('');
 
   // Recruiting: what clubs see when you apply.
   const [experienceSummary, setExperienceSummary] = useState('');
@@ -204,10 +213,14 @@ export default function CandidatePage() {
   }, [dept, compNum, homeZip5]);
 
   useEffect(() => {
+    try {
+      setArrivedRef(normalizeRefCode(new URLSearchParams(window.location.search).get('ref')));
+    } catch { /* ignore */ }
     (async () => {
       const res = await fetch('/api/connect/candidate');
       if (res.ok) {
-        const { candidate, matches } = await res.json();
+        const { candidate, matches, referral: ref } = await res.json();
+        setReferral(ref || null);
         if (candidate) {
           setFullName(candidate.full_name || '');
           setEmail(candidate.email || '');
@@ -278,6 +291,7 @@ export default function CandidatePage() {
         home_zip: homeZip, radius_miles: radius ? Number(radius) : 50,
         open_to_work: openToWork, reveal_mode: revealMode, claimed_ein: claimedEin || null,
         experience_summary: experienceSummary, certifications, linkedin_url: linkedinUrl,
+        ...(arrivedRef ? { ref: arrivedRef } : {}),
       }),
     });
     if (res.ok) {
@@ -285,13 +299,47 @@ export default function CandidatePage() {
       setHasProfile(true);
       setSavedMsg(newMatches > 0 ? `Saved — and you matched ${newMatches} new opening${newMatches === 1 ? '' : 's'}!` : 'Saved.');
       const re = await fetch('/api/connect/candidate');
-      if (re.ok) setMatches((await re.json()).matches || []);
+      if (re.ok) {
+        const d = await re.json();
+        setMatches(d.matches || []);
+        setReferral(d.referral || null);
+      }
       loadInterests(); // claiming a 990 record can reveal clubs that asked for you
     } else {
       const e = await res.json().catch(() => ({}));
       setSavedMsg(e.error || 'Save failed.');
     }
     setSaving(false);
+  }
+
+  const inviteUrl = referral && typeof window !== 'undefined' ? `${window.location.origin}${referralPath(referral.code)}` : '';
+  async function copyInvite() {
+    if (!inviteUrl) return;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt('Copy your invite link:', inviteUrl);
+    }
+  }
+
+  async function deleteProfile() {
+    if (!confirm('Delete your candidate profile and résumé? This erases your details and every résumé file, and withdraws your open applications. It can’t be undone.')) return;
+    setDeleting(true);
+    setDeleteMsg('');
+    try {
+      const res = await fetch('/api/connect/candidate', { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setDeleteMsg(data.error || 'Could not delete. Please try again.'); return; }
+      setFullName(''); setEmail(''); setPhone(''); setHeadline(''); setYears(''); setCurrentComp(''); setHomeZip('');
+      setRadius('50'); setClaimedEin(''); setExperienceSummary(''); setCertifications(''); setLinkedinUrl('');
+      setResumeName(null); setResumeAt(null); setHasProfile(false); setReferral(null); setMatches([]); setInterests([]);
+      setApplications([]); setSavedMsg('');
+      setDeleteMsg('Deleted. Your profile details and résumé are gone, and your open applications were withdrawn.');
+    } finally {
+      setDeleting(false);
+    }
   }
 
   if (loading) {
@@ -302,9 +350,32 @@ export default function CandidatePage() {
     <div className="max-w-3xl mx-auto px-4 py-10">
       <Link href="/connect" className="text-sm text-teal-400 underline">← ClubMode Recruiting</Link>
       <h1 className="text-3xl font-bold tracking-tight text-white mt-2 mb-1">Your candidate profile</h1>
-      <p className="text-slate-300 mb-8">
+      <p className="text-slate-300 mb-2">
         You stay anonymous. A club only gets your contact info when they post an opening that beats your current comp and is within your range.
       </p>
+      <p className="text-sm text-slate-400 mb-8 flex items-center gap-1.5">
+        <ShieldCheck className="h-4 w-4" /> Free and confidential. Your current pay is never shown to clubs.{' '}
+        <Link href={PRIVACY_PATH} className="text-teal-400 underline">Privacy notice</Link>
+      </p>
+      {deleteMsg && !hasProfile && <p className="mb-6 rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">{deleteMsg}</p>}
+
+      {/* Founding network: private invite link */}
+      {referral && (
+        <div className="mb-6 rounded-xl border border-teal-400/30 bg-teal-400/10 p-4">
+          <div className="font-semibold text-white flex items-center gap-2"><Users className="h-4 w-4 text-teal-300" /> Share with two colleagues you&apos;d recommend</div>
+          <p className="text-sm text-slate-300 mt-1">
+            The network is only as good as the directors in it. Send your private invite link to two people you&apos;d vouch for.
+            They make their own profile; nothing is shared about you.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <code className="max-w-full truncate rounded-md bg-black/30 px-3 py-2 text-sm text-teal-100">{inviteUrl}</code>
+            <Button size="sm" onClick={copyInvite}><Copy className="h-4 w-4 mr-1" /> {copied ? 'Copied' : 'Copy link'}</Button>
+          </div>
+          <p className="text-xs text-slate-400 mt-2">
+            {referral.joined > 0 ? `${referral.joined} colleague${referral.joined === 1 ? ' has' : 's have'} joined with your link.` : 'No one has joined with your link yet.'}
+          </p>
+        </div>
+      )}
 
       {/* Clubs that invited this candidate to apply */}
       {applications.filter((a) => a.stage === 'invited').map((a) => (
@@ -326,7 +397,10 @@ export default function CandidatePage() {
                   checked={!!inviteConsent[a.id]}
                   onChange={(e) => setInviteConsent((c) => ({ ...c, [a.id]: e.target.checked }))}
                 />
-                <span>I authorize ClubMode to send my application and résumé to {a.opening?.club_name || 'this club'} for this role.</span>
+                <span>
+                  I authorize ClubMode to send my application and résumé to {a.opening?.club_name || 'this club'} for this role.{' '}
+                  <Link href={PRIVACY_PATH} className="underline">Privacy</Link>
+                </span>
               </label>
               <div className="flex flex-wrap items-center gap-2 mt-3">
                 <Button size="sm" onClick={() => applyToInvite(a)} disabled={appBusy === a.id}>
@@ -464,7 +538,8 @@ export default function CandidatePage() {
         <CardHeader><CardTitle className="text-base flex items-center gap-2 text-white"><FileText className="h-4 w-4 text-teal-400" /> Résumé</CardTitle></CardHeader>
         <CardContent>
           <p className="text-xs text-slate-300 mb-3">
-            PDF, DOC or DOCX, up to 5 MB. Private: it only goes to a club when you apply to that club&apos;s job.
+            PDF, DOC or DOCX, up to 5 MB. Private: it only goes to a club when you apply to that club&apos;s job.{' '}
+            <Link href={PRIVACY_PATH} className="text-teal-400 underline">Privacy</Link>
           </p>
           {!hasProfile ? (
             <p className="text-sm text-slate-300">Save your profile above first, then upload your résumé.</p>
@@ -594,6 +669,24 @@ export default function CandidatePage() {
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      {/* Delete */}
+      {hasProfile && (
+        <div className="mt-12 rounded-xl border border-red-400/30 bg-red-500/5 p-4">
+          <div className="font-semibold text-white flex items-center gap-2"><Trash2 className="h-4 w-4 text-red-300" /> Delete my candidate profile and résumé</div>
+          <p className="text-sm text-slate-300 mt-1">
+            Erases your profile details and every résumé file you uploaded, withdraws your open applications and interests, and
+            stops all matching. If a club already hired you through us, we keep the placement record for billing.{' '}
+            <Link href={PRIVACY_PATH} className="text-teal-400 underline">Details</Link>
+          </p>
+          <div className="mt-3 flex items-center gap-3">
+            <Button size="sm" variant="outline" className="border-red-400/50 text-red-200 hover:bg-red-500/10" onClick={deleteProfile} disabled={deleting}>
+              {deleting ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Deleting…</> : 'Delete my candidate profile and résumé'}
+            </Button>
+            {deleteMsg && hasProfile && <span className="text-sm text-red-200">{deleteMsg}</span>}
+          </div>
         </div>
       )}
     </div>

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { candidateCanMove, isStage } from '@/lib/connect/placement';
+import { logStageEvent } from '@/lib/connect/events';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,12 +28,17 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: 'This application can no longer be withdrawn.' }, { status: 409 });
   }
 
-  const { error } = await svc
+  const now = new Date().toISOString();
+  const { data: moved, error } = await svc
     .from('connect_applications')
-    .update({ stage: 'withdrawn', updated_at: new Date().toISOString() })
+    .update({ stage: 'withdrawn', updated_at: now })
     .eq('id', app.id)
-    .eq('candidate_id', cand.id);
+    .eq('candidate_id', cand.id)
+    .eq('stage', app.stage)
+    .select('id');
   if (error) return NextResponse.json({ error: 'Could not withdraw' }, { status: 500 });
+  if (!moved?.length) return NextResponse.json({ error: 'This application changed. Refresh and try again.' }, { status: 409 });
+  await logStageEvent({ application_id: app.id, from_stage: app.stage, to_stage: 'withdrawn', actor_id: user.id, actor_role: 'candidate', at: now });
 
   return NextResponse.json({ ok: true, stage: 'withdrawn' });
 }

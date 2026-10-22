@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { SOURCED_PUBLIC_COLS } from '@/lib/connect/scout/labels';
+import { feeEligible } from '@/lib/connect/feeScope';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,6 +47,7 @@ async function getSourced(rawId: string) {
       .from('connect_candidates')
       .select('id, resume_path')
       .eq('profile_id', user.id)
+      .is('deleted_at', null)
       .maybeSingle();
     if (cand) {
       me.hasProfile = true;
@@ -60,7 +62,8 @@ async function getSourced(rawId: string) {
     }
   }
   const r = row as unknown as Record<string, unknown>;
-  return NextResponse.json({ job: { ...r, id: `s-${r.id}`, sourced_id: r.id, kind: 'sourced' }, me });
+  const fee_eligible = feeEligible(r.role_level as string | null, r.title as string | null);
+  return NextResponse.json({ job: { ...r, id: `s-${r.id}`, sourced_id: r.id, kind: 'sourced', fee_eligible }, me });
 }
 
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
@@ -89,6 +92,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       .from('connect_candidates')
       .select('id, resume_path')
       .eq('profile_id', user.id)
+      .is('deleted_at', null)
       .maybeSingle();
     if (cand) {
       me.hasProfile = true;
@@ -105,5 +109,5 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
   if (!isPublic && !me.application) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
 
-  return NextResponse.json({ job, me });
+  return NextResponse.json({ job: { ...job, fee_eligible: feeEligible(null, job.title) }, me });
 }

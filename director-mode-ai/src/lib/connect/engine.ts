@@ -145,7 +145,7 @@ async function persistAndNotify(
           </p>
           <ul style="margin:0 0 16px;padding-left:18px;color:#334155">
             <li>Role: <strong>${role}</strong></li>
-            <li>Your offer: <strong>up to ${offer}</strong> (≈ ${usd(edge.comp_delta)} above their current comp)</li>
+            <li>Your offer: <strong>up to ${offer}</strong>, which fits what they're looking for</li>
             <li>Distance: <strong>${dist} mi</strong> from them — inside their relocation radius</li>
           </ul>
           ${contactBlock}
