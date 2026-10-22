@@ -219,7 +219,8 @@ export default function ClubsPage() {
       <h1 className="text-3xl font-bold tracking-tight text-white mt-2 mb-1">Pay only when you hire.</h1>
       <p className="text-slate-300 mb-8">
         Post your racquets-director opening free. Our AI ranks opted-in directors and invites the best fits to apply; you run interviews in your pipeline.
-        No retainer — a flat ${PLACEMENT_FEE_USD.toLocaleString()} only if you hire someone ClubMode introduced.
+        No retainer — a flat ${PLACEMENT_FEE_USD.toLocaleString()} only if you hire someone ClubMode introduced.{' '}
+        <Link href="/connect/process" className="text-teal-400 underline">See our 10-step process →</Link>
       </p>
 
       {/* Tell us about your opening */}
