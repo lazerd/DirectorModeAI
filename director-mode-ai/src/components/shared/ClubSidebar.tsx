@@ -158,6 +158,7 @@ const PUBLIC_PREFIXES = [
   '/captain/intake',
   '/captain/claim',
   '/captain/confirm',
+  '/captain/makeup',
   '/leagues/rsvp',
   '/leagues/join',
   // CourtConnect's emailed links ("I'm in", "stop these emails"). No login.

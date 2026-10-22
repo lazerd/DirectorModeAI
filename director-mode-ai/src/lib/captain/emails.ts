@@ -1278,3 +1278,69 @@ export function visitingBodyText(
 export function defaultVisitingSubject(team: string, m: MatchInfo, tz?: string): string {
   return `${team} — confirming ${formatMatchWhen(m.matchAt, tz)}`;
 }
+
+/**
+ * Rain-out makeup poll — the other club offered a few makeup dates and the
+ * captain needs Yes / No from each player on EVERY one. Sent first to the
+ * players who were in the lineup (`firstCall`), then to the rest of the roster.
+ * Each Yes / No button records that answer on arrival; the page shows both
+ * dates so the player can answer the other one in the same visit.
+ */
+export function makeupPollEmail(
+  team: string,
+  m: MatchInfo,
+  pollId: string,
+  options: string[],
+  r: Recipient,
+  opts?: { tz?: string; note?: string | null; firstCall?: boolean },
+): { to: string; subject: string; html: string } {
+  const tz = opts?.tz;
+  const link = `${BASE}/captain/makeup/${r.token}?p=${pollId}`;
+  const day = (iso: string) =>
+    new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      timeZone: tz || CLUB_TZ,
+    }).format(new Date(iso));
+  const time = (iso: string) =>
+    new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz || CLUB_TZ }).format(
+      new Date(iso),
+    );
+  const original = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    timeZone: tz || CLUB_TZ,
+  }).format(new Date(m.matchAt));
+
+  const rows = options
+    .map(
+      (iso, i) => `
+      <div style="border:1px solid #e2e8f0;border-radius:12px;padding:14px 16px;margin:0 0 12px">
+        <div style="font-size:17px;font-weight:700;color:${INK}">${day(iso)}</div>
+        <div style="font-size:14px;color:#475569;margin:2px 0 10px">${time(iso)}${m.location ? ` · ${escapeHtml(m.location)}` : ''}</div>
+        ${button(`${link}&o=${i}&a=yes`, '✓ Yes, I can play', BRAND)}
+        ${button(`${link}&o=${i}&a=no`, '✗ No', '#e2e8f0')}
+      </div>`,
+    )
+    .join('');
+
+  const note = (opts?.note || '').trim();
+  const lead = opts?.firstCall
+    ? `Our ${original} match${m.opponent ? ` vs ${escapeHtml(m.opponent)}` : ''} was rained out. You were in the lineup, so you get first call on the makeup. Please answer <strong>both</strong> dates.`
+    : `Our ${original} match${m.opponent ? ` vs ${escapeHtml(m.opponent)}` : ''} was rained out and we're filling the makeup. Please answer <strong>both</strong> dates.`;
+
+  return {
+    to: r.email,
+    subject: `${team}: rain-out makeup — can you play ${options.map((o) => day(o).split(',')[0]).join(' or ')}?`,
+    html: shell(
+      `Hi ${escapeHtml(r.name)} — makeup dates`,
+      `${note ? `<p style="font-size:16px;line-height:1.5;margin:0 0 16px;padding:12px 14px;background:#f8fafc;border-left:3px solid ${BRAND};border-radius:4px">${escapeHtml(note).replace(/\n/g, '<br>')}</p>` : ''}
+       <p style="font-size:16px;line-height:1.5;margin:0 0 18px">${lead}</p>
+       ${rows}
+       <p style="font-size:14px;color:#475569">Or <a href="${link}" style="color:#0369a1">open your answers page</a> — you can change an answer any time.</p>`,
+      'One tap — no login needed.',
+    ),
+  };
+}

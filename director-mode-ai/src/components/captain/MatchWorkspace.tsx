@@ -8,6 +8,7 @@ import TopDogPanel from '@/components/captain/TopDogPanel';
 import UstaScorePanel, { type UstaLine } from '@/components/captain/UstaScorePanel';
 import { useRouter } from 'next/navigation';
 import EmailPreviewModal, { type EmailPreview } from './EmailPreviewModal';
+import MakeupPollPanel from './MakeupPollPanel';
 import { lineupAsText } from '@/lib/captain/lineupText';
 import {
   JTT_COURT_FORMATS,
@@ -1724,6 +1725,10 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
         }}
         action={stageAction}
       />
+
+      {status === 'scheduled' && (
+        <MakeupPollPanel teamId={teamId} matchId={matchId} matchAt={matchAt} timeZone={timeZone} />
+      )}
 
       {/* ---------------------------------------------------------- availability */}
       <section>
