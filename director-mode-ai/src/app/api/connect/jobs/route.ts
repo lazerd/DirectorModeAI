@@ -29,7 +29,7 @@ export async function GET() {
     .limit(200),
   svc
     .from('connect_sourced_jobs')
-    .select(SOURCED_PUBLIC_COLS)
+    .select(`${SOURCED_PUBLIC_COLS}, last_seen_at`)
     .eq('status', 'active')
     .is('opening_id', null)
     .order('first_seen_at', { ascending: false })
@@ -44,6 +44,11 @@ export async function GET() {
     requirements: trim(j.requirements, 400),
   }));
   // Sourced ids carry an "s-" prefix so they never collide with retained ids in /connect/jobs/[id].
-  const sourcedJobs = (sourced.data || []).map((j: any) => ({ ...j, id: `s-${j.id}`, summary: trim(j.summary, 400), fee_eligible: feeEligible(j.role_level, j.title) }));
-  return NextResponse.json({ jobs, sourced: sourcedJobs });
+  // A posting whose deadline has passed is stale even if the board still shows it.
+  const today = new Date().toISOString().slice(0, 10);
+  const live = (sourced.data || []).filter((j: any) => !j.deadline || j.deadline >= today);
+  const sourcedJobs = live.map(({ last_seen_at, ...j }: any) => ({ ...j, id: `s-${j.id}`, summary: trim(j.summary, 400), fee_eligible: feeEligible(j.role_level, j.title) }));
+  // When the Scout last confirmed these postings were still up.
+  const checkedAt = live.reduce((m: string | null, j: any) => (!m || j.last_seen_at > m ? j.last_seen_at : m), null);
+  return NextResponse.json({ jobs: jobs.filter((j: any) => !j.deadline || j.deadline >= today), sourced: sourcedJobs, checked_at: checkedAt });
 }

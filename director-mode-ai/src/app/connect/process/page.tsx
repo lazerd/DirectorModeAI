@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ArrowRight, BadgeCheck, CalendarCheck, ShieldCheck, Target, Users } from 'lucide-react';
-import { PLACEMENT_FEE_USD } from '@/lib/connect/placement';
+import { GUARANTEE_DAYS, PLACEMENT_FEE_USD, PLACEMENT_TERMS } from '@/lib/connect/placement';
 
 export const metadata: Metadata = {
   title: 'How we hire · ClubMode Recruiting',
@@ -12,8 +12,8 @@ const FEE = `$${PLACEMENT_FEE_USD.toLocaleString()}`;
 const CARD = '/connect/recruiting-process.png';
 
 const PROMISES = [
-  { icon: Target, title: 'AI-powered candidate matching', body: 'Finds the right people, faster.' },
-  { icon: Users, title: 'Pre-qualified candidates', body: 'Experienced, interested and ready to talk.' },
+  { icon: Target, title: 'The right professional', body: 'Matched to your priorities, pay and program, not just a stack of résumés.' },
+  { icon: Users, title: 'Confirmed interest', body: 'Every candidate we present has said yes to your club and your role.' },
   { icon: ShieldCheck, title: 'No upfront fees', body: 'You only pay when you hire.' },
   { icon: CalendarCheck, title: 'One free replacement search', body: 'If the hire leaves within 90 days.' },
 ];
@@ -23,44 +23,43 @@ const STEPS: { title: string; points: string[]; output: string }[] = [
   {
     title: 'Tell us about your opening',
     points: [
-      'Complete a simple online intake form (30–50 questions).',
-      'Any club stakeholder can fill it out.',
-      'Gives us a clear, detailed understanding of your needs.',
+      'A structured intake that captures your priorities, compensation, program scope and leadership expectations.',
+      'Your GM, board members and tennis chair can each contribute.',
+      'It becomes a clear, detailed profile of the role you need filled.',
     ],
     output: 'A complete, accurate job profile',
   },
   {
     title: 'We find the best candidates',
     points: [
-      'Our AI searches our network of directors and opted-in candidates.',
-      'We identify 5–10 of the best candidates based on your requirements.',
-      'Every candidate is qualified, interested and a strong fit.',
+      'We search our network of directors and opted-in candidates, using AI to evaluate each one against your role.',
+      'We aim for a shortlist of 5–10 when the market supports it, and never pad it with weak fits.',
+      'Every candidate is evaluated against your requirements and confirms interest before we present them.',
     ],
-    output: '5–10 qualified candidates ranked by best fit',
+    output: 'A ranked shortlist of interested, evaluated candidates',
   },
   {
     title: 'Review & select candidates',
     points: [
       'Review candidate profiles, résumés and AI summaries in your private portal.',
       'Select 2–3 candidates to move forward.',
-      "We're here to answer questions and provide insights.",
+      'Ask us anything about a candidate. We answer quickly.',
     ],
     output: '2–3 candidates selected for interviews',
   },
   {
     title: 'Interview finalists',
     points: [
-      'We coordinate first-round video interviews with your selected candidates.',
-      'Collect feedback and help you move to final candidates.',
+      'ClubMode coordinates first-round video interviews with your selected candidates.',
+      'Feedback is collected in your portal so you can move quickly to finalists.',
     ],
     output: 'Interview feedback and 1–2 finalists',
   },
   {
     title: 'Meet finalists in person',
     points: [
-      'We help coordinate on-site interviews at your club.',
-      'Meet with the GM, board and key stakeholders.',
-      'We facilitate scheduling and provide any additional information you need.',
+      'Bring finalists on site to meet the GM, board and key stakeholders.',
+      'ClubMode keeps scheduling and next steps organized, with personal help whenever you want it.',
     ],
     output: 'Confident finalist(s) ready for your decision',
   },
@@ -70,7 +69,7 @@ const STEPS: { title: string; points: string[]; output: string }[] = [
       'You make the final hiring decision.',
       'The candidate starts the position.',
       `The ${FEE} placement fee is paid on the candidate’s first day of work.`,
-      'If the hire leaves within 90 days, we conduct one free replacement search.',
+      `If the hire leaves within ${GUARANTEE_DAYS} days of starting, we run one replacement search at no charge. See the terms below.`,
     ],
     output: 'A successful placement and a stronger program',
   },
@@ -124,7 +123,15 @@ export default function RecruitingProcessPage() {
         ))}
       </ol>
 
-      <div className="mt-10 rounded-xl border border-white/10 bg-white/5 p-6 sm:flex sm:items-center sm:justify-between">
+      <div className="mt-10 rounded-xl border border-white/10 bg-white/5 p-6">
+        <h2 className="font-semibold text-white">The terms, in plain English</h2>
+        <p className="mt-1 text-sm text-slate-400">You accept these when you start a search. They are the whole agreement on fees.</p>
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-300">
+          {PLACEMENT_TERMS.map((t) => <li key={t}>{t}</li>)}
+        </ul>
+      </div>
+
+      <div className="mt-6 rounded-xl border border-white/10 bg-white/5 p-6 sm:flex sm:items-center sm:justify-between">
         <div>
           <p className="text-2xl font-bold text-white">Great people build great programs.</p>
           <p className="mt-1 text-slate-300">Let us help you find your next racquets professional.</p>

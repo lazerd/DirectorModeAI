@@ -320,6 +320,11 @@ function SourcedJobView({ job, me, reload }: { job: SourcedJob; me: Me; reload: 
             {club === 'this club' ? 'This club' : club} hasn&apos;t hired through ClubMode yet. Tell us you&apos;re interested and
             we&apos;ll put your profile in front of them. It&apos;s free, and you can still apply on their posting yourself.
           </p>
+          <ol className="list-decimal pl-5 text-xs text-slate-500 space-y-0.5">
+            <li>This is not an application to the club. It tells ClubMode you&apos;d like to be considered.</li>
+            <li>Nothing is shared until you tick the box below for this club and this role.</li>
+            <li>If the club engages ClubMode, we present you and let you know. You can withdraw any time before that.</li>
+          </ol>
           {interested ? (
             <div className="text-sm text-slate-700">
               <div className="flex items-center gap-2 font-medium text-emerald-700">
