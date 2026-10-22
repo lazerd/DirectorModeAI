@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+// email.ts builds a Resend client at import, which needs an API key; these
+// tests only exercise the pure bracket logic.
+vi.mock('./email', () => ({ sendBilledEmail: vi.fn(), sendBilledEmails: vi.fn() }));
 import {
   computeAdvancementTargets,
   type AdvanceTarget,

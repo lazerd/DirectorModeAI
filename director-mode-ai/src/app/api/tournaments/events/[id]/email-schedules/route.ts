@@ -100,6 +100,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     });
 
     const result = await sendQuadsScheduleEmail({
+      eventId,
       to: recipient,
       playerName: entry.player_name,
       tournamentName: event.name,

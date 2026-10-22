@@ -82,3 +82,34 @@ export async function recordSendUsage(args: {
     console.error('recordSendUsage failed (non-fatal):', err);
   }
 }
+
+/**
+ * Park an email the club can't pay for yet. Returns false when even the hold
+ * failed, so the caller can fall back to sending rather than losing it.
+ */
+export async function holdEmail(userId: string, payload: Record<string, unknown> & { clubId?: string | null }): Promise<boolean> {
+  try {
+    const { billingUserId } = await sendBilling(userId);
+    const { error } = await getSupabaseAdmin()
+      .from('held_messages')
+      .insert({ billing_user_id: billingUserId, user_id: userId, club_id: payload.clubId ?? null, kind: 'email', payload });
+    if (error) {
+      console.error('holdEmail insert failed:', error.message);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('holdEmail failed:', err);
+    return false;
+  }
+}
+
+/** How many emails are waiting on this club owner's card. */
+export async function heldCount(billingUserId: string): Promise<number> {
+  const { count } = await getSupabaseAdmin()
+    .from('held_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('billing_user_id', billingUserId)
+    .is('released_at', null);
+  return count ?? 0;
+}

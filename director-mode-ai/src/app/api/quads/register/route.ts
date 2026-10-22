@@ -312,6 +312,7 @@ export async function POST(request: Request) {
         const recipient = parent_email || player_email;
         if (recipient) {
           await sendQuadRequestReceivedEmail({
+            eventId: e.id,
             to: recipient,
             playerName: player_name,
             tournamentName: e.name,
@@ -360,6 +361,7 @@ export async function POST(request: Request) {
             }));
 
             await sendQuadDirectorNewRequestEmail({
+              eventId: e.id,
               to: directorEmail,
               playerName: player_name,
               parentName: parent_name || null,
@@ -410,6 +412,7 @@ export async function POST(request: Request) {
         const recipient = player_email || parent_email;
         if (recipient) {
           const args = {
+            eventId: e.id,
             to: recipient,
             playerName: player_name,
             tournamentName: e.name,

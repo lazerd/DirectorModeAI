@@ -90,6 +90,7 @@ export async function POST(req: NextRequest) {
         if (recipient && (ev as any)?.slug) {
           const origin = APP_URL;
           const args = {
+            eventId: (entry as any).event_id ?? null,
             to: recipient,
             playerName: e.player_name,
             tournamentName: (ev as any).name,
@@ -166,6 +167,7 @@ export async function POST(req: NextRequest) {
         const origin =
           APP_URL;
         const args = {
+          eventId: (entry as any).event_id ?? null,
           to: recipient,
           playerName: e.player_name,
           tournamentName: e.event.name,

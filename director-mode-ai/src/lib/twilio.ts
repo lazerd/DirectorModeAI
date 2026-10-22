@@ -1,10 +1,17 @@
 import twilio from 'twilio';
 import { consumeSmsCredits, CreditLimitError } from '@/lib/billing';
 import { demoSmsHold } from '@/lib/demo/suppress';
-import { recordSendUsage } from '@/lib/usageMeter';
+import { canSend, recordSendUsage } from '@/lib/usageMeter';
+import { TEXT_PRICE_CENTS } from '@/config/pricing';
 
 /** What a held demo text reports, in the words the captain's screen shows. */
 export const DEMO_SMS_REASON = 'Demo: text not sent.';
+/**
+ * A club with no card on file can't text. Unlike email, texts are not held:
+ * a match-time text that goes out hours later is worse than none.
+ * SendPaywall recognises this wording and opens the add-card prompt.
+ */
+export const NEEDS_CARD_SMS_REASON = `Add a card to send texts (${TEXT_PRICE_CENTS}¢ each). This text was not sent.`;
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -144,6 +151,9 @@ export async function sendSms(userId: string, to: string, body: string): Promise
     console.info('[demo] text suppressed');
     return { to: number, status: 'skipped', reason: DEMO_SMS_REASON };
   }
+  if (!(await canSend(userId))) {
+    return { to: number, status: 'skipped', reason: NEEDS_CARD_SMS_REASON };
+  }
   try {
     await consumeSmsCredits(userId, 1);
   } catch (err) {
@@ -186,6 +196,16 @@ export async function sendSmsBatch(userId: string, recipients: { phone: string; 
       failed: 0,
       overageCents: 0,
       results: valid.map((r) => ({ to: r.normalized, status: 'skipped' as const, reason: DEMO_SMS_REASON })),
+    };
+  }
+
+  if (!(await canSend(userId))) {
+    return {
+      sent: 0,
+      skipped: recipients.length,
+      failed: 0,
+      overageCents: 0,
+      results: valid.map((r) => ({ to: r.normalized, status: 'skipped' as const, reason: NEEDS_CARD_SMS_REASON })),
     };
   }
 

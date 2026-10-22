@@ -28,7 +28,7 @@ export async function notifyAfterPick(opts: {
   try {
     const { data: season } = await db
       .from('ptl_seasons')
-      .select('id, name, slug, is_demo, pick_seconds')
+      .select('id, name, slug, is_demo, pick_seconds, commissioner_id')
       .eq('id', state.season_id)
       .maybeSingle();
     if (!season) return;
@@ -44,7 +44,7 @@ export async function notifyAfterPick(opts: {
       db.from('ptl_teams').select('name, captain_name').eq('id', teamId).maybeSingle(),
     ]);
 
-    const base = { seasonIsDemo: false, origin };
+    const base = { seasonIsDemo: false, origin, billToUserId: s.commissioner_id ?? null };
 
     if (entry && (entry as any).email) {
       await sendDrafted(

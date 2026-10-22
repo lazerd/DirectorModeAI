@@ -124,6 +124,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const compRecipient = entry.parent_email || entry.player_email;
         if (compRecipient) {
           await sendQuadCompConfirmedEmail({
+            eventId,
             to: compRecipient,
             playerName: entry.player_name,
             tournamentName: e.name,
@@ -175,6 +176,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const recipient = entry.parent_email || entry.player_email;
       if (recipient && paymentUrl) {
         await sendQuadInviteEmail({
+          eventId,
           to: recipient,
           playerName: entry.player_name,
           tournamentName: e.name,

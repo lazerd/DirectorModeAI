@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     if (action === 'invite-captains') {
       const { data: season } = await db
         .from('ptl_seasons')
-        .select('id, name, roster_size, is_demo')
+        .select('id, name, roster_size, is_demo, commissioner_id')
         .eq('id', gate.seasonId)
         .maybeSingle();
       if (!season) return NextResponse.json({ error: 'Season not found.' }, { status: 404 });
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
           continue;
         }
         const ok = await sendCaptainInvite(
-          { to: t.captain_email, seasonIsDemo: false, origin },
+          { to: t.captain_email, seasonIsDemo: false, origin, billToUserId: (season as any).commissioner_id ?? null },
           {
             captainName: t.captain_name,
             teamName: t.name,

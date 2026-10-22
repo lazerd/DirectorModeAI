@@ -18,11 +18,10 @@
  *   - /api/leagues/progress                     (24h auto-confirm sweep)
  */
 
-import { Resend } from 'resend';
 import { getSupabaseAdmin } from './supabase/admin';
 import { roundDeadline } from './compassBracket';
 import { CATEGORY_LABELS, type CategoryKey } from './leagueUtils';
-import { safeResendSend } from './emailUnsubscribe';
+import { sendBilledEmail, sendBilledEmails } from './email';
 
 export type LeagueType = 'compass' | 'round_robin' | 'single_elimination';
 
@@ -579,7 +578,6 @@ export async function sendMatchReminders(
   mode: 'manual' | 'cron'
 ): Promise<ReminderSummary> {
   const admin = getSupabaseAdmin();
-  const resend = new Resend(process.env.RESEND_API_KEY);
   const FROM =
     process.env.RESEND_FROM_EMAIL ||
     'ClubMode Leagues <noreply@mail.clubmode.ai>';
@@ -605,10 +603,12 @@ export async function sendMatchReminders(
 
     const { data: league } = await admin
       .from('leagues')
-      .select('id, name, slug')
+      .select('id, name, slug, director_id, club_id')
       .eq('id', lid)
       .maybeSingle();
     if (!league) continue;
+    const directorId = ((league as any).director_id as string | null) || null;
+    const leagueClubId = ((league as any).club_id as string | null) || null;
     const leagueName = (league as any).name as string;
     const leagueSlug = (league as any).slug as string;
     const publicBracketUrl = `${requestOrigin}/leagues/${leagueSlug}/bracket`;
@@ -658,6 +658,8 @@ export async function sendMatchReminders(
       .in('id', Array.from(entryIdSet));
     const byId = new Map(((entries as any[]) || []).map(e => [e.id, e]));
 
+    // Collected per league, then sent paced and billed to the league's director.
+    const payloads: Parameters<typeof sendBilledEmails>[1] = [];
     for (const m of matches) {
       const a = byId.get(m.entry_a_id);
       const b = byId.get(m.entry_b_id);
@@ -665,7 +667,7 @@ export async function sendMatchReminders(
       const opponentOfA = `${b.captain_name}${b.partner_name ? ' & ' + b.partner_name : ''}`;
       const opponentOfB = `${a.captain_name}${a.partner_name ? ' & ' + a.partner_name : ''}`;
 
-      const sendOne = async (
+      const addOne = (
         email: string | null,
         token: string | null,
         name: string,
@@ -673,9 +675,10 @@ export async function sendMatchReminders(
       ) => {
         if (!email || !token) return;
         const reportUrl = `${requestOrigin}/leagues/match/${token}`;
-        const result = await safeResendSend(resend, {
+        payloads.push({
           from: FROM,
           to: email,
+          clubId: leagueClubId,
           subject: `Reminder: your R${m.round} match vs ${opponent} — deadline ${m.deadline}`,
           html: `
             <div style="font-family: -apple-system, sans-serif; max-width: 600px; padding: 20px;">
@@ -697,13 +700,20 @@ export async function sendMatchReminders(
             </div>
           `,
         });
-        if (result.sent) summary.remindersSent += 1;
       };
 
-      await sendOne(a.captain_email, a.captain_token, a.captain_name, opponentOfA);
-      if (a.partner_email) await sendOne(a.partner_email, a.partner_token, a.partner_name || 'Player', opponentOfA);
-      await sendOne(b.captain_email, b.captain_token, b.captain_name, opponentOfB);
-      if (b.partner_email) await sendOne(b.partner_email, b.partner_token, b.partner_name || 'Player', opponentOfB);
+      addOne(a.captain_email, a.captain_token, a.captain_name, opponentOfA);
+      if (a.partner_email) addOne(a.partner_email, a.partner_token, a.partner_name || 'Player', opponentOfA);
+      addOne(b.captain_email, b.captain_token, b.captain_name, opponentOfB);
+      if (b.partner_email) addOne(b.partner_email, b.partner_token, b.partner_name || 'Player', opponentOfB);
+    }
+
+    try {
+      const results = await sendBilledEmails(directorId, payloads);
+      summary.remindersSent += results.filter(r => r.sent).length;
+    } catch (err) {
+      // A billing error must not stop reminders for the other leagues.
+      console.error('[leagueProgression] reminders failed for league', lid, err);
     }
   }
 
@@ -888,7 +898,6 @@ export async function sendRoundMatchEmails(
   requestOrigin: string
 ): Promise<{ sent: number }> {
   const admin = getSupabaseAdmin();
-  const resend = new Resend(process.env.RESEND_API_KEY);
   const FROM =
     process.env.RESEND_FROM_EMAIL ||
     'ClubMode Leagues <noreply@mail.clubmode.ai>';
@@ -912,9 +921,12 @@ export async function sendRoundMatchEmails(
 
   const { data: league } = await admin
     .from('leagues')
-    .select('name, slug')
+    .select('name, slug, director_id, club_id')
     .eq('id', f.league_id)
     .maybeSingle();
+  // Billed to the league's director (null if the league row is missing).
+  const directorId: string | null = (league as any)?.director_id || null;
+  const leagueClubId: string | null = (league as any)?.club_id || null;
   const leagueName = (league as any)?.name || 'League';
   const leagueSlug = (league as any)?.slug || null;
   const publicBracketUrl = leagueSlug ? `${requestOrigin}/leagues/${leagueSlug}/bracket` : null;
@@ -966,13 +978,18 @@ export async function sendRoundMatchEmails(
       reportUrl,
       publicBracketUrl,
     });
-    const result = await safeResendSend(resend, {
-      from: FROM,
-      to: email,
-      subject: `Round ${m.round}: ${leagueName} — deadline ${deadline}`,
-      html,
-    });
-    if (result.sent) sent += 1;
+    try {
+      const result = await sendBilledEmail(directorId, {
+        from: FROM,
+        to: email,
+        subject: `Round ${m.round}: ${leagueName} — deadline ${deadline}`,
+        html,
+        clubId: leagueClubId,
+      });
+      if (result.sent) sent += 1;
+    } catch (err) {
+      console.error('[leagueProgression] round email failed:', err);
+    }
   };
 
   // Team A players → opponent contact is Team B's captain (singles) or the

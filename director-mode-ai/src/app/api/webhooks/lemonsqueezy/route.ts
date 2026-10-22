@@ -11,6 +11,8 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
+import { releaseHeldEmails } from '@/lib/email';
+import { background } from '@/lib/partnerFinder/background';
 import {
   verifyWebhookSignature,
   mapSubscriptionStatus,
@@ -124,6 +126,10 @@ export async function POST(request: NextRequest) {
           { onConflict: 'user_id' },
         );
         if (aiErr) console.error('[lemonsqueezy/webhook] ai_payg upsert failed:', aiErr.message);
+        // A card is on file now: send whatever was waiting for it.
+        if (grantsAccess && !aiErr) {
+          background('release held emails', () => releaseHeldEmails(aiUserId));
+        }
       }
       await service.from('billing_events').insert({
         user_id: aiUserId,

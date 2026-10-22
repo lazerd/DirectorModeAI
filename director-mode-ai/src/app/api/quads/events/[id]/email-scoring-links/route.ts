@@ -62,6 +62,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       continue;
     }
     const result = await sendQuadsScoringLinkEmail({
+      eventId,
       to: recipient,
       playerName: e.player_name,
       tournamentName: (ev as any).name,

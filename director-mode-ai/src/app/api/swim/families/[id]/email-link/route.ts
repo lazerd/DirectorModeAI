@@ -41,7 +41,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   // Verify the caller owns the season this family belongs to.
   const { data: season } = await admin
     .from('swim_seasons')
-    .select('id, name, default_points_required, director_id')
+    .select('id, name, default_points_required, director_id, club_id')
     .eq('id', (family as any).season_id)
     .maybeSingle();
   if (!season) {
@@ -70,6 +70,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
     seasonName: (season as any).name,
     signupUrl,
     pointsTarget: target,
+    billToUserId: (season as any).director_id,
+    clubId: (season as any).club_id ?? null,
   });
 
   if (!result.sent) {
@@ -79,10 +81,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
         error:
           result.reason === 'unsubscribed'
             ? 'This recipient has unsubscribed from ClubMode emails.'
-            : 'Email failed to send.',
+            : result.reason === 'needs_card'
+              ? result.error
+              : 'Email failed to send.',
         reason: result.reason,
       },
-      { status: result.reason === 'unsubscribed' ? 409 : 500 }
+      // A held email is waiting on the club's card, not broken: 402 Payment Required.
+      { status: result.reason === 'unsubscribed' ? 409 : result.reason === 'needs_card' ? 402 : 500 }
     );
   }
 

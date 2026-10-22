@@ -15,11 +15,9 @@
  */
 
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { safeResendSend } from '@/lib/emailUnsubscribe';
+import { sendBilledEmail, sendBilledEmails } from '@/lib/email';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode Leagues <noreply@mail.clubmode.ai>';
 
 // Resolve a token to { entry, owner } where owner is 'captain' | 'partner'.
@@ -172,7 +170,7 @@ export async function POST(request: Request) {
         .maybeSingle();
       const { data: league } = await admin
         .from('leagues')
-        .select('name, director_id')
+        .select('name, director_id, club_id')
         .eq('id', (flight as any)?.league_id || '')
         .maybeSingle();
       if (league) {
@@ -183,9 +181,11 @@ export async function POST(request: Request) {
           .eq('id', (league as any).director_id)
           .maybeSingle();
         if (director && (director as any).email) {
-          await safeResendSend(resend, {
+          // Billed to the league's director; a billing hiccup must not fail the dispute.
+          await sendBilledEmail((league as any).director_id || null, {
             from: FROM,
             to: (director as any).email,
+            clubId: (league as any).club_id || null,
             subject: `[${(league as any).name}] Score dispute — ${m.bracket_position}`,
             html: `
               <div style="font-family: -apple-system, sans-serif; max-width: 600px;">
@@ -195,7 +195,7 @@ export async function POST(request: Request) {
                 <p>Log into your league dashboard to resolve.</p>
               </div>
             `,
-          });
+          }).catch((e) => console.error('[leagues/match] dispute email failed:', e));
         }
       }
 
@@ -249,7 +249,7 @@ export async function POST(request: Request) {
       .maybeSingle();
     const { data: league } = await admin
       .from('leagues')
-      .select('name, slug')
+      .select('name, slug, director_id, club_id')
       .eq('id', (flight as any)?.league_id || '')
       .maybeSingle();
     const origin = new URL(request.url).origin;
@@ -257,12 +257,14 @@ export async function POST(request: Request) {
       ? `${origin}/leagues/${(league as any).slug}/bracket`
       : null;
 
-    const sendOne = async (email: string | null, tokenOut: string | null, name: string) => {
+    const payloads: Parameters<typeof sendBilledEmails>[1] = [];
+    const addOne = (email: string | null, tokenOut: string | null, name: string) => {
       if (!email || !tokenOut) return;
       const disputeUrl = `${origin}/leagues/match/${tokenOut}`;
-      await safeResendSend(resend, {
+      payloads.push({
         from: FROM,
         to: email,
+        clubId: (league as any)?.club_id || null,
         subject: `Score reported: ${scoreText} — ${(league as any)?.name || 'League'}`,
         html: `
             <div style="font-family: -apple-system, sans-serif; max-width: 600px; padding: 20px;">
@@ -291,9 +293,14 @@ export async function POST(request: Request) {
     };
 
     for (const ent of (entries as any[]) || []) {
-      await sendOne(ent.captain_email, ent.captain_token, ent.captain_name);
-      if (ent.partner_email) await sendOne(ent.partner_email, ent.partner_token, ent.partner_name);
+      addOne(ent.captain_email, ent.captain_token, ent.captain_name);
+      if (ent.partner_email) addOne(ent.partner_email, ent.partner_token, ent.partner_name);
     }
+    // Billed to the league's director. The score is already saved, so a billing
+    // error is logged rather than turned into a failed report.
+    await sendBilledEmails((league as any)?.director_id || null, payloads).catch((e) =>
+      console.error('[leagues/match] score emails failed:', e)
+    );
 
     return NextResponse.json({ success: true });
   } catch (err: any) {

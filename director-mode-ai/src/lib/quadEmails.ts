@@ -1,14 +1,34 @@
 /**
  * Quads tournament emails — confirmation, waitlist, promoted-from-waitlist,
  * doubles-round-set, plus the request → invite → pay flow used by dated
- * multi-division events. All sends go through `safeResendSend()` so the
- * unsubscribe blocklist + footer apply automatically.
+ * multi-division events. All sends go through `sendBilledEmail()` (and so
+ * `safeResendSend()`), so the unsubscribe blocklist + footer apply
+ * automatically and each email is billed to the event's owner.
  */
 
-import { Resend } from 'resend';
-import { safeResendSend } from './emailUnsubscribe';
+import { sendBilledEmail } from './email';
+import { getSupabaseAdmin } from './supabase/admin';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+/** Every send names the event it is about; its owner (events.user_id) pays. */
+type EventRef = { eventId: string | null };
+
+type Payload = Parameters<typeof sendBilledEmail>[1];
+
+async function sendForEvent(eventId: string | null, payload: Payload) {
+  let userId: string | null = null;
+  let clubId: string | null = null;
+  if (eventId) {
+    const { data } = await getSupabaseAdmin()
+      .from('events')
+      .select('user_id, club_id')
+      .eq('id', eventId)
+      .maybeSingle();
+    userId = (data as any)?.user_id ?? null;
+    clubId = (data as any)?.club_id ?? null;
+  }
+  // No event row (or no owner on it) sends unbilled rather than failing.
+  return sendBilledEmail(userId, { ...payload, clubId });
+}
 
 const FROM =
   process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
@@ -25,14 +45,14 @@ function htmlShell(title: string, body: string) {
   `;
 }
 
-export async function sendQuadsConfirmEmail(args: {
+export async function sendQuadsConfirmEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
   tournamentDate: string | null;
   publicUrl: string;
 }) {
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `You're in: ${args.tournamentName}`,
@@ -45,13 +65,13 @@ export async function sendQuadsConfirmEmail(args: {
   });
 }
 
-export async function sendQuadsWaitlistEmail(args: {
+export async function sendQuadsWaitlistEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
   publicUrl: string;
 }) {
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `Waitlist: ${args.tournamentName}`,
@@ -64,13 +84,13 @@ export async function sendQuadsWaitlistEmail(args: {
   });
 }
 
-export async function sendQuadsPromotedEmail(args: {
+export async function sendQuadsPromotedEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
   publicUrl: string;
 }) {
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `A spot opened up: ${args.tournamentName}`,
@@ -82,7 +102,7 @@ export async function sendQuadsPromotedEmail(args: {
   });
 }
 
-export async function sendQuadsScheduleEmail(args: {
+export async function sendQuadsScheduleEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
@@ -107,7 +127,7 @@ export async function sendQuadsScheduleEmail(args: {
     )
     .join('');
 
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `Your match schedule: ${args.tournamentName}`,
@@ -127,14 +147,14 @@ export async function sendQuadsScheduleEmail(args: {
   });
 }
 
-export async function sendQuadsScoringLinkEmail(args: {
+export async function sendQuadsScoringLinkEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
   flightName: string | null;
   scoringUrl: string;
 }) {
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `Score your matches: ${args.tournamentName}`,
@@ -153,7 +173,7 @@ export async function sendQuadsScoringLinkEmail(args: {
   });
 }
 
-export async function sendQuadsDoublesPairingEmail(args: {
+export async function sendQuadsDoublesPairingEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
@@ -162,7 +182,7 @@ export async function sendQuadsDoublesPairingEmail(args: {
   opponentNames: string;
   rank: number;
 }) {
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `R4 doubles pairing: ${args.flightName}`,
@@ -191,7 +211,7 @@ function ordinal(n: number) {
  * this email's whole job is to set the expectation that a payment link with a
  * deadline is what actually secures the spot.
  */
-export async function sendQuadRequestReceivedEmail(args: {
+export async function sendQuadRequestReceivedEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
@@ -206,7 +226,7 @@ export async function sendQuadRequestReceivedEmail(args: {
       ? `You're <strong>#${args.positionInLine}</strong> in line for ${args.divisionLabel} — the first four get the spots.`
       : `You're <strong>#${args.positionInLine}</strong> in line for ${args.divisionLabel}, so you're on the waitlist for now. Divisions that don't fill get folded into ones that do, which often frees up spots.`;
 
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `Request received: ${args.tournamentName}`,
@@ -224,7 +244,7 @@ export async function sendQuadRequestReceivedEmail(args: {
  * The accept email. Contains the Square payment link and a hard deadline —
  * this is the only thing that converts a request into a confirmed entry.
  */
-export async function sendQuadInviteEmail(args: {
+export async function sendQuadInviteEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
@@ -236,7 +256,7 @@ export async function sendQuadInviteEmail(args: {
   deadlineLabel: string;
   paymentUrl: string;
 }) {
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `You're in — pay by ${args.deadlineLabel} to confirm: ${args.tournamentName}`,
@@ -266,14 +286,14 @@ export async function sendQuadInviteEmail(args: {
 }
 
 /** Sent when the 24-hour payment window lapses without payment. */
-export async function sendQuadInviteExpiredEmail(args: {
+export async function sendQuadInviteExpiredEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
   divisionLabel: string;
   publicUrl: string;
 }) {
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `Spot released: ${args.tournamentName}`,
@@ -287,7 +307,7 @@ export async function sendQuadInviteExpiredEmail(args: {
 }
 
 /** Accepted on a full comp code — no payment link, just a confirmation. */
-export async function sendQuadCompConfirmedEmail(args: {
+export async function sendQuadCompConfirmedEmail(args: EventRef & {
   to: string;
   playerName: string;
   tournamentName: string;
@@ -297,7 +317,7 @@ export async function sendQuadCompConfirmedEmail(args: {
   venue: string | null;
   couponCode: string | null;
 }) {
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `Confirmed (entry comped): ${args.tournamentName}`,
@@ -334,7 +354,7 @@ export async function sendQuadCompConfirmedEmail(args: {
  * whether a division has tipped over that line, or is stalling and should be
  * folded into one that hasn't.
  */
-export async function sendQuadDirectorNewRequestEmail(args: {
+export async function sendQuadDirectorNewRequestEmail(args: EventRef & {
   to: string;
   playerName: string;
   parentName?: string | null;
@@ -360,7 +380,7 @@ export async function sendQuadDirectorNewRequestEmail(args: {
 
   const contact = [args.parentName, args.parentEmail].filter(Boolean).join(' · ');
 
-  return safeResendSend(resend, {
+  return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
     subject: `New signup: ${args.playerName} (${args.divisionLabel}) — ${args.totalRequests} total`,

@@ -12,13 +12,10 @@
  */
 
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
-import { safeResendSend } from '@/lib/emailUnsubscribe';
+import { sendBilledEmail } from '@/lib/email';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { computeCompositeRating, computeDoublesComposite } from '@/lib/leagueRatings';
 import { generateToken, isDoubles, CATEGORY_LABELS, type CategoryKey } from '@/lib/leagueUtils';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 // Same rate-limit pattern as the recommend routes.
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -108,7 +105,7 @@ export async function POST(request: Request) {
     // 1. Resolve the league + category
     const { data: league, error: leagueErr } = await supabase
       .from('leagues')
-      .select('id, name, slug, status, registration_opens_at, registration_closes_at')
+      .select('id, name, slug, status, registration_opens_at, registration_closes_at, director_id, club_id')
       .eq('slug', leagueSlug)
       .maybeSingle();
 
@@ -239,9 +236,11 @@ export async function POST(request: Request) {
       const leagueName = (league as any).name;
 
       try {
-        await safeResendSend(resend, {
+        // Billed to the league's director.
+        await sendBilledEmail((league as any).director_id || null, {
           from: process.env.RESEND_FROM_EMAIL || 'ClubMode Leagues <noreply@mail.clubmode.ai>',
           to: partnerEmail,
+          clubId: (league as any).club_id || null,
           subject: `${captainName} signed you up as their doubles partner — ${leagueName}`,
           html: `
             <div style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">

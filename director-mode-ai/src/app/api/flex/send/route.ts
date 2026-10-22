@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { isAdminRequest } from '@/lib/adminAuth';
-import { safeResendSend } from '@/lib/emailUnsubscribe';
+import { sendBilledEmail, sendBilledEmails } from '@/lib/email';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
+  FLEX_DIVISIONS,
   getFlexState,
   buildNudgeRecipients,
   buildUpdateRecipients,
@@ -15,9 +16,41 @@ import { buildPlayoffRecipients, playoffEmailHtml } from '@/lib/flexPlayoffEmail
 
 export const dynamic = 'force-dynamic';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const TEST_TO = 'darrinjco@gmail.com';
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Who pays for flex-league mail: the owner (events.user_id) of the flex
+ * division events, plus their club. Null if none is found, which sends unbilled.
+ */
+async function flexBilling(): Promise<{ userId: string | null; clubId: string | null }> {
+  const { data } = await getSupabaseAdmin()
+    .from('events')
+    .select('user_id, club_id')
+    .in('slug', FLEX_DIVISIONS.map((d) => d.slug))
+    .not('user_id', 'is', null)
+    .limit(1)
+    .maybeSingle();
+  const ev = data as { user_id: string | null; club_id: string | null } | null;
+  return { userId: ev?.user_id ?? null, clubId: ev?.club_id ?? null };
+}
+
+/** Live broadcast: paced + retried by sendBilledEmails, tallied as before. */
+async function sendAll(
+  billing: { userId: string | null; clubId: string | null },
+  messages: { email: string; subject: string; html: string }[]
+) {
+  const results = await sendBilledEmails(
+    billing.userId,
+    messages.map((m) => ({ from: FLEX_FROM, to: m.email, replyTo: FLEX_REPLY_TO, subject: m.subject, html: m.html, clubId: billing.clubId }))
+  );
+  let sent = 0;
+  const failures: { email: string; reason: string }[] = [];
+  results.forEach((res, i) => {
+    if (res.sent) sent++;
+    else failures.push({ email: messages[i].email, reason: res.reason });
+  });
+  return { sent, failures };
+}
 
 export async function POST(req: NextRequest) {
   if (!(await isAdminRequest(req))) {
@@ -35,6 +68,7 @@ export async function POST(req: NextRequest) {
   if (mode !== 'preview' && mode !== 'test' && mode !== 'live') {
     return NextResponse.json({ error: 'bad mode' }, { status: 400 });
   }
+  const billing = await flexBilling();
 
   // -------- PLAYOFFS (broadcast, personalized with each player's matchup) ----
   if (kind === 'playoffs') {
@@ -61,7 +95,8 @@ export async function POST(req: NextRequest) {
     if (mode === 'test') {
       if (!recipients[0]) return NextResponse.json({ kind, mode, note: 'no playoff matches generated yet' });
       const { subject, html } = playoffEmailHtml(recipients[0], snapshot);
-      const res = await safeResendSend(resend, {
+      const res = await sendBilledEmail(billing.userId, {
+        clubId: billing.clubId,
         from: FLEX_FROM,
         to: TEST_TO,
         replyTo: FLEX_REPLY_TO,
@@ -70,15 +105,10 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({ kind, mode, to: TEST_TO, sampleFor: recipients[0].email, result: res });
     }
-    let sent = 0;
-    const failures: { email: string; reason: string }[] = [];
-    for (const r of recipients) {
-      const { subject, html } = playoffEmailHtml(r, snapshot);
-      const res = await safeResendSend(resend, { from: FLEX_FROM, to: r.email, replyTo: FLEX_REPLY_TO, subject, html });
-      if (res.sent) sent++;
-      else failures.push({ email: r.email, reason: res.reason });
-      await sleep(650); // stay under Resend 2/sec
-    }
+    const { sent, failures } = await sendAll(
+      billing,
+      recipients.map((r) => ({ email: r.email, ...playoffEmailHtml(r, snapshot) }))
+    );
     return NextResponse.json({ kind, mode, audience: audience || 'all', attempted: recipients.length, sent, failures });
   }
 
@@ -100,7 +130,8 @@ export async function POST(req: NextRequest) {
     }
     if (mode === 'test') {
       const t = updateEmailHtml('Darrin', state);
-      const res = await safeResendSend(resend, {
+      const res = await sendBilledEmail(billing.userId, {
+        clubId: billing.clubId,
         from: FLEX_FROM,
         to: TEST_TO,
         replyTo: FLEX_REPLY_TO,
@@ -110,15 +141,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ kind, mode, to: TEST_TO, result: res });
     }
     // live
-    let sent = 0;
-    const failures: { email: string; reason: string }[] = [];
-    for (const r of recipients) {
-      const { subject, html } = updateEmailHtml(r.firstName, state);
-      const res = await safeResendSend(resend, { from: FLEX_FROM, to: r.email, replyTo: FLEX_REPLY_TO, subject, html });
-      if (res.sent) sent++;
-      else failures.push({ email: r.email, reason: res.reason });
-      await sleep(650); // stay under Resend 2/sec
-    }
+    const { sent, failures } = await sendAll(
+      billing,
+      recipients.map((r) => ({ email: r.email, ...updateEmailHtml(r.firstName, state) }))
+    );
     return NextResponse.json({ kind, mode, attempted: recipients.length, sent, failures });
   }
 
@@ -139,7 +165,8 @@ export async function POST(req: NextRequest) {
   if (mode === 'test') {
     if (!recipients[0]) return NextResponse.json({ kind, mode, note: 'no players owe matches right now' });
     const { subject, html } = nudgeEmailHtml(recipients[0], state);
-    const res = await safeResendSend(resend, {
+    const res = await sendBilledEmail(billing.userId, {
+      clubId: billing.clubId,
       from: FLEX_FROM,
       to: TEST_TO,
       replyTo: FLEX_REPLY_TO,
@@ -149,14 +176,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ kind, mode, to: TEST_TO, sampleFor: recipients[0].email, result: res });
   }
   // live
-  let sent = 0;
-  const failures: { email: string; reason: string }[] = [];
-  for (const r of recipients) {
-    const { subject, html } = nudgeEmailHtml(r, state);
-    const res = await safeResendSend(resend, { from: FLEX_FROM, to: r.email, replyTo: FLEX_REPLY_TO, subject, html });
-    if (res.sent) sent++;
-    else failures.push({ email: r.email, reason: res.reason });
-    await sleep(650);
-  }
+  const { sent, failures } = await sendAll(
+    billing,
+    recipients.map((r) => ({ email: r.email, ...nudgeEmailHtml(r, state) }))
+  );
   return NextResponse.json({ kind, mode, attempted: recipients.length, sent, failures });
 }

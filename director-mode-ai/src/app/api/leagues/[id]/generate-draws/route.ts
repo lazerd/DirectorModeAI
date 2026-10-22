@@ -18,7 +18,6 @@
  */
 
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { assignEntriesToFlights, CATEGORY_LABELS, type CategoryKey } from '@/lib/leagueUtils';
@@ -26,11 +25,10 @@ import { generateRound1, roundDeadline, type CompassEntry } from '@/lib/compassB
 import { generateRoundRobin } from '@/lib/roundRobinBracket';
 import { generateSingleEliminationRound1 } from '@/lib/singleEliminationBracket';
 import { buildRoundMatchEmailHtml } from '@/lib/leagueProgression';
-import { safeResendSend } from '@/lib/emailUnsubscribe';
+import { sendBilledEmails } from '@/lib/email';
+import { background } from '@/lib/partnerFinder/background';
 
 type LeagueType = 'compass' | 'round_robin' | 'single_elimination';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 type GenerateResult = {
   category: string;
@@ -64,7 +62,7 @@ export async function POST(
 
     const { data: league, error: leagueErr } = await admin
       .from('leagues')
-      .select('id, name, slug, director_id, start_date, status, league_type')
+      .select('id, name, slug, director_id, club_id, start_date, status, league_type')
       .eq('id', leagueId)
       .maybeSingle();
     if (leagueErr || !league) {
@@ -386,29 +384,31 @@ export async function POST(
         skippedEmails: playerEmailsToSend.length,
       });
     }
-    (async () => {
-      for (const msg of playerEmailsToSend) {
-        const reportUrl = `${origin}/leagues/match/${msg.token}`;
-        await safeResendSend(resend, {
-          from: fromAddress,
-          to: msg.email,
-          subject: `Round ${msg.roundNumber}: ${msg.leagueName} — deadline ${msg.deadline}`,
-          html: buildRoundMatchEmailHtml({
-            roundNumber: msg.roundNumber,
-            playerName: msg.name,
-            opponentName: msg.opponentName,
-            opponentEmail: msg.opponentEmail,
-            opponentPhone: msg.opponentPhone,
-            leagueName: msg.leagueName,
-            categoryLabel: msg.categoryLabel,
-            bracketPosition: msg.bracketPosition,
-            deadline: msg.deadline,
-            reportUrl,
-            publicBracketUrl,
-          }),
-        });
-      }
-    })();
+    // Billed to the league's director; paced by sendBilledEmails.
+    const payloads = playerEmailsToSend.map((msg) => {
+      const reportUrl = `${origin}/leagues/match/${msg.token}`;
+      return {
+        from: fromAddress,
+        to: msg.email,
+        clubId: (league as any).club_id || null,
+        subject: `Round ${msg.roundNumber}: ${msg.leagueName} — deadline ${msg.deadline}`,
+        html: buildRoundMatchEmailHtml({
+          roundNumber: msg.roundNumber,
+          playerName: msg.name,
+          opponentName: msg.opponentName,
+          opponentEmail: msg.opponentEmail,
+          opponentPhone: msg.opponentPhone,
+          leagueName: msg.leagueName,
+          categoryLabel: msg.categoryLabel,
+          bracketPosition: msg.bracketPosition,
+          deadline: msg.deadline,
+          reportUrl,
+          publicBracketUrl,
+        }),
+      };
+    });
+    // Paced at ~2/sec, a big draw takes a while; keep the function alive after the response.
+    background('generate-draws emails', () => sendBilledEmails((league as any).director_id || null, payloads));
 
     return NextResponse.json({
       success: true,

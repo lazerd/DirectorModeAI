@@ -261,6 +261,7 @@ export async function POST(request: Request) {
         if (recipient) {
           const origin = new URL(request.url).origin;
           const args = {
+            eventId: e.id,
             to: recipient,
             playerName: player_name,
             tournamentName: e.name,

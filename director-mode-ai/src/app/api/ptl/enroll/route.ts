@@ -15,14 +15,11 @@
  */
 
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
-import { safeResendSend } from '@/lib/emailUnsubscribe';
+import { sendBilledEmail } from '@/lib/email';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { computeCompositeRating } from '@/lib/leagueRatings';
 import { generateToken } from '@/lib/leagueUtils';
 import { checkRateLimit, clampNumber, clampText, clientIp } from '@/lib/ptl/guard';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 /** Best-effort UTR by name. A miss is fine — NTRP alone still yields a composite. */
 async function lookupUtr(name: string): Promise<{ utr: number | null; utrId: string | null }> {
@@ -75,7 +72,7 @@ export async function POST(request: Request) {
 
     const { data: season } = await db
       .from('ptl_seasons')
-      .select('id, name, slug, status, entry_cents, enroll_opens_at, enroll_closes_at, is_demo, rating_floor, category, min_men, min_women')
+      .select('id, name, slug, status, entry_cents, enroll_opens_at, enroll_closes_at, is_demo, rating_floor, category, min_men, min_women, commissioner_id')
       .eq('slug', seasonSlug)
       .maybeSingle();
 
@@ -200,7 +197,8 @@ export async function POST(request: Request) {
     try {
       const origin = new URL(request.url).origin;
       const fee = (s.entry_cents / 100).toFixed(0);
-      await safeResendSend(resend, {
+      // Billed to the season's commissioner.
+      await sendBilledEmail(s.commissioner_id ?? null, {
         from: process.env.RESEND_FROM_EMAIL || 'Premier Tennis League <noreply@mail.clubmode.ai>',
         to: email,
         subject: `You're in the pool — ${s.name} Premier Tennis League`,

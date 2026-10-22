@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { reportUsage, lsConfigured } from '@/lib/lemonsqueezy';
+import { releaseHeldEmails } from '@/lib/email';
 import { AI_INCLUDED_USD, METERING_ENFORCED } from '@/config/pricing';
 
 // GET /api/cron/ai-usage-report — Ask Claude overage, plus emails and texts
@@ -42,6 +43,11 @@ export async function GET(request: NextRequest) {
   const results: unknown[] = [];
 
   for (const s of (subs as { user_id: string; ls_subscription_item_id: string }[] | null) ?? []) {
+    // Backstop for the webhook: anything still held for a club with a card goes out.
+    if (!dryRun && METERING_ENFORCED) {
+      const rel = await releaseHeldEmails(s.user_id);
+      if (rel.released || rel.failed) results.push({ user: s.user_id, heldReleased: rel.released, heldFailed: rel.failed });
+    }
     for (const start of periods) {
       const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
       const { data: rows } = await db

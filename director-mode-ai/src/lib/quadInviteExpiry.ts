@@ -100,6 +100,7 @@ export async function expireOverdueQuadInvites(
       if (!ev || !recipient) continue;
       try {
         await sendQuadInviteExpiredEmail({
+          eventId: entry.event_id,
           to: recipient,
           playerName: entry.player_name,
           tournamentName: ev.name,

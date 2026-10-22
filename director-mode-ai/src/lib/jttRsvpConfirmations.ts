@@ -8,8 +8,7 @@
  * a No, and who hasn't responded — with a personal link to change their RSVP.
  * De-duped via `league_matchup_confirmations`.
  */
-import { Resend } from 'resend';
-import { safeResendSend } from '@/lib/emailUnsubscribe';
+import { sendBilledEmails } from '@/lib/email';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 import { APP_URL } from '@/lib/appUrl';
@@ -37,16 +36,15 @@ type Roster = { id: string; player_name: string; parent_email: string | null; pa
 
 export async function sendDueRsvpConfirmations(): Promise<{ leagues: number; sent: number; matchupsClubs: number; detail: string[] }> {
   const admin = getSupabaseAdmin();
-  const resend = new Resend(process.env.RESEND_API_KEY);
   const detail: string[] = [];
   let sent = 0, matchupsClubs = 0;
 
   const { data: leagues } = await admin
     .from('leagues')
-    .select('id, name, format, rsvp_confirmation_lead_hours')
+    .select('id, name, format, rsvp_confirmation_lead_hours, director_id, club_id')
     .eq('format', 'team')
     .not('rsvp_confirmation_lead_hours', 'is', null);
-  const lgs = (leagues as Array<{ id: string; name: string; rsvp_confirmation_lead_hours: number }>) || [];
+  const lgs = (leagues as Array<{ id: string; name: string; rsvp_confirmation_lead_hours: number; director_id: string | null; club_id: string | null }>) || [];
 
   for (const lg of lgs) {
     const lead = lg.rsvp_confirmation_lead_hours;
@@ -102,7 +100,7 @@ export async function sendDueRsvpConfirmations(): Promise<{ leagues: number; sen
         const lst = (names: string[]) => names.length ? names.map((n) => `<li>${n}</li>`).join('') : '<li style="color:#9ca3af">(none)</li>';
         const tokenFor = (email: string) => rosters.find((r) => r.parent_email === email)?.player_token;
 
-        for (const email of recipients) {
+        const payloads = recipients.map((email) => {
           const tok = tokenFor(email);
           const link = `${BASE}/leagues/rsvp/${tok}`;
           const html = `<div style="font-family:Arial,sans-serif;font-size:15px;color:#1f2937;line-height:1.55;max-width:600px">
@@ -117,14 +115,24 @@ export async function sendDueRsvpConfirmations(): Promise<{ leagues: number; sen
             <p style="margin:18px 0 6px"><a href="${link}" style="display:inline-block;background:#1d4ed8;color:#fff;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:8px">Change your availability</a></p>
             <p style="font-size:12.5px;color:#9ca3af">Plans changed? Tap above to update your player's Yes/No for this date (or any date).</p>
           </div>`;
-          const r = await safeResendSend(resend, {
+          return {
             from: FROM, to: email,
             replyTo: club?.contact_email || undefined,
             subject: `${div.name} ${side === 'home' ? 'vs' : '@'} ${opp?.short_code || opp?.name || ''} — please confirm (${when.split(' at ')[0]})`,
             html,
-          });
-          if (r.sent) sent++;
+            clubId: lg.club_id,
+          };
+        });
+        // Billed to the league's director. If billing throws, nothing went out,
+        // so leave the matchup unmarked and let tomorrow's run retry it.
+        let results;
+        try {
+          results = await sendBilledEmails(lg.director_id, payloads);
+        } catch (err) {
+          console.error('[jttRsvpConfirmations] send failed:', err);
+          continue;
         }
+        sent += results.filter((r) => r.sent).length;
         await admin.from('league_matchup_confirmations').upsert({ matchup_id: m.id as string, club_id: clubId }, { onConflict: 'matchup_id,club_id', ignoreDuplicates: true });
         matchupsClubs++;
         detail.push(`${div.name} ${club?.short_code} vs ${opp?.short_code} ${String(m.match_date).slice(0, 10)} → ${recipients.length} parents (Y${yes.length}/N${no.length}/?${pending.length})`);

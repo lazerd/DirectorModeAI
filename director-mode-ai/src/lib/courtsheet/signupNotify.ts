@@ -3,8 +3,8 @@
  *
  * Fired from the engine wrapper any time a reservation with active
  * signups is moved (court/time/date) or cancelled. Looks up the active
- * signup recipients, sends a Resend email through the existing
- * safeResendSend() footer pipeline.
+ * signup recipients, sends a Resend email through sendBilledEmails (the
+ * safeResendSend() footer pipeline, billed to the club owner).
  *
  * Resend is best-effort — failures are logged, never thrown.
  */
@@ -69,7 +69,8 @@ export async function notifySignupsOfReservationChange(args: NotifyArgs): Promis
       clubId: args.club.id,
     }));
 
-    await sendBilledEmails(args.actor_user_id, payloads);
+    // Billed to the club that owns the sheet; the actor is only a fallback.
+    await sendBilledEmails(args.club.owner_id || args.actor_user_id, payloads);
   } catch (err) {
     console.error('[courtsheet signupNotify] failed:', err);
   }

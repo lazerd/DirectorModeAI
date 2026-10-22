@@ -4,7 +4,9 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { safeResendSend, type SafeSendResult } from '@/lib/emailUnsubscribe';
 import { demoEmailHold, logDemoHold } from '@/lib/demo/suppress';
 import { clubFromLine } from '@/lib/emailText';
-import { recordSendUsage } from '@/lib/usageMeter';
+import { canSend, holdEmail, recordSendUsage } from '@/lib/usageMeter';
+import { EMAIL_PRICE_CENTS } from '@/config/pricing';
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -35,6 +37,9 @@ interface EmailPayload {
   /** Operational mail to the account holder — see safeResendSend. */
   operational?: boolean;
 }
+
+/** What a director sees when a send is waiting on their card. */
+export const NEEDS_CARD_MESSAGE = `Add a card to send. Emails are ${EMAIL_PRICE_CENTS}¢ each; this one is saved and will go out once a card is on file.`;
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
 /** Just the address out of DEFAULT_FROM, for building a club-named From line. */
@@ -78,6 +83,9 @@ const toSend = (userId: string | null, p: EmailPayload) => ({
 export async function sendBilledEmail(userId: string | null, payload: EmailPayload): Promise<SafeSendResult> {
   const held = await holdForDemo(userId, payload);
   if (held) return held;
+  if (userId && !(await canSend(userId)) && (await holdEmail(userId, { ...payload }))) {
+    return { sent: false, reason: 'needs_card', held: true, error: NEEDS_CARD_MESSAGE };
+  }
   if (userId) {
     await consumeEmailCredits(userId, 1);
   }
@@ -116,6 +124,19 @@ export async function sendBilledEmails(userId: string | null, payloads: EmailPay
     if (h) results[i] = h;
   });
   let pending = payloads.map((p, i) => ({ p, i })).filter(({ i }) => !holds[i]);
+
+  // No card on file: park the whole batch until the club adds one.
+  if (userId && pending.length && !(await canSend(userId))) {
+    const parked: typeof pending = [];
+    for (const item of pending) {
+      if (await holdEmail(userId, { ...item.p })) {
+        results[item.i] = { sent: false, reason: 'needs_card', held: true, error: NEEDS_CARD_MESSAGE };
+      } else {
+        parked.push(item);
+      }
+    }
+    pending = parked;
+  }
 
   if (userId && pending.length) {
     await consumeEmailCredits(userId, pending.length);
@@ -218,3 +239,34 @@ export function creditLimitResponse(err: CreditLimitError) {
 
 export { CreditLimitError };
 export type { SafeSendResult };
+
+/**
+ * Send everything a club owner's card was holding up, oldest first. Called when
+ * their "ClubMode usage" subscription goes active. Each send goes back through
+ * sendBilledEmail, so it is priced and recorded like any other.
+ */
+export async function releaseHeldEmails(billingUserId: string): Promise<{ released: number; failed: number }> {
+  const db = getSupabaseAdmin();
+  const { data } = await db
+    .from('held_messages')
+    .select('id, user_id, payload')
+    .eq('billing_user_id', billingUserId)
+    .is('released_at', null)
+    .order('created_at', { ascending: true })
+    .limit(500);
+  let released = 0;
+  let failed = 0;
+  for (const row of (data as { id: number; user_id: string; payload: EmailPayload }[] | null) ?? []) {
+    const r = await sendBilledEmail(row.user_id, row.payload);
+    if (!r.sent && r.reason === 'needs_card') {
+      // Still no card as far as the meter can tell; leave the rest waiting.
+      failed++;
+      break;
+    }
+    await db.from('held_messages').update({ released_at: new Date().toISOString() }).eq('id', row.id);
+    if (r.sent) released++;
+    else failed++;
+    await sleep(SEND_GAP_MS / 2);
+  }
+  return { released, failed };
+}

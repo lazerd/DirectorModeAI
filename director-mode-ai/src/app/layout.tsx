@@ -4,6 +4,7 @@ import AnalyticsTracker from "@/components/shared/AnalyticsTracker";
 import AssistantWidget from "@/components/assistant/AssistantWidget";
 import ClubSidebar from "@/components/shared/ClubSidebar";
 import TrialBanner from "@/components/billing/TrialBanner";
+import SendPaywall from "@/components/billing/SendPaywall";
 import ViewAsBanner from "@/components/shared/ViewAsBanner";
 import DemoBanner from "@/components/demo/DemoBanner";
 import LiveEventsBar from "@/components/shared/LiveEventsBar";
@@ -59,6 +60,8 @@ export default function RootLayout({
         <LiveEventsBar />
         {children}
         <TrialBanner />
+        {/* Add-a-card prompt: renders nothing unless this club's sends are waiting on a card. */}
+        <SendPaywall />
         {/* Renders nothing unless this browser is borrowing someone's session. */}
         <ViewAsBanner />
         {/* Renders nothing unless this browser is inside a prospect's demo. */}

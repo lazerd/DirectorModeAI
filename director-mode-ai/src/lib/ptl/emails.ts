@@ -1,8 +1,9 @@
 /**
  * PTL transactional email.
  *
- * Everything goes through safeResendSend, which carries the unsubscribe footer
- * and the demo guard. On top of that, every function here takes a `seasonIsDemo`
+ * Everything goes through sendBilledEmail (safeResendSend underneath), which
+ * carries the unsubscribe footer and the demo guard, and bills the season's
+ * commissioner. On top of that, every function here takes a `seasonIsDemo`
  * flag and refuses outright when it's set — the same belt-and-braces as the
  * enrolment route, and for the same reason: a committee member clicking through
  * a demo draft must not cause a stranger to receive mail about a league that
@@ -13,10 +14,7 @@
  */
 
 import 'server-only';
-import { Resend } from 'resend';
-import { safeResendSend } from '@/lib/emailUnsubscribe';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail } from '@/lib/email';
 
 const FROM = process.env.RESEND_FROM_EMAIL || 'Premier Tennis League <noreply@mail.clubmode.ai>';
 
@@ -36,18 +34,24 @@ function shell(title: string, body: string, cta?: { href: string; label: string 
   `;
 }
 
-type Base = { to: string; seasonIsDemo: boolean; origin: string };
+type Base = {
+  to: string;
+  seasonIsDemo: boolean;
+  origin: string;
+  /** Who pays: the season's commissioner (ptl_seasons.commissioner_id). */
+  billToUserId: string | null;
+};
 
 /** Sends unless the season is a demo. Returns whether it actually went. */
 async function send(
-  { to, seasonIsDemo }: Base,
+  { to, seasonIsDemo, billToUserId }: Base,
   subject: string,
   html: string,
 ): Promise<boolean> {
   if (seasonIsDemo) return false;
   if (!to || !to.includes('@')) return false;
   try {
-    await safeResendSend(resend, { from: FROM, to, subject, html });
+    await sendBilledEmail(billToUserId, { from: FROM, to, subject, html });
     return true;
   } catch (err) {
     console.error('[ptl] email failed', subject, err);

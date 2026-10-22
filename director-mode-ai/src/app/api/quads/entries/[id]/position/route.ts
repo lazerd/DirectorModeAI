@@ -60,6 +60,7 @@ export async function POST(
       if (recipient) {
         const origin = new URL(request.url).origin;
         await sendQuadsPromotedEmail({
+          eventId: (entry as any).event_id ?? null,
           to: recipient,
           playerName: (entry as any).player_name,
           tournamentName: (ev as any).name,

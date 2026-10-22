@@ -9,11 +9,8 @@
 // points", "your racket's ready for pickup", or "please RSVP".
 
 import { sendBilledEmail } from '@/lib/email';
-import { safeResendSend } from '@/lib/emailUnsubscribe';
-import { Resend } from 'resend';
 import { CreditLimitError } from '@/lib/billing';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
 const RESEND_DOMAIN = 'noreply@mail.clubmode.ai'; // verified sending domain
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -198,14 +195,20 @@ export async function runCampaign(d: CampaignData, kind: CampaignKind, mode: Sen
   if (mode === 'test') {
     if (!list[0]) return { mode: 'test', kind, to: d.replyTo, sent: false, note: 'no recipients right now' };
     const { subject, html } = build(list[0]);
-    const res = await safeResendSend(resend, {
-      from,
-      to: d.replyTo,
-      replyTo: d.replyTo,
-      subject: `[TEST${kind === 'nudge' ? ` → ${list[0].email}` : ''}] ${subject}`,
-      html,
-    });
-    return { mode: 'test', kind, to: d.replyTo, sent: res.sent, sampleFor: list[0].email };
+    // A test is a real send, so it is billed to the owner like the live run.
+    try {
+      const res = await sendBilledEmail(d.ownerId, {
+        from,
+        to: d.replyTo,
+        replyTo: d.replyTo,
+        subject: `[TEST${kind === 'nudge' ? ` → ${list[0].email}` : ''}] ${subject}`,
+        html,
+      });
+      return { mode: 'test', kind, to: d.replyTo, sent: res.sent, sampleFor: list[0].email };
+    } catch (e) {
+      if (!(e instanceof CreditLimitError)) throw e;
+      return { mode: 'test', kind, to: d.replyTo, sent: false, sampleFor: list[0].email, note: 'credit limit reached' };
+    }
   }
 
   // live — sequential + throttled; bill each to the owner; stop cleanly on credit cap

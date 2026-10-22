@@ -2,14 +2,12 @@
  * SwimMode emails — currently just the magic signup-link email families
  * receive when the lead clicks "Email link" in the Families tab.
  *
- * Goes through `safeResendSend()` so the unsubscribe blocklist + footer
- * apply automatically.
+ * Goes through `sendBilledEmail()` (and so `safeResendSend()`) so the
+ * unsubscribe blocklist + footer apply automatically, billed to the season's
+ * director.
  */
 
-import { Resend } from 'resend';
-import { safeResendSend } from './emailUnsubscribe';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendBilledEmail } from './email';
 
 const FROM =
   process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
@@ -20,6 +18,9 @@ export async function sendSwimFamilyLinkEmail(args: {
   seasonName: string;
   signupUrl: string;
   pointsTarget: number;
+  /** swim_seasons.director_id — who pays for the send. */
+  billToUserId: string | null;
+  clubId?: string | null;
 }) {
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, sans-serif; max-width: 560px; margin: 0 auto; color: #111;">
@@ -58,9 +59,10 @@ export async function sendSwimFamilyLinkEmail(args: {
     </div>
   `;
 
-  return safeResendSend(resend, {
+  return sendBilledEmail(args.billToUserId, {
     from: FROM,
     to: args.to,
+    clubId: args.clubId ?? null,
     subject: `Your ${args.seasonName} volunteer link`,
     html,
   });
