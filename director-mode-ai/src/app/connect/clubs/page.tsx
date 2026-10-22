@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, Search, MapPin, Mail, Phone, Building2, TrendingUp, Sparkles } from 'lucide-react';
+import { Loader2, Search, MapPin, Mail, Phone, Building2, TrendingUp, Sparkles, ShieldCheck, Users, Send } from 'lucide-react';
+import { PLACEMENT_TERMS, PLACEMENT_FEE_USD } from '@/lib/connect/placement';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -30,7 +31,11 @@ function parseMoney(s: string): number {
   return Number.isFinite(n) ? n * mult : 0;
 }
 
-type Opening = { id: string; club_name: string | null; title: string | null; dept: string; comp_min: number | null; comp_max: number; zip: string | null; status: string };
+type Opening = {
+  id: string; club_name: string | null; title: string | null; dept: string; comp_min: number | null; comp_max: number; zip: string | null; status: string;
+  description?: string | null; requirements?: string | null; job_url?: string | null; deadline?: string | null; city?: string | null; state?: string | null;
+  terms_accepted_at?: string | null;
+};
 type Match = {
   id: string; status: string; comp_delta: number; distance_miles: number; opening_id: string;
   candidate: { headline: string | null; dept: string | null; years_experience: number | null; current_comp: number | null; home_zip: string | null; full_name: string | null; email: string | null; phone: string | null };
@@ -72,6 +77,13 @@ export default function ClubsPage() {
   const [bandMax, setBandMax] = useState('');
   const [zip, setZip] = useState('');
   const [description, setDescription] = useState('');
+  const [requirements, setRequirements] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [city, setCity] = useState('');
+  const [stateCode, setStateCode] = useState('');
+  const [jobUrl, setJobUrl] = useState('');
+  const [agreed, setAgreed] = useState(false);
+  const [invites, setInvites] = useState<Record<string, { busy?: boolean; msg?: string }>>({});
 
   // Live benchmark-sourced suggestions + pay-band read
   const [insight, setInsight] = useState<Insight | null>(null);
@@ -146,9 +158,13 @@ export default function ClubsPage() {
     setSaving(true);
     setMsg('');
     if (!maxNum) { setMsg('Enter the top of your pay band.'); setSaving(false); return; }
+    if (!agreed) { setMsg(`Please agree to the placement terms ($${PLACEMENT_FEE_USD.toLocaleString()} only if you hire).`); setSaving(false); return; }
     const res = await fetch('/api/connect/opening', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ club_name: clubName, dept, title, comp_min: minNum || null, comp_max: maxNum, zip: zip5, description }),
+      body: JSON.stringify({
+        club_name: clubName, dept, title, comp_min: minNum || null, comp_max: maxNum, zip: zip5, description,
+        requirements, deadline: deadline || null, city, state: stateCode, job_url: jobUrl, is_public: true, accept_terms: agreed,
+      }),
     });
     if (res.ok) {
       const { newMatches } = await res.json();
@@ -167,12 +183,30 @@ export default function ClubsPage() {
     await load();
   }
 
-  async function setStatus(opening: Opening, status: string) {
+  async function setStatus(opening: Opening, status: string, extra: Record<string, unknown> = {}) {
     await fetch('/api/connect/opening', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: opening.id, club_name: opening.club_name, dept: opening.dept, title: opening.title, comp_min: opening.comp_min, comp_max: opening.comp_max, zip: opening.zip, status }),
+      body: JSON.stringify({ id: opening.id, club_name: opening.club_name, dept: opening.dept, title: opening.title, comp_min: opening.comp_min, comp_max: opening.comp_max, zip: opening.zip, description: opening.description ?? null, status, ...extra }),
     });
     await load();
+  }
+
+  async function inviteTop(o: Opening) {
+    setInvites((s) => ({ ...s, [o.id]: { busy: true } }));
+    try {
+      const res = await fetch(`/api/connect/openings/${o.id}/invite`, { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      const msg = !res.ok
+        ? data.error || 'Could not send invites.'
+        : data.invited > 0
+          ? `Invited ${data.invited} matching director${data.invited === 1 ? '' : 's'} to apply. They appear in your pipeline once they apply.`
+          : data.alreadyInPipeline > 0
+            ? 'Everyone who matches has already been invited.'
+            : 'No opted-in directors match this opening yet. We’ll keep looking.';
+      setInvites((s) => ({ ...s, [o.id]: { msg } }));
+    } catch {
+      setInvites((s) => ({ ...s, [o.id]: { msg: 'Could not send invites.' } }));
+    }
   }
 
   if (loading) return <div className="max-w-4xl mx-auto px-4 py-16 text-center text-slate-400"><Loader2 className="h-5 w-5 animate-spin inline" /> Loading…</div>;
@@ -182,10 +216,10 @@ export default function ClubsPage() {
   return (
     <div className="max-w-4xl mx-auto px-4 py-10">
       <Link href="/connect" className="text-sm text-teal-400 underline">← ClubMode Recruiting</Link>
-      <h1 className="text-3xl font-bold tracking-tight text-white mt-2 mb-1">Find your next director</h1>
+      <h1 className="text-3xl font-bold tracking-tight text-white mt-2 mb-1">Pay only when you hire.</h1>
       <p className="text-slate-300 mb-8">
-        This isn’t a public job post. Tell us what you’re hiring for and your pay band — we’ll instantly show directors from the benchmark database who fit,
-        tell you how competitive your band is, and quietly alert you when one opts in to be contacted.
+        Post your racquets-director opening free. Our AI ranks opted-in directors and invites the best fits to apply; you run interviews in your pipeline.
+        No retainer — a flat ${PLACEMENT_FEE_USD.toLocaleString()} only if you hire someone ClubMode introduced.
       </p>
 
       {/* Tell us about your opening */}
@@ -205,9 +239,26 @@ export default function ClubsPage() {
             <Field label="Pay band — low"><Input value={bandMin} onChange={(e) => setBandMin(e.target.value)} placeholder="150,000" style={inputStyle} /></Field>
             <Field label="Pay band — high"><Input value={bandMax} onChange={(e) => setBandMax(e.target.value)} placeholder="200,000" style={inputStyle} /></Field>
           </div>
+          <div className="grid sm:grid-cols-3 gap-4">
+            <Field label="City"><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Orinda" style={inputStyle} /></Field>
+            <Field label="State"><Input value={stateCode} onChange={(e) => setStateCode(e.target.value)} placeholder="CA" maxLength={2} style={inputStyle} /></Field>
+            <Field label="Application deadline (optional)"><Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} style={inputStyle} /></Field>
+          </div>
           <Field label="What makes this a great seat? (optional)"><Textarea value={description} onChange={(e) => setDescription(e.target.value)} style={inputStyle} /></Field>
+          <Field label="Requirements (optional)"><Textarea value={requirements} onChange={(e) => setRequirements(e.target.value)} placeholder="USPTA/PTR certified, 5+ years leading a club program, junior development experience…" style={inputStyle} /></Field>
+          <Field label="Job posting URL (optional)"><Input value={jobUrl} onChange={(e) => setJobUrl(e.target.value)} placeholder="https://yourclub.com/careers/director-of-racquets" style={inputStyle} /></Field>
+          <div className="rounded-lg border border-teal-500/40 bg-teal-500/10 p-4">
+            <div className="text-sm font-semibold text-white flex items-center gap-2 mb-2"><ShieldCheck className="h-4 w-4 text-teal-400" /> Placement terms</div>
+            <ul className="list-disc pl-5 space-y-1 text-xs text-slate-300">
+              {PLACEMENT_TERMS.map((t) => <li key={t}>{t}</li>)}
+            </ul>
+            <label className="mt-3 flex items-start gap-2 text-sm text-white cursor-pointer">
+              <input type="checkbox" className="mt-1 h-4 w-4 accent-teal-500" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+              <span>I agree to pay ${PLACEMENT_FEE_USD.toLocaleString()} only if we hire a candidate ClubMode introduces</span>
+            </label>
+          </div>
           <div className="flex items-center gap-3 flex-wrap">
-            <Button onClick={save} disabled={saving || !maxNum}>{saving ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Saving…</> : 'Save this opening'}</Button>
+            <Button onClick={save} disabled={saving || !maxNum || !agreed}>{saving ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Saving…</> : 'Save this opening'}</Button>
             <span className="text-xs text-slate-400">Saving keeps it on file so we can alert you when a matching director opts in.</span>
           </div>
           {msg && <p className="text-sm text-teal-300">{msg}</p>}
@@ -302,13 +353,34 @@ export default function ClubsPage() {
           <h2 className="text-lg font-semibold text-white">Your saved openings</h2>
           {openings.map((o) => (
             <Card key={o.id} className="bg-white">
-              <CardContent className="py-3 flex items-center justify-between">
-                <div className="text-sm">
-                  <span className="font-medium text-slate-900">{o.title || o.dept}</span>
-                  <span className="text-slate-500"> · {bandLabel(o)} · {o.zip || '—'} · {o.status}</span>
+              <CardContent className="py-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="text-sm">
+                    <span className="font-medium text-slate-900">{o.title || o.dept}</span>
+                    <span className="text-slate-500"> · {bandLabel(o)} · {[o.city, o.state].filter(Boolean).join(', ') || o.zip || '—'} · {o.status}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Link href={`/connect/clubs/${o.id}`} className="inline-flex items-center gap-1 text-sm font-medium text-teal-700 hover:text-teal-900 px-2">
+                      <Users className="h-4 w-4" /> Pipeline
+                    </Link>
+                    {o.status === 'open' && o.terms_accepted_at && (
+                      <Button size="sm" onClick={() => inviteTop(o)} disabled={!!invites[o.id]?.busy}>
+                        {invites[o.id]?.busy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />} Invite top matches
+                      </Button>
+                    )}
+                    {o.status === 'open' && !o.terms_accepted_at && (
+                      <Button size="sm" variant="outline" onClick={() => setStatus(o, o.status, { accept_terms: true })}>
+                        Accept ${PLACEMENT_FEE_USD.toLocaleString()} placement terms
+                      </Button>
+                    )}
+                    {o.status === 'open' && <Button size="sm" variant="outline" onClick={() => setStatus(o, 'filled')}>Mark filled</Button>}
+                    {o.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus(o, 'open')}>Reopen</Button>}
+                  </div>
                 </div>
-                {o.status === 'open' && <Button size="sm" variant="outline" onClick={() => setStatus(o, 'filled')}>Mark filled</Button>}
-                {o.status !== 'open' && <Button size="sm" variant="ghost" onClick={() => setStatus(o, 'open')}>Reopen</Button>}
+                {invites[o.id]?.msg && <p className="mt-2 text-xs text-teal-700">{invites[o.id]?.msg}</p>}
+                {o.status === 'open' && !o.terms_accepted_at && (
+                  <p className="mt-2 text-xs text-amber-700">Posted before placement terms. Accept the terms above (listed in the form) to invite candidates.</p>
+                )}
               </CardContent>
             </Card>
           ))}

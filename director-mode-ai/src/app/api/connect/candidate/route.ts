@@ -5,6 +5,24 @@ import { runMatchForCandidate } from '@/lib/connect/engine';
 
 const DEPTS = ['Tennis/Racquets', 'Golf', 'GM'];
 
+function cleanText(v: unknown, max: number): string | null {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return s ? s.slice(0, max) : null;
+}
+
+// Only http(s) links; a bare "linkedin.com/in/x" gets https:// prepended.
+function cleanUrl(v: unknown): string | null {
+  const s = cleanText(v, 300);
+  if (!s) return null;
+  const withProto = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+  try {
+    const u = new URL(withProto);
+    return u.protocol === 'http:' || u.protocol === 'https:' ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 // GET — the caller's own candidate profile + their matches (with the opening
 // each match points at, so the candidate can see who's interested).
 export async function GET() {
@@ -72,6 +90,10 @@ export async function POST(req: Request) {
     open_to_work: body.open_to_work !== false,
     reveal_mode: revealMode,
     claimed_ein: body.claimed_ein ? String(body.claimed_ein) : null,
+    // Recruiting fields — only written when sent, so older clients don't blank them.
+    ...('experience_summary' in body ? { experience_summary: cleanText(body.experience_summary, 4000) } : {}),
+    ...('certifications' in body ? { certifications: cleanText(body.certifications, 1000) } : {}),
+    ...('linkedin_url' in body ? { linkedin_url: cleanUrl(body.linkedin_url) } : {}),
   };
 
   const { data: saved, error } = await svc

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient, createServiceClient } from '@/lib/supabase/server';
 import { zipToLatLng, normalizeZip } from '@/lib/geo';
 import { runMatchForOpening } from '@/lib/connect/engine';
+import { PLACEMENT_TERMS_VERSION, PLACEMENT_FEE_USD } from '@/lib/connect/placement';
 
 const DEPTS = ['Tennis/Racquets', 'Golf', 'GM'];
 
@@ -43,6 +44,29 @@ export async function POST(req: Request) {
     status,
   };
 
+  // Job-board fields. Only touched when sent, so a status-only update
+  // (Mark filled / Reopen) never wipes them.
+  const optText = (v: unknown, max: number) => (v == null || v === '' ? null : String(v).trim().slice(0, max) || null);
+  if ('requirements' in body) row.requirements = optText(body.requirements, 5000);
+  if ('job_url' in body) {
+    const u = optText(body.job_url, 500);
+    if (u && !/^https?:\/\//i.test(u)) {
+      return NextResponse.json({ error: 'Job URL must start with http:// or https://' }, { status: 400 });
+    }
+    row.job_url = u;
+  }
+  if ('deadline' in body) {
+    const d = optText(body.deadline, 10);
+    if (d && !/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+      return NextResponse.json({ error: 'Deadline must be a date (YYYY-MM-DD).' }, { status: 400 });
+    }
+    row.deadline = d;
+  }
+  if ('city' in body) row.city = optText(body.city, 120);
+  if ('state' in body) row.state = optText(body.state, 40)?.toUpperCase() ?? null;
+  if ('is_public' in body) row.is_public = body.is_public !== false;
+  const acceptTerms = body.accept_terms === true;
+
   // Update path: only touch a row this user owns.
   let saved: any;
   if (body.id) {
@@ -57,7 +81,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: error?.message || 'not found' }, { status: 404 });
     }
     saved = data;
+    // Accepting terms on an older opening that never had them; existing acceptance is kept as-is.
+    if (acceptTerms && !saved.terms_accepted_at) {
+      const { data: accepted } = await svc
+        .from('connect_openings')
+        .update({ terms_accepted_at: new Date().toISOString(), terms_version: PLACEMENT_TERMS_VERSION })
+        .eq('id', saved.id)
+        .eq('owner_id', user.id)
+        .is('terms_accepted_at', null)
+        .select('*')
+        .maybeSingle();
+      if (accepted) saved = accepted;
+    }
   } else {
+    if (!acceptTerms) {
+      return NextResponse.json(
+        { error: `Please accept the placement terms to post this opening: you pay a flat $${PLACEMENT_FEE_USD.toLocaleString()} only if you hire a candidate ClubMode introduces.` },
+        { status: 400 },
+      );
+    }
+    row.terms_accepted_at = new Date().toISOString();
+    row.terms_version = PLACEMENT_TERMS_VERSION;
     const { data, error } = await svc
       .from('connect_openings')
       .insert(row)

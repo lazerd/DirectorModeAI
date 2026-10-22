@@ -2,12 +2,14 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Search, CheckCircle2, Loader2, TrendingUp, MapPin } from 'lucide-react';
+import { Search, CheckCircle2, Loader2, TrendingUp, MapPin, FileText, Upload, Briefcase, Mail } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { STAGE_LABEL, isStage, candidateCanMove } from '@/lib/connect/placement';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '@/components/ui/select';
@@ -41,6 +43,17 @@ type Match = {
   opening: { club_name: string | null; title: string | null; dept: string; comp_max: number; status: string } | null;
 };
 
+type Application = {
+  id: string; opening_id: string; source: string; stage: string; invited_at: string | null; updated_at: string;
+  opening: {
+    id: string; club_name: string | null; title: string | null; dept: string;
+    comp_min: number | null; comp_max: number | null; city: string | null; state: string | null; status: string;
+  } | null;
+};
+
+const stageLabel = (s: string) => (isStage(s) ? STAGE_LABEL[s] : s);
+const canWithdraw = (s: string) => isStage(s) && s !== 'invited' && candidateCanMove(s, 'withdrawn');
+
 export default function CandidatePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -59,6 +72,87 @@ export default function CandidatePage() {
   const [openToWork, setOpenToWork] = useState(true);
   const [revealMode, setRevealMode] = useState<'auto' | 'approve'>('auto');
   const [claimedEin, setClaimedEin] = useState('');
+  const [hasProfile, setHasProfile] = useState(false);
+
+  // Recruiting: what clubs see when you apply.
+  const [experienceSummary, setExperienceSummary] = useState('');
+  const [certifications, setCertifications] = useState('');
+  const [linkedinUrl, setLinkedinUrl] = useState('');
+  const [resumeName, setResumeName] = useState<string | null>(null);
+  const [resumeAt, setResumeAt] = useState<string | null>(null);
+  const [resumeBusy, setResumeBusy] = useState(false);
+  const [resumeMsg, setResumeMsg] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [appBusy, setAppBusy] = useState<string | null>(null);
+  const [appMsg, setAppMsg] = useState<Record<string, string>>({});
+  const [inviteConsent, setInviteConsent] = useState<Record<string, boolean>>({});
+  async function loadApplications() {
+    try {
+      const res = await fetch('/api/connect/applications/mine');
+      if (res.ok) setApplications((await res.json()).applications || []);
+    } catch { /* ignore */ }
+  }
+  async function uploadResume(file: File) {
+    setResumeMsg('');
+    if (!/\.(pdf|docx?)$/i.test(file.name)) { setResumeMsg('Résumé must be a PDF, DOC or DOCX.'); return; }
+    if (file.size > 5 * 1024 * 1024) { setResumeMsg('Résumé must be 5 MB or smaller.'); return; }
+    setResumeBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/api/connect/candidate/resume', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setResumeName(data.resume_filename || file.name);
+        setResumeAt(data.resume_uploaded_at || new Date().toISOString());
+        setResumeMsg('Résumé uploaded.');
+      } else {
+        setResumeMsg(data.error || 'Upload failed.');
+      }
+    } catch {
+      setResumeMsg('Upload failed.');
+    } finally {
+      setResumeBusy(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+  async function viewResume() {
+    // Open the tab synchronously so pop-up blockers allow it, then point it at the signed URL.
+    const w = window.open('', '_blank');
+    const res = await fetch('/api/connect/candidate/resume');
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.url) {
+      if (w) w.location.href = data.url; else window.location.href = data.url;
+    } else {
+      w?.close();
+      setResumeMsg(data.error || 'Could not open résumé.');
+    }
+  }
+  async function withdraw(id: string) {
+    if (!confirm('Withdraw? If you already applied, the club will see that you withdrew.')) return;
+    setAppBusy(id);
+    const res = await fetch(`/api/connect/applications/${id}/withdraw`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    setAppMsg((m) => ({ ...m, [id]: res.ok ? '' : data.error || 'Could not withdraw.' }));
+    await loadApplications();
+    setAppBusy(null);
+  }
+  async function applyToInvite(app: Application) {
+    if (!inviteConsent[app.id]) {
+      setAppMsg((m) => ({ ...m, [app.id]: 'Check the box to authorize sending your application.' }));
+      return;
+    }
+    setAppBusy(app.id);
+    const res = await fetch(`/api/connect/jobs/${app.opening_id}/apply`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ consent: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    setAppMsg((m) => ({ ...m, [app.id]: res.ok ? 'Application sent.' : data.error || 'Could not apply.' }));
+    await loadApplications();
+    setAppBusy(null);
+  }
 
   // Claim-990 typeahead
   const [claimQuery, setClaimQuery] = useState('');
@@ -127,10 +221,17 @@ export default function CandidatePage() {
           setOpenToWork(candidate.open_to_work ?? true);
           setRevealMode(candidate.reveal_mode === 'approve' ? 'approve' : 'auto');
           setClaimedEin(candidate.claimed_ein || '');
+          setExperienceSummary(candidate.experience_summary || '');
+          setCertifications(candidate.certifications || '');
+          setLinkedinUrl(candidate.linkedin_url || '');
+          setResumeName(candidate.resume_filename || null);
+          setResumeAt(candidate.resume_uploaded_at || null);
+          setHasProfile(true);
         }
         setMatches(matches || []);
       }
       loadInterests();
+      loadApplications();
       setLoading(false);
     })();
   }, []);
@@ -176,10 +277,12 @@ export default function CandidatePage() {
         current_comp: currentComp ? Number(currentComp) : null,
         home_zip: homeZip, radius_miles: radius ? Number(radius) : 50,
         open_to_work: openToWork, reveal_mode: revealMode, claimed_ein: claimedEin || null,
+        experience_summary: experienceSummary, certifications, linkedin_url: linkedinUrl,
       }),
     });
     if (res.ok) {
       const { newMatches } = await res.json();
+      setHasProfile(true);
       setSavedMsg(newMatches > 0 ? `Saved — and you matched ${newMatches} new opening${newMatches === 1 ? '' : 's'}!` : 'Saved.');
       const re = await fetch('/api/connect/candidate');
       if (re.ok) setMatches((await re.json()).matches || []);
@@ -202,6 +305,41 @@ export default function CandidatePage() {
       <p className="text-slate-300 mb-8">
         You stay anonymous. A club only gets your contact info when they post an opening that beats your current comp and is within your range.
       </p>
+
+      {/* Clubs that invited this candidate to apply */}
+      {applications.filter((a) => a.stage === 'invited').map((a) => (
+        <div key={a.id} className="mb-4 rounded-xl border border-teal-300 bg-teal-50 p-4">
+          <div className="font-semibold text-teal-900 flex items-center gap-2"><Mail className="h-4 w-4" /> A club invited you to apply</div>
+          <p className="text-sm text-teal-800 mt-0.5">
+            <span className="font-medium">{a.opening?.club_name || 'A club'}</span> · {a.opening?.title || a.opening?.dept}
+            {a.opening?.comp_max ? ` · ${a.opening.comp_min ? `${usd(a.opening.comp_min)}–${usd(a.opening.comp_max)}` : `up to ${usd(a.opening.comp_max)}`}` : ''}
+            {a.opening?.city || a.opening?.state ? ` · ${[a.opening?.city, a.opening?.state].filter(Boolean).join(', ')}` : ''}
+          </p>
+          <p className="text-xs text-teal-800 mt-1">The club hasn&apos;t seen your details. Nothing is shared unless you apply.</p>
+          {!resumeName ? (
+            <p className="text-sm text-teal-900 mt-3">Upload your résumé below to apply.</p>
+          ) : (
+            <>
+              <label className="flex items-start gap-2 mt-3 text-sm text-slate-800">
+                <input
+                  type="checkbox" className="mt-1"
+                  checked={!!inviteConsent[a.id]}
+                  onChange={(e) => setInviteConsent((c) => ({ ...c, [a.id]: e.target.checked }))}
+                />
+                <span>I authorize ClubMode to send my application and résumé to {a.opening?.club_name || 'this club'} for this role.</span>
+              </label>
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <Button size="sm" onClick={() => applyToInvite(a)} disabled={appBusy === a.id}>
+                  {appBusy === a.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Apply'}
+                </Button>
+                <Link href={`/connect/jobs/${a.opening_id}`} className="text-sm text-teal-800 underline">View job</Link>
+                <Button size="sm" variant="ghost" className="text-slate-600" onClick={() => withdraw(a.id)} disabled={appBusy === a.id}>No thanks</Button>
+              </div>
+            </>
+          )}
+          {appMsg[a.id] && <p className="text-sm text-teal-900 mt-2">{appMsg[a.id]}</p>}
+        </div>
+      ))}
 
       {/* Clubs that asked to talk to you (matched to your claimed 990 record) */}
       {interests.length > 0 && (
@@ -278,6 +416,20 @@ export default function CandidatePage() {
             <Field label="Willing to relocate (mi)"><Input value={radius} onChange={(e) => setRadius(e.target.value)} style={inputStyle} /></Field>
           </div>
 
+          <div className="border-t pt-4 space-y-4">
+            <Field label="Experience summary (sent to clubs you apply to)">
+              <Textarea
+                value={experienceSummary} onChange={(e) => setExperienceSummary(e.target.value)} rows={5}
+                placeholder="Programs you've built or run, staff you've managed, member count, revenue you grew, events…"
+                style={inputStyle}
+              />
+            </Field>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <Field label="Certifications"><Input value={certifications} onChange={(e) => setCertifications(e.target.value)} placeholder="USPTA Elite, PTR Professional…" style={inputStyle} /></Field>
+              <Field label="LinkedIn (optional)"><Input value={linkedinUrl} onChange={(e) => setLinkedinUrl(e.target.value)} placeholder="linkedin.com/in/you" style={inputStyle} /></Field>
+            </div>
+          </div>
+
           <div className="flex items-center justify-between border-t pt-4">
             <div>
               <Label className="text-slate-100">Open to work</Label>
@@ -306,6 +458,76 @@ export default function CandidatePage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Résumé */}
+      <Card className="mt-6">
+        <CardHeader><CardTitle className="text-base flex items-center gap-2 text-white"><FileText className="h-4 w-4 text-teal-400" /> Résumé</CardTitle></CardHeader>
+        <CardContent>
+          <p className="text-xs text-slate-300 mb-3">
+            PDF, DOC or DOCX, up to 5 MB. Private: it only goes to a club when you apply to that club&apos;s job.
+          </p>
+          {!hasProfile ? (
+            <p className="text-sm text-slate-300">Save your profile above first, then upload your résumé.</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              {resumeName ? (
+                <span className="text-sm text-slate-100">
+                  <button onClick={viewResume} className="text-teal-300 underline">{resumeName}</button>
+                  {resumeAt && <span className="text-slate-400"> · uploaded {new Date(resumeAt).toLocaleDateString()}</span>}
+                </span>
+              ) : (
+                <span className="text-sm text-slate-400">No résumé on file.</span>
+              )}
+              <input
+                ref={fileRef} type="file" className="hidden"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadResume(f); }}
+              />
+              <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={resumeBusy}>
+                {resumeBusy ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Upload className="h-4 w-4 mr-1" />}
+                {resumeName ? 'Replace' : 'Upload résumé'}
+              </Button>
+            </div>
+          )}
+          {resumeMsg && <p className="text-sm text-teal-300 mt-2">{resumeMsg}</p>}
+        </CardContent>
+      </Card>
+
+      {/* My applications */}
+      <div className="flex items-center justify-between mt-10 mb-3">
+        <h2 className="text-xl font-semibold text-white flex items-center gap-2"><Briefcase className="h-5 w-5 text-teal-400" /> My applications</h2>
+        <Link href="/connect/jobs" className="text-sm text-teal-400 underline">Browse jobs</Link>
+      </div>
+      {applications.filter((a) => a.stage !== 'invited').length === 0 ? (
+        <p className="text-slate-400 text-sm">You haven&apos;t applied to any jobs yet. Applying is free.</p>
+      ) : (
+        <div className="space-y-3">
+          {applications.filter((a) => a.stage !== 'invited').map((a) => (
+            <Card key={a.id} className="bg-white">
+              <CardContent className="py-4 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <Link href={`/connect/jobs/${a.opening_id}`} className="font-medium text-slate-900 hover:underline">
+                    {a.opening?.club_name || 'A club'} — {a.opening?.title || a.opening?.dept}
+                  </Link>
+                  <div className="text-sm text-slate-500">
+                    Updated {new Date(a.updated_at).toLocaleDateString()}
+                    {a.opening && a.opening.status !== 'open' ? ' · job closed' : ''}
+                  </div>
+                  {appMsg[a.id] && <div className="text-sm text-red-600">{appMsg[a.id]}</div>}
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs rounded-full px-2 py-1 bg-slate-100 text-slate-700">{stageLabel(a.stage)}</span>
+                  {canWithdraw(a.stage) && (
+                    <Button size="sm" variant="ghost" className="text-slate-600" onClick={() => withdraw(a.id)} disabled={appBusy === a.id}>
+                      Withdraw
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {/* Clubs near you that can pay more — the magnet */}
       {(oppsBusy || clubOpps.length > 0) && (

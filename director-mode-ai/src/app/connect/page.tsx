@@ -6,6 +6,7 @@ import { Briefcase, UserSearch, MapPin, ArrowRight, TrendingUp } from 'lucide-re
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { GUARANTEE_DAYS, PLACEMENT_FEE_USD } from '@/lib/connect/placement';
 
 type Pool = {
   total_candidates: number;
@@ -48,9 +49,14 @@ export default function ConnectLanding() {
       <div className="text-center mb-10">
         <h1 className="text-4xl font-bold tracking-tight text-white">ClubMode Recruiting</h1>
         <p className="mt-3 text-lg text-slate-300 max-w-2xl mx-auto">
-          The quiet bridge between clubs hiring and directors open to the right move.
-          Built on the largest comp dataset in racquet &amp; golf leadership.
+          Tell us who you&apos;re hiring. We find qualified racquets professionals who want the job.
+          You pay ${PLACEMENT_FEE_USD.toLocaleString()} only when you hire one we introduce.
         </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2 text-xs">
+          {['No retainer', 'No fee to post or interview', `$${PLACEMENT_FEE_USD.toLocaleString()} flat, only on a hire`, `${GUARANTEE_DAYS}-day replacement guarantee`, 'Free for candidates'].map((t) => (
+            <span key={t} className="rounded-full border border-teal-400/30 bg-teal-400/10 px-3 py-1 text-teal-200">{t}</span>
+          ))}
+        </div>
       </div>
 
       {/* Live market snapshot */}
@@ -108,20 +114,22 @@ export default function ConnectLanding() {
         <Door
           href="/connect/candidate"
           icon={<UserSearch className="h-6 w-6 text-teal-600" />}
-          title="I'm a director — get found"
-          body="Set your current comp and how far you'd move. Stay anonymous until a club with a better offer wants to talk. You're only revealed on a real match."
+          title="I'm a director — find my next role"
+          body="Build your profile once and upload your résumé. Browse open roles and apply in one click, or let our AI invite you to openings that fit. Your details go only to clubs you choose to apply to. Always free."
           cta="Create my profile"
         />
         <Door
           href="/connect/clubs"
           icon={<Briefcase className="h-6 w-6 text-teal-400" />}
-          title="I'm hiring — find directors"
-          body="Tell us the role and your pay band. We instantly show directors from the benchmark data who fit, tell you how competitive your band is, and alert you when a great fit opts in to be contacted."
-          cta="Find directors"
+          title="I'm hiring — pay only when you hire"
+          body="Post the role and your pay band. Our AI ranks directors who fit, invites the best to apply, and scores every applicant against your requirements. Run interviews in your pipeline. No fee unless you hire."
+          cta="Post an opening"
         />
       </div>
 
       <p className="mt-8 text-center text-sm text-slate-400">
+        <Link href="/connect/jobs" className="text-teal-400 underline">See open positions →</Link>
+        <span className="mx-2">·</span>
         Looking for the raw comp data?{' '}
         <Link href="/benchmarks" className="text-teal-400 underline">Browse the benchmarks →</Link>
       </p>
