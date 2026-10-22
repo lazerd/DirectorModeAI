@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Loader2, MapPin, CalendarClock, Briefcase, ShieldCheck, Search } from 'lucide-react';
+import { Loader2, MapPin, CalendarClock, Briefcase, ShieldCheck, Search, Globe } from 'lucide-react';
+import { sourceLabel } from '@/lib/connect/scout/labels';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 
@@ -11,14 +12,25 @@ type Job = {
   comp_min: number | null; comp_max: number | null; city: string | null; state: string | null; zip: string | null;
   deadline: string | null; description: string | null; requirements: string | null; created_at: string;
 };
+// A job the Scout found on a public board (id is "s-<uuid>").
+type SourcedJob = {
+  id: string; source: string; source_url: string; club_name: string | null; title: string | null; dept: string;
+  role_level: string | null; city: string | null; state: string | null;
+  comp_min: number | null; comp_max: number | null; comp_text: string | null; est_comp: number | null;
+  summary: string | null; requirements: string | null; deadline: string | null; first_seen_at: string;
+};
 
 const usd = (n: number) => `$${Math.round(n).toLocaleString()}`;
 const compBand = (j: { comp_min: number | null; comp_max: number | null }) =>
   j.comp_max ? (j.comp_min ? `${usd(j.comp_min)}–${usd(j.comp_max)}` : `Up to ${usd(j.comp_max)}`) : null;
+const sourcedPay = (j: SourcedJob) =>
+  compBand(j) || (j.comp_min ? `${usd(j.comp_min)}+` : null) || (j.comp_text && j.comp_text.length <= 40 ? j.comp_text : null) ||
+  (j.est_comp ? `~${usd(j.est_comp)} est.` : null);
 const fmtDate = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 export default function JobBoardPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [sourced, setSourced] = useState<SourcedJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [q, setQ] = useState('');
@@ -29,7 +41,9 @@ export default function JobBoardPage() {
       try {
         const res = await fetch('/api/connect/jobs');
         if (!res.ok) throw new Error();
-        setJobs((await res.json()).jobs || []);
+        const data = await res.json();
+        setJobs(data.jobs || []);
+        setSourced(data.sourced || []);
       } catch {
         setFailed(true);
       } finally {
@@ -39,8 +53,8 @@ export default function JobBoardPage() {
   }, []);
 
   const states = useMemo(
-    () => Array.from(new Set(jobs.map((j) => (j.state || '').toUpperCase()).filter(Boolean))).sort(),
-    [jobs],
+    () => Array.from(new Set([...jobs, ...sourced].map((j) => (j.state || '').toUpperCase()).filter(Boolean))).sort(),
+    [jobs, sourced],
   );
 
   const shown = useMemo(() => {
@@ -52,6 +66,17 @@ export default function JobBoardPage() {
         .some((f) => (f || '').toLowerCase().includes(needle));
     });
   }, [jobs, q, state]);
+
+  const shownSourced = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return sourced.filter((j) => {
+      if (state && (j.state || '').toUpperCase() !== state) return false;
+      if (!needle) return true;
+      return [j.club_name, j.title, j.dept, j.city, j.state, j.summary, j.requirements]
+        .some((f) => (f || '').toLowerCase().includes(needle));
+    });
+  }, [sourced, q, state]);
+  const total = jobs.length + sourced.length;
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-10">
@@ -89,14 +114,14 @@ export default function JobBoardPage() {
         <div className="py-16 text-center text-slate-300"><Loader2 className="h-5 w-5 animate-spin inline" /> Loading jobs…</div>
       ) : failed ? (
         <p className="text-slate-300">Couldn&apos;t load jobs right now. Please refresh.</p>
-      ) : shown.length === 0 ? (
+      ) : shown.length + shownSourced.length === 0 ? (
         <div className="rounded-xl border border-slate-700 p-8 text-center">
           <Briefcase className="h-6 w-6 text-slate-400 mx-auto mb-2" />
           <p className="text-slate-200 font-medium">
-            {jobs.length === 0 ? 'No open jobs right now.' : 'No jobs match those filters.'}
+            {total === 0 ? 'No open jobs right now.' : 'No jobs match those filters.'}
           </p>
           <p className="text-sm text-slate-400 mt-1">
-            {jobs.length === 0
+            {total === 0
               ? <>Create your <Link href="/connect/candidate" className="text-teal-400 underline">candidate profile</Link> and clubs can invite you when they start hiring.</>
               : <button className="text-teal-400 underline" onClick={() => { setQ(''); setState(''); }}>Clear filters</button>}
           </p>
@@ -129,6 +154,44 @@ export default function JobBoardPage() {
               </Link>
             );
           })}
+
+          {shownSourced.length > 0 && (
+            <div className="pt-6">
+              <h2 className="text-lg font-semibold text-white">More openings we found</h2>
+              <p className="text-sm text-slate-400 mb-3">
+                Posted on public job boards. Apply on the club&apos;s posting, and tell us you&apos;re interested so we can put you in front of the club.
+              </p>
+              <div className="space-y-3">
+                {shownSourced.map((j) => {
+                  const pay = sourcedPay(j);
+                  const place = [j.city, j.state].filter(Boolean).join(', ');
+                  return (
+                    <Link key={j.id} href={`/connect/jobs/${j.id}`} className="block">
+                      <Card className="bg-white hover:shadow-md transition-shadow">
+                        <CardContent className="py-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <div className="text-sm text-slate-500">{j.club_name || 'A private club'}</div>
+                              <div className="font-semibold text-slate-900">{j.title || j.dept}</div>
+                            </div>
+                            {pay && (
+                              <span className="shrink-0 text-xs font-medium rounded-full px-2 py-1 bg-slate-100 text-slate-700">{pay}</span>
+                            )}
+                          </div>
+                          <div className="mt-1.5 text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-1">
+                            {place && <span><MapPin className="h-3 w-3 inline" /> {place}</span>}
+                            {j.deadline && <span><CalendarClock className="h-3 w-3 inline" /> Apply by {fmtDate(j.deadline)}</span>}
+                            <span><Globe className="h-3 w-3 inline" /> Found on {sourceLabel(j.source)}</span>
+                          </div>
+                          {j.summary && <p className="mt-2 text-sm text-slate-700 line-clamp-2">{j.summary}</p>}
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

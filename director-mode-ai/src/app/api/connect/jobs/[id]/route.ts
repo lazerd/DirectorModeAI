@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { SOURCED_PUBLIC_COLS } from '@/lib/connect/scout/labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,7 +12,60 @@ export const dynamic = 'force-dynamic';
 const PUBLIC_COLS =
   'id, club_name, title, dept, comp_min, comp_max, city, state, zip, deadline, description, requirements, job_url, created_at';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type Me = {
+  signedIn: boolean;
+  hasProfile: boolean;
+  hasResume: boolean;
+  application: { id: string; stage: string; updated_at: string } | null;
+  interest?: { status: string; consent_at: string } | null;
+};
+
+// GET /api/connect/jobs/s-:uuid — a job the Scout found on a public board.
+// Public facts + our summary + the original link (SOURCED_PUBLIC_COLS); plus,
+// for a signed-in candidate, whether they've raised their hand for it.
+async function getSourced(rawId: string) {
+  const id = rawId.slice(2);
+  if (!UUID.test(id)) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+  const svc = getSupabaseAdmin();
+  const { data: row } = await svc
+    .from('connect_sourced_jobs')
+    .select(SOURCED_PUBLIC_COLS)
+    .eq('id', id)
+    .eq('status', 'active')
+    .maybeSingle();
+  if (!row) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
+
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const me: Me = { signedIn: false, hasProfile: false, hasResume: false, application: null, interest: null };
+  if (user) {
+    me.signedIn = true;
+    const { data: cand } = await svc
+      .from('connect_candidates')
+      .select('id, resume_path')
+      .eq('profile_id', user.id)
+      .maybeSingle();
+    if (cand) {
+      me.hasProfile = true;
+      me.hasResume = !!cand.resume_path;
+      const { data: interest } = await svc
+        .from('connect_job_interests')
+        .select('status, consent_at')
+        .eq('sourced_job_id', id)
+        .eq('candidate_id', cand.id)
+        .maybeSingle();
+      me.interest = interest || null;
+    }
+  }
+  const r = row as unknown as Record<string, unknown>;
+  return NextResponse.json({ job: { ...r, id: `s-${r.id}`, sourced_id: r.id, kind: 'sourced' }, me });
+}
+
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  if (params.id.startsWith('s-')) return getSourced(params.id);
+  if (!UUID.test(params.id)) return NextResponse.json({ error: 'Job not found' }, { status: 404 });
   const svc = getSupabaseAdmin();
   const { data: row } = await svc
     .from('connect_openings')
@@ -27,12 +81,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  let me: {
-    signedIn: boolean;
-    hasProfile: boolean;
-    hasResume: boolean;
-    application: { id: string; stage: string; updated_at: string } | null;
-  } = { signedIn: false, hasProfile: false, hasResume: false, application: null };
+  let me: Me = { signedIn: false, hasProfile: false, hasResume: false, application: null };
 
   if (user) {
     me = { ...me, signedIn: true };

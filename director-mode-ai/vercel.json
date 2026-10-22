@@ -46,6 +46,14 @@
     {
       "path": "/api/cron/ai-usage-report",
       "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/cron/recruiting-scout",
+      "schedule": "0 11 * * 1"
+    },
+    {
+      "path": "/api/cron/recruiting-recruit",
+      "schedule": "0 12 * * 2"
     }
   ]
 }
