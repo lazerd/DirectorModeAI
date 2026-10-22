@@ -129,7 +129,7 @@ export default function ConnectLanding() {
 
       <p className="mt-8 text-center text-sm text-slate-400">
         <Link href="/connect/jobs" className="text-teal-400 underline">See open positions →</Link>
-        <Link href="/connect/process" className="text-teal-400 underline">How our process works →</Link>
+        <Link href="/connect/process" className="text-teal-400 underline">How hiring works →</Link>
         <span className="mx-2">·</span>
         <span className="mx-2">·</span>
         Looking for the raw comp data?{' '}

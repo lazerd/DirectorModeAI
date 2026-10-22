@@ -220,7 +220,7 @@ export default function ClubsPage() {
       <p className="text-slate-300 mb-8">
         Post your racquets-director opening free. Our AI ranks opted-in directors and invites the best fits to apply; you run interviews in your pipeline.
         No retainer — a flat ${PLACEMENT_FEE_USD.toLocaleString()} only if you hire someone ClubMode introduced.{' '}
-        <Link href="/connect/process" className="text-teal-400 underline">See our 10-step process →</Link>
+        <Link href="/connect/process" className="text-teal-400 underline">See how it works →</Link>
       </p>
 
       {/* Tell us about your opening */}
