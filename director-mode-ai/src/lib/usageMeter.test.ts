@@ -1,8 +1,15 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-vi.mock('@/lib/supabase/admin', () => ({ getSupabaseAdmin: () => ({}) }));
+const emails: Record<string, string> = { owner: 'darrinjco@gmail.com', club: 'director@club.test' };
+let cardOnFile = false;
+
+vi.mock('@/lib/supabase/admin', () => ({
+  getSupabaseAdmin: () => ({
+    auth: { admin: { getUserById: async (id: string) => ({ data: { user: { email: emails[id] } } }) } },
+  }),
+}));
 vi.mock('@/lib/billing', () => ({ resolveBillingUserId: async (id: string) => id }));
-vi.mock('@/lib/assistant/meter', () => ({ paygActive: async () => false }));
+vi.mock('@/lib/assistant/meter', () => ({ paygActive: async () => cardOnFile }));
 
 import { canSend, priceCents } from './usageMeter';
 
@@ -22,7 +29,21 @@ describe('priceCents', () => {
 });
 
 describe('canSend', () => {
-  it('lets everyone send while metering is not enforced', async () => {
-    expect(await canSend('any-user')).toBe(true);
+  beforeEach(() => {
+    process.env.PLATFORM_OWNER_EMAILS = 'darrinjco@gmail.com';
+    cardOnFile = false;
+  });
+
+  it('holds a club with no card on file', async () => {
+    expect(await canSend('club')).toBe(false);
+  });
+
+  it('lets a club with a card send', async () => {
+    cardOnFile = true;
+    expect(await canSend('club')).toBe(true);
+  });
+
+  it('never blocks the platform owner', async () => {
+    expect(await canSend('owner')).toBe(true);
   });
 });
