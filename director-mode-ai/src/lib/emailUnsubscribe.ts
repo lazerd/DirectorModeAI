@@ -211,7 +211,7 @@ export type SafeSendResult =
   | { sent: true; messageId?: string; demo?: SuppressReason }
   | { sent: false; reason: 'unsubscribed' | 'error'; error?: string }
   /** The club has no card on file yet; the email is waiting in held_messages. */
-  | { sent: false; reason: 'needs_card'; held: true; error?: string };
+  | { sent: false; reason: 'needs_card' | 'over_limit'; held: true; error?: string };
 
 /**
  * Drop-in replacement for `resend.emails.send(...)`. Usage:

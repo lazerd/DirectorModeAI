@@ -12,6 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { releaseHeldEmails } from '@/lib/email';
+import { DEFAULT_MONTHLY_LIMIT_USD } from '@/config/pricing';
 import { background } from '@/lib/partnerFinder/background';
 import {
   verifyWebhookSignature,
@@ -126,8 +127,15 @@ export async function POST(request: NextRequest) {
           { onConflict: 'user_id' },
         );
         if (aiErr) console.error('[lemonsqueezy/webhook] ai_payg upsert failed:', aiErr.message);
-        // A card is on file now: send whatever was waiting for it.
+        // A card is on file now. If the owner never picked a monthly limit at
+        // checkout, start them at the suggested one; then send what was waiting.
         if (grantsAccess && !aiErr) {
+          await service
+            .from('usage_limits')
+            .upsert(
+              { billing_user_id: aiUserId, monthly_limit_cents: DEFAULT_MONTHLY_LIMIT_USD * 100 },
+              { onConflict: 'billing_user_id', ignoreDuplicates: true },
+            );
           background('release held emails', () => releaseHeldEmails(aiUserId));
         }
       }

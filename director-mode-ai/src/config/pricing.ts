@@ -43,6 +43,13 @@ export const TEXT_PRICE_CENTS = 3;
  */
 export const METERING_ENFORCED = true;
 
+/**
+ * The monthly spending limit we suggest when a club adds its card (emails +
+ * texts + Ask Claude together). The owner can pick another number or raise it
+ * any time; it applies by default if they never choose (Darrin, 2026-10-21).
+ */
+export const DEFAULT_MONTHLY_LIMIT_USD = 50;
+
 /** Notice period before an overage rate changes. */
 export const RATE_CHANGE_NOTICE_DAYS = 30;
 

@@ -81,13 +81,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
         error:
           result.reason === 'unsubscribed'
             ? 'This recipient has unsubscribed from ClubMode emails.'
-            : result.reason === 'needs_card'
+            : result.reason === 'needs_card' || result.reason === 'over_limit'
               ? result.error
               : 'Email failed to send.',
         reason: result.reason,
       },
       // A held email is waiting on the club's card, not broken: 402 Payment Required.
-      { status: result.reason === 'unsubscribed' ? 409 : result.reason === 'needs_card' ? 402 : 500 }
+      { status: result.reason === 'unsubscribed' ? 409 : result.reason === 'needs_card' || result.reason === 'over_limit' ? 402 : 500 }
     );
   }
 

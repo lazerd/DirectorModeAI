@@ -8,6 +8,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveBillingUserId } from '@/lib/billing';
 import { resolveActiveClub } from '@/lib/clubs/activeClub';
 import { isPlatformOwnerEmail } from '@/lib/platformOwner';
+import { overMonthlyLimit } from '@/lib/usageMeter';
 import { sendBilledEmail } from '@/lib/email';
 import {
   addUsage,
@@ -133,6 +134,15 @@ export async function POST(req: Request) {
       message: pausedMessage(bill),
       meter: snapshot(spentBefore, bill.exempt, undefined, bill.payg),
       paygUrl: bill.paygUrl,
+    }, { status: 402 });
+  }
+  if (await overMonthlyLimit(bill.billingUserId, bill.exempt)) {
+    return NextResponse.json({
+      kind: 'error',
+      message: bill.isOwner
+        ? "Your club has reached the monthly spending limit you set, so Ask Claude is paused. Raise the limit on the Usage & billing page to keep going."
+        : "Your club has reached its monthly spending limit, so Ask Claude is paused. Your club owner can raise it.",
+      meter: snapshot(spentBefore, bill.exempt, undefined, bill.payg),
     }, { status: 402 });
   }
 

@@ -1,7 +1,7 @@
 import twilio from 'twilio';
 import { consumeSmsCredits, CreditLimitError } from '@/lib/billing';
 import { demoSmsHold } from '@/lib/demo/suppress';
-import { canSend, recordSendUsage } from '@/lib/usageMeter';
+import { recordSendUsage, sendBlock } from '@/lib/usageMeter';
 import { TEXT_PRICE_CENTS } from '@/config/pricing';
 
 /** What a held demo text reports, in the words the captain's screen shows. */
@@ -12,6 +12,8 @@ export const DEMO_SMS_REASON = 'Demo: text not sent.';
  * SendPaywall recognises this wording and opens the add-card prompt.
  */
 export const NEEDS_CARD_SMS_REASON = `Add a card to send texts (${TEXT_PRICE_CENTS}¢ each). This text was not sent.`;
+export const OVER_LIMIT_SMS_REASON = 'Your club has reached its monthly spending limit, so this text was not sent. The owner can raise the limit on the Usage & billing page.';
+const blockReason = (b: 'needs_card' | 'over_limit') => (b === 'needs_card' ? NEEDS_CARD_SMS_REASON : OVER_LIMIT_SMS_REASON);
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -151,8 +153,9 @@ export async function sendSms(userId: string, to: string, body: string): Promise
     console.info('[demo] text suppressed');
     return { to: number, status: 'skipped', reason: DEMO_SMS_REASON };
   }
-  if (!(await canSend(userId))) {
-    return { to: number, status: 'skipped', reason: NEEDS_CARD_SMS_REASON };
+  const block = await sendBlock(userId);
+  if (block) {
+    return { to: number, status: 'skipped', reason: blockReason(block) };
   }
   try {
     await consumeSmsCredits(userId, 1);
@@ -199,13 +202,14 @@ export async function sendSmsBatch(userId: string, recipients: { phone: string; 
     };
   }
 
-  if (!(await canSend(userId))) {
+  const block = await sendBlock(userId);
+  if (block) {
     return {
       sent: 0,
       skipped: recipients.length,
       failed: 0,
       overageCents: 0,
-      results: valid.map((r) => ({ to: r.normalized, status: 'skipped' as const, reason: NEEDS_CARD_SMS_REASON })),
+      results: valid.map((r) => ({ to: r.normalized, status: 'skipped' as const, reason: blockReason(block) })),
     };
   }
 

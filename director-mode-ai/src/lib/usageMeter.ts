@@ -38,20 +38,70 @@ export async function sendBilling(userId: string): Promise<{ billingUserId: stri
   return { billingUserId, exempt: emails.some((e) => isPlatformOwnerEmail(e)) };
 }
 
+/** First instant of the current month, UTC: the period every limit is measured over. */
+function monthStart(now = new Date()): string {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+}
+
 /**
- * Can this account send right now? Always yes until METERING_ENFORCED; after
- * that, only the platform owner or a club with a card on file (an active
- * "ClubMode usage" metered subscription).
+ * What this club has been billed so far this month, in cents: sends plus Ask
+ * Claude. Exempt rows count too, so the platform owner sees real numbers.
  */
-export async function canSend(userId: string): Promise<boolean> {
-  if (!METERING_ENFORCED) return true;
+export async function monthSpendCents(billingUserId: string): Promise<number> {
+  const db = getSupabaseAdmin();
+  const since = monthStart();
+  const [{ data: sends }, { data: ai }] = await Promise.all([
+    db.from('usage_events').select('billed_cents').eq('billing_user_id', billingUserId).gte('created_at', since),
+    db.from('ai_usage_events').select('billed_micro').eq('billing_user_id', billingUserId).gte('created_at', since),
+  ]);
+  const sendCents = ((sends as { billed_cents: number }[] | null) ?? []).reduce((a, r) => a + Number(r.billed_cents || 0), 0);
+  const aiMicro = ((ai as { billed_micro: number }[] | null) ?? []).reduce((a, r) => a + Number(r.billed_micro || 0), 0);
+  return sendCents + Math.floor(aiMicro / 10_000);
+}
+
+/** The owner's monthly spending limit in cents, or null for none. */
+export async function monthlyLimitCents(billingUserId: string): Promise<number | null> {
+  const { data } = await getSupabaseAdmin()
+    .from('usage_limits')
+    .select('monthly_limit_cents')
+    .eq('billing_user_id', billingUserId)
+    .maybeSingle();
+  const v = (data as { monthly_limit_cents: number | null } | null)?.monthly_limit_cents;
+  return v === null || v === undefined ? null : Number(v);
+}
+
+/** Has this club reached its own monthly limit? Never true for the platform owner. */
+export async function overMonthlyLimit(billingUserId: string, exempt: boolean): Promise<boolean> {
+  if (exempt) return false;
+  const limit = await monthlyLimitCents(billingUserId);
+  if (limit === null) return false;
+  return (await monthSpendCents(billingUserId)) >= limit;
+}
+
+export type SendBlock = 'needs_card' | 'over_limit' | null;
+
+/**
+ * Why this account can't send right now, or null if it can. Nothing is blocked
+ * until METERING_ENFORCED; after that a club needs a card on file, and must be
+ * under the monthly limit its owner set. A failed check allows the send.
+ */
+export async function sendBlock(userId: string): Promise<SendBlock> {
+  if (!METERING_ENFORCED) return null;
   try {
     const { billingUserId, exempt } = await sendBilling(userId);
-    return exempt || (await paygActive(getSupabaseAdmin(), billingUserId));
+    if (exempt) return null;
+    if (!(await paygActive(getSupabaseAdmin(), billingUserId))) return 'needs_card';
+    if (await overMonthlyLimit(billingUserId, false)) return 'over_limit';
+    return null;
   } catch (err) {
-    console.error('canSend check failed; allowing the send:', err);
-    return true;
+    console.error('sendBlock check failed; allowing the send:', err);
+    return null;
   }
+}
+
+/** Can this account send right now? See sendBlock for why not. */
+export async function canSend(userId: string): Promise<boolean> {
+  return (await sendBlock(userId)) === null;
 }
 
 /** Write `units` sends to the meter. Never throws. */

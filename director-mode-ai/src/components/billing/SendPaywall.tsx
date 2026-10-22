@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { CreditCard, Mail, MessageSquare, X } from 'lucide-react';
+import SpendLimitForm from './SpendLimitForm';
 
 /**
  * The add-a-card paywall. ClubMode is free to use; a club pays only for what it
@@ -26,6 +27,10 @@ type Status = {
   emailCents?: number;
   textCents?: number;
   checkoutUrl?: string | null;
+  /** Card on file, but the club reached the monthly limit its owner set. */
+  overLimit?: boolean;
+  limitCents?: number | null;
+  suggestedLimitUsd?: number;
 };
 
 const PUBLIC_PREFIXES = ['/login', '/register', '/pricing', '/join', '/c/', '/q/', '/checkin/', '/demo/', '/try', '/mixermode', '/pulse'];
@@ -78,7 +83,7 @@ function LiveSendPaywall() {
           // A blocked text says so in the response; a held email shows up as a higher held count.
           const body = await res.clone().text().catch(() => '');
           const s = await refresh();
-          if (/Add a card to send|needs_card/.test(body) || (s && (s.held ?? 0) > heldRef.current)) setModal(true);
+          if (/Add a card to send|needs_card|monthly spending limit|over_limit/.test(body) || (s && (s.held ?? 0) > heldRef.current)) setModal(true);
           heldRef.current = s?.held ?? heldRef.current;
         }
       } catch {
@@ -112,15 +117,20 @@ function PaywallView({
 
   const held = status.held ?? 0;
 
-  const addCard = status.checkoutUrl ? (
-    <a
-      href={status.checkoutUrl}
-      className="inline-flex items-center gap-2 rounded-lg bg-[#D3FB52] px-4 py-2 text-sm font-semibold text-[#002838] hover:brightness-95"
-    >
-      <CreditCard className="h-4 w-4" /> Add a card
-    </a>
+  const overLimit = !!status.overLimit;
+  const limitDollars = status.limitCents == null ? null : Math.round(status.limitCents / 100);
+
+  // Owners act right here; staff are told who can.
+  const action = !status.isOwner ? (
+    <span className="text-sm text-slate-300">
+      {overLimit ? 'Ask your club owner to raise the monthly limit.' : 'Ask your club owner to add a card.'}
+    </span>
+  ) : overLimit ? (
+    <SpendLimitForm mode="edit" initialDollars={(limitDollars ?? 0) + (status.suggestedLimitUsd ?? 50)} />
+  ) : status.checkoutUrl ? (
+    <SpendLimitForm mode="add-card" initialDollars={status.suggestedLimitUsd ?? 50} checkoutUrl={status.checkoutUrl} />
   ) : (
-    <span className="text-sm text-slate-300">Ask your club owner to add a card.</span>
+    <span className="text-sm text-slate-300">Card setup isn&apos;t available right now.</span>
   );
 
   return (
@@ -130,9 +140,15 @@ function PaywallView({
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
             <p className="text-sm">
               <Mail className="mr-2 inline h-4 w-4 text-[#D3FB52]" />
-              {held} {held === 1 ? 'email is' : 'emails are'} waiting to send. Add a card and {held === 1 ? 'it goes' : 'they go'} out right away.
+              {held} {held === 1 ? 'email is' : 'emails are'} waiting to send.{' '}
+              {overLimit ? 'Your club reached its monthly spending limit.' : 'They go out as soon as a card is on file.'}
             </p>
-            {addCard}
+            <button
+              onClick={() => setModal(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#D3FB52] px-4 py-2 text-sm font-semibold text-[#002838] hover:brightness-95"
+            >
+              <CreditCard className="h-4 w-4" /> {overLimit ? 'Raise the limit' : 'Add a card'}
+            </button>
           </div>
         </div>
       )}
@@ -147,26 +163,38 @@ function PaywallView({
             >
               <X className="h-5 w-5" />
             </button>
-            <h2 className="text-lg font-semibold">Add a card to start sending</h2>
-            <p className="mt-2 text-sm text-slate-300">
-              ClubMode is free to use. You only pay for what you send. Emails you send now are saved and go out the
-              moment a card is on file; texts need the card first.
-            </p>
-            <ul className="mt-4 space-y-2 text-sm">
-              <li className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-[#D3FB52]" /> Emails: {status.emailCents}¢ each
-              </li>
-              <li className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-[#D3FB52]" /> Texts: {status.textCents}¢ each
-              </li>
-            </ul>
-            <p className="mt-3 text-xs text-slate-400">Billed monthly for what you send. No subscription.</p>
-            <div className="mt-5 flex items-center justify-between gap-3">
-              {addCard}
-              <button onClick={() => setModal(false)} className="text-sm text-slate-400 hover:text-white">
-                Not now
-              </button>
-            </div>
+            {overLimit ? (
+              <>
+                <h2 className="text-lg font-semibold">Your club reached its monthly limit</h2>
+                <p className="mt-2 text-sm text-slate-300">
+                  {limitDollars !== null ? `You set $${limitDollars} a month. ` : ''}Emails are saved and go out on the 1st,
+                  or right away if you raise the limit. Texts and Ask Claude are paused until then.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-semibold">Add a card to start sending</h2>
+                <p className="mt-2 text-sm text-slate-300">
+                  ClubMode is free to use. You only pay for what you send. Emails you send now are saved and go out the
+                  moment a card is on file; texts need the card first.
+                </p>
+                <ul className="mt-4 space-y-2 text-sm">
+                  <li className="flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-[#D3FB52]" /> Emails: {status.emailCents}¢ each
+                  </li>
+                  <li className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4 text-[#D3FB52]" /> Texts: {status.textCents}¢ each
+                  </li>
+                </ul>
+                <p className="mt-3 text-xs text-slate-400">
+                  Billed monthly for what you send. No subscription. Pick a monthly limit so the bill never surprises you.
+                </p>
+              </>
+            )}
+            <div className="mt-5">{action}</div>
+            <button onClick={() => setModal(false)} className="mt-4 text-sm text-slate-400 hover:text-white">
+              Not now
+            </button>
           </div>
         </div>
       )}

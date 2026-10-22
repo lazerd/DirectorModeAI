@@ -4,7 +4,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { safeResendSend, type SafeSendResult } from '@/lib/emailUnsubscribe';
 import { demoEmailHold, logDemoHold } from '@/lib/demo/suppress';
 import { clubFromLine } from '@/lib/emailText';
-import { canSend, holdEmail, recordSendUsage } from '@/lib/usageMeter';
+import { holdEmail, recordSendUsage, sendBlock, type SendBlock } from '@/lib/usageMeter';
 import { EMAIL_PRICE_CENTS } from '@/config/pricing';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
@@ -40,6 +40,14 @@ interface EmailPayload {
 
 /** What a director sees when a send is waiting on their card. */
 export const NEEDS_CARD_MESSAGE = `Add a card to send. Emails are ${EMAIL_PRICE_CENTS}¢ each; this one is saved and will go out once a card is on file.`;
+/** What a director sees when the club has reached the monthly limit its owner set. */
+export const OVER_LIMIT_MESSAGE = "Your club has reached its monthly spending limit. This email is saved and goes out on the 1st, or as soon as the owner raises the limit.";
+
+function heldResult(block: Exclude<SendBlock, null>): SafeSendResult {
+  return block === 'needs_card'
+    ? { sent: false, reason: 'needs_card', held: true, error: NEEDS_CARD_MESSAGE }
+    : { sent: false, reason: 'over_limit', held: true, error: OVER_LIMIT_MESSAGE };
+}
 
 const DEFAULT_FROM = process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
 /** Just the address out of DEFAULT_FROM, for building a club-named From line. */
@@ -83,8 +91,9 @@ const toSend = (userId: string | null, p: EmailPayload) => ({
 export async function sendBilledEmail(userId: string | null, payload: EmailPayload): Promise<SafeSendResult> {
   const held = await holdForDemo(userId, payload);
   if (held) return held;
-  if (userId && !(await canSend(userId)) && (await holdEmail(userId, { ...payload }))) {
-    return { sent: false, reason: 'needs_card', held: true, error: NEEDS_CARD_MESSAGE };
+  const block = userId ? await sendBlock(userId) : null;
+  if (userId && block && (await holdEmail(userId, { ...payload }))) {
+    return heldResult(block);
   }
   if (userId) {
     await consumeEmailCredits(userId, 1);
@@ -125,12 +134,13 @@ export async function sendBilledEmails(userId: string | null, payloads: EmailPay
   });
   let pending = payloads.map((p, i) => ({ p, i })).filter(({ i }) => !holds[i]);
 
-  // No card on file: park the whole batch until the club adds one.
-  if (userId && pending.length && !(await canSend(userId))) {
+  // No card on file, or over the owner's limit: park the batch until that changes.
+  const block = userId && pending.length ? await sendBlock(userId) : null;
+  if (userId && block) {
     const parked: typeof pending = [];
     for (const item of pending) {
       if (await holdEmail(userId, { ...item.p })) {
-        results[item.i] = { sent: false, reason: 'needs_card', held: true, error: NEEDS_CARD_MESSAGE };
+        results[item.i] = heldResult(block);
       } else {
         parked.push(item);
       }
@@ -258,8 +268,8 @@ export async function releaseHeldEmails(billingUserId: string): Promise<{ releas
   let failed = 0;
   for (const row of (data as { id: number; user_id: string; payload: EmailPayload }[] | null) ?? []) {
     const r = await sendBilledEmail(row.user_id, row.payload);
-    if (!r.sent && r.reason === 'needs_card') {
-      // Still no card as far as the meter can tell; leave the rest waiting.
+    if (!r.sent && (r.reason === 'needs_card' || r.reason === 'over_limit')) {
+      // Still blocked (no card, or still over the limit); leave the rest waiting.
       failed++;
       break;
     }

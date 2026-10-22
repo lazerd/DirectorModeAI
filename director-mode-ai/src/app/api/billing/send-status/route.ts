@@ -6,8 +6,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { EMAIL_PRICE_CENTS, METERING_ENFORCED, TEXT_PRICE_CENTS } from '@/config/pricing';
-import { heldCount, sendBilling } from '@/lib/usageMeter';
+import { DEFAULT_MONTHLY_LIMIT_USD, EMAIL_PRICE_CENTS, METERING_ENFORCED, TEXT_PRICE_CENTS } from '@/config/pricing';
+import { heldCount, monthSpendCents, monthlyLimitCents, sendBilling } from '@/lib/usageMeter';
 import { paygActive } from '@/lib/assistant/meter';
 import { buildCheckoutUrl } from '@/lib/lemonsqueezy';
 
@@ -23,12 +23,21 @@ export async function GET() {
   const { billingUserId, exempt } = await sendBilling(user.id);
   const hasCard = exempt ? false : await paygActive(getSupabaseAdmin(), billingUserId);
   const isOwner = billingUserId === user.id;
-  const held = await heldCount(billingUserId);
+  const [held, limitCents, spentCents] = await Promise.all([
+    heldCount(billingUserId),
+    monthlyLimitCents(billingUserId),
+    monthSpendCents(billingUserId),
+  ]);
+  const overLimit = !exempt && limitCents !== null && spentCents >= limitCents;
 
   return NextResponse.json({
     signedIn: true,
     enforced: METERING_ENFORCED,
-    canSend: !METERING_ENFORCED || exempt || hasCard,
+    canSend: !METERING_ENFORCED || exempt || (hasCard && !overLimit),
+    overLimit: METERING_ENFORCED && hasCard && overLimit,
+    limitCents,
+    spentCents,
+    suggestedLimitUsd: DEFAULT_MONTHLY_LIMIT_USD,
     exempt,
     hasCard,
     isOwner,

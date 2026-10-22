@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import ManagePlanButton from '@/components/billing/ManagePlanButton';
+import SpendLimitForm from '@/components/billing/SpendLimitForm';
+import { monthlyLimitCents } from '@/lib/usageMeter';
+import { DEFAULT_MONTHLY_LIMIT_USD } from '@/config/pricing';
 import { CreditCard, Sparkles, Mail, MessageSquare, Inbox, CheckCircle2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
@@ -103,6 +106,7 @@ export default async function UsageBillingPage() {
     );
   }
 
+  const limitCents = await monthlyLimitCents(billingUserId);
   const [usage, hasCard, held] = await Promise.all([
     monthUsage(billingUserId),
     exempt ? Promise.resolve(false) : paygActive(getSupabaseAdmin(), billingUserId),
@@ -153,12 +157,7 @@ export default async function UsageBillingPage() {
           {!exempt && hasCard && <ManagePlanButton />}
           {!exempt && !hasCard && (
             checkoutUrl ? (
-              <a
-                href={checkoutUrl}
-                className="px-5 py-2.5 rounded-xl font-medium bg-yellow-300 text-[#001820] hover:bg-yellow-200 inline-flex items-center gap-2"
-              >
-                <CreditCard size={16} /> Add a card
-              </a>
+              <SpendLimitForm mode="add-card" initialDollars={DEFAULT_MONTHLY_LIMIT_USD} checkoutUrl={checkoutUrl} />
             ) : (
               <div className="text-sm text-white/50 max-w-xs sm:text-right">
                 Card setup isn&apos;t available right now. Please try again later.
@@ -167,6 +166,18 @@ export default async function UsageBillingPage() {
           )}
         </div>
       </div>
+
+      {/* Monthly spending limit */}
+      {!exempt && hasCard && (
+        <div className="mt-6 rounded-2xl border border-white/10 bg-[#002838] p-6">
+          <div className="text-white/50 text-sm mb-3">
+            {limitCents === null
+              ? 'No monthly limit set.'
+              : `Limit: $${(limitCents / 100).toFixed(0)} a month. Change it any time, including mid-month.`}
+          </div>
+          <SpendLimitForm mode="edit" initialDollars={limitCents === null ? null : Math.round(limitCents / 100)} />
+        </div>
+      )}
 
       {/* Held emails */}
       {held > 0 && (
