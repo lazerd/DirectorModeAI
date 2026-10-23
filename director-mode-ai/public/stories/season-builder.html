@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="How Sleepy Hollow Swim & Tennis Club built its 2027 USTA team head count with ClubMode Season Builder.">
+<meta property="og:title" content="Build your 2027 USTA teams in under 60 seconds of your time">
+<meta property="og:description" content="How Sleepy Hollow used ClubMode Season Builder to collect its USTA head count.">
+<meta property="og:image" content="https://clubmode.ai/stories/season-builder/dash.jpg">
+<meta property="og:url" content="https://clubmode.ai/stories/season-builder">
+<link rel="icon" href="/icon">
+<style>*,*::before,*::after{box-sizing:border-box}body{margin:0}img{max-width:100%}</style>
+<title>Season Builder at Sleepy Hollow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one reading column; each step pairs a short explanation with the real screen it describes. ClubMode navy + lime. */
+:root {
+  --bg: #f4f6f5;
+  --paper: #ffffff;
+  --ink: #0b2430;
+  --muted: #4d6470;
+  --line: #d7e0e2;
+  --navy: #002838;
+  --lime: #d3fb52;
+  --lime-ink: #2f4a00;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #071a22; --paper: #0d2631; --ink: #e8f0f2; --muted: #9db3bc; --line: #1f3d49; --navy: #d3fb52; --lime: #d3fb52; --lime-ink: #d3fb52; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #071a22; --paper: #0d2631; --ink: #e8f0f2; --muted: #9db3bc; --line: #1f3d49; --navy: #d3fb52; --lime: #d3fb52; --lime-ink: #d3fb52; color-scheme: dark }
+
+body { background: var(--bg); color: var(--ink); font: 400 1.0625rem/1.6 var(--body); }
+.wrap { max-width: 46rem; margin: 0 auto; padding-block: 2.5rem 4rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.eyebrow { font: 500 0.75rem/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font: 800 clamp(2rem, 6vw, 3rem)/1.08 var(--display); letter-spacing: -0.02em; margin: .75rem 0 1rem; text-wrap: balance; color: var(--ink); }
+h1 mark { background: linear-gradient(transparent 58%, var(--lime) 58%); color: inherit; padding: 0 .1em; }
+.lede { font-size: 1.2rem; color: var(--muted); max-width: 38rem; margin: 0; }
+
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr)); gap: 1px; background: var(--line);
+  border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin: 2rem 0 3rem; }
+.facts div { background: var(--paper); padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .2rem; }
+.facts b { font: 800 1.75rem/1 var(--display); font-variant-numeric: tabular-nums; color: var(--ink); }
+.facts span { font-size: .9rem; color: var(--muted); }
+
+.step { display: grid; gap: 1rem; padding-block: 2rem; border-top: 1px solid var(--line); }
+.step h2 { display: flex; align-items: baseline; gap: .7rem; font: 600 1.45rem/1.2 var(--display); margin: 0; text-wrap: balance; }
+.step h2 .n { font: 500 .8rem/1 var(--mono); color: var(--lime-ink); background: color-mix(in srgb, var(--lime) 35%, transparent);
+  border-radius: 4px; padding: .3rem .45rem; flex: none; }
+.step p { margin: 0; max-width: 40rem; }
+.step ul { margin: 0; padding-left: 1.2rem; display: grid; gap: .3rem; }
+.shot { margin: .5rem 0 0; }
+.shot img { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--line); box-shadow: 0 10px 30px -18px rgba(0,30,40,.45); }
+.shot.phone img { max-width: 20rem; margin: 0 auto; }
+.shot figcaption { font-size: .85rem; color: var(--muted); margin-top: .5rem; }
+
+.time { margin-top: 1rem; overflow-x: auto; }
+.time table { width: 100%; border-collapse: collapse; font-size: .98rem; min-width: 26rem; }
+.time th, .time td { text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--line); }
+.time th { font: 500 .72rem/1 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.time td.t { font-variant-numeric: tabular-nums; white-space: nowrap; font-weight: 600; }
+
+.sign { margin-top: 3rem; padding: 1.5rem; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; display: grid; gap: .5rem; }
+.sign p { margin: 0; }
+.sign .who { font-weight: 600; }
+.sign a { color: var(--ink); text-decoration-color: var(--lime); text-decoration-thickness: 3px; text-underline-offset: 3px; }
+a:focus-visible { outline: 2px solid var(--lime); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="eyebrow">Sleepy Hollow Swim &amp; Tennis Club · Orinda · October 2026</div>
+  <h1>Build your 2027 USTA teams in <mark>under 60 seconds</mark> of your time.</h1>
+  <p class="lede">Every fall I chase down who wants to play USTA, at what level, and who will captain. This year I sent one email from ClubMode and let it collect the answers. Here is exactly what it did.</p>
+
+  <div class="facts">
+    <div><b>664</b><span>members emailed, each with their own link</span></div>
+    <div><b>3</b><span>leagues: Women's 40+, Men's 40+, Mixed 18+</span></div>
+    <div><b>2</b><span>answers so far (first hour)</span></div>
+    <div><b>0</b><span>spreadsheets</span></div>
+  </div>
+
+  <section class="step">
+    <h2><span class="n">1</span>I set it up and sent it</h2>
+    <p>I picked the leagues and whether each one plays days or nights and weekends, set the reply-by date (Oct 30) and the date USTA registration opens (Nov 3). Then Preview, send myself a test, and send. ClubMode pulled every adult member from our roster. Couples who share an inbox each get their own email and their own link.</p>
+    <p>It also gives me a public link and paste-ready text for the club newsletter, so people who don't read email still land in the same count.</p>
+    <figure class="shot"><img src="/stories/season-builder/send.jpg" alt="Season Builder send panel with Preview and Send me a test buttons, and the newsletter link with ready-to-paste text"><figcaption>The send panel and the newsletter copy it writes for you.</figcaption></figure>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">2</span>Members answer in about a minute</h2>
+    <p>One tap from the email opens a short form on their phone:</p>
+    <ul>
+      <li>Do you want to play this season? (“Not this season” counts too)</li>
+      <li>Which teams, and day or nights/weekends</li>
+      <li>Their own NTRP level</li>
+      <li>Do they want to captain</li>
+      <li>Confirm they're 40 or older in 2027, for the 40+ leagues</li>
+      <li>When their USTA membership expires</li>
+    </ul>
+    <p>If their USTA membership runs out before the season ends, the confirmation email includes the renewal link automatically.</p>
+    <figure class="shot phone"><img src="/stories/season-builder/form.jpg" alt="The member sign-up form on a phone: play this season, which teams, NTRP level, captain"><figcaption>What a member sees.</figcaption></figure>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">3</span>I watch the head count fill in</h2>
+    <p>Every answer lands on one screen, grouped by league, level and day or night. I can see who volunteered to captain, who still needs to renew USTA, and anyone from the newsletter link we couldn't match to a member. Export to CSV whenever I want it.</p>
+    <figure class="shot"><img src="/stories/season-builder/dash.jpg" alt="Season Builder dashboard: totals across the top, head count by team, captain volunteers and USTA renewals"><figcaption>The live dashboard on the day it went out.</figcaption></figure>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">4</span>One click makes the team</h2>
+    <p>When a group has enough players, I click once and ClubMode creates the team in CaptainMode with the roster loaded and the captain noted. From there the captain runs lineups, availability and match emails. CaptainMode is free for captains.</p>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">5</span>Where my time went</h2>
+    <div class="time"><table>
+      <thead><tr><th>Task</th><th>My time</th></tr></thead>
+      <tbody>
+        <tr><td>Set up leagues and dates, preview, send to 664 members</td><td class="t">Under a minute</td></tr>
+        <tr><td>Collect answers, chase levels, track captains</td><td class="t">None</td></tr>
+        <tr><td>Remind people to renew USTA</td><td class="t">None</td></tr>
+        <tr><td>Turn a group into a CaptainMode team</td><td class="t">One click</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <div class="sign">
+    <p>Court booking, lessons and billing are covered by plenty of companies. ClubMode is for everything else that eats a director's week, and this is one piece of it.</p>
+    <p>If you want to run your winter USTA season this way, I'm happy to show you.</p>
+    <p class="who">Darrin Cohen<br>Director of Tennis, Sleepy Hollow Swim &amp; Tennis Club</p>
+    <p><a href="https://clubmode.ai">clubmode.ai</a></p>
+  </div>
+</div>
+</body>
+</html>

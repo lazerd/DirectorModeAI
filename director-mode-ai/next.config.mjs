@@ -26,6 +26,10 @@ const nextConfig = {
       { source: '/run/members/partner-finder', destination: '/run/members/courtconnect', permanent: false },
     ];
   },
+  async rewrites() {
+    // Customer stories are static pages in public/stories; serve them without the .html.
+    return [{ source: '/stories/season-builder', destination: '/stories/season-builder.html' }];
+  },
 };
 
 export default nextConfig;
