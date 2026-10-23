@@ -125,7 +125,7 @@ export default function PricingPage() {
         </h1>
         <p className="mt-4 text-white/60 max-w-xl mx-auto">
           All {PRODUCT_COUNT} tools to run your racquet-sports club, for your whole staff, at no
-          cost. You pay a few cents per email and text, billed monthly.
+          cost. You pay a penny per email and a few cents per text, billed monthly once you owe $20.
         </p>
       </section>
 

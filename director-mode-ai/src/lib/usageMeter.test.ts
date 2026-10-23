@@ -14,9 +14,9 @@ vi.mock('@/lib/assistant/meter', () => ({ paygActive: async () => cardOnFile }))
 import { canSend, priceCents } from './usageMeter';
 
 describe('priceCents', () => {
-  it('charges 2¢ an email and 3¢ a text', () => {
-    expect(priceCents('email', 1)).toBe(2);
-    expect(priceCents('email', 250)).toBe(500);
+  it('charges 1¢ an email and 3¢ a text', () => {
+    expect(priceCents('email', 1)).toBe(1);
+    expect(priceCents('email', 250)).toBe(250);
     expect(priceCents('sms', 1)).toBe(3);
     expect(priceCents('sms', 40)).toBe(120);
   });
@@ -24,7 +24,7 @@ describe('priceCents', () => {
   it('never prices zero, negative or fractional sends above what was sent', () => {
     expect(priceCents('email', 0)).toBe(0);
     expect(priceCents('sms', -3)).toBe(0);
-    expect(priceCents('email', 2.9)).toBe(4);
+    expect(priceCents('email', 2.9)).toBe(2);
   });
 });
 

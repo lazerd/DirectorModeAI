@@ -32,7 +32,7 @@ export const PLATFORM_LABEL = 'Free · pay only for what you send';
  * Every email and every text is billed, with no free allowance. Sign-in and
  * password emails are not ClubMode sends (Supabase auth) and never appear here.
  */
-export const EMAIL_PRICE_CENTS = 2;
+export const EMAIL_PRICE_CENTS = 1;
 export const TEXT_PRICE_CENTS = 3;
 
 /**
@@ -49,6 +49,13 @@ export const METERING_ENFORCED = true;
  * any time; it applies by default if they never choose (Darrin, 2026-10-21).
  */
 export const DEFAULT_MONTHLY_LIMIT_USD = 50;
+
+/**
+ * A club's card isn't charged until it owes at least this much (Darrin, 2026-10-23).
+ * The card fee (~5% + 50 cents) would swallow a small bill, so anything under it
+ * rolls into the next month.
+ */
+export const MIN_CHARGE_USD = 20;
 
 /** Notice period before an overage rate changes. */
 export const RATE_CHANGE_NOTICE_DAYS = 30;

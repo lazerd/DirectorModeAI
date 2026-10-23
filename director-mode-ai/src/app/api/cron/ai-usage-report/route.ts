@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { reportUsage, lsConfigured } from '@/lib/lemonsqueezy';
 import { releaseHeldEmails } from '@/lib/email';
-import { AI_INCLUDED_USD, METERING_ENFORCED } from '@/config/pricing';
+import { AI_INCLUDED_USD, METERING_ENFORCED, MIN_CHARGE_USD } from '@/config/pricing';
 
 // GET /api/cron/ai-usage-report — Ask Claude overage, plus emails and texts
 // once METERING_ENFORCED is on, → LemonSqueezy.
@@ -10,8 +10,9 @@ import { AI_INCLUDED_USD, METERING_ENFORCED } from '@/config/pricing';
 // Daily (Vercel Hobby allows once a day). For every club owner with
 // pay-as-you-go on, works out this month's overage in cents (billed beyond the
 // $5 allowance, exempt rows excluded) and reports only the increase since the
-// last run as usage on their metered subscription — 1 unit = 1 cent. On the 1st
-// it also settles the month just ended, so the last day's usage is never lost.
+// last run as usage on their metered subscription — 1 unit = 1 cent. LemonSqueezy
+// charges the card once a month at renewal, never per report. Nothing is reported
+// until a club owes MIN_CHARGE_USD; smaller balances carry forward month to month.
 // `?dryRun=1` reports what it would send.
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -38,8 +39,6 @@ export async function GET(request: NextRequest) {
     .not('ls_subscription_item_id', 'is', null);
 
   const now = new Date();
-  // Last month too, so usage between the final run and midnight on the 1st is billed.
-  const periods = [monthStart(now, 1), monthStart(now, 0)];
   const results: unknown[] = [];
 
   for (const s of (subs as { user_id: string; ls_subscription_item_id: string }[] | null) ?? []) {
@@ -48,7 +47,11 @@ export async function GET(request: NextRequest) {
       const rel = await releaseHeldEmails(s.user_id);
       if (rel.released || rel.failed) results.push({ user: s.user_id, heldReleased: rel.released, heldFailed: rel.failed });
     }
-    for (const start of periods) {
+    // Every month this club owes something for and we haven't reported yet. Under-threshold balances
+    // carry forward, so this looks back over the whole year, not just this month and last.
+    const owed: { period: string; overageCents: number; delta: number }[] = [];
+    for (let back = 12; back >= 0; back--) {
+      const start = monthStart(now, back);
       const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
       const { data: rows } = await db
         .from('ai_usage_events')
@@ -71,6 +74,7 @@ export async function GET(request: NextRequest) {
         sendCents = ((sends as { billed_cents: number }[] | null) ?? []).reduce((a, r) => a + Number(r.billed_cents || 0), 0);
       }
       const overageCents = aiCents + sendCents;
+      if (!overageCents) continue;
 
       const period = start.toISOString().slice(0, 10);
       const { data: rep } = await db
@@ -80,18 +84,25 @@ export async function GET(request: NextRequest) {
         .eq('period', period)
         .maybeSingle();
       const already = (rep as { reported_cents: number } | null)?.reported_cents ?? 0;
-      const delta = overageCents - already;
-      if (delta <= 0) continue;
-
-      if (!dryRun) {
-        await reportUsage(s.ls_subscription_item_id, delta);
-        await db.from('ai_usage_reports').upsert(
-          { billing_user_id: s.user_id, period, reported_cents: overageCents, updated_at: new Date().toISOString() },
-          { onConflict: 'billing_user_id,period' },
-        );
-      }
-      results.push({ user: s.user_id, period, overageCents, reported: delta });
+      if (overageCents > already) owed.push({ period, overageCents, delta: overageCents - already });
     }
+
+    // Nothing goes on the card until the club owes MIN_CHARGE_USD (Darrin 2026-10-23: the card
+    // fee would eat a 40-cent bill). Smaller balances wait for a later run.
+    const pending = owed.reduce((a, o) => a + o.delta, 0);
+    if (!pending) continue;
+    if (pending < MIN_CHARGE_USD * 100) {
+      results.push({ user: s.user_id, carriedCents: pending });
+      continue;
+    }
+    if (!dryRun) {
+      await reportUsage(s.ls_subscription_item_id, pending);
+      await db.from('ai_usage_reports').upsert(
+        owed.map((o) => ({ billing_user_id: s.user_id, period: o.period, reported_cents: o.overageCents, updated_at: new Date().toISOString() })),
+        { onConflict: 'billing_user_id,period' },
+      );
+    }
+    results.push({ user: s.user_id, reported: pending, periods: owed.map((o) => o.period) });
   }
   return NextResponse.json({ dryRun, accounts: subs?.length ?? 0, results });
 }
