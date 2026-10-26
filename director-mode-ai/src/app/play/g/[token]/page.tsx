@@ -42,7 +42,7 @@ export default async function GuestLinkPage({ params }: { params: { token: strin
     ['When', `${longDay(game.starts_at, tz)}, ${clockLabel(game.starts_at, tz)}`],
     ['Where', club.name],
     ['How long', durationLabel(game.duration_min)],
-    ['Game', gameKind(game.format, game.gender)],
+    ['Game', gameKind(game.format, game.gender, game.sport)],
     ...(level ? ([['Level', level]] as [string, string][]) : []),
     ['Court', game.court || 'To be decided'],
     ['Invited by', poster?.short || 'A member'],
@@ -54,7 +54,7 @@ export default async function GuestLinkPage({ params }: { params: { token: strin
       clubName={club.name}
       myFirstName={firstName(link.name)}
       poster={poster?.short || 'A member'}
-      title={`${longDay(game.starts_at, tz).split(',')[0]} ${clockLabel(game.starts_at, tz)} ${gameKind(game.format, game.gender)}`}
+      title={`${longDay(game.starts_at, tz).split(',')[0]} ${clockLabel(game.starts_at, tz)} ${gameKind(game.format, game.gender, game.sport)}`}
       rows={rows}
       note={game.note}
       status={started && game.status !== 'cancelled' ? 'past' : game.status}

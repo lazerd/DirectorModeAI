@@ -30,10 +30,13 @@ export function isGender(v: unknown): v is GameGender {
 
 /**
  * "doubles", "men's doubles", "women's hitting session". Mixed is already
- * about gender, so it never takes a prefix.
+ * about gender, so it never takes a prefix. A game posted to a pickleball
+ * list says so — "pickleball doubles" — because a bare "doubles" reads as
+ * tennis. Tennis (or no sport) adds nothing.
  */
-export function gameKind(format: string, gender?: string | null): string {
-  const f = isFormat(format) ? FORMAT_LABEL[format] : format;
+export function gameKind(format: string, gender?: string | null, sport?: string | null): string {
+  const base = isFormat(format) ? FORMAT_LABEL[format] : format;
+  const f = sport && sport !== 'tennis' ? `${sport} ${base}` : base;
   if (format === 'mixed' || !isGender(gender)) return f;
   return `${gender === 'male' ? "men's" : "women's"} ${f}`;
 }
@@ -142,11 +145,12 @@ export type GameSummary = {
   rating_min: number | string | null;
   rating_max: number | string | null;
   gender?: string | null;
+  sport?: string | null;
 };
 
 /** "Tue Sep 22 · 9:00am doubles" (or "men's doubles") */
-export function gameTitle(g: Pick<GameSummary, 'starts_at' | 'format' | 'gender'>, tz: string): string {
-  const f = gameKind(g.format, g.gender);
+export function gameTitle(g: Pick<GameSummary, 'starts_at' | 'format' | 'gender' | 'sport'>, tz: string): string {
+  const f = gameKind(g.format, g.gender, g.sport);
   return `${shortDay(g.starts_at, tz)} · ${clockLabel(g.starts_at, tz)} ${f}`;
 }
 

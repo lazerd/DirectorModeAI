@@ -28,6 +28,8 @@ const game: Game = {
   court: '6',
   note: 'Looking for two guys for doubles at 1pm.',
   gender: null,
+  sport: null,
+  list_id: null,
   status: 'full',
   notified_count: 16,
   filled_at: '2026-09-22T17:26:00.000Z',

@@ -47,6 +47,10 @@ export type Game = {
   note: string | null;
   /** 'male' / 'female' for a men's or women's game; null = anyone. */
   gender: string | null;
+  /** 'pickleball' when posted to a pickleball list; null = the club's usual game. */
+  sport: string | null;
+  /** The player list this game was emailed to, if any (pf_lists). */
+  list_id: string | null;
   status: GameStatus;
   notified_count: number;
   filled_at: string | null;
@@ -106,7 +110,7 @@ export type RosterRow = {
 };
 
 export const GAME_COLS =
-  'id, club_id, posted_by, starts_at, duration_min, format, spots_needed, rating_min, rating_max, include_unrated, court, note, gender, status, notified_count, filled_at, cancelled_at, reminder_sent_at, created_at';
+  'id, club_id, posted_by, starts_at, duration_min, format, spots_needed, rating_min, rating_max, include_unrated, court, note, gender, sport, list_id, status, notified_count, filled_at, cancelled_at, reminder_sent_at, created_at';
 
 const num = (v: unknown) => (v == null ? null : Number(v));
 
@@ -454,7 +458,20 @@ export type Board = {
   mine: BoardGame[];
   joined: BoardGame[];
   postsLeftToday: number;
+  /** The club's player lists a poster can send a game to ("Pickleball Players"). */
+  lists: PlayerList[];
 };
+
+export type PlayerList = { id: string; name: string; sport: string | null; count: number };
+
+/** A club's player lists with how many people are on each, biggest first. */
+export async function clubLists(db: Db, clubId: string): Promise<PlayerList[]> {
+  const { data } = await db.from('pf_lists').select('id, name, sport, pf_list_members(count)').eq('club_id', clubId);
+  return ((data as { id: string; name: string; sport: string | null; pf_list_members: { count: number }[] }[] | null) ?? [])
+    .map((l) => ({ id: l.id, name: l.name, sport: l.sport, count: l.pf_list_members?.[0]?.count ?? 0 }))
+    .filter((l) => l.count > 0)
+    .sort((a, b) => b.count - a.count);
+}
 
 export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: number): Promise<Board> {
   const nowIso = new Date().toISOString();
@@ -586,7 +603,7 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
       day: longDay(g.starts_at, tz),
       clock: clockLabel(g.starts_at, tz),
       format: g.format,
-      formatLabel: gameKind(g.format, g.gender),
+      formatLabel: gameKind(g.format, g.gender, g.sport),
       duration: durationLabel(g.duration_min),
       spotsNeeded: g.spots_needed,
       spotsLeft: Math.max(g.spots_needed - seats.length, 0),
@@ -635,6 +652,7 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
       .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
       .map(view),
     postsLeftToday: Math.max(dailyLimit - (recent ?? 0), 0),
+    lists: await clubLists(db, club.id),
   };
 }
 

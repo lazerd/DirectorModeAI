@@ -3,7 +3,13 @@
  *
  * { club_id, date: 'YYYY-MM-DD', time: 'HH:MM', duration, format, spots,
  *   rating_min?, rating_max?, include_unrated?, court?, note?, my_ntrp?,
- *   gender?: 'male' | 'female', partners?: ({ person_id } | { guest_name })[] }
+ *   gender?: 'male' | 'female', partners?: ({ person_id } | { guest_name })[],
+ *   list_id? }
+ *
+ * `list_id` sends the game to one of the club's player lists (pf_lists) instead
+ * of the level-matched roster: everyone on the list who fits the gender, any
+ * level. The game takes the list's sport, so a pickleball list's game reads
+ * "pickleball doubles".
  *
  * `spots` is how many MORE players the poster needs. `partners` are the people
  * already playing with them — seated on the game before anyone is emailed, so
@@ -20,7 +26,7 @@ import { NextResponse } from 'next/server';
 import { zonedWallTimeToIso } from '@/lib/captain/clubTime';
 import { isCtxError, requireMember } from '@/lib/partnerFinder/actions';
 import { inviteMembers } from '@/lib/partnerFinder/notify';
-import { loadGame, saveSelfRating } from '@/lib/partnerFinder/server';
+import { clubLists, loadGame, saveSelfRating } from '@/lib/partnerFinder/server';
 import { DAILY_POST_LIMIT, MAX_RECIPIENTS, MAX_SPOTS, isFormat, isGender } from '@/lib/partnerFinder/format';
 import { isLevelValue, type LevelScale } from '@/lib/levels';
 import { background } from '@/lib/partnerFinder/background';
@@ -75,6 +81,13 @@ export async function POST(req: Request) {
   }
   const gender = isGender(body.gender) && body.format !== 'mixed' ? body.gender : null;
 
+  // A list must be one of THIS club's — never trust an id from the browser.
+  const listId = typeof body.list_id === 'string' && body.list_id ? body.list_id : null;
+  const list = listId ? (await clubLists(db, club.id)).find((l) => l.id === listId) ?? null : null;
+  if (listId && !list) {
+    return NextResponse.json({ error: 'That player list is not available. Please pick again.' }, { status: 400 });
+  }
+
   /*
    * Who is already playing. Walden's 9/28 doubles was stored as "needs 1"
    * with only him on it, because Gabe and Darryl had nowhere to go — the
@@ -113,9 +126,9 @@ export async function POST(req: Request) {
     p_duration: duration,
     p_format: body.format,
     p_spots: spots + partners.length,
-    p_rating_min: min,
-    p_rating_max: max,
-    p_include_unrated: body.include_unrated !== false,
+    p_rating_min: list ? null : min,
+    p_rating_max: list ? null : max,
+    p_include_unrated: list ? true : body.include_unrated !== false,
     p_court: court,
     p_note: note,
     p_daily_limit: DAILY_POST_LIMIT,
@@ -135,6 +148,7 @@ export async function POST(req: Request) {
    * WILL be emailed, read with the same function the send uses.
    */
   if (gender) await db.from('pf_games').update({ gender }).eq('id', r.game_id!);
+  if (list) await db.from('pf_games').update({ list_id: list.id, sport: list.sport }).eq('id', r.game_id!);
   const seated: string[] = [];
   if (ctx.personId) {
     for (const p of partners) {
@@ -155,5 +169,5 @@ export async function POST(req: Request) {
   if (game && notifying > 0) background('invite emails', () => inviteMembers(db, game, club));
   // A demo club's invites are held back by the email guard; say so on screen.
   const demo = await isDemoClub(club.id);
-  return NextResponse.json({ ok: true, game_id: r.game_id, notified: notifying, demo, seated });
+  return NextResponse.json({ ok: true, game_id: r.game_id, notified: notifying, demo, seated, list: list?.name ?? null });
 }

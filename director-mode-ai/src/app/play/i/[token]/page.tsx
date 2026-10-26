@@ -110,7 +110,7 @@ export default async function GameLinkPage({ params }: { params: { token: string
   const rows: [string, string][] = [
     ['When', `${longDay(game.starts_at, tz)}, ${clockLabel(game.starts_at, tz)}`],
     ['How long', durationLabel(game.duration_min)],
-    ['Game', gameKind(game.format, game.gender)],
+    ['Game', gameKind(game.format, game.gender, game.sport)],
     ...(level ? ([['Level', level]] as [string, string][]) : []),
     ['Court', game.court || 'To be decided'],
     ['Posted by', group[0]?.short || 'A member'],
@@ -122,7 +122,7 @@ export default async function GameLinkPage({ params }: { params: { token: string
       clubName={club.name}
       clubSlug={club.slug}
       myFirstName={firstName(me.full_name)}
-      title={`${longDay(game.starts_at, tz).split(',')[0]} ${clockLabel(game.starts_at, tz)} ${gameKind(game.format, game.gender)}`}
+      title={`${longDay(game.starts_at, tz).split(',')[0]} ${clockLabel(game.starts_at, tz)} ${gameKind(game.format, game.gender, game.sport)}`}
       rows={rows}
       note={game.note}
       status={started && game.status !== 'cancelled' ? 'past' : game.status}

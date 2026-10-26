@@ -59,7 +59,7 @@ const ascii = (s: string) =>
   s.replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/·/g, '-');
 
 function formatWord(g: Game): string {
-  return gameKind(g.format, g.gender);
+  return gameKind(g.format, g.gender, g.sport);
 }
 
 /** "Tue 9:00am doubles" */

@@ -472,6 +472,14 @@ function PostForm({
     setAnyLevel(v === 'any');
   };
   const [includeUnrated, setIncludeUnrated] = useState(true);
+  /*
+   * A club player list ("Pickleball Players"). Ticked, the game goes to
+   * everyone on that list instead of the level-matched roster, so the level
+   * question goes away — the list is the filter.
+   */
+  const lists = board.lists ?? [];
+  const [listId, setListId] = useState<string | null>(null);
+  const list = lists.find((l) => l.id === listId) ?? null;
   const [court, setCourt] = useState('');
   const [note, setNote] = useState('');
   const [myLevel, setMyLevel] = useState<number | null>(null);
@@ -480,14 +488,14 @@ function PostForm({
 
   const dayLabel = days.find((d) => d.value === date)?.label.replace(/^(Today|Tomorrow), /, '') ?? '';
   const timeLabel = TIME_OPTIONS.find((t) => t.value === time)?.label ?? '';
-  const level = anyLevel ? '' : ratingLabel(min, max, scale);
-  const preview = `${dayLabel.split(',')[0]} ${timeLabel} ${gameKind(format, gender || null)} ${needsLabel(spots)}${level ? ` (${level})` : ''}`;
+  const level = anyLevel || list ? '' : ratingLabel(min, max, scale);
+  const preview = `${dayLabel.split(',')[0]} ${timeLabel} ${gameKind(format, gender || null, list?.sport)} ${needsLabel(spots)}${level ? ` (${level})` : ''}`;
 
   async function submit() {
-    if (!anyLevel && min > max) return setError('The lowest level must be at or below the highest.');
+    if (!list && !anyLevel && min > max) return setError('The lowest level must be at or below the highest.');
     setBusy(true);
     setError(null);
-    const r = await postJson<{ ok: boolean; notified: number; demo?: boolean }>('/api/play/games', {
+    const r = await postJson<{ ok: boolean; notified: number; demo?: boolean; list?: string | null }>('/api/play/games', {
       club_id: board.club.id,
       date,
       time,
@@ -499,6 +507,7 @@ function PostForm({
       rating_min: anyLevel ? null : min,
       rating_max: anyLevel ? null : max,
       include_unrated: anyLevel ? true : includeUnrated,
+      list_id: list?.id ?? null,
       court,
       note,
       my_ntrp: my == null ? myLevel : undefined,
@@ -508,6 +517,8 @@ function PostForm({
     onPosted(
       r.demo
         ? `Your game is posted. Demo: email not sent (would go to ${r.notified} ${r.notified === 1 ? 'person' : 'people'}).`
+        : r.list && r.notified > 0
+        ? `Your game is posted. We're emailing ${r.notified} ${r.notified === 1 ? 'person' : 'people'} on the ${r.list} list, and we'll email you when someone joins.`
         : r.notified > 0
         ? `Your game is posted. We're emailing ${r.notified} ${r.notified === 1 ? 'member' : 'members'} who might want to play, and we'll email you when someone joins.`
         : "Your game is posted on the club's board. We didn't find members to email at that level yet, so others can join from the board.",
@@ -624,6 +635,27 @@ function PostForm({
         />
       </Field>
 
+      {lists.length > 0 && (
+        <Field label="Send it to a player list?" hint="Optional. Tick a list and we email everyone on it, any level.">
+          <div className="space-y-2">
+            {lists.map((l) => (
+              <label key={l.id} className="flex min-h-[52px] cursor-pointer items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={listId === l.id}
+                  onChange={(e) => setListId(e.target.checked ? l.id : null)}
+                  className="h-7 w-7 accent-emerald-700"
+                />
+                <span>
+                  Email everyone on the <strong>{l.name}</strong> list ({l.count} {l.count === 1 ? 'person' : 'people'})
+                </span>
+              </label>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      {!list && (
       <Field label="What level?" hint="We only email members whose level fits.">
         <Choice
           options={[
@@ -665,6 +697,7 @@ function PostForm({
           </div>
         )}
       </Field>
+      )}
 
       {my == null && (
         <Field label="And your own level?" hint="Optional. It helps us send you games that suit you.">
