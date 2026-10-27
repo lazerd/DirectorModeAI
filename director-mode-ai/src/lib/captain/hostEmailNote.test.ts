@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest';
 // builders are pure. Stub the transport, same as lineupEmail.test.ts.
 vi.mock('@/lib/email', () => ({ sendBilledEmails: vi.fn() }));
 
-import { defaultLinesNote, hostingBodyText } from './emails';
+import { confirmedLineCount, defaultLinesNote, hostingBodyText } from './emails';
 
 describe('defaultLinesNote — Junior Team Tennis', () => {
   const jtt = { singlesCourts: 4, doublesCourts: 4, minPlayers: 3 };
@@ -24,9 +24,17 @@ describe('defaultLinesNote — Junior Team Tennis', () => {
   });
 
   it('never asks an adult captain how many players they are bringing', () => {
-    const note = defaultLinesNote(5);
+    const note = defaultLinesNote(5, { confirmedLines: 5 });
     expect(note).toContain('all 5 lines covered');
     expect(note).not.toMatch(/how many players/i);
+  });
+
+  it('never claims every line is covered until every line has confirmed', () => {
+    for (const confirmedLines of [undefined, null, 0, 2]) {
+      const note = defaultLinesNote(3, { confirmedLines });
+      expect(note).not.toMatch(/covered/);
+      expect(note).toBe('If you end up short on any lines, just let me know so we can plan the courts.');
+    }
   });
 
   it('stays empty for a match with no lines', () => {
@@ -62,5 +70,35 @@ describe('hostingBodyText', () => {
         'Darrin Cohen\n(925) 788-8058',
       ].join('\n\n'),
     );
+  });
+});
+
+describe('confirmedLineCount', () => {
+  const yes = '2026-10-01T00:00:00Z';
+  const seat = { player1_id: null, player2_id: null, player1_confirmed_at: null, player2_confirmed_at: null };
+
+  it('counts a line only when every seat it needs has said yes', () => {
+    expect(
+      confirmedLineCount([
+        { ...seat, court_type: 'singles', player1_id: 'a', player1_confirmed_at: yes },
+        { ...seat, court_type: 'doubles', player1_id: 'b', player2_id: 'c', player1_confirmed_at: yes, player2_confirmed_at: yes },
+        // Named but only one yes.
+        { ...seat, court_type: 'doubles', player1_id: 'd', player2_id: 'e', player1_confirmed_at: yes },
+        // Sent, nobody answered.
+        { ...seat, court_type: 'singles', player1_id: 'f' },
+      ]),
+    ).toBe(2);
+  });
+
+  it('does not count a seat whose player has since pulled out', () => {
+    expect(
+      confirmedLineCount([
+        { ...seat, court_type: 'singles', player1_id: 'a', player1_confirmed_at: yes, player1_declined_at: yes },
+      ]),
+    ).toBe(0);
+  });
+
+  it('is zero with no saved lineup', () => {
+    expect(confirmedLineCount([])).toBe(0);
   });
 });

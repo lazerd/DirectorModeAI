@@ -8,7 +8,7 @@
  * (for capped leagues) their rating still fits the court they'd be joining.
  */
 import { NextResponse } from 'next/server';
-import { requireTeam, isError, capForTeam } from '@/lib/captain/server';
+import { requireTeam, isError, capForTeam, type CaptainCtx } from '@/lib/captain/server';
 import { subRequestEmail, sendAll, type MatchInfo } from '@/lib/captain/emails';
 import { withSecondContact } from '@/lib/captain/teamContacts';
 import { resolveClubTimeZone } from '@/lib/captain/clubTime';
@@ -54,15 +54,15 @@ export async function POST(req: Request) {
   if (!lineupRow) return NextResponse.json({ error: 'Lineup court not found.' }, { status: 404 });
   const lineup = lineupRow as Record<string, unknown>;
 
-  // Clear the seat being vacated.
+  // The seat is only vacated once somebody has actually been asked (below).
+  // Clearing it first meant a "nobody to ask" answer still emptied the slot
+  // and wiped the dropout off the captain's page.
   const col = slot === 2 ? 'player2_id' : 'player1_id';
   const confirmCol = slot === 2 ? 'player2_confirmed_at' : 'player1_confirmed_at';
-  await db
-    .from('captain_lineups')
-    .update({ [col]: null, [confirmCol]: null, updated_at: new Date().toISOString() })
-    .eq('id', body.lineup_id);
+  const occupant = (lineup[col] as string | null) ?? null;
 
-  // Who is already committed to this match's lineup?
+  // Who is already committed to this match's lineup? (The dropout still sits in
+  // the seat, so they count as busy and are never asked to cover themselves.)
   const { data: allCourts } = await db
     .from('captain_lineups')
     .select('player1_id, player2_id')
@@ -113,10 +113,15 @@ export async function POST(req: Request) {
   });
 
   if (!eligible.length) {
-    return NextResponse.json(
-      { error: 'No eligible subs — everyone is already playing or ruled out by league limits.' },
-      { status: 400 },
-    );
+    // Not an error the captain did — nothing changed, so say so plainly and
+    // leave the seat, the dropout and their note exactly as they were.
+    return NextResponse.json({
+      ok: false,
+      nobody: true,
+      asked: 0,
+      message:
+        "There's nobody left to ask — everyone is already playing, has no email, or is ruled out by league limits. Nothing was changed.",
+    });
   }
 
   const { data: created, error: reqErr } = await db
@@ -160,13 +165,44 @@ export async function POST(req: Request) {
         ),
       ),
     );
-    return NextResponse.json({
-      ok: true,
-      request_id: request.id,
-      asked: results.filter((r) => r.sent).length,
-    });
+    const asked = results.filter((r) => r.sent).length;
+    if (!asked) {
+      await cancelRequest(db, request.id);
+      return NextResponse.json({
+        ok: false,
+        nobody: true,
+        asked: 0,
+        message: "None of the sub emails could be sent, so nobody was asked. Nothing was changed.",
+      });
+    }
+
+    // Now vacate the seat — but only if the dropout is still in it. A quick
+    // sub may already have claimed it between the send and this line, and
+    // their name must not be wiped.
+    if (occupant) {
+      await db
+        .from('captain_lineups')
+        .update({ [col]: null, [confirmCol]: null, updated_at: new Date().toISOString() })
+        .eq('id', body.lineup_id)
+        .eq(col, occupant);
+    }
+
+    return NextResponse.json({ ok: true, request_id: request.id, asked });
   } catch (err) {
+    await cancelRequest(db, request.id);
     if (err instanceof CreditLimitError) return creditLimitResponse(err);
     return NextResponse.json({ error: 'Could not send the sub request.' }, { status: 502 });
   }
+}
+
+/** A request nobody received must not sit 'open' and look like a live ask. */
+async function cancelRequest(
+  db: CaptainCtx['db'],
+  requestId: string,
+) {
+  await db
+    .from('captain_sub_requests')
+    .update({ status: 'cancelled' })
+    .eq('id', requestId)
+    .eq('status', 'open');
 }

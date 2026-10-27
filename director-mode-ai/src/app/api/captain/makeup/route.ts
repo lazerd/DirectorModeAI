@@ -48,6 +48,15 @@ async function lineupIds(matchId: string): Promise<Set<string>> {
   return ids;
 }
 
+/**
+ * Who the makeup poll is about: the regular roster, plus any sub who is
+ * actually in this match's lineup — they're playing it, so they get asked
+ * about the makeup date with everyone else. Subs not in the lineup stay out.
+ */
+function inPoll(p: { id: string; is_sub: boolean | null }, inLineup: Set<string>): boolean {
+  return !p.is_sub || inLineup.has(p.id);
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const teamId = url.searchParams.get('team_id') || '';
@@ -66,10 +75,9 @@ export async function GET(req: Request) {
   const [{ data: players }, inLineup] = await Promise.all([
     admin
       .from('captain_players')
-      .select('id, name, email')
+      .select('id, name, email, is_sub')
       .eq('team_id', teamId)
       .eq('active', true)
-      .eq('is_sub', false)
       .order('name'),
     lineupIds(matchId),
   ]);
@@ -85,13 +93,19 @@ export async function GET(req: Request) {
 
   return NextResponse.json({
     poll: poll || null,
-    players: ((players as { id: string; name: string; email: string | null }[]) || []).map((p) => ({
-      ...p,
-      in_lineup: inLineup.has(p.id),
-      votes: Object.fromEntries(
-        votes.filter((v) => v.player_id === p.id).map((v) => [v.option_index, v.answer]),
-      ),
-    })),
+    players: (
+      (players as { id: string; name: string; email: string | null; is_sub: boolean | null }[]) || []
+    )
+      .filter((p) => inPoll(p, inLineup))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        email: p.email,
+        in_lineup: inLineup.has(p.id),
+        votes: Object.fromEntries(
+          votes.filter((v) => v.player_id === p.id).map((v) => [v.option_index, v.answer]),
+        ),
+      })),
   });
 }
 
@@ -181,13 +195,12 @@ export async function POST(req: Request) {
   }
   const { data: players } = await admin
     .from('captain_players')
-    .select('id, name, email, player_token, contact2_name, contact2_email')
+    .select('id, name, email, player_token, contact2_name, contact2_email, is_sub')
     .eq('team_id', teamId)
-    .eq('active', true)
-    .eq('is_sub', false);
-  let roster = ((players as Player[]) || []).filter((p) =>
-    body.audience === 'lineup' ? inLineup.has(p.id) : !inLineup.has(p.id),
-  );
+    .eq('active', true);
+  let roster = ((players as (Player & { is_sub: boolean | null })[]) || [])
+    .filter((p) => inPoll(p, inLineup))
+    .filter((p) => (body.audience === 'lineup' ? inLineup.has(p.id) : !inLineup.has(p.id)));
   if (body.player_ids?.length) {
     const want = new Set(body.player_ids);
     roster = roster.filter((p) => want.has(p.id));

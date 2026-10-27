@@ -25,6 +25,7 @@ import {
   type MatchInfo,
   type OpenLine,
   openLines,
+  confirmedLineCount,
   sendAll,
 } from '@/lib/captain/emails';
 import { CLUB_TZ, normalizeTimeZone } from '@/lib/captain/clubTime';
@@ -240,6 +241,20 @@ export async function POST(req: Request) {
     playersAvailable = count ?? null;
   }
 
+  // Home: "we've got all N lines covered" is only said when every line of the
+  // saved lineup has confirmed players. A moved match has no lineup at all,
+  // and a sent-but-unanswered one is not a yes.
+  let confirmedLines = 0;
+  if (matchRow.is_home && !multiLine) {
+    const { data: courts } = await admin
+      .from('captain_lineups')
+      .select(
+        'court_type, player1_id, player2_id, player1_confirmed_at, player2_confirmed_at, player1_declined_at, player2_declined_at',
+      )
+      .eq('match_id', matchRow.id);
+    confirmedLines = confirmedLineCount((courts as Parameters<typeof confirmedLineCount>[0] | null) ?? []);
+  }
+
   /**
    * The default body, fully rendered for THIS match. The captain edits real
    * prose rather than filling slots around a fixed skeleton — match details
@@ -281,6 +296,7 @@ export async function POST(req: Request) {
       address,
       hostNotes,
       lineCount,
+      confirmedLines,
       linesNote: body.lines_note,
       /*
        * Only leagues where players share the lines get the format sentence.
