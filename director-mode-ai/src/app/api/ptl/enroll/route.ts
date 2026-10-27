@@ -16,6 +16,7 @@
 
 import { NextResponse } from 'next/server';
 import { sendBilledEmail } from '@/lib/email';
+import { esc } from '@/lib/escapeHtml';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { computeCompositeRating } from '@/lib/leagueRatings';
 import { generateToken } from '@/lib/leagueUtils';
@@ -201,11 +202,13 @@ export async function POST(request: Request) {
       await sendBilledEmail(s.commissioner_id ?? null, {
         from: process.env.RESEND_FROM_EMAIL || 'Premier Tennis League <noreply@mail.clubmode.ai>',
         to: email,
+        // Several live seasons have no commissioner; their confirmations still go.
+        platformPaid: !s.commissioner_id,
         subject: `You're in the pool — ${s.name} Premier Tennis League`,
         html: `
           <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0f172a;">
             <div style="font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#64748b;">Premier Tennis League</div>
-            <h2 style="margin:6px 0 16px;font-size:24px;">You're in the pool, ${name.split(' ')[0]}.</h2>
+            <h2 style="margin:6px 0 16px;font-size:24px;">You're in the pool, ${esc(name.split(' ')[0])}.</h2>
             <p style="line-height:1.6;">You're enrolled for <strong>${s.name}</strong>. You don't pick a team — captains draft the rosters at the draft, so every team starts balanced.</p>
             <div style="background:#f8fafc;border-left:4px solid #0f766e;padding:14px 18px;border-radius:6px;margin:20px 0;">
               <div style="font-weight:600;">What happens next</div>

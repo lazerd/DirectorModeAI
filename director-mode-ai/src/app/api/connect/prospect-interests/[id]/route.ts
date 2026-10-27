@@ -51,6 +51,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const { data: clubProfile } = await svc.from('profiles').select('email').eq('id', interest.owner_id).maybeSingle();
   if (clubProfile?.email) {
     await sendBilledEmail(null, { // recruiting emails are platform-paid
+      platformPaid: true,
       to: clubProfile.email,
       replyTo: cand.email || undefined,
       subject: `${cand.full_name} is open to talking`,

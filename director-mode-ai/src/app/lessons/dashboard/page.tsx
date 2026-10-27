@@ -148,20 +148,13 @@ export default function DashboardPage() {
     const supabase = createClient();
     
     // If slot was booked, notify the client
+    // (before the delete: the server reads the booked client off the slot)
     if (isBooked && slot.client_email) {
       try {
         await fetch('/api/lessons/cancel-notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            recipientEmail: slot.client_email,
-            recipientName: slot.client_name,
-            cancelledBy: 'coach',
-            otherPartyName: coachName,
-            slotDate: format(new Date(slot.start_time), 'MM/dd/yyyy'),
-            slotTime: format(new Date(slot.start_time), 'h:mm a') + ' - ' + format(new Date(slot.end_time), 'h:mm a'),
-            location: slot.location
-          })
+          body: JSON.stringify({ slotId: slot.id, cancelledBy: 'coach' })
         });
       } catch (e) {
         console.error('Failed to send cancellation notification:', e);

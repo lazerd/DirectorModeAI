@@ -36,6 +36,14 @@ interface EmailPayload {
   clubSlug?: string | null;
   /** Operational mail to the account holder — see safeResendSend. */
   operational?: boolean;
+  /**
+   * ClubMode itself pays: recruiting mail, Ask Claude notices — sends that have
+   * no club owner to bill by design. Only trusted server code that picked the
+   * recipient itself may set it. Without it, a send whose billing user resolved
+   * to null is REFUSED: an unbilled send from a route that took its recipient
+   * out of a request body is an open relay on our domain (QA 2026-10-27 #1).
+   */
+  platformPaid?: boolean;
 }
 
 /** What a director sees when a send is waiting on their card. */
@@ -65,6 +73,13 @@ async function holdForDemo(userId: string | null, p: EmailPayload): Promise<Safe
   return { sent: true, messageId: 'demo-suppressed', demo: hold };
 }
 
+/** Refuse a send nobody pays for, unless the caller said ClubMode does. */
+function unbilledRefusal(userId: string | null, p: EmailPayload): SafeSendResult | null {
+  if (userId || p.platformPaid) return null;
+  console.error(`[email] refused: no billing user and not platformPaid (to=${p.to}, subject=${JSON.stringify(p.subject)})`);
+  return { sent: false, reason: 'error', error: 'no billing user' };
+}
+
 const toSend = (userId: string | null, p: EmailPayload) => ({
   from: p.from || (p.fromName ? clubFromLine(p.fromName, DEFAULT_ADDRESS) : DEFAULT_FROM),
   to: p.to,
@@ -89,6 +104,8 @@ const toSend = (userId: string | null, p: EmailPayload) => ({
  * simple and avoids race conditions.
  */
 export async function sendBilledEmail(userId: string | null, payload: EmailPayload): Promise<SafeSendResult> {
+  const refused = unbilledRefusal(userId, payload);
+  if (refused) return refused;
   const held = await holdForDemo(userId, payload);
   if (held) return held;
   const block = userId ? await sendBlock(userId) : null;
@@ -128,7 +145,7 @@ function isRetryable(r: SafeSendResult): boolean {
 
 export async function sendBilledEmails(userId: string | null, payloads: EmailPayload[]): Promise<SafeSendResult[]> {
   const results = new Array<SafeSendResult>(payloads.length);
-  const holds = await Promise.all(payloads.map((p) => holdForDemo(userId, p)));
+  const holds = await Promise.all(payloads.map((p) => unbilledRefusal(userId, p) ?? holdForDemo(userId, p)));
   holds.forEach((h, i) => {
     if (h) results[i] = h;
   });

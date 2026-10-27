@@ -57,6 +57,7 @@ export async function POST(req: Request) {
 
   // --- Notify the ClubMode team (the concierge broker) ---
   await sendBilledEmail(null, {
+    platformPaid: true,
     to: LEADS_EMAIL,
     replyTo: clubEmail || undefined,
     subject: `Intro request: ${clubName} → ${p.name}`,
@@ -78,6 +79,7 @@ export async function POST(req: Request) {
   // --- Confirm to the club ---
   if (clubEmail) {
     await sendBilledEmail(null, {
+      platformPaid: true,
       to: clubEmail,
       subject: `We're on it — intro to ${p.name}`,
       html: `

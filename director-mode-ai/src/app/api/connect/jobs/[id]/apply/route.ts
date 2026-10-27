@@ -125,6 +125,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     const link = `${APP_URL}/connect/clubs/${opening.id}`;
     const who = cand.headline || (cand.years_experience ? `${cand.years_experience} years experience` : 'A new candidate');
     await sendBilledEmail(null, {
+      platformPaid: true,
       to: owner.email,
       subject: `New applicant for ${role}`,
       html: `

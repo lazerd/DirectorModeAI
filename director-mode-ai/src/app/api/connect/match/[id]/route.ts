@@ -59,6 +59,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (clubProfile?.email) {
       const dist = match.distance_miles != null ? Math.round(match.distance_miles) : null;
       await sendBilledEmail(null, { // recruiting emails are platform-paid
+        platformPaid: true,
         to: clubProfile.email,
         subject: `Candidate approved — here's their contact`,
         html: `

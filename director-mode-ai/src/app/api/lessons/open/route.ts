@@ -16,6 +16,7 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { sendBilledEmails, resolveCoachUserId, creditLimitResponse } from '@/lib/email';
+import { esc } from '@/lib/escapeHtml';
 import { CreditLimitError } from '@/lib/billing';
 import { APP_URL } from '@/lib/appUrl';
 import {
@@ -420,7 +421,7 @@ export async function POST(req: Request) {
       to: email,
       subject: `Booked: ${duration} min with ${coach.display_name || 'your coach'} — ${when}`,
       html: shell(
-        `You're on court, ${name.split(/\s+/)[0]}`,
+        `You're on court, ${esc(name.split(/\s+/)[0])}`,
         `<p style="font-size:17px;margin:0 0 8px"><strong>${when}</strong></p>
          <p style="margin:0 0 8px;color:#475569">${duration} minutes with ${coach.display_name || 'your coach'}</p>${where}
          ${coach.open_rate_note ? `<p style="margin:0 0 8px;color:#475569">${coach.open_rate_note}</p>` : ''}
@@ -434,10 +435,10 @@ export async function POST(req: Request) {
       to: coach.email || '',
       subject: `${name} booked ${duration} min — ${when}`,
       html: shell(
-        `${name} booked an open lesson time`,
+        `${esc(name)} booked an open lesson time`,
         `<p style="font-size:17px;margin:0 0 8px"><strong>${when}</strong> · ${duration} min</p>${where}
-         <p style="margin:0 0 4px;color:#475569">${email}${body.phone ? ` · ${body.phone}` : ''}</p>
-         ${body.note ? `<p style="margin:8px 0 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #D3FB52;border-radius:4px">${body.note}</p>` : ''}
+         <p style="margin:0 0 4px;color:#475569">${esc(email)}${body.phone ? ` · ${esc(body.phone)}` : ''}</p>
+         ${body.note ? `<p style="margin:8px 0 0;padding:10px 12px;background:#f8fafc;border-left:3px solid #D3FB52;border-radius:4px">${esc(body.note)}</p>` : ''}
          ${calendarWritten ? '' : calButton('📅 Add this lesson to my calendar')}
          <p style="font-size:14px;color:#64748b;margin:16px 0 0">
            ${

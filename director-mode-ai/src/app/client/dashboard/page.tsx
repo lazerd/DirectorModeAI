@@ -303,25 +303,15 @@ export default function ClientDashboardPage() {
     if (error) {
       alert('Failed to cancel booking. Please try again.');
     } else {
-      // Notify coach
-      if (lesson.coach_email) {
-        try {
-          await fetch('/api/lessons/cancel-notify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              recipientEmail: lesson.coach_email,
-              recipientName: lesson.coach_name,
-              cancelledBy: 'client',
-              otherPartyName: clientName,
-              slotDate: format(parseISO(lesson.start_time), 'MM/dd/yyyy'),
-              slotTime: format(parseISO(lesson.start_time), 'h:mm a') + ' - ' + format(parseISO(lesson.end_time), 'h:mm a'),
-              location: lesson.location
-            })
-          });
-        } catch (e) {
-          console.error('Failed to send cancellation notification:', e);
-        }
+      // Notify coach (the server finds the coach's address from the slot)
+      try {
+        await fetch('/api/lessons/cancel-notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ slotId: lesson.id, cancelledBy: 'client' })
+        });
+      } catch (e) {
+        console.error('Failed to send cancellation notification:', e);
       }
       setUpcomingLessons(prev => prev.filter(l => l.id !== lesson.id));
     }

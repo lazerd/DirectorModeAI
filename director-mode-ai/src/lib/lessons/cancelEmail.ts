@@ -7,6 +7,9 @@ import { APP_URL } from '@/lib/appUrl';
  * sends the very same message the coach dashboard does, rather than a second
  * copy that drifts. The route still owns who is billed; this only builds the
  * message.
+ *
+ * Every string goes into the HTML as-is: callers escape names and locations
+ * first (lib/lessons/notify.ts `esc`).
  */
 export function lessonCancelEmail(opts: {
   recipientName?: string | null;

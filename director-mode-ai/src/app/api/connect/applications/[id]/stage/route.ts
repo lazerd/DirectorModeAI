@@ -140,6 +140,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         // The hire stands; make sure the fee isn't silently lost.
         background('recruiting placement failure alert', () =>
           sendBilledEmail(null, {
+            platformPaid: true,
             to: PLATFORM_INBOX(),
             subject: `ACTION: placement row failed — ${name} hired at ${club}`,
             html: `<p>Application ${app.id} was marked hired (start ${esc(startDate)}) but the placement insert failed: ${esc(pErr.message)}. Create it by hand.</p>`,
@@ -158,6 +159,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         if (placement) {
           const fee = usd(placement.fee_cents);
           await sendBilledEmail(null, {
+            platformPaid: true,
             to: PLATFORM_INBOX(),
             subject: `Placement: ${name} hired at ${club}, ${fee} due ${startDate}`,
             html: `<p><strong>${esc(name)}</strong> was hired as <strong>${esc(role)}</strong> at <strong>${esc(club)}</strong>.</p>
@@ -172,6 +174,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
           });
           if (ownerEmail) {
             await sendBilledEmail(null, {
+              platformPaid: true,
               to: ownerEmail,
               operational: true,
               subject: `Congratulations on hiring ${name}`,
@@ -185,6 +188,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
         }
         if (cand?.email) {
           await sendBilledEmail(null, {
+            platformPaid: true,
             to: cand.email,
             subject: `Congratulations — ${club}`,
             html: `<p>${first ? `Hi ${esc(first)},` : 'Hi,'}</p>
@@ -201,6 +205,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (to === 'declined' && (app.stage === 'interviewing' || app.stage === 'offer') && cand?.email) {
     background('recruiting decline email', () =>
       sendBilledEmail(null, {
+        platformPaid: true,
         to: cand.email as string,
         subject: `Your application to ${club}`,
         html: `<p>${first ? `Hi ${esc(first)},` : 'Hi,'}</p>
