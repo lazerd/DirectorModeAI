@@ -49,8 +49,13 @@ export default async function MatchPage({
     (teamRow as { club_id?: string | null }).club_id,
   );
 
-  const [{ data: players }, { data: avail }, { data: lineups }, { data: results }] =
-    await Promise.all([
+  const [
+    { data: players },
+    { data: avail },
+    { data: lineups },
+    { data: results },
+    { data: subRequests },
+  ] = await Promise.all([
     db
       .from('captain_players')
       .select('id, name, email, phone, rating, wtn, wtn_doubles, gender, return_side, court_limit, is_sub')
@@ -75,6 +80,13 @@ export default async function MatchPage({
       .from('captain_results')
       .select('court_number, score, won, defaulted, default_by, opponent_names')
       .eq('match_id', params.matchId),
+    // Roster blasts already out, so the find-a-sub button shows "asked"
+    // instead of offering to email everyone a second time.
+    db
+      .from('captain_sub_requests')
+      .select('lineup_id, slot, dropped_player_id')
+      .eq('match_id', params.matchId)
+      .eq('status', 'open'),
   ]);
 
   /**
@@ -306,6 +318,10 @@ export default async function MatchPage({
         scoreSite={scoreSiteFor(teamRec.league_type as string)}
         teamLevel={team.level}
         withdrawals={withdrawals}
+        openSubRequests={
+          (subRequests as { lineup_id: string; slot: number; dropped_player_id: string | null }[]) ||
+          []
+        }
         teamName={team.name}
         opponent={(match.opponent as string) || null}
         isHome={!!match.is_home}

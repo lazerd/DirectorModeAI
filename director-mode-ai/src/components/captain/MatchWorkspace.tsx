@@ -140,6 +140,7 @@ export default function MatchWorkspace({
   scoreSite = 'topdog',
   teamLevel = null,
   withdrawals,
+  openSubRequests = [],
   teamName,
   opponent,
   isHome,
@@ -185,6 +186,7 @@ export default function MatchWorkspace({
    * belongs to the person, not the seat they happened to be in.
    */
   withdrawals: { playerId: string; at: string; note: string | null }[];
+  openSubRequests?: { lineup_id: string; slot: number; dropped_player_id: string | null }[];
   /** Everything the shareable text needs to stand on its own outside the app. */
   teamName: string;
   opponent: string | null;
@@ -256,7 +258,8 @@ export default function MatchWorkspace({
   const [subFor, setSubFor] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
   // Roster blasts sent this visit, by court-slot. The API doesn't dedupe, so
   // once asked the big button turns into a receipt instead of a second blast.
-  const [askedSubs, setAskedSubs] = useState<Record<string, number>>({});
+  // null = asked on an earlier visit (count not stored).
+  const [askedSubs, setAskedSubs] = useState<Record<string, number | null>>({});
   /** Subbing someone out normally means they genuinely cannot play — say why. */
   const [subMarkOut, setSubMarkOut] = useState(true);
   const [subNote, setSubNote] = useState('injured');
@@ -1030,6 +1033,23 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         router.refresh();
       },
     );
+
+  /**
+   * Has the roster already been asked to cover this seat? Only while the
+   * person it was asked for is still in it — once they're swapped out the old
+   * request is history, and a new bail on that seat needs its own blast.
+   * undefined = not asked; number = asked this visit; null = asked earlier.
+   */
+  const askedFor = (court: Court, slot: 1 | 2): number | null | undefined => {
+    const key = `${court.courtNumber}-${slot}`;
+    if (key in askedSubs) return askedSubs[key];
+    const occupant = slot === 1 ? court.player1Id : court.player2Id;
+    return openSubRequests.some(
+      (r) => r.lineup_id === court.id && r.slot === slot && r.dropped_player_id === occupant,
+    )
+      ? null
+      : undefined;
+  };
 
   const findSub = (court: Court, slot: 1 | 2) => {
     const dropped = slot === 1 ? court.player1Id : court.player2Id;
@@ -2236,8 +2256,7 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                   (c) => c.player1Id === b.playerId || c.player2Id === b.playerId,
                 );
                 const slot: 1 | 2 = court?.player1Id === b.playerId ? 1 : 2;
-                const key = court ? `${court.courtNumber}-${slot}` : '';
-                const asked = askedSubs[key];
+                const asked = court ? askedFor(court, slot) : undefined;
                 return (
                   <li key={b.playerId} className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <span>
@@ -2245,9 +2264,10 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                       {b.note ? ` · “${b.note}”` : ''}
                     </span>
                     {court?.id &&
-                      (asked != null ? (
+                      (asked !== undefined ? (
                         <span className="rounded-lg bg-emerald-500/15 px-3 py-1.5 font-semibold text-emerald-300">
-                          ✓ Asked {asked} — first to claim gets {labelOf(court)}
+                          ✓ Roster asked{asked != null ? ` (${asked})` : ''} — first to claim gets{' '}
+                          {labelOf(court)}
                         </span>
                       ) : (
                         <button
@@ -2617,9 +2637,9 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                             </button>
 
                             {c.id &&
-                              (askedSubs[rowKey] != null ? (
+                              (askedFor(c, slot) !== undefined ? (
                                 <span className="font-semibold text-emerald-300">
-                                  ✓ asked {askedSubs[rowKey]} subs
+                                  ✓ roster asked{askedFor(c, slot) != null ? ` (${askedFor(c, slot)})` : ''}
                                 </span>
                               ) : (
                                 <button
