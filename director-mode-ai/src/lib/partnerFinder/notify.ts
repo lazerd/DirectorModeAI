@@ -16,7 +16,7 @@
  * unsubscribed from all email and appends the unsubscribe footer.
  */
 import { sendBilledEmails, CreditLimitError } from '@/lib/email';
-import { MAX_RECIPIENTS, shortName, clubDate } from './format';
+import { MAX_RECIPIENTS, shortName, clubDate, sharedInboxes, inbox } from './format';
 import {
   clubRoster,
   ensureLinks,
@@ -31,6 +31,7 @@ import {
   type RosterRow,
 } from './server';
 import {
+  addressedTo,
   gameCancelledEmail,
   gameFullEmail,
   guestInviteEmail,
@@ -39,6 +40,7 @@ import {
   linkUrl,
   inviteEmail,
   reminderEmail,
+  removedByHostEmail,
   someoneJoinedEmail,
   spotOpenedEmail,
   waitlistSpotEmail,
@@ -171,20 +173,25 @@ export async function inviteMembers(
   const group = await gameGroup(db, game, fullRoster);
   const poster = group[0]?.short ?? shortName(fullRoster.find((r) => r.user_id === game.posted_by)?.full_name);
   const playing = group.map((m) => m.short);
+  const shared = sharedInboxes(fullRoster);
 
   const messages = recipients
     .filter((r) => links.has(r.person_id))
     .map((r) =>
-      inviteEmail(game, club, {
-        to: r.email,
-        name: r.full_name,
-        poster,
-        token: links.get(r.person_id)!,
-        stopToken: r.stop_token,
-        spotsLeft: left,
-        playing,
-        again: opts.again,
-      }),
+      addressedTo(
+        inviteEmail(game, club, {
+          to: r.email,
+          name: r.full_name,
+          poster,
+          token: links.get(r.person_id)!,
+          stopToken: r.stop_token,
+          spotsLeft: left,
+          playing,
+          again: opts.again,
+        }),
+        r.full_name,
+        shared.has(inbox(r.email)),
+      ),
     );
 
   const sent = await deliver(club, messages);
@@ -213,14 +220,20 @@ async function sendToGroup(
   }) => GameMessage,
   roster?: RosterRow[],
 ): Promise<number> {
-  const group = await gameGroup(db, game, roster);
+  const people = roster ?? (await clubRoster(db, game.club_id));
+  const group = await gameGroup(db, game, people);
+  const shared = sharedInboxes(people);
   // A guest has no person to hang a link on, and no email to send it to. They
   // appear in everyone else's line-up and are written to nothing.
   const links = await ensureLinks(db, game, group.filter((m) => !m.isGuest).map((m) => m.personId));
   const messages = group
     .filter((m) => !m.isGuest && m.email && links.has(m.personId))
     .map((m) =>
-      build({ to: m.email!, name: m.name, token: links.get(m.personId)!, isPoster: m.isPoster, group }),
+      addressedTo(
+        build({ to: m.email!, name: m.name, token: links.get(m.personId)!, isPoster: m.isPoster, group }),
+        m.name,
+        shared.has(inbox(m.email)),
+      ),
     );
   // A friend the poster invited gets the same news, pointed at their own page.
   for (const m of group) {
@@ -265,27 +278,38 @@ export async function afterJoin(
   // posted_by is the account that posted; the link belongs to the person.
   const links = await ensureLinks(db, game, [poster.person_id]);
   await deliver(club, [
-    someoneJoinedEmail(game, club, {
-      to: poster.email,
-      joiner: lastIn,
-      spotsLeft: await spotsLeft(db, game),
-      token: links.get(poster.person_id)!,
-    }),
+    addressedTo(
+      someoneJoinedEmail(game, club, {
+        to: poster.email,
+        joiner: lastIn,
+        spotsLeft: await spotsLeft(db, game),
+        token: links.get(poster.person_id)!,
+      }),
+      poster.full_name,
+      sharedInboxes(roster).has(inbox(poster.email)),
+    ),
   ]);
 }
 
+/**
+ * @param opts.byHost  The host took them off (pf_host_remove). The host needs
+ *                     no email about their own tap; the player does, so they
+ *                     don't turn up. `friend` is the removed outside friend,
+ *                     when the seat was one of the host's invited friends.
+ */
 export async function afterLeave(
   db: Db,
   gameId: string,
   leaverId: string | null,
   leaverName?: string,
-  opts: { byHost?: boolean } = {},
+  opts: { byHost?: boolean; friend?: { email: string } | null } = {},
 ): Promise<void> {
   const game = await loadGame(db, gameId);
   if (!game) return;
   const club = await loadClub(db, game.club_id);
   if (!club) return;
   const roster = await clubRoster(db, club.id);
+  const shared = sharedInboxes(roster);
   const poster = roster.find((r) => r.user_id === game.posted_by);
   const leaver = roster.find((r) => r.person_id === leaverId);
   const left = await spotsLeft(db, game);
@@ -310,27 +334,62 @@ export async function afterLeave(
       waiting
         .filter((w) => waitLinks.has(w.person_id))
         .map((w) =>
-          waitlistSpotEmail(game, club, {
-            to: w.email!,
-            name: w.full_name,
-            token: waitLinks.get(w.person_id)!,
-            poster: shortName(poster?.full_name),
-            playing: playingNow,
-          }),
+          addressedTo(
+            waitlistSpotEmail(game, club, {
+              to: w.email!,
+              name: w.full_name,
+              token: waitLinks.get(w.person_id)!,
+              poster: shortName(poster?.full_name),
+              playing: playingNow,
+            }),
+            w.full_name,
+            shared.has(inbox(w.email)),
+          ),
         ),
     );
   }
 
-  // The host took them off themselves; they don't need an email about it.
-  if (opts.byHost || !poster?.email) return;
-  const links = await ensureLinks(db, game, [game.posted_by]);
+  /*
+   * The host took them off. The host needs no email about their own tap, but
+   * the player does — before 2026-10-27 nobody was told, and a removed player
+   * still had the "you're in" email and every reason to turn up.
+   */
+  if (opts.byHost) {
+    const host = shortName(poster?.full_name);
+    if (leaver?.email) {
+      await deliver(club, [
+        addressedTo(
+          removedByHostEmail(game, club, { to: leaver.email, name: leaver.full_name, poster: host }),
+          leaver.full_name,
+          shared.has(inbox(leaver.email)),
+        ),
+      ]);
+    } else if (opts.friend?.email) {
+      await deliver(club, [removedByHostEmail(game, club, { to: opts.friend.email, name: leaverName ?? null, poster: host })], poster?.email);
+    }
+    return;
+  }
+
+  if (!poster?.email) return;
+  /*
+   * posted_by is the ACCOUNT that posted; a link belongs to the PERSON. Passing
+   * the account here wrote no link (pf_links.person_id is a PlayerVault id), so
+   * every "a spot opened" email ended in /play/i/undefined (QA, 2026-10-27).
+   */
+  const links = await ensureLinks(db, game, [poster.person_id]);
+  const token = links.get(poster.person_id);
+  if (!token) return;
   await deliver(club, [
-    spotOpenedEmail(game, club, {
-      to: poster.email,
-      leaver: leaver ? shortName(leaver.full_name) : leaverName || 'A player',
-      spotsLeft: left,
-      token: links.get(game.posted_by)!,
-    }),
+    addressedTo(
+      spotOpenedEmail(game, club, {
+        to: poster.email,
+        leaver: leaver ? shortName(leaver.full_name) : leaverName || 'A player',
+        spotsLeft: left,
+        token,
+      }),
+      poster.full_name,
+      shared.has(inbox(poster.email)),
+    ),
   ]);
 }
 
@@ -339,13 +398,21 @@ export async function afterCancel(db: Db, gameId: string): Promise<void> {
   if (!game) return;
   const club = await loadClub(db, game.club_id);
   if (!club) return;
-  const group = await gameGroup(db, game);
+  const roster = await clubRoster(db, club.id);
+  const shared = sharedInboxes(roster);
+  const group = await gameGroup(db, game, roster);
   const poster = group.find((m) => m.isPoster);
   await deliver(
     club,
     group
       .filter((m) => !m.isPoster && m.email)
-      .map((m) => gameCancelledEmail(game, club, { to: m.email!, name: m.name, poster: poster?.short || 'The poster' })),
+      .map((m) =>
+        addressedTo(
+          gameCancelledEmail(game, club, { to: m.email!, name: m.name, poster: poster?.short || 'The poster' }),
+          m.name,
+          !m.isGuest && shared.has(inbox(m.email)),
+        ),
+      ),
     poster?.email,
   );
 }
@@ -430,15 +497,20 @@ export async function messageSignups(
   const posterShort = poster?.short || 'The organizer';
   const links = await ensureLinks(db, game, reachable.map((p) => p.id));
   const sendable = reachable.filter((p) => links.has(p.id));
+  const shared = sharedInboxes(roster);
   const messages = sendable.map((p) =>
-    hostMessageEmail(game, club, {
-      to: p.email!,
-      name: p.name,
-      poster: posterShort,
-      message,
-      token: links.get(p.id)!,
-      waiting: p.waiting,
-    }),
+    addressedTo(
+      hostMessageEmail(game, club, {
+        to: p.email!,
+        name: p.name,
+        poster: posterShort,
+        message,
+        token: links.get(p.id)!,
+        waiting: p.waiting,
+      }),
+      p.name,
+      shared.has(inbox(p.email)),
+    ),
   );
   // Outside friends who are in hear it too, at their own page.
   const friends = group.filter((m) => m.isGuest && m.email && m.guestToken);
@@ -510,7 +582,8 @@ export async function inviteGuests(
     .update({ emailed_at: new Date().toISOString(), status: 'invited' })
     .eq('game_id', game.id)
     .in('contact_id', targets.map((c) => c.id))
-    .in('status', ['invited', 'left']);
+    // 'removed' too: the host ticking a friend they took off is inviting them back.
+    .in('status', ['invited', 'left', 'removed']);
   return { recipients, subject: sample?.subject ?? '', sent, skipped };
 }
 

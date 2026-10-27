@@ -646,7 +646,8 @@ export async function loadBoard(db: Db, club: Club, userId: string, dailyLimit: 
       phone: prefs?.phone ?? null,
     },
     open: games
-      .filter((g) => g.status === 'open' && g.posted_by !== userId && !(playersByGame.get(g.id) ?? []).includes(userId))
+      // Seats are people and posted_by is an account: compare each to its own kind.
+      .filter((g) => g.status === 'open' && g.posted_by !== userId && !(myPersonId && (playersByGame.get(g.id) ?? []).includes(myPersonId)))
       .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
       .map(view),
     mine: games
@@ -695,7 +696,8 @@ export type GuestLink = {
   game_id: string;
   club_id: string;
   contact_id: string;
-  status: 'invited' | 'in' | 'no' | 'left';
+  /** 'left' = they dropped out; 'removed' = the host took them off (pf_guest_removed_by_host.sql). */
+  status: 'invited' | 'in' | 'no' | 'left' | 'removed';
   emailed_at: string | null;
   name: string;
   email: string;

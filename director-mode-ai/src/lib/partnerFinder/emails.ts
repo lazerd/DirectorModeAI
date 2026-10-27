@@ -287,6 +287,51 @@ export function waitlistSpotEmail(
   };
 }
 
+/**
+ * To a player the host took off the game. Short and from the club: the host
+ * already knows, and the player needs to know not to turn up. No button back
+ * in — the host made the call.
+ */
+export function removedByHostEmail(
+  g: Game,
+  club: Club,
+  opts: { to: string; name: string | null; poster: string },
+): GameMessage {
+  const tz = club.timezone;
+  const title = `${opts.poster} took you off the ${headline(g, tz)}`;
+  const body = `
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, ${esc(opts.poster)} took you off this game, so you're no longer playing. If that's a surprise, check with ${esc(opts.poster)}.</p>
+    ${details(g, club)}`;
+  return {
+    to: opts.to,
+    subject: ascii(`${opts.poster} took you off the ${formatWord(g)} ${shortDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`),
+    html: shell(club, esc(title), body),
+    sms: ascii(`${club.name}: ${opts.poster} took you off the ${headline(g, tz)}.`),
+  };
+}
+
+/**
+ * Who a message is for, when it lands in an inbox two people share.
+ *
+ * Pat and Sam Kim share one address. Their invitations used to arrive with the
+ * same subject and thread together, so Pat could open Sam's link and drop Sam
+ * by mistake (QA, 2026-10-27). For a shared inbox the first name leads the
+ * subject and the person's name sits above the title; anyone else's email is
+ * left exactly as it was.
+ */
+export function addressedTo(m: GameMessage, name: string | null | undefined, shared: boolean): GameMessage {
+  const who = (name || '').trim();
+  if (!shared || !who) return m;
+  const label = `<p style="font-size:16px;font-weight:700;color:${INK};margin:0 0 6px">For ${esc(who)}</p>`;
+  const at = m.html.indexOf('<h1');
+  return {
+    ...m,
+    subject: ascii(`For ${firstName(who)}: ${m.subject}`),
+    html: at === -1 ? label + m.html : m.html.slice(0, at) + label + m.html.slice(at),
+    sms: ascii(`For ${firstName(who)}: ${m.sms}`),
+  };
+}
+
 /** To the players when the poster calls it off. */
 export function gameCancelledEmail(
   g: Game,

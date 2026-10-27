@@ -17,6 +17,8 @@ type Props = {
   spotsLeft: number;
   imIn: boolean;
   saidNo: boolean;
+  /** The host took them off (pf_guest_removed_by_host.sql). No way back in from here. */
+  removed: boolean;
   group: { name: string; note: string | null }[];
 };
 
@@ -46,6 +48,12 @@ export default function GuestClient(p: Props) {
       : p.status === 'past' || p.status === 'expired'
         ? 'This game has already started.'
         : null;
+  /*
+   * Said whether or not they were in. A friend who had joined used to see a
+   * cancelled game as still on, line-up and all, because this notice only
+   * showed to people who had NOT joined (QA, 2026-10-27).
+   */
+  const stopText = closedText ?? (p.removed ? 'The organizer took you off this game.' : null);
 
   return (
     <main className="min-h-screen bg-slate-50 px-5 py-10 text-slate-900">
@@ -53,7 +61,7 @@ export default function GuestClient(p: Props) {
         <header>
           <p className="text-lg text-slate-600">{p.clubName}</p>
           <h1 className="mt-1 text-3xl font-bold leading-tight">{p.title}</h1>
-          {!p.imIn && p.status === 'open' && (
+          {!p.imIn && !p.removed && p.status === 'open' && (
             <p className="mt-2 text-xl text-slate-700">
               Hi {p.myFirstName}, {p.poster} invited you. This game {needsLabel(p.spotsLeft)}.
             </p>
@@ -67,10 +75,10 @@ export default function GuestClient(p: Props) {
           {p.note && <p className="mt-4 border-l-4 border-emerald-600 pl-4 text-lg italic text-slate-700">&ldquo;{p.note}&rdquo;</p>}
         </section>
 
-        {!p.imIn && !(notice && notice.tone !== 'bad') && (
-          closedText ? (
-            <Notice tone="info">{closedText}</Notice>
-          ) : p.status === 'full' ? (
+        {stopText && !(notice && notice.tone !== 'bad') && <Notice tone="info">{stopText}</Notice>}
+
+        {!p.imIn && !stopText && !(notice && notice.tone !== 'bad') && (
+          p.status === 'full' ? (
             <Notice tone="info">This game is full now. Thanks for being up for it!</Notice>
           ) : (
             <div className="space-y-3">
@@ -89,7 +97,9 @@ export default function GuestClient(p: Props) {
 
         {p.group.length > 0 && (
           <section className="rounded-3xl border border-slate-200 bg-white p-6">
-            <h2 className="text-2xl font-bold">{p.status === 'full' ? "Who's playing" : 'In so far'}</h2>
+            <h2 className="text-2xl font-bold">
+              {p.status === 'cancelled' ? 'Was playing' : p.status === 'full' ? "Who's playing" : 'In so far'}
+            </h2>
             <div className="mt-4">
               <PeopleList people={p.group} />
             </div>

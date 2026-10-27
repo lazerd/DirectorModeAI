@@ -61,6 +61,7 @@ export default async function GuestLinkPage({ params }: { params: { token: strin
       spotsLeft={spotsLeft}
       imIn={imIn}
       saidNo={link.status === 'no'}
+      removed={link.status === 'removed'}
       /* Names only. Members' phone numbers stay with members. */
       group={group.map((m) => ({ name: m.short, note: m.isPoster ? 'invited you' : null }))}
     />
