@@ -202,6 +202,8 @@ export async function POST(request: Request) {
       await sendBilledEmail(s.commissioner_id ?? null, {
         from: process.env.RESEND_FROM_EMAIL || 'Premier Tennis League <noreply@mail.clubmode.ai>',
         to: email,
+        // Several live seasons have no commissioner; their confirmations still go.
+        platformPaid: !s.commissioner_id,
         subject: `You're in the pool — ${s.name} Premier Tennis League`,
         html: `
           <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:0 auto;padding:24px;color:#0f172a;">

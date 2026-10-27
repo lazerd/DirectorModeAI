@@ -51,7 +51,8 @@ async function send(
   if (seasonIsDemo) return false;
   if (!to || !to.includes('@')) return false;
   try {
-    await sendBilledEmail(billToUserId, { from: FROM, to, subject, html });
+    // A season with no commissioner still mails its own players.
+    await sendBilledEmail(billToUserId, { from: FROM, to, subject, html, platformPaid: !billToUserId });
     return true;
   } catch (err) {
     console.error('[ptl] email failed', subject, err);
