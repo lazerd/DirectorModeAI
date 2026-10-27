@@ -32,6 +32,8 @@ export default function FormOrderPanel({ teamId }: { teamId: string }) {
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [order, setOrder] = useState<{ id: string; name: string }[]>([]);
   const [matchDays, setMatchDays] = useState(0);
+  const [matchIds, setMatchIds] = useState<string[]>([]);
+  const [appliedDays, setAppliedDays] = useState(0);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -45,13 +47,15 @@ export default function FormOrderPanel({ teamId }: { teamId: string }) {
     setProposals(j.proposals || []);
     setOrder(j.order || []);
     setMatchDays(j.matchDays || 0);
+    setMatchIds(j.matchIds || []);
+    setAppliedDays(j.appliedDays || 0);
   }, [teamId]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const apply = async (ids: string[], what: string) => {
+  const apply = async (ids: string[], what: string, spend: string[] = []) => {
     setError(null);
     setBusy(what);
     try {
@@ -62,6 +66,18 @@ export default function FormOrderPanel({ teamId }: { teamId: string }) {
       });
       const j = await res.json();
       if (!res.ok) throw new Error(j.error || 'Could not save the order.');
+      /*
+       * Applying everything spends those results: judged again against the
+       * new order they would only argue for another round of moves. One
+       * player's Move spends nothing — the rest are still on the table.
+       */
+      if (spend.length) {
+        await fetch('/api/captain/form', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ team_id: teamId, match_ids: spend }),
+        });
+      }
       setNote('Strength order updated. Lineups from here on use it.');
       await load();
       router.refresh();
@@ -82,7 +98,7 @@ export default function FormOrderPanel({ teamId }: { teamId: string }) {
     apply(ids, p.playerId);
   };
 
-  if (!matchDays) return null;
+  if (!matchDays && !appliedDays) return null;
 
   const played = rows.filter((r) => r.days > 0);
   const btn = 'px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50';
@@ -94,12 +110,20 @@ export default function FormOrderPanel({ teamId }: { teamId: string }) {
         <h3 className="text-white font-medium">What the results say about the order</h3>
       </div>
       <p className="mt-1 text-[13px] text-white/40">
-        From {matchDays} match day{matchDays === 1 ? '' : 's'}. Winning the line you were seeded at is par;
+        {matchDays
+          ? `From ${matchDays} new match day${matchDays === 1 ? '' : 's'}${appliedDays ? ` (${appliedDays} already applied)` : ''}. `
+          : ''}
+        Winning the line you were seeded at is par;
         winning above it is what moves a player. Singles count more than doubles, and nobody moves more than one
         place per match day they have played. Nothing changes until you apply it.
       </p>
 
-      {proposals.length === 0 ? (
+      {!matchDays ? (
+        <p className="mt-3 text-[13px] text-[#D3FB52]">
+          Your order already reflects all {appliedDays} match day{appliedDays === 1 ? '' : 's'} of results. New
+          results will suggest moves here.
+        </p>
+      ) : proposals.length === 0 ? (
         <p className="mt-3 text-[13px] text-[#D3FB52]">The results agree with your order.</p>
       ) : (
         <>
@@ -132,7 +156,7 @@ export default function FormOrderPanel({ teamId }: { teamId: string }) {
             })}
           </ul>
           <button
-            onClick={() => apply(order.map((o) => o.id), 'all')}
+            onClick={() => apply(order.map((o) => o.id), 'all', matchIds)}
             disabled={!!busy}
             className={`${btn} mt-3 bg-[#D3FB52] text-[#001820] hover:brightness-95`}
           >

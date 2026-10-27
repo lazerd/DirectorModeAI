@@ -3,9 +3,16 @@
  *   GET ?team_id=… — each player's form from played lines, plus the order it
  *        suggests and the moves that would make.
  *
- * Read-only. The captain applies an order through the existing
- * PATCH /api/captain/players { order } — nothing here writes, because with
- * juniors a demotion is a conversation, not a calculation. See lib/captain/formOrder.
+ *   POST { team_id, match_ids } — those matches' results have been applied to
+ *        the order, so they stop suggesting moves.
+ *
+ * The captain applies an order through the existing PATCH /api/captain/players
+ * { order }; with juniors a demotion is a conversation, not a calculation. See
+ * lib/captain/formOrder.
+ *
+ * Results are spent once applied (captain_form_applied.sql). Every result was
+ * judged against TODAY's order, so after Darrin applied all 21 moves the same
+ * wins and losses proposed a fresh 21 against the new order, forever.
  */
 import { NextResponse } from 'next/server';
 import { requireTeam, isError } from '@/lib/captain/server';
@@ -44,13 +51,15 @@ export async function GET(req: Request) {
       .order('match_at'),
   ]);
 
+  const applied = new Set<string>((ctx.team as { form_applied_match_ids?: string[] }).form_applied_match_ids ?? []);
+  const playedMatches = ((matches as { id: string }[]) || []).map((m) => m.id);
   const roster = ((players as { id: string; name: string; sort_order: number | null; is_sub: boolean }[]) || []).filter(
     (p) => !p.is_sub,
   );
   // Seeds come from the list as ordered above, so an unranked player sits after
   // the ranked ones rather than jumping to the top on a null.
   const formPlayers: FormPlayer[] = roster.map((p, i) => ({ id: p.id, name: p.name, seed: i + 1 }));
-  const matchIds = ((matches as { id: string }[]) || []).map((m) => m.id);
+  const matchIds = playedMatches.filter((id) => !applied.has(id));
 
   let lineups: Lineup[] = [];
   let results: Result[] = [];
@@ -95,8 +104,12 @@ export async function GET(req: Request) {
   const { order, proposals, form } = proposeOrder(formPlayers, formMatches);
   const nameOf = new Map(formPlayers.map((p) => [p.id, p.name]));
 
+  const scored = formMatches.filter((m) => m.lines.some((l) => l.won != null && !l.defaulted));
   return NextResponse.json({
-    matchDays: formMatches.filter((m) => m.lines.some((l) => l.won != null && !l.defaulted)).length,
+    matchDays: scored.length,
+    // What "Apply all" marks as spent: only matches that actually had results.
+    matchIds: scored.map((m) => m.matchId),
+    appliedDays: playedMatches.filter((id) => applied.has(id)).length,
     current: formPlayers.map((p) => {
       const f = form.find((x) => x.playerId === p.id);
       return {
@@ -114,4 +127,25 @@ export async function GET(req: Request) {
     // The full order the proposals add up to, ready to PATCH to /players.
     order: order.map((id) => ({ id, name: nameOf.get(id) ?? '' })),
   });
+}
+
+export async function POST(req: Request) {
+  const body = (await req.json().catch(() => ({}))) as { team_id?: string; match_ids?: unknown };
+  const ctx = await requireTeam(body.team_id || '');
+  if (isError(ctx)) return ctx.error;
+  const ids = Array.isArray(body.match_ids) ? body.match_ids.filter((x): x is string => typeof x === 'string') : [];
+  if (!ids.length) return NextResponse.json({ ok: true });
+
+  // Only this team's played matches can be marked.
+  const { data: mine } = await ctx.db
+    .from('captain_matches')
+    .select('id')
+    .eq('team_id', ctx.teamId)
+    .eq('status', 'played')
+    .in('id', ids);
+  const prior = (ctx.team as { form_applied_match_ids?: string[] }).form_applied_match_ids ?? [];
+  const next = [...new Set([...prior, ...((mine as { id: string }[]) || []).map((m) => m.id)])];
+  const { error } = await ctx.db.from('captain_teams').update({ form_applied_match_ids: next }).eq('id', ctx.teamId);
+  if (error) return NextResponse.json({ error: 'Could not save that.' }, { status: 500 });
+  return NextResponse.json({ ok: true, applied: next.length });
 }

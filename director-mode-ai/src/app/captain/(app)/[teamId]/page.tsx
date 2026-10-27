@@ -414,6 +414,7 @@ export default async function TeamHub({
         eligibility={eligibility}
         leagueType={team.league_type}
         eligibilityEnabled={team.eligibility_enabled}
+        playedByPlayer={counts}
       />
 
         <RosterContactsPanel

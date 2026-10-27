@@ -44,6 +44,7 @@ export default function RosterPanel({
   eligibility,
   leagueType,
   eligibilityEnabled,
+  playedByPlayer = {},
 }: {
   teamId: string;
   players: Player[];
@@ -52,6 +53,8 @@ export default function RosterPanel({
   eligibility: Eligibility[];
   leagueType: string;
   eligibilityEnabled: boolean;
+  /** Matches each player has actually played this season, defaulted courts excluded. */
+  playedByPlayer?: Record<string, number>;
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
@@ -303,6 +306,35 @@ export default function RosterPanel({
         </div>
       )}
 
+      {/*
+        Matches played, the whole team at a glance — fewest first, because the
+        question a captain asks is "who hasn't had a match yet?". Darrin asked
+        for this on the roster (10/27) rather than buried in each match's
+        equal-play box.
+      */}
+      {Object.keys(playedByPlayer).length > 0 && (
+        <div className="mt-6 rounded-xl border border-white/[0.08] bg-[#002838] p-4">
+          <h3 className="text-white/50 text-sm uppercase tracking-wide">Matches played</h3>
+          <p className="text-white/35 text-xs mt-1">This season, from played matches. Defaulted courts don&rsquo;t count.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {[...roster, ...subs]
+              .map((p) => ({ p, n: playedByPlayer[p.id] ?? 0 }))
+              .filter(({ p, n }) => !p.is_sub || n > 0)
+              .sort((a, b) => a.n - b.n || a.p.name.localeCompare(b.p.name))
+              .map(({ p, n }) => (
+                <span
+                  key={p.id}
+                  className={`rounded-full px-3 py-1 text-xs ${
+                    n === 0 ? 'bg-amber-300/15 text-amber-200' : 'bg-white/[0.06] text-white/70'
+                  }`}
+                >
+                  {p.name} <span className="font-semibold tabular-nums">{n}</span>
+                </span>
+              ))}
+          </div>
+        </div>
+      )}
+
       {[
         { title: 'Players', list: roster },
         { title: 'Subs', list: subs },
@@ -348,6 +380,11 @@ export default function RosterPanel({
                           )}
                         </div>
                         <div className="text-right shrink-0">
+                          {!(e && !p.is_sub && eligibilityEnabled) && (
+                            <div className="text-white/50 text-sm tabular-nums">
+                              {playedByPlayer[p.id] ?? 0} played
+                            </div>
+                          )}
                           {e && !p.is_sub && eligibilityEnabled && (
                             <div
                               className={
