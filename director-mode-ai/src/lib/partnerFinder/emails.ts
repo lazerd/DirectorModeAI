@@ -22,6 +22,7 @@ import {
   shortName,
   firstName,
 } from './format';
+import type { GameChange } from './format';
 import type { Club, Game, GroupMember } from './server';
 
 const INK = '#0f172a';
@@ -269,12 +270,20 @@ export function spotOpenedEmail(
 export function waitlistSpotEmail(
   g: Game,
   club: Club,
-  opts: { to: string; name: string | null; token: string; poster: string; playing?: string[] },
+  opts: {
+    to: string;
+    name: string | null;
+    token: string;
+    poster: string;
+    playing?: string[];
+    /** Why it opened. Default: a player dropped out. */
+    why?: string;
+  },
 ): GameMessage {
   const title = `A spot just opened: ${headline(g, club.timezone)}`;
   const url = linkUrl(opts.token);
   const body = `
-    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, you were in line for this game and somebody dropped out. Still want it?</p>
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, you were in line for this game and ${esc(opts.why ?? 'somebody dropped out')}. Still want it?</p>
     ${details(g, club, opts.poster, opts.playing)}
     <p style="margin:24px 0 10px">${button(`${url}?a=yes`, "Yes, I'll take it")}</p>
     <p style="margin:0 0 14px">${button(`${url}?a=no`, 'No, give it to someone else', MUTED)}</p>
@@ -423,5 +432,43 @@ export function reminderEmail(
     subject: ascii(title),
     html: shell(club, esc(title), body),
     sms: ascii(`${club.name}: today ${clockLabel(g.starts_at, tz)} ${formatWord(g)} with ${opts.group.map((m) => shortName(m.name)).join(', ')}.`),
+  };
+}
+
+/**
+ * To everyone who is in when the host (or the club) moves the game or changes
+ * the court. Old and new side by side, because "the game changed" with only
+ * the new details makes every player hunt for the earlier email to see what
+ * moved. `g` is the game as it is NOW.
+ */
+export function gameChangedEmail(
+  g: Game,
+  club: Club,
+  opts: { to: string; name: string; by: string; changes: GameChange[]; token: string },
+): GameMessage {
+  const tz = club.timezone;
+  const title = `Changed: ${headline(g, tz)}`;
+  const rows = opts.changes
+    .map(
+      (c) =>
+        `<tr><td style="padding:8px 14px;color:${MUTED};white-space:nowrap;vertical-align:top">${c.label}</td><td style="padding:8px 14px"><span style="color:${MUTED};text-decoration:line-through">${esc(c.from)}</span> &rarr; <strong>${esc(c.to)}</strong></td></tr>`,
+    )
+    .join('');
+  const moved = opts.changes.some((c) => c.field === 'when');
+  const body = `
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, ${esc(opts.by)} changed a game you're in:</p>
+    <table style="width:100%;border-collapse:collapse;font-size:18px;line-height:1.4;margin:0 0 18px;background:#fffbeb;border-radius:12px">${rows}</table>
+    ${details(g, club)}
+    <p style="font-size:18px;line-height:1.5;margin:0 0 14px">${moved ? "Can't make the new time?" : "Something not work?"} Tap below and choose &ldquo;I can&rsquo;t make it&rdquo;, so the spot goes to someone else.</p>
+    <p style="margin:0">${button(linkUrl(opts.token), 'See the game', INK)}</p>`;
+  const what = opts.changes
+    .filter((c) => c.field === 'when' || c.field === 'court')
+    .map((c) => (c.field === 'when' ? `now ${c.to}` : `court ${c.to}`))
+    .join(', ');
+  return {
+    to: opts.to,
+    subject: ascii(`Changed: ${formatWord(g)} ${what || `${shortDay(g.starts_at, tz)} at ${clockLabel(g.starts_at, tz)}`}`),
+    html: shell(club, esc(title), body),
+    sms: ascii(`${club.name}: ${opts.by} changed the ${formatWord(g)}: ${what}. ${linkUrl(opts.token)}`).slice(0, 300),
   };
 }

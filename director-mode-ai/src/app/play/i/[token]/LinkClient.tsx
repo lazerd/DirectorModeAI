@@ -13,7 +13,7 @@ import {
   primaryBtn,
   secondaryBtn,
 } from '@/components/partnerFinder/ui';
-import { needsLabel } from '@/lib/partnerFinder/format';
+import { DURATIONS, durationLabel, needsLabel, type GameChange } from '@/lib/partnerFinder/format';
 import { levelValue, type LevelScale } from '@/lib/levels';
 
 type Props = {
@@ -41,6 +41,21 @@ type Props = {
   group: { name: string; note: string | null; phone: string | null; seatId: string | null }[];
   /** The host already sent their one reminder to people who never answered. */
   nudged: boolean;
+  /**
+   * The host's "Edit game" form, filled with what is posted now (club time).
+   * `seated` is how many are in besides the host: players needed can't go
+   * below it. Null for everyone but the host.
+   */
+  edit: {
+    date: string;
+    time: string;
+    duration: number;
+    court: string;
+    note: string;
+    spots: number;
+    seated: number;
+    maxSpots: number;
+  } | null;
   /** Members the host may seat by hand. Empty for everyone but the host. */
   addable: { id: string; name: string }[];
   /** Who is in line, in tap order. Empty for everyone but the host. */
@@ -74,6 +89,9 @@ export default function LinkClient(p: Props) {
   const [preview, setPreview] = useState<null | { recipients: string[]; subject: string; noEmail: string[] }>(null);
   const [removing, setRemoving] = useState<string | null>(null);
   const [nudgePreview, setNudgePreview] = useState<null | { members: string[]; friends: string[] }>(null);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState(p.edit);
+  const [editPreview, setEditPreview] = useState<null | { changes: GameChange[]; tell: string[]; noEmail: string[] }>(null);
 
   async function act(action: 'join' | 'decline' | 'leave' | 'cancel') {
     setBusy(true);
@@ -131,6 +149,38 @@ export default function LinkClient(p: Props) {
     if (r.error) return setNotice({ tone: 'bad', text: r.error });
     setNotice({ tone: r.ok ? 'good' : 'info', text: r.message });
     router.refresh();
+  }
+
+  /*
+   * The host changing the game (QA #15). "Next" shows what changes, old -> new,
+   * and exactly who will be emailed (only a new time or court emails anyone);
+   * only "Save changes" writes. Same pattern as "Message the players".
+   */
+  async function editSave(save: boolean) {
+    if (!form) return;
+    setBusy(true);
+    setNotice(null);
+    const r = await postJson<Outcome & { changes?: GameChange[]; tell?: string[]; noEmail?: string[] }>(
+      `/api/play/link/${p.token}`,
+      { action: 'edit', save, ...form },
+    );
+    setBusy(false);
+    if (r.error) return setNotice({ tone: 'bad', text: r.error });
+    if (!r.ok) {
+      setEditPreview(null);
+      return setNotice({ tone: r.result === 'no_change' ? 'info' : 'bad', text: r.message });
+    }
+    if (!save) return setEditPreview({ changes: r.changes ?? [], tell: r.tell ?? [], noEmail: r.noEmail ?? [] });
+    setNotice({ tone: 'good', text: r.message });
+    setEditPreview(null);
+    setEditing(false);
+    router.refresh();
+  }
+
+  type EditForm = NonNullable<Props['edit']>;
+  function setField<K extends keyof EditForm>(k: K, v: EditForm[K]) {
+    setEditPreview(null);
+    setForm((f) => (f ? { ...f, [k]: v } : f));
   }
 
   /*
@@ -643,6 +693,154 @@ export default function LinkClient(p: Props) {
           ) : (
             <button onClick={() => nudge(false)} disabled={busy} className={`${secondaryBtn} w-full`}>
               Remind people who haven&rsquo;t answered
+            </button>
+          )
+        )}
+
+        {/* The host changing day/time, length, court, note or players needed. */}
+        {p.isPoster && !closedText && form && (
+          editing ? (
+            <section className="space-y-4 rounded-3xl border-2 border-emerald-300 bg-white p-6">
+              <h2 className="text-2xl font-bold">Edit your game</h2>
+              <p className="text-lg text-slate-600">
+                If you change the day, time or court, everyone who is in gets a short email with the old and the new.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-lg font-semibold text-slate-700">Day</span>
+                  <input
+                    type="date"
+                    value={form.date}
+                    onChange={(e) => setField('date', e.target.value)}
+                    className="mt-1 w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-lg font-semibold text-slate-700">Time</span>
+                  <input
+                    type="time"
+                    step={900}
+                    value={form.time}
+                    onChange={(e) => setField('time', e.target.value)}
+                    className="mt-1 w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                  />
+                </label>
+              </div>
+              <label className="block">
+                <span className="text-lg font-semibold text-slate-700">How long</span>
+                <select
+                  value={form.duration}
+                  onChange={(e) => setField('duration', Number(e.target.value))}
+                  className="mt-1 w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                >
+                  {[...new Set<number>([...DURATIONS, form.duration])]
+                    .sort((a, b) => a - b)
+                    .map((d) => (
+                      <option key={d} value={d}>{durationLabel(d)}</option>
+                    ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-lg font-semibold text-slate-700">Court</span>
+                <input
+                  value={form.court}
+                  onChange={(e) => setField('court', e.target.value)}
+                  placeholder="Leave blank if it's not decided yet"
+                  maxLength={60}
+                  className="mt-1 w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                />
+              </label>
+              <label className="block">
+                <span className="text-lg font-semibold text-slate-700">Players besides you</span>
+                <select
+                  value={form.spots}
+                  onChange={(e) => setField('spots', Number(e.target.value))}
+                  className="mt-1 w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                >
+                  {/* Never fewer than are already in. */}
+                  {Array.from({ length: Math.max(form.maxSpots - Math.max(form.seated, 1) + 1, 1) }, (_, i) => Math.max(form.seated, 1) + i).map((n) => (
+                    <option key={n} value={n}>
+                      {n} ({n + 1} on court)
+                    </option>
+                  ))}
+                </select>
+                {form.seated > 0 && (
+                  <span className="mt-1 block text-base text-slate-500">
+                    {form.seated} {form.seated === 1 ? 'is' : 'are'} already in, so it can&rsquo;t go lower. Take someone off first.
+                  </span>
+                )}
+              </label>
+              <label className="block">
+                <span className="text-lg font-semibold text-slate-700">Note</span>
+                <textarea
+                  value={form.note}
+                  onChange={(e) => setField('note', e.target.value)}
+                  rows={3}
+                  maxLength={500}
+                  className="mt-1 w-full rounded-2xl border-2 border-slate-300 px-4 py-3 text-xl"
+                />
+              </label>
+              {editPreview ? (
+                <div className="space-y-3 rounded-2xl bg-slate-50 p-4">
+                  <p className="text-lg font-semibold">What changes</p>
+                  <ul className="space-y-1 text-lg">
+                    {editPreview.changes.map((c) => (
+                      <li key={c.field}>
+                        <span className="text-slate-500">{c.label}:</span>{' '}
+                        <span className="text-slate-500 line-through">{c.from}</span> &rarr; <strong>{c.to}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-lg">
+                    {editPreview.tell.length > 0 ? (
+                      <>
+                        <span className="font-semibold">We&rsquo;ll email:</span> {editPreview.tell.join(', ')}
+                      </>
+                    ) : (
+                      'Nobody gets an email about this. It just shows on the game.'
+                    )}
+                  </p>
+                  {editPreview.noEmail.length > 0 && (
+                    <p className="text-base text-slate-500">
+                      No email for {editPreview.noEmail.join(', ')}, so please tell them yourself.
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <button onClick={() => editSave(true)} disabled={busy} className={`${primaryBtn} flex-1`}>
+                      {busy ? 'Saving…' : 'Save changes'}
+                    </button>
+                    <button onClick={() => setEditPreview(null)} className={`${secondaryBtn} flex-1`}>
+                      Change
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <button onClick={() => editSave(false)} disabled={busy} className={`${primaryBtn} flex-1`}>
+                    {busy ? 'One moment…' : 'Next'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditing(false);
+                      setForm(p.edit);
+                      setEditPreview(null);
+                    }}
+                    className={`${secondaryBtn} flex-1`}
+                  >
+                    Never mind
+                  </button>
+                </div>
+              )}
+            </section>
+          ) : (
+            <button
+              onClick={() => {
+                setForm(p.edit);
+                setEditing(true);
+              }}
+              className={`${secondaryBtn} w-full`}
+            >
+              Edit game
             </button>
           )
         )}

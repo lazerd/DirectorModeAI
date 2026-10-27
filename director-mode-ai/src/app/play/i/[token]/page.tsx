@@ -13,9 +13,11 @@ import {
 import {
   clockLabel,
   durationLabel,
+  editFormValues,
   firstName,
   gameKind,
   longDay,
+  maxSpotsFor,
   ratingLabel,
 } from '@/lib/partnerFinder/format';
 import LinkClient from './LinkClient';
@@ -164,6 +166,12 @@ export default async function GameLinkPage({
         seatId: isPoster ? m.seatId ?? null : null,
       }))}
       nudged={!!game.nudged_at}
+      /* The host's "Edit game" form starts from what is posted now. */
+      edit={
+        isPoster
+          ? { ...editFormValues(game, tz), seated: group.length - 1, maxSpots: maxSpotsFor(game.format) }
+          : null
+      }
       addable={addable}
       line={line}
       friends={friends}

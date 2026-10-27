@@ -7,7 +7,7 @@
  * Every time is formatted in the CLUB's zone. Vercel runs UTC, and a 9am game
  * rendered without a zone goes out to the whole club as 4pm.
  */
-import { normalizeTimeZone } from '@/lib/captain/clubTime';
+import { isoToZonedWallTime, normalizeTimeZone } from '@/lib/captain/clubTime';
 import { TENNIS_SCALE, levelRange, type LevelScale } from '@/lib/levels';
 
 export const FORMATS = ['doubles', 'singles', 'mixed', 'hitting'] as const;
@@ -178,4 +178,79 @@ export function sharedInboxes(roster: { person_id: string; email: string | null 
     seen.set(e, (seen.get(e) ?? new Set<string>()).add(r.person_id));
   }
   return new Set([...seen].filter(([, ids]) => ids.size > 1).map(([e]) => e));
+}
+
+/* ------------------------------------------------------------ editing a game */
+
+/** Most players a format can ask for besides the host. Singles is one opponent. */
+export function maxSpotsFor(format: string): number {
+  return format === 'singles' ? 1 : MAX_SPOTS;
+}
+
+/** The parts of a posted game its host (or the club) may change. */
+export type GameEdit = {
+  starts_at: string;
+  duration_min: number;
+  court: string | null;
+  note: string | null;
+  spots_needed: number;
+};
+
+export type GameChange = {
+  field: 'when' | 'duration' | 'court' | 'note' | 'spots';
+  label: string;
+  from: string;
+  to: string;
+};
+
+/**
+ * What an edit changes, in the words the players read: "Tue Sep 22, 1:00pm →
+ * Wed Sep 23, 10:00am". Nothing in the list means nothing changed. Players are
+ * counted in court terms (spots_needed is everyone BESIDES the host, so 3 is a
+ * four-person court), the same way the director's table shows it.
+ */
+export function gameChanges(before: GameEdit, after: GameEdit, tz: string): GameChange[] {
+  const when = (iso: string) => `${shortDay(iso, tz)}, ${clockLabel(iso, tz)}`;
+  const court = (c: string | null) => (c && c.trim()) || 'To be decided';
+  const note = (n: string | null) => (n && n.trim()) || '(none)';
+  const players = (n: number) => `${n + 1} in all`;
+  const out: GameChange[] = [];
+  if (new Date(before.starts_at).getTime() !== new Date(after.starts_at).getTime()) {
+    out.push({ field: 'when', label: 'When', from: when(before.starts_at), to: when(after.starts_at) });
+  }
+  if (before.duration_min !== after.duration_min) {
+    out.push({ field: 'duration', label: 'How long', from: durationLabel(before.duration_min), to: durationLabel(after.duration_min) });
+  }
+  if (court(before.court) !== court(after.court)) {
+    out.push({ field: 'court', label: 'Court', from: court(before.court), to: court(after.court) });
+  }
+  if (note(before.note) !== note(after.note)) {
+    out.push({ field: 'note', label: 'Note', from: note(before.note), to: note(after.note) });
+  }
+  if (before.spots_needed !== after.spots_needed) {
+    out.push({ field: 'spots', label: 'Players', from: players(before.spots_needed), to: players(after.spots_needed) });
+  }
+  return out;
+}
+
+/**
+ * Only a new time or a new court is worth an email to the people who are in:
+ * those are the two that send somebody to the wrong place. A reworded note or
+ * one more spot shows on the game page and is not news.
+ */
+export function changeTellsPlayers(changes: GameChange[]): boolean {
+  return changes.some((c) => c.field === 'when' || c.field === 'court');
+}
+
+/** The edit form's current values, in the club's own wall-clock time. */
+export function editFormValues(g: GameEdit, tz: string) {
+  const wall = isoToZonedWallTime(g.starts_at, tz);
+  return {
+    date: wall.slice(0, 10),
+    time: wall.slice(11, 16),
+    duration: g.duration_min,
+    court: g.court ?? '',
+    note: g.note ?? '',
+    spots: g.spots_needed,
+  };
 }

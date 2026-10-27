@@ -6,9 +6,10 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveActiveClub } from '@/lib/clubs/activeClub';
 import { clubRoster, loadClub, GAME_COLS, type Game } from '@/lib/partnerFinder/server';
-import { FORMAT_LABEL, gameTitle, isFormat, ratingLabel, shortName } from '@/lib/partnerFinder/format';
+import { FORMAT_LABEL, editFormValues, gameTitle, isFormat, maxSpotsFor, ratingLabel, shortName } from '@/lib/partnerFinder/format';
 import NotifyAgain from './NotifyAgain';
 import SendAgain from './SendAgain';
+import StaffActions from './StaffActions';
 
 /**
  * CourtConnect — the director's view. (Built as "Partner Finder"; the old
@@ -82,7 +83,7 @@ export default async function CourtConnectDirectorPage() {
   const { data: playerRows } = games.length
     ? await db
         .from('pf_game_players')
-        .select('game_id, person_id, guest_name, via, status')
+        .select('id, game_id, person_id, guest_name, via, status')
         .in('game_id', games.map((g) => g.id))
         .in('status', ['in', 'wait', 'no', 'out'])
         .order('joined_at')
@@ -135,7 +136,9 @@ export default async function CourtConnectDirectorPage() {
   const boardBy = new Map<string, string[]>();
   /** Anyone who has answered in any way, so the remainder is silence. */
   const answered = new Map<string, Set<string>>();
-  type Seat = { game_id: string; person_id: string | null; guest_name: string | null; via: string; status: string };
+  /** Everyone in, by seat, for the director's Remove (any seat, guests too). */
+  const seatsBy = new Map<string, { seatId: string; name: string }[]>();
+  type Seat = { id: string; game_id: string; person_id: string | null; guest_name: string | null; via: string; status: string };
   const push = (m: Map<string, string[]>, k: string, v: string) => m.set(k, [...(m.get(k) ?? []), v]);
   for (const p of (playerRows as Seat[] | null) ?? []) {
     const into = bucket[p.status];
@@ -144,6 +147,7 @@ export default async function CourtConnectDirectorPage() {
     push(into, p.game_id, who);
     if (p.person_id) answered.set(p.game_id, (answered.get(p.game_id) ?? new Set<string>()).add(p.person_id));
     if (p.status !== 'in') continue;
+    seatsBy.set(p.game_id, [...(seatsBy.get(p.game_id) ?? []), { seatId: p.id, name: who }]);
     if (p.via === 'host') push(hostAddedBy, p.game_id, who);
     else if (p.person_id && emailedOn.get(p.game_id)?.has(p.person_id)) push(saidYesBy, p.game_id, who);
     else push(boardBy, p.game_id, who);
@@ -346,6 +350,16 @@ export default async function CourtConnectDirectorPage() {
           {/* Members added since it was posted have never heard about it. */}
           {g.status === 'open' && new Date(g.starts_at) > new Date() && (
             <NotifyAgain gameId={g.id} levelWord={club.levels.inline} />
+          )}
+          {/* A member calls the office: take someone off, move it, or call it off. */}
+          {(g.status === 'open' || g.status === 'full') && new Date(g.starts_at) > new Date() && (
+            <StaffActions
+              gameId={g.id}
+              seats={seatsBy.get(g.id) ?? []}
+              everyone={[posterName(g), ...players]}
+              edit={editFormValues(g, tz)}
+              maxSpots={maxSpotsFor(g.format)}
+            />
           )}
         </td>
       </tr>

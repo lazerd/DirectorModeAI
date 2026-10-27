@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addressedTo, gameFullEmail, inviteEmail, removedByHostEmail } from './emails';
+import { addressedTo, gameChangedEmail, gameFullEmail, inviteEmail, removedByHostEmail } from './emails';
 import { sharedInboxes } from './format';
 import { TENNIS_SCALE } from '@/lib/levels';
 import type { Club, Game, GroupMember } from './server';
@@ -178,5 +178,28 @@ describe('the email when the host takes someone off', () => {
     expect(mail.subject).toContain('Walden B. took you off the doubles');
     expect(mail.html).toContain('no longer playing');
     expect(mail.html).not.toContain('/play/i/');
+  });
+});
+
+describe('the email when a game changes', () => {
+  const moved = { ...game, starts_at: '2026-09-23T17:00:00.000Z', court: '3' }; // Wed 10:00am Pacific
+  const changes = [
+    { field: 'when' as const, label: 'When', from: 'Tue Sep 22, 1:00pm', to: 'Wed Sep 23, 10:00am' },
+    { field: 'court' as const, label: 'Court', from: '6', to: '3' },
+  ];
+
+  it('shows old and new, and says who changed it', () => {
+    const mail = gameChangedEmail(moved, club, { to: 'gabe@example.com', name: 'Gabrial Fett', by: 'Walden B.', changes, token: 'tok-gabe' });
+    expect(mail.html).toContain('Walden B. changed a game');
+    expect(mail.html).toContain('Tue Sep 22, 1:00pm');
+    expect(mail.html).toContain('Wed Sep 23, 10:00am');
+    expect(mail.html).toContain('/play/i/tok-gabe');
+    expect(mail.html).toContain('the new time');
+  });
+
+  it('puts the new time and court in an ASCII subject', () => {
+    const mail = gameChangedEmail(moved, club, { to: 'gabe@example.com', name: 'Gabrial Fett', by: 'Walden B.', changes, token: 'tok-gabe' });
+    expect(mail.subject).toBe('Changed: doubles now Wed Sep 23, 10:00am, court 3');
+    expect(/^[\x20-\x7e]*$/.test(mail.subject)).toBe(true);
   });
 });
