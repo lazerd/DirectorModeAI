@@ -106,6 +106,8 @@ export function buildCheckoutUrl(
     eventId?: string | null;
     /** Legacy CaptainMode club id, passed through to the webhook. */
     clubId?: string | null;
+    /** Sponsor checkout: the club owner account this member is paying for. */
+    sponsorFor?: string | null;
   }
 ): string | null {
   const base = buyLinks()[priceKey];
@@ -116,6 +118,7 @@ export function buildCheckoutUrl(
   if (opts.email) u.searchParams.set('checkout[email]', opts.email);
   if (opts.eventId) u.searchParams.set('checkout[custom][event_id]', opts.eventId);
   if (opts.clubId) u.searchParams.set('checkout[custom][club_id]', opts.clubId);
+  if (opts.sponsorFor) u.searchParams.set('checkout[custom][sponsor_for]', opts.sponsorFor);
 
   /**
    * Founding-club discount, pre-applied to the Pro checkout.

@@ -5,13 +5,14 @@
  * Pricing is Darrin's (2026-10-21, constants in config/pricing): the platform is
  * free, every email is EMAIL_PRICE_CENTS and every text TEXT_PRICE_CENTS, with
  * no allowance. Email stops billing at EMAIL_MONTHLY_CAP_CENTS a month (10/27);
- * texts are never capped. The platform owner's clubs are recorded with exempt=true and
+ * texts are never capped. Each club's first FREE_EMAILS_PER_CLUB emails are free
+ * with no card; after that someone pays: the owner's card or a member sponsor. The platform owner's clubs are recorded with exempt=true and
  * never invoiced, the same rule Ask Claude uses.
  *
  * Recording never throws: a metering hiccup must not stop a club's email.
  */
 
-import { EMAIL_MONTHLY_CAP_CENTS, EMAIL_PRICE_CENTS, METERING_ENFORCED, TEXT_PRICE_CENTS } from '@/config/pricing';
+import { EMAIL_MONTHLY_CAP_CENTS, EMAIL_PRICE_CENTS, FREE_EMAILS_PER_CLUB, METERING_ENFORCED, TEXT_PRICE_CENTS } from '@/config/pricing';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveBillingUserId } from '@/lib/billing';
 import { isPlatformOwnerEmail } from '@/lib/platformOwner';
@@ -33,6 +34,41 @@ export function priceCents(kind: SendKind, units: number): number {
 export function cappedEmailCents(units: number, alreadyBilledCents: number): number {
   const room = Math.max(0, EMAIL_MONTHLY_CAP_CENTS - Math.max(0, alreadyBilledCents));
   return Math.min(priceCents('email', units), room);
+}
+
+/** How many of a club's free emails these sends use, given how many emails it has sent in all. */
+export function freeEmailUnits(units: number, emailsSentBefore: number): number {
+  const left = Math.max(0, FREE_EMAILS_PER_CLUB - Math.max(0, emailsSentBefore));
+  return Math.min(Math.max(0, Math.floor(units)), left);
+}
+
+/** Every email this club account has ever sent (the free allowance is one-time). */
+export async function lifetimeEmailUnits(billingUserId: string): Promise<number> {
+  const { data } = await getSupabaseAdmin()
+    .from('usage_events')
+    .select('units')
+    .eq('billing_user_id', billingUserId)
+    .eq('kind', 'email');
+  return ((data as { units: number }[] | null) ?? []).reduce((a, r) => a + Number(r.units || 0), 0);
+}
+
+/** The club's free-email position. */
+export async function freeEmailStatus(billingUserId: string): Promise<{ used: number; remaining: number; total: number }> {
+  const used = await lifetimeEmailUnits(billingUserId);
+  return { used, remaining: Math.max(0, FREE_EMAILS_PER_CLUB - used), total: FREE_EMAILS_PER_CLUB };
+}
+
+/**
+ * Whose card pays for this club account's sends: the owner's own, else an
+ * active member sponsor's, else nobody yet.
+ */
+export async function payerFor(billingUserId: string): Promise<{ userId: string; sponsor: boolean } | null> {
+  const db = getSupabaseAdmin();
+  if (await paygActive(db, billingUserId)) return { userId: billingUserId, sponsor: false };
+  const { data } = await db.from('club_sponsors').select('sponsor_user_id').eq('billing_user_id', billingUserId).maybeSingle();
+  const sponsorId = (data as { sponsor_user_id: string } | null)?.sponsor_user_id;
+  if (sponsorId && (await paygActive(db, sponsorId))) return { userId: sponsorId, sponsor: true };
+  return null;
 }
 
 /** This club's email charges so far this month, in cents (exempt rows included). */
@@ -104,15 +140,19 @@ export type SendBlock = 'needs_card' | 'over_limit' | null;
 
 /**
  * Why this account can't send right now, or null if it can. Nothing is blocked
- * until METERING_ENFORCED; after that a club needs a card on file, and must be
- * under the monthly limit its owner set. A failed check allows the send.
+ * until METERING_ENFORCED; after that a club needs a payer (the owner's card or
+ * a member sponsor) once its free emails are used up, and must be under the
+ * monthly limit its owner set. Texts always need a payer. A failed check allows the send.
  */
-export async function sendBlock(userId: string): Promise<SendBlock> {
+export async function sendBlock(userId: string, kind: SendKind = 'email'): Promise<SendBlock> {
   if (!METERING_ENFORCED) return null;
   try {
     const { billingUserId, exempt } = await sendBilling(userId);
     if (exempt) return null;
-    if (!(await paygActive(getSupabaseAdmin(), billingUserId))) return 'needs_card';
+    if (!(await payerFor(billingUserId))) {
+      if (kind === 'email' && (await lifetimeEmailUnits(billingUserId)) < FREE_EMAILS_PER_CLUB) return null;
+      return 'needs_card';
+    }
     if (await overMonthlyLimit(billingUserId, false)) return 'over_limit';
     return null;
   } catch (err) {
@@ -122,8 +162,8 @@ export async function sendBlock(userId: string): Promise<SendBlock> {
 }
 
 /** Can this account send right now? See sendBlock for why not. */
-export async function canSend(userId: string): Promise<boolean> {
-  return (await sendBlock(userId)) === null;
+export async function canSend(userId: string, kind: SendKind = 'email'): Promise<boolean> {
+  return (await sendBlock(userId, kind)) === null;
 }
 
 /** Write `units` sends to the meter. Never throws. */
@@ -137,10 +177,14 @@ export async function recordSendUsage(args: {
   if (args.units <= 0) return;
   try {
     const { billingUserId, exempt } = await sendBilling(args.userId);
-    const billed =
-      args.kind === 'email'
-        ? cappedEmailCents(args.units, await monthEmailCents(billingUserId))
-        : priceCents(args.kind, args.units);
+    let billed: number;
+    if (args.kind === 'email') {
+      // The club's free emails first, then a penny each up to the monthly cap.
+      const free = freeEmailUnits(args.units, await lifetimeEmailUnits(billingUserId));
+      billed = cappedEmailCents(Math.floor(args.units) - free, await monthEmailCents(billingUserId));
+    } else {
+      billed = priceCents(args.kind, args.units);
+    }
     const { error } = await getSupabaseAdmin()
       .from('usage_events')
       .insert({

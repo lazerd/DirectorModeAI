@@ -31,6 +31,13 @@ type Status = {
   overLimit?: boolean;
   limitCents?: number | null;
   suggestedLimitUsd?: number;
+  freeUsed?: number;
+  freeTotal?: number;
+  freeRemaining?: number;
+  /** No payer yet and the club is past the nudge point of its free emails. */
+  nudge?: boolean;
+  sponsorCheckoutUrl?: string | null;
+  sponsorCapCents?: number;
 };
 
 const PUBLIC_PREFIXES = ['/login', '/register', '/pricing', '/join', '/c/', '/q/', '/checkin/', '/demo/', '/try', '/mixermode', '/pulse'];
@@ -67,8 +74,8 @@ function LiveSendPaywall() {
     });
   }, [onPublicPage, pathname, refresh]);
 
-  // Only clubs that can't send need watching; everyone else pays nothing for this.
-  const watching = !!status?.signedIn && status.enforced && !status.canSend;
+  // Only clubs that can't send, or are running low on free emails, need watching.
+  const watching = !!status?.signedIn && status.enforced && (!status.canSend || !!status.nudge);
 
   useEffect(() => {
     if (!watching) return;
@@ -116,15 +123,53 @@ function PaywallView({
   const setModal = onModal ?? setOwnModal;
 
   const held = status.held ?? 0;
+  const cap = Math.round((status.sponsorCapCents ?? 3000) / 100);
+  const freeTotal = status.freeTotal ?? 1000;
+  const freeUsed = Math.min(status.freeUsed ?? 0, freeTotal);
+  const outOfFree = (status.freeRemaining ?? 0) <= 0;
+  // Dismissing the nudge hides it until the next step (750, 900, out).
+  const nudgeKey = `cm-free-nudge-${outOfFree ? 'out' : freeUsed >= 900 ? 900 : freeUsed >= 750 ? 750 : 500}`;
+  const [nudgeHidden, setNudgeHidden] = useState(true);
+  useEffect(() => {
+    try {
+      setNudgeHidden(localStorage.getItem(nudgeKey) === '1');
+    } catch {
+      setNudgeHidden(false);
+    }
+  }, [nudgeKey]);
+  const hideNudge = () => {
+    setNudgeHidden(true);
+    try {
+      localStorage.setItem(nudgeKey, '1');
+    } catch {
+      /* fine */
+    }
+  };
+  const sponsorLink = status.sponsorCheckoutUrl ? (
+    <a
+      href={status.sponsorCheckoutUrl}
+      className="inline-flex items-center gap-2 rounded-lg bg-[#D3FB52] px-4 py-2 text-sm font-semibold text-[#002838] hover:brightness-95"
+    >
+      <CreditCard className="h-4 w-4" /> Sponsor the club (up to ${cap}/mo)
+    </a>
+  ) : null;
 
   const overLimit = !!status.overLimit;
   const limitDollars = status.limitCents == null ? null : Math.round(status.limitCents / 100);
 
-  // Owners act right here; staff are told who can.
+  // Owners act right here; anyone else can sponsor the club, or ask the owner.
   const action = !status.isOwner ? (
-    <span className="text-sm text-slate-300">
-      {overLimit ? 'Ask your club owner to raise the monthly limit.' : 'Ask your club owner to add a card.'}
-    </span>
+    overLimit ? (
+      <span className="text-sm text-slate-300">Ask your club owner to raise the monthly limit.</span>
+    ) : (
+      <div className="space-y-2">
+        {sponsorLink}
+        <p className="text-xs text-slate-400">
+          One member&apos;s card covers the whole club: {status.emailCents}¢ an email, never more than ${cap} a month.
+          Cancel anytime. Or ask your club director to add a card.
+        </p>
+      </div>
+    )
   ) : overLimit ? (
     <SpendLimitForm mode="edit" initialDollars={(limitDollars ?? 0) + (status.suggestedLimitUsd ?? 50)} />
   ) : status.checkoutUrl ? (
@@ -135,6 +180,35 @@ function PaywallView({
 
   return (
     <>
+      {held === 0 && status.nudge && !nudgeHidden && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#002838] px-4 py-3 text-white">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
+            <p className="text-sm">
+              <Mail className="mr-2 inline h-4 w-4 text-[#D3FB52]" />
+              {outOfFree
+                ? `Your club has used all ${freeTotal.toLocaleString()} free emails.`
+                : `Your club has used ${freeUsed.toLocaleString()} of its ${freeTotal.toLocaleString()} free emails.`}{' '}
+              Keep it going for no more than ${cap} a month, paid by one member or your director.
+            </p>
+            <div className="flex items-center gap-3">
+              {status.isOwner ? (
+                <button
+                  onClick={() => setModal(true)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#D3FB52] px-4 py-2 text-sm font-semibold text-[#002838] hover:brightness-95"
+                >
+                  <CreditCard className="h-4 w-4" /> Add a card
+                </button>
+              ) : (
+                sponsorLink
+              )}
+              <button onClick={hideNudge} className="text-slate-400 hover:text-white" aria-label="Dismiss">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {held > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-[#002838] px-4 py-3 text-white">
           <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
@@ -173,10 +247,16 @@ function PaywallView({
               </>
             ) : (
               <>
-                <h2 className="text-lg font-semibold">Add a card to start sending</h2>
+                <h2 className="text-lg font-semibold">
+                  {status.isOwner ? 'Add a card to keep sending' : 'Keep your club sending'}
+                </h2>
                 <p className="mt-2 text-sm text-slate-300">
-                  ClubMode is free to use. You only pay for what you send. Emails you send now are saved and go out the
-                  moment a card is on file; texts need the card first.
+                  {outOfFree
+                    ? `Your club used its ${freeTotal.toLocaleString()} free emails.`
+                    : `Your club has ${(status.freeRemaining ?? 0).toLocaleString()} free emails left.`}{' '}
+                  After that it&apos;s {status.emailCents}¢ an email, never more than ${cap} a month, paid by your
+                  director or one member who sponsors the club. Emails sent now are saved and go out as soon as someone
+                  does; texts need a card first.
                 </p>
                 <ul className="mt-4 space-y-2 text-sm">
                   <li className="flex items-center gap-2">

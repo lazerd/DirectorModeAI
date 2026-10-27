@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase/server';
 import { releaseHeldEmails } from '@/lib/email';
-import { DEFAULT_MONTHLY_LIMIT_USD } from '@/config/pricing';
+import { DEFAULT_MONTHLY_LIMIT_USD, EMAIL_MONTHLY_CAP_CENTS } from '@/config/pricing';
 import { background } from '@/lib/partnerFinder/background';
 import {
   verifyWebhookSignature,
@@ -129,6 +129,24 @@ export async function POST(request: NextRequest) {
         if (aiErr) console.error('[lemonsqueezy/webhook] ai_payg upsert failed:', aiErr.message);
         // A card is on file now. If the owner never picked a monthly limit at
         // checkout, start them at the suggested one; then send what was waiting.
+        // A member sponsoring their club: record it, hold the club to $30 a
+        // month (the sponsor signed up for "up to $30"), and send what was waiting.
+        const sponsorFor: string | null = custom.sponsor_for || null;
+        if (grantsAccess && !aiErr && sponsorFor && sponsorFor !== aiUserId) {
+          await service.from('club_sponsors').upsert(
+            { billing_user_id: sponsorFor, sponsor_user_id: aiUserId, club_id: custom.club_id || null, updated_at: new Date().toISOString() },
+            { onConflict: 'billing_user_id' },
+          );
+          const { data: lim } = await service.from('usage_limits').select('monthly_limit_cents').eq('billing_user_id', sponsorFor).maybeSingle();
+          const cur = (lim as { monthly_limit_cents: number | null } | null)?.monthly_limit_cents;
+          if (cur === null || cur === undefined || cur > EMAIL_MONTHLY_CAP_CENTS) {
+            await service.from('usage_limits').upsert(
+              { billing_user_id: sponsorFor, monthly_limit_cents: EMAIL_MONTHLY_CAP_CENTS },
+              { onConflict: 'billing_user_id' },
+            );
+          }
+          background('release held emails (sponsor)', () => releaseHeldEmails(sponsorFor));
+        }
         if (grantsAccess && !aiErr) {
           await service
             .from('usage_limits')

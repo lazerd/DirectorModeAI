@@ -41,11 +41,23 @@ export async function GET(request: NextRequest) {
   const now = new Date();
   const results: unknown[] = [];
 
+  const activeIds = new Set(((subs as { user_id: string }[] | null) ?? []).map((r) => r.user_id));
+  const { data: sponsorRows } = await db.from('club_sponsors').select('billing_user_id, sponsor_user_id');
+
   for (const s of (subs as { user_id: string; ls_subscription_item_id: string }[] | null) ?? []) {
+    // A member sponsor pays for the clubs they sponsor, unless the club owner has a card of their own.
+    const accounts = [
+      s.user_id,
+      ...((sponsorRows as { billing_user_id: string; sponsor_user_id: string }[] | null) ?? [])
+        .filter((r) => r.sponsor_user_id === s.user_id && !activeIds.has(r.billing_user_id))
+        .map((r) => r.billing_user_id),
+    ];
     // Backstop for the webhook: anything still held for a club with a card goes out.
     if (!dryRun && METERING_ENFORCED) {
-      const rel = await releaseHeldEmails(s.user_id);
-      if (rel.released || rel.failed) results.push({ user: s.user_id, heldReleased: rel.released, heldFailed: rel.failed });
+      for (const acct of accounts) {
+        const rel = await releaseHeldEmails(acct);
+        if (rel.released || rel.failed) results.push({ user: acct, heldReleased: rel.released, heldFailed: rel.failed });
+      }
     }
     // Every month this club owes something for and we haven't reported yet. Under-threshold balances
     // carry forward, so this looks back over the whole year, not just this month and last.
@@ -56,7 +68,7 @@ export async function GET(request: NextRequest) {
       const { data: rows } = await db
         .from('ai_usage_events')
         .select('billed_micro')
-        .eq('billing_user_id', s.user_id)
+        .in('billing_user_id', accounts)
         .eq('exempt', false)
         .gte('created_at', start.toISOString())
         .lt('created_at', end.toISOString());
@@ -67,7 +79,7 @@ export async function GET(request: NextRequest) {
         const { data: sends } = await db
           .from('usage_events')
           .select('billed_cents')
-          .eq('billing_user_id', s.user_id)
+          .in('billing_user_id', accounts)
           .eq('exempt', false)
           .gte('created_at', start.toISOString())
           .lt('created_at', end.toISOString());

@@ -153,7 +153,7 @@ export async function sendSms(userId: string, to: string, body: string): Promise
     console.info('[demo] text suppressed');
     return { to: number, status: 'skipped', reason: DEMO_SMS_REASON };
   }
-  const block = await sendBlock(userId);
+  const block = await sendBlock(userId, 'sms');
   if (block) {
     return { to: number, status: 'skipped', reason: blockReason(block) };
   }
@@ -202,7 +202,7 @@ export async function sendSmsBatch(userId: string, recipients: { phone: string; 
     };
   }
 
-  const block = await sendBlock(userId);
+  const block = await sendBlock(userId, 'sms');
   if (block) {
     return {
       sent: 0,

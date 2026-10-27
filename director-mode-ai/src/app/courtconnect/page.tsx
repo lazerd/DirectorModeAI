@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { reachableClubs } from '@/lib/clubs/activeClub';
 import { resolvePlayingClub } from '@/lib/partnerFinder/server';
+import CourtConnectLanding from '@/components/partnerFinder/CourtConnectLanding';
 
 /**
  * /courtconnect — the standalone front door to CourtConnect.
@@ -13,7 +14,7 @@ import { resolvePlayingClub } from '@/lib/partnerFinder/server';
  * needs a door, and this is it. The old shared games pages under /courtconnect
  * redirect here too (next.config.mjs).
  *
- *   signed out        → sign in, then back here
+ *   signed out        → the CourtConnect landing page (what link previews see)
  *   staff at a club   → the director view
  *   a playing member  → their club's board
  *   neither           → the member home, which explains what's next
@@ -25,7 +26,7 @@ export default async function CourtConnectEntry() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) redirect('/login?redirect=/courtconnect');
+  if (!user) return <CourtConnectLanding />;
 
   if ((await reachableClubs(user.id, user.email)).length > 0) redirect('/run/members/courtconnect');
   if (await resolvePlayingClub(getSupabaseAdmin(), user.id)) redirect('/member/games');

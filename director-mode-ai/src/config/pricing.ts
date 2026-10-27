@@ -44,6 +44,16 @@ export const TEXT_PRICE_CENTS = 3;
 export const EMAIL_MONTHLY_CAP_CENTS = 3000;
 
 /**
+ * Every club's first emails are free, with no card (Darrin + Kevin, 2026-10-27):
+ * one shared allowance for the whole club, not per member, and one-time, not
+ * monthly. After it runs out the club needs a payer: the director's card, or a
+ * member who sponsors the club. Texts are never free.
+ */
+export const FREE_EMAILS_PER_CLUB = 1000;
+/** Emails used at which the "keep it going" prompt starts showing. */
+export const FREE_EMAIL_NUDGE_AT = 500;
+
+/**
  * On (Darrin, 2026-10-21): a club without a card on file has its emails held
  * and its texts refused until it adds one, and the nightly usage report bills
  * emails and texts alongside Ask Claude. Off = record-only, nothing blocked or
