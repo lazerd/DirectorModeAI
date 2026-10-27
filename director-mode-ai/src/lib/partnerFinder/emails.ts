@@ -140,11 +140,16 @@ export function inviteEmail(
     spotsLeft: number;
     /** Who is already in, poster first. */
     playing?: string[];
+    /** The host's nudge to people who never answered the first one. */
+    again?: boolean;
   },
 ): GameMessage {
   const tz = club.timezone;
   const level = ratingLabel(g.rating_min, g.rating_max, club.levels);
   const line = `${headline(g, tz)} ${needsLabel(opts.spotsLeft)}${level ? ` (${level})` : ''}`;
+  const ask = opts.again
+    ? `${esc(opts.poster)} is still looking for players for this game. Can you play?`
+    : 'a game at the club needs players. Can you play?';
   /*
    * Yes and no, side by side. Both go to the same page rather than acting on
    * the click, because mail scanners follow links: a Safe Links check must not
@@ -153,7 +158,7 @@ export function inviteEmail(
    */
   const url = linkUrl(opts.token);
   const body = `
-    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, a game at the club needs players. Can you play?</p>
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Hi ${esc(firstName(opts.name))}, ${ask}</p>
     ${details(g, club, opts.poster, opts.playing)}
     <p style="margin:24px 0 10px">${button(`${url}?a=yes`, "Yes, I'm in")}</p>
     <p style="margin:0 0 14px">${button(`${url}?a=no`, 'No, not this time', MUTED)}</p>
@@ -163,7 +168,7 @@ export function inviteEmail(
     : '';
   return {
     to: opts.to,
-    subject: ascii(`${line}. Posted by ${opts.poster}`),
+    subject: ascii(`${opts.again ? 'Still looking: ' : ''}${line}. Posted by ${opts.poster}`),
     html: shell(club, esc(line), body, footer),
     sms: ascii(`${club.name}: ${line}. Posted by ${opts.poster}. I'm in: ${linkUrl(opts.token)}`),
   };

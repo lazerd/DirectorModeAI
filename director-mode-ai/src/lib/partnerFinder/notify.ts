@@ -108,9 +108,14 @@ export async function inviteMembers(
   db: Db,
   game: Game,
   club: Club,
-  opts: { onlyNew?: boolean; only?: string[] } = {},
+  opts: { onlyNew?: boolean; only?: string[]; again?: boolean } = {},
 ): Promise<number> {
-  const { data, error } = await db.rpc('pf_game_recipients', { p_game: game.id, p_limit: MAX_RECIPIENTS });
+  // A re-send to named people looks through the whole club, so the 50-person
+  // cap on a first blast can't drop somebody who was in it.
+  const { data, error } = await db.rpc('pf_game_recipients', {
+    p_game: game.id,
+    p_limit: opts.only?.length ? 1000 : MAX_RECIPIENTS,
+  });
   if (error) {
     console.error('[courtconnect] recipients', error.message);
     return 0;
@@ -178,6 +183,7 @@ export async function inviteMembers(
         stopToken: r.stop_token,
         spotsLeft: left,
         playing,
+        again: opts.again,
       }),
     );
 
@@ -268,7 +274,13 @@ export async function afterJoin(
   ]);
 }
 
-export async function afterLeave(db: Db, gameId: string, leaverId: string | null, leaverName?: string): Promise<void> {
+export async function afterLeave(
+  db: Db,
+  gameId: string,
+  leaverId: string | null,
+  leaverName?: string,
+  opts: { byHost?: boolean } = {},
+): Promise<void> {
   const game = await loadGame(db, gameId);
   if (!game) return;
   const club = await loadClub(db, game.club_id);
@@ -309,7 +321,8 @@ export async function afterLeave(db: Db, gameId: string, leaverId: string | null
     );
   }
 
-  if (!poster?.email) return;
+  // The host took them off themselves; they don't need an email about it.
+  if (opts.byHost || !poster?.email) return;
   const links = await ensureLinks(db, game, [game.posted_by]);
   await deliver(club, [
     spotOpenedEmail(game, club, {
@@ -499,4 +512,41 @@ export async function inviteGuests(
     .in('contact_id', targets.map((c) => c.id))
     .in('status', ['invited', 'left']);
   return { recipients, subject: sample?.subject ?? '', sent, skipped };
+}
+
+/**
+ * The host's nudge: the same invitation again, to everyone this game emailed
+ * who never answered, plus the host's own friends still sitting on "invited".
+ * Anyone with ANY answer (in, in line, no, dropped out) is left alone, and so
+ * is anyone who has since muted game email (pf_game_recipients). `send: false`
+ * is the preview, from the same lists.
+ */
+export async function nudgeNonResponders(
+  db: Db,
+  game: Game,
+  club: Club,
+  send: boolean,
+): Promise<{ members: string[]; friends: string[]; sent: number }> {
+  const [{ data: linkRows }, { data: answered }, { data: fitRows }, guestLinks] = await Promise.all([
+    db.from('pf_links').select('person_id').eq('game_id', game.id).not('emailed_at', 'is', null),
+    db.from('pf_game_players').select('person_id').eq('game_id', game.id).not('person_id', 'is', null),
+    db.rpc('pf_game_recipients', { p_game: game.id, p_limit: 1000 }),
+    gameGuestLinks(db, game.id),
+  ]);
+  const gaveAnswer = new Set(((answered as { person_id: string }[] | null) ?? []).map((r) => r.person_id));
+  const fits = new Map(
+    ((fitRows as { person_id: string; full_name: string | null }[] | null) ?? []).map((r) => [r.person_id, r.full_name]),
+  );
+  const memberIds = [...new Set(((linkRows as { person_id: string }[] | null) ?? []).map((l) => l.person_id))].filter(
+    (id) => !gaveAnswer.has(id) && fits.has(id),
+  );
+  const quiet = guestLinks.filter((l) => l.status === 'invited');
+  const members = memberIds.map((id) => shortName(fits.get(id)));
+  const friends = quiet.map((l) => l.name);
+  if (!send) return { members, friends, sent: 0 };
+
+  let sent = memberIds.length ? await inviteMembers(db, game, club, { only: memberIds, again: true }) : 0;
+  if (quiet.length) sent += (await inviteGuests(db, game, club, quiet.map((l) => l.contact_id), true)).sent;
+  await db.from('pf_games').update({ nudged_at: new Date().toISOString() }).eq('id', game.id);
+  return { members, friends, sent };
 }

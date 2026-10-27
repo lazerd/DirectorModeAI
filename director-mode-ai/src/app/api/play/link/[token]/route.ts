@@ -2,7 +2,7 @@
  * POST /api/play/link/[token] — the no-login actions behind an emailed link.
  *
  * { action: 'join' | 'decline' | 'leave' | 'cancel' | 'level' | 'add' | 'message'
- *          | 'guest_save' | 'guest_forget' | 'guest_invite', ... }
+ *          | 'guest_save' | 'guest_forget' | 'guest_invite' | 'remove' | 'nudge', ... }
  *
  * The token is the credential: it names one game and one person, and it can
  * only act as that person on that game. Same rule as CaptainMode's sub claim.
@@ -16,10 +16,12 @@ import {
   declineGame,
   forgetGuestContact,
   hostAddPlayer,
+  hostRemovePlayer,
   inviteGuestContacts,
   joinGame,
   leaveGame,
   messageGame,
+  nudgeGame,
   saveGuestContact,
 } from '@/lib/partnerFinder/actions';
 import { linkByToken, loadClub, personRow, saveSelfRating } from '@/lib/partnerFinder/server';
@@ -56,6 +58,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
     email?: unknown;
     contactId?: unknown;
     contactIds?: unknown;
+    seatId?: unknown;
   };
 
   /*
@@ -69,6 +72,16 @@ export async function POST(req: Request, { params }: { params: { token: string }
     return NextResponse.json(
       await hostAddPlayer(db, link.game_id, link.person_id, { personId, guestName }),
     );
+  }
+
+  /* The host taking someone off their game. pf_host_remove refuses anyone else. */
+  if (body.action === 'remove' && typeof body.seatId === 'string') {
+    return NextResponse.json(await hostRemovePlayer(db, link.game_id, link.person_id, body.seatId));
+  }
+
+  /* The host's one nudge to everyone who never answered. Preview unless send. */
+  if (body.action === 'nudge') {
+    return NextResponse.json(await nudgeGame(db, link.game_id, link.person_id, body.send === true));
   }
 
   /*

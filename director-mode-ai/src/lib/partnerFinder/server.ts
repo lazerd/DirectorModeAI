@@ -56,6 +56,8 @@ export type Game = {
   filled_at: string | null;
   cancelled_at: string | null;
   reminder_sent_at: string | null;
+  /** The host's one re-send to everyone who never answered (pf_host_remove.sql). */
+  nudged_at: string | null;
   created_at: string;
 };
 
@@ -110,7 +112,7 @@ export type RosterRow = {
 };
 
 export const GAME_COLS =
-  'id, club_id, posted_by, starts_at, duration_min, format, spots_needed, rating_min, rating_max, include_unrated, court, note, gender, sport, list_id, status, notified_count, filled_at, cancelled_at, reminder_sent_at, created_at';
+  'id, club_id, posted_by, starts_at, duration_min, format, spots_needed, rating_min, rating_max, include_unrated, court, note, gender, sport, list_id, status, notified_count, filled_at, cancelled_at, reminder_sent_at, nudged_at, created_at';
 
 const num = (v: unknown) => (v == null ? null : Number(v));
 
@@ -325,6 +327,8 @@ export type GroupMember = {
    * Null for a guest the host just typed in by name.
    */
   guestToken?: string | null;
+  /** The pf_game_players row, for the host's Remove. Null for the poster, who has no seat. */
+  seatId?: string | null;
 };
 
 /** The poster plus everyone currently in, poster first. */
@@ -383,6 +387,7 @@ export async function gameGroup(db: Db, game: Game, roster?: RosterRow[]): Promi
         isPoster: false,
         isGuest: true,
         guestToken: guestBySeat.get(row.id)?.token ?? null,
+        seatId: row.id,
       });
       continue;
     }
@@ -395,6 +400,7 @@ export async function gameGroup(db: Db, game: Game, roster?: RosterRow[]): Promi
       phone: r?.share_phone && r.phone ? r.phone : null,
       isPoster: false,
       isGuest: false,
+      seatId: row.id,
     });
   }
   return members;

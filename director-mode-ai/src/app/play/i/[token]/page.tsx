@@ -141,7 +141,10 @@ export default async function GameLinkPage({ params }: { params: { token: string
         name: m.short,
         note: m.isPoster ? 'posted the game' : null,
         phone: isPoster || imIn ? m.phone : null,
+        // Only the host gets seat ids — it is what their Remove button sends.
+        seatId: isPoster ? m.seatId ?? null : null,
       }))}
+      nudged={!!game.nudged_at}
       addable={addable}
       friends={friends}
       myLevel={me.ntrp}

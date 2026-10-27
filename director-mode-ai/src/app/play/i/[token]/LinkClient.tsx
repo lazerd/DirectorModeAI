@@ -31,7 +31,9 @@ type Props = {
   /** 1-based place in line, or 0 when not waiting. */
   myWaitPlace: number;
   waitingCount: number;
-  group: { name: string; note: string | null; phone: string | null }[];
+  group: { name: string; note: string | null; phone: string | null; seatId: string | null }[];
+  /** The host already sent their one reminder to people who never answered. */
+  nudged: boolean;
   /** Members the host may seat by hand. Empty for everyone but the host. */
   addable: { id: string; name: string }[];
   /** The poster's own outside friends and their answer for this game. Empty for everyone else. */
@@ -61,6 +63,8 @@ export default function LinkClient(p: Props) {
   const [invitePreview, setInvitePreview] = useState<null | { recipients: string[]; subject: string; skipped: string[] }>(null);
   const [msg, setMsg] = useState('');
   const [preview, setPreview] = useState<null | { recipients: string[]; subject: string; noEmail: string[] }>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [nudgePreview, setNudgePreview] = useState<null | { members: string[]; friends: string[] }>(null);
 
   async function act(action: 'join' | 'decline' | 'leave' | 'cancel') {
     setBusy(true);
@@ -99,6 +103,44 @@ export default function LinkClient(p: Props) {
       setGuest('');
       setAdding(false);
     }
+    router.refresh();
+  }
+
+  /*
+   * The host taking someone off — they cancelled by text, or a guest isn't
+   * coming. Two taps: the name's Remove, then "Yes, take them off".
+   */
+  async function removePlayer(seatId: string) {
+    setBusy(true);
+    setNotice(null);
+    const r = await postJson<Outcome>(`/api/play/link/${p.token}`, { action: 'remove', seatId });
+    setBusy(false);
+    setRemoving(null);
+    if (r.error) return setNotice({ tone: 'bad', text: r.error });
+    setNotice({ tone: r.ok ? 'good' : 'info', text: r.message });
+    router.refresh();
+  }
+
+  /*
+   * One more invitation to everyone who never answered. Preview first (same
+   * server code), then send. Once per game.
+   */
+  async function nudge(send: boolean) {
+    setBusy(true);
+    setNotice(null);
+    const r = await postJson<Outcome & { members?: string[]; friends?: string[] }>(`/api/play/link/${p.token}`, {
+      action: 'nudge',
+      send,
+    });
+    setBusy(false);
+    if (r.error) return setNotice({ tone: 'bad', text: r.error });
+    if (!r.ok) {
+      setNudgePreview(null);
+      return setNotice({ tone: 'info', text: r.message });
+    }
+    if (!send) return setNudgePreview({ members: r.members ?? [], friends: r.friends ?? [] });
+    setNudgePreview(null);
+    setNotice({ tone: 'good', text: r.message });
     router.refresh();
   }
 
@@ -273,7 +315,40 @@ export default function LinkClient(p: Props) {
               <p className="mt-1 text-lg text-slate-600">Still {needsLabel(p.spotsLeft)}.</p>
             )}
             <div className="mt-4">
-              <PeopleList people={p.group} />
+              {p.isPoster && !closedText ? (
+                <ul className="space-y-3 text-lg">
+                  {p.group.map((m, i) => (
+                    <li key={`${m.name}-${i}`} className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span className="font-semibold">{m.name}</span>
+                        {m.note && <span className="text-slate-500">{m.note}</span>}
+                        {m.phone && (
+                          <a href={`tel:${m.phone.replace(/[^0-9+]/g, '')}`} className="text-emerald-800 underline">
+                            {m.phone}
+                          </a>
+                        )}
+                        {m.seatId && removing !== m.seatId && (
+                          <button onClick={() => setRemoving(m.seatId)} className="ml-auto text-base text-rose-700 underline">
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                      {m.seatId && removing === m.seatId && (
+                        <div className="flex flex-col gap-2 rounded-2xl bg-rose-50 p-3 sm:flex-row">
+                          <button onClick={() => removePlayer(m.seatId!)} disabled={busy} className={`${dangerBtn} flex-1`}>
+                            {busy ? 'One moment…' : `Yes, take ${m.name} off`}
+                          </button>
+                          <button onClick={() => setRemoving(null)} className={`${secondaryBtn} flex-1`}>
+                            Keep them
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <PeopleList people={p.group} />
+              )}
             </div>
           </section>
         )}
@@ -470,6 +545,40 @@ export default function LinkClient(p: Props) {
           ) : (
             <button onClick={() => setInviting(true)} className={`${secondaryBtn} w-full`}>
               Invite your own friends
+            </button>
+          )
+        )}
+
+        {/* The host's one reminder to everyone who got the invitation and never answered. */}
+        {p.isPoster && !closedText && p.status === 'open' && !p.nudged && (
+          nudgePreview ? (
+            <section className="space-y-3 rounded-3xl border-2 border-emerald-300 bg-white p-6">
+              <h2 className="text-2xl font-bold">Remind people who haven&rsquo;t answered</h2>
+              <p className="text-lg text-slate-600">
+                They get the invitation again, saying you&rsquo;re still looking. You can do this once per game.
+              </p>
+              {nudgePreview.members.length > 0 && (
+                <p className="text-lg">
+                  <span className="font-semibold">Members ({nudgePreview.members.length}):</span> {nudgePreview.members.join(', ')}
+                </p>
+              )}
+              {nudgePreview.friends.length > 0 && (
+                <p className="text-lg">
+                  <span className="font-semibold">Your friends ({nudgePreview.friends.length}):</span> {nudgePreview.friends.join(', ')}
+                </p>
+              )}
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <button onClick={() => nudge(true)} disabled={busy} className={`${primaryBtn} flex-1`}>
+                  {busy ? 'Sending…' : 'Send it'}
+                </button>
+                <button onClick={() => setNudgePreview(null)} className={`${secondaryBtn} flex-1`}>
+                  Never mind
+                </button>
+              </div>
+            </section>
+          ) : (
+            <button onClick={() => nudge(false)} disabled={busy} className={`${secondaryBtn} w-full`}>
+              Remind people who haven&rsquo;t answered
             </button>
           )
         )}

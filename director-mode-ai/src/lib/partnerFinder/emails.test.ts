@@ -35,6 +35,7 @@ const game: Game = {
   filled_at: '2026-09-22T17:26:00.000Z',
   cancelled_at: null,
   reminder_sent_at: null,
+  nudged_at: null,
   created_at: '2026-09-21T18:17:37.676Z',
 };
 

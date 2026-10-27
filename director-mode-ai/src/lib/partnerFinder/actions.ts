@@ -11,7 +11,7 @@ import { background } from './background';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { afterCancel, afterJoin, afterLeave, inviteGuests, messageSignups } from './notify';
+import { afterCancel, afterJoin, afterLeave, inviteGuests, messageSignups, nudgeNonResponders } from './notify';
 import { clubRoster, guestLinkByToken, genderFits, levelFits, loadClub, loadGame, personGender, memberRow, personRow, resolvePlayingClub, type Club, type Db } from './server';
 
 export type ActionOutcome = {
@@ -149,6 +149,55 @@ export async function leaveGame(db: Db, gameId: string, personId: string): Promi
   if (r.result !== 'left') return { ok: false, result: r.result, message: say(r.result) };
   background('leave email', () => afterLeave(db, gameId, personId));
   return { ok: true, result: 'left', message: say('left') };
+}
+
+/**
+ * The host taking someone off their own game: a member who cancelled on them,
+ * or a guest they typed in. Asked for by Walden (2026-10-27) after Tony Chen
+ * cancelled and there was no way to take him out. Only the poster, by seat;
+ * a full game reopens and anyone in line hears about the spot.
+ */
+export async function hostRemovePlayer(db: Db, gameId: string, actorPersonId: string, seatId: string): Promise<ActionOutcome> {
+  const { data, error } = await db.rpc('pf_host_remove', { p_game: gameId, p_actor: actorPersonId, p_seat: seatId });
+  if (error) return { ok: false, result: 'error', message: say('error') };
+  const r = data as { result: string; person_id?: string | null; name?: string | null };
+  if (r.result === 'not_poster') {
+    return { ok: false, result: r.result, message: 'Only the person who posted the game can take players off it.' };
+  }
+  if (r.result === 'not_in') return { ok: false, result: r.result, message: 'They are not in this game any more.' };
+  if (r.result !== 'removed') return { ok: false, result: r.result, message: say(r.result) };
+  background('host remove emails', () => afterLeave(db, gameId, r.person_id ?? null, r.name ?? undefined, { byHost: true }));
+  return { ok: true, result: 'removed', message: `${r.name || 'They'} is off the game, and the spot is open again.` };
+}
+
+/**
+ * The host's nudge: one more invitation to everyone who never answered.
+ * Once per game, because a second blast to the whole list is how a club earns
+ * a mute. `send: false` is the preview.
+ */
+export async function nudgeGame(
+  db: Db,
+  gameId: string,
+  personId: string,
+  send: boolean,
+): Promise<ActionOutcome & { members?: string[]; friends?: string[] }> {
+  const ctx = await posterGame(db, gameId, personId);
+  if ('error' in ctx) return ctx.error!;
+  if (ctx.game.status !== 'open') return { ok: false, result: 'full', message: 'Your game is full, so nobody needs a nudge.' };
+  if (ctx.game.nudged_at) {
+    return { ok: false, result: 'already_nudged', message: 'You already sent the reminder for this game. You can still message the players or invite friends.' };
+  }
+  const r = await nudgeNonResponders(db, ctx.game, ctx.club, send);
+  if (!r.members.length && !r.friends.length) {
+    return { ok: false, result: 'nobody', message: 'Everyone who got the invitation has already answered.', ...r };
+  }
+  if (!send) return { ok: true, result: 'preview', message: '', ...r };
+  return {
+    ok: true,
+    result: 'nudged',
+    message: `Sent again to ${r.members.length + r.friends.length} ${r.members.length + r.friends.length === 1 ? 'person' : 'people'} who hadn't answered.`,
+    ...r,
+  };
 }
 
 /**
