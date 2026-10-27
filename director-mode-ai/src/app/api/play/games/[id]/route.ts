@@ -19,13 +19,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const ctx = await requireMember(game.club_id);
   if (isCtxError(ctx)) return ctx.error;
 
+  // The seat functions take a PERSON (courtconnect_actions_by_person.sql), not
+  // the login. Passing user.id here broke every board tap until 2026-10-27.
+  const personId = ctx.personId;
+  if (!personId) {
+    return NextResponse.json({ ok: false, result: 'not_member', message: 'Only members of this club can join its games.' });
+  }
+
   const outcome =
     body.action === 'join'
-      ? await joinGame(ctx.db, game.id, ctx.user.id, 'board')
+      ? await joinGame(ctx.db, game.id, personId, 'board')
       : body.action === 'leave'
-        ? await leaveGame(ctx.db, game.id, ctx.user.id)
+        ? await leaveGame(ctx.db, game.id, personId)
         : body.action === 'cancel'
-          ? await cancelGame(ctx.db, game.id, ctx.user.id)
+          ? await cancelGame(ctx.db, game.id, personId)
           : null;
   if (!outcome) return NextResponse.json({ error: 'Unknown action.' }, { status: 400 });
   return NextResponse.json(outcome);
