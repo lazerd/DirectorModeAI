@@ -88,7 +88,7 @@ const COPY: Record<
   bailed: {
     icon: AlertTriangle, tone: '#f87171',
     title: 'Someone dropped out',
-    body: (n) => `${n.bailed} withdrew after the lineup went out. Her row is open below.`,
+    body: (n) => `${n.bailed} withdrew after the lineup went out. ${n.bailed === 1 ? 'Their row is' : 'Their rows are'} open below.`,
   },
   ready: {
     icon: CheckCircle2, tone: '#34d399',

@@ -4,7 +4,8 @@
  *
  * POST { team_id, match_id, lineup_id, slot, dropped_player_id? }
  *
- * Eligible = active roster member or sub, not already in this lineup, and
+ * Eligible = active roster member or sub, not already in this lineup, not
+ * already out of this match (an earlier dropout or a "no" on the poll), and
  * (for capped leagues) their rating still fits the court they'd be joining.
  */
 import { NextResponse } from 'next/server';
@@ -73,6 +74,19 @@ export async function POST(req: Request) {
       .filter(Boolean) as string[],
   );
   if (body.dropped_player_id) busy.add(body.dropped_player_id);
+
+  // Anyone who already said they're out of THIS match is out: an earlier
+  // dropout (their seat went to a sub) or a "no" on the availability poll.
+  // QA 2026-10-27: Walden pulled out, was replaced, and was then asked to
+  // cover the next dropout.
+  const [{ data: pastDrops }, { data: saidNo }] = await Promise.all([
+    db.from('captain_sub_requests').select('dropped_player_id').eq('match_id', body.match_id),
+    db.from('captain_availability').select('player_id').eq('match_id', body.match_id).eq('status', 'no'),
+  ]);
+  for (const r of (pastDrops as { dropped_player_id: string | null }[]) || []) {
+    if (r.dropped_player_id) busy.add(r.dropped_player_id);
+  }
+  for (const r of (saidNo as { player_id: string }[]) || []) busy.add(r.player_id);
 
   const { data: players } = await db
     .from('captain_players')
