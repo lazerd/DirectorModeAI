@@ -15,10 +15,44 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { blockIfDemo } from '@/lib/demo/server';
+import { resolveActiveClub } from '@/lib/clubs/activeClub';
 
 // Not exported — Next route files may only export handlers.
 /** Ordered loosest-to-tightest for display. Must match is_club_team(). */
 import { CLUB_ROLES, STAFF_ROLES, type ClubRole } from '@/lib/clubRoles';
+
+/**
+ * The OWNED club this owner is running right now.
+ *
+ * This used to be `.eq('owner_id', user.id).maybeSingle()`, which errors -- and
+ * so answers "no club" -- for anyone who owns more than one. Darrin owns four,
+ * so PlayerVault showed every member as roster-only with Add/Invite buttons
+ * that would mint duplicate accounts. Read the active club the rest of the
+ * app uses (vault rows are fetched by the same choice), and still only when
+ * the caller owns it.
+ */
+async function ownedActiveClub(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  userId: string,
+  email: string | null | undefined,
+): Promise<{ id: string; name: string; join_code: string; owner_id: string } | null> {
+  const { active } = await resolveActiveClub(userId, email);
+  if (active) {
+    const { data } = await admin
+      .from('cc_clubs')
+      .select('id, name, join_code, owner_id')
+      .eq('id', active.id)
+      .eq('owner_id', userId)
+      .maybeSingle();
+    if (data) return data;
+  }
+  const { data: first } = await admin
+    .from('cc_clubs')
+    .select('id, name, join_code, owner_id')
+    .eq('owner_id', userId)
+    .limit(1);
+  return first?.[0] ?? null;
+}
 
 export async function GET() {
   const userClient = await createClient();
@@ -26,11 +60,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const admin = getSupabaseAdmin();
-  const { data: club } = await admin
-    .from('cc_clubs')
-    .select('id, name, join_code')
-    .eq('owner_id', user.id)
-    .maybeSingle();
+  const club = await ownedActiveClub(admin, user.id, user.email);
   if (!club) return NextResponse.json({ club: null, members: [] });
 
   const { data: members } = await admin
@@ -90,11 +120,7 @@ export async function PATCH(req: Request) {
   }
 
   const admin = getSupabaseAdmin();
-  const { data: club } = await admin
-    .from('cc_clubs')
-    .select('id, owner_id')
-    .eq('owner_id', user.id)
-    .maybeSingle();
+  const club = await ownedActiveClub(admin, user.id, user.email);
   if (!club) return NextResponse.json({ error: 'You do not own a club.' }, { status: 403 });
 
   // The owner is the payer; demoting them would orphan the subscription.

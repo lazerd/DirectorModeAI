@@ -44,6 +44,13 @@ export default function AddVaultPlayerPage() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(!!editId);
   const [error, setError] = useState('');
+  /*
+   * The address this person SIGNS IN with, when the row is linked to a login
+   * (cc_vault_players.user_id). Editing the roster email below never changes
+   * it -- the row and its user_id stay put, so they are still one person -- and
+   * we say so rather than let a director think the login moved too.
+   */
+  const [loginEmail, setLoginEmail] = useState<string | null>(null);
 
   // UTR Lookup
   const [utrSearchName, setUtrSearchName] = useState('');
@@ -105,6 +112,16 @@ export default function AddVaultPlayerPage() {
       .select('*')
       .eq('id', editId)
       .single();
+
+    if (data?.user_id) {
+      // Owner-only endpoint; anyone else simply gets no note.
+      fetch('/api/clubs/members')
+        .then((r) => r.json())
+        .then((json: { members?: { userId: string; email: string | null }[] }) => {
+          setLoginEmail(json.members?.find((m) => m.userId === data.user_id)?.email ?? null);
+        })
+        .catch(() => {});
+    }
 
     if (data) {
       setForm({
@@ -215,9 +232,17 @@ export default function AddVaultPlayerPage() {
     let savedId = editId;
 
     if (editId) {
+      /*
+       * An edit changes the person's details, never whose roster they are on.
+       * Stamping director_id with whoever pressed Save moved a row edited by a
+       * staff director out from under the owner -- and pf_member_roster folds
+       * rows by the owner's id, so the person came apart from their login.
+       * user_id is not in this payload either: the link survives any edit.
+       */
+      const { director_id: _d, club_id: _c, ...edits } = playerData;
       const { error: updateError } = await supabase
         .from('cc_vault_players')
-        .update(playerData)
+        .update(edits)
         .eq('id', editId);
       if (updateError) { setError(updateError.message); setSaving(false); return; }
     } else {
@@ -404,6 +429,11 @@ export default function AddVaultPlayerPage() {
               onChange={e => updateForm('email', e.target.value)}
               placeholder="player@email.com"
             />
+            {loginEmail && loginEmail.toLowerCase() !== form.email.trim().toLowerCase() && (
+              <p className="mt-1 text-xs text-amber-400/80">
+                Signs in as {loginEmail}. This email is where the club writes to them; their login stays the same.
+              </p>
+            )}
           </div>
         </div>
 

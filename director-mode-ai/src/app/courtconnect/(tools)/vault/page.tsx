@@ -68,14 +68,23 @@ type VaultPlayer = {
   cc_player_id: string | null;
   notes: string | null;
   created_at: string;
+  /** The login that belongs to this person. THE identity link -- never the email. */
+  user_id: string | null;
 };
 
 // A person with a login account in this club (may or may not have a roster row).
 type Member = { userId: string; role: string; isStaff: boolean; isOwner: boolean; name: string; email: string | null };
 type Club = { name: string; join_code: string };
 type Account = { userId: string; role: string; isStaff: boolean; isOwner: boolean };
-// A unified row: a roster player, a member account, or both (matched by email).
-type Row = VaultPlayer & { _account: Account | null; _memberOnly?: boolean };
+// A unified row: a roster player, a member account, or both (matched by user_id).
+type Row = VaultPlayer & {
+  _account: Account | null;
+  _memberOnly?: boolean;
+  /** The address they sign in with, when it differs from the roster's. */
+  _loginEmail?: string | null;
+  /** Roster-only because this inbox already belongs to someone else's login. */
+  _sharesInboxWith?: string;
+};
 
 type SortKey =
   | 'name_asc'
@@ -254,22 +263,63 @@ export default function PlayerVaultPage() {
     }
   }
 
-  // ---- merge roster + accounts into one people list, keyed by email ----
-  const memberByEmail = new Map<string, Member>();
-  members.forEach((m) => { if (m.email) memberByEmail.set(m.email.toLowerCase(), m); });
-  const rosterEmails = new Set(players.map((p) => p.email?.toLowerCase()).filter(Boolean) as string[]);
+  /*
+   * ---- merge roster + accounts into one people list, keyed by the PERSON ----
+   *
+   * A PlayerVault row is the person; cc_vault_players.user_id is the login
+   * that belongs to them. Matching on email instead is what split Chris in two
+   * the moment his address was corrected (an "Add" row with the new address,
+   * a ghost member row with the old), and what handed Sam Kim -- no login,
+   * sharing qa-household@ with Pat -- Pat's role dropdown, so promoting "Sam"
+   * would have made Pat a director.
+   *
+   * The email is consulted only the way pf_member_roster() does it: for a row
+   * that was NEVER linked, against an account that has no linked row at all,
+   * and only when that leaves one obvious person (the name-matching row, or
+   * the only row on that address). Anything else stays roster-only.
+   */
+  const memberById = new Map<string, Member>(members.map((m) => [m.userId, m]));
+  const linkedUserIds = new Set(players.map((p) => p.user_id).filter((id): id is string => !!id && memberById.has(id)));
+  const norm = (s: string | null | undefined) => (s || '').trim().toLowerCase();
+  const fallbackRowFor = new Map<string, string>(); // userId -> vault row id
+  members.forEach((m) => {
+    if (!m.email || linkedUserIds.has(m.userId)) return;
+    const candidates = players.filter((p) => !p.user_id && norm(p.email) === norm(m.email));
+    const pick = candidates.find((p) => norm(p.full_name) === norm(m.name)) ?? (candidates.length === 1 ? candidates[0] : undefined);
+    if (pick) fallbackRowFor.set(m.userId, pick.id);
+  });
+  const fallbackMemberFor = new Map<string, Member>();
+  fallbackRowFor.forEach((rowId, userId) => fallbackMemberFor.set(rowId, memberById.get(userId)!));
+  const matchedUserIds = new Set<string>([...linkedUserIds, ...fallbackRowFor.keys()]);
+  // Who else on the roster uses this inbox and DOES have a login -- so a
+  // household member without one can say why they are roster-only.
+  const loginHolderByEmail = new Map<string, string>();
 
   const rosterRows: Row[] = players.map((p) => {
-    const acct = p.email ? memberByEmail.get(p.email.toLowerCase()) : undefined;
-    return { ...p, _account: acct ? { userId: acct.userId, role: acct.role, isStaff: acct.isStaff, isOwner: acct.isOwner } : null };
+    const acct = (p.user_id ? memberById.get(p.user_id) : undefined) ?? fallbackMemberFor.get(p.id);
+    if (acct && p.email) loginHolderByEmail.set(norm(p.email), p.full_name);
+    return {
+      ...p,
+      _account: acct ? { userId: acct.userId, role: acct.role, isStaff: acct.isStaff, isOwner: acct.isOwner } : null,
+      _loginEmail: acct?.email ?? null,
+    };
+  });
+  rosterRows.forEach((r) => {
+    if (r._account || !r.email) return;
+    const holder = loginHolderByEmail.get(norm(r.email));
+    if (holder) r._sharesInboxWith = holder;
+    // An inbox that belongs to a seated account nobody on the roster is
+    // linked to still is not this person's login -- seating "them" by email
+    // would only find that account again.
+    else if (members.some((m) => norm(m.email) === norm(r.email))) r._sharesInboxWith = 'another member';
   });
   const memberOnlyRows: Row[] = members
-    .filter((m) => !m.email || !rosterEmails.has(m.email.toLowerCase()))
+    .filter((m) => !matchedUserIds.has(m.userId))
     .map((m) => ({
       id: `member:${m.userId}`, full_name: m.name, email: m.email, phone: null, gender: null, age: null,
       usta_rating: null, utr_singles: null, utr_doubles: null, wtn: null, wtn_doubles: null,
       dupr_singles: null, dupr_doubles: null, primary_sport: 'tennis',
-      membership_status: 'active', cc_player_id: null, notes: null, created_at: '',
+      membership_status: 'active', cc_player_id: null, notes: null, created_at: '', user_id: m.userId,
       _account: { userId: m.userId, role: m.role, isStaff: m.isStaff, isOwner: m.isOwner }, _memberOnly: true,
     }));
   const allRows: Row[] = [...rosterRows, ...memberOnlyRows];
@@ -358,7 +408,9 @@ export default function PlayerVaultPage() {
     : r === 'coach' ? <GraduationCap className="h-3.5 w-3.5 text-violet-400" />
     : <UserIcon className="h-3.5 w-3.5 text-gray-400" />;
 
-  const memberCount = allRows.filter((r) => r._account).length;
+  // Logins are counted once per ACCOUNT: two roster rows can never both own
+  // one login, and a household member on a shared inbox has none of their own.
+  const memberCount = new Set(allRows.filter((r) => r._account).map((r) => r._account!.userId)).size;
   const rosterOnly = allRows.filter((r) => !r._account).length;
 
   return (
@@ -409,9 +461,9 @@ export default function PlayerVaultPage() {
 
       {/* Who CourtConnect can actually reach */}
       <p className="mb-4 text-sm text-gray-400">
-        <strong className="text-white">{allRows.filter((r) => r._account).length}</strong> in CourtConnect
+        <strong className="text-white">{memberCount}</strong> in CourtConnect
         <span className="text-gray-500"> (have an account, can be emailed about games)</span> ·{' '}
-        <strong className="text-white">{allRows.filter((r) => !r._account).length}</strong> on the roster only
+        <strong className="text-white">{rosterOnly}</strong> on the roster only
         <span className="text-gray-500"> — use Add or Invite in the Access column to bring them in.</span>
       </p>
 
@@ -574,7 +626,16 @@ export default function PlayerVaultPage() {
                       )}
                     </div>
                   </td>
-                  <td className="text-gray-500 text-sm">{player.email || '—'}</td>
+                  <td className="text-gray-500 text-sm">
+                    {player.email || '—'}
+                    {/* The roster address is where the club writes; the login
+                        is untouched by editing it. Say so when they differ. */}
+                    {player._loginEmail && player._loginEmail.toLowerCase() !== (player.email || '').trim().toLowerCase() && (
+                      <div className="text-xs text-amber-400/80" title="Editing the roster email does not change the address they sign in with">
+                        Signs in as {player._loginEmail}
+                      </div>
+                    )}
+                  </td>
                   <td>
                     {player._memberOnly ? <span className="text-gray-500 text-sm">—</span> : <span className="badge badge-courtconnect text-xs">{sportLabel(player.primary_sport)}</span>}
                   </td>
@@ -586,6 +647,7 @@ export default function PlayerVaultPage() {
                       : personLevel(scaleFor(player.primary_sport), player)}
                   </td>
                   <td className="text-sm">{player.utr_singles || '—'}</td>
+                  <td className="text-sm">{player.utr_doubles || '—'}</td>
                   <td className="text-sm" title="World Tennis Number — lower is stronger">
                     {formatWtn(wtnOf(player))}
                   </td>
@@ -615,6 +677,13 @@ export default function PlayerVaultPage() {
                           </select>
                         </span>
                       )
+                    ) : player._sharesInboxWith ? (
+                      <span
+                        className="text-xs text-gray-400"
+                        title="This inbox already belongs to someone else's login. Give them their own email to bring them in."
+                      >
+                        Roster only · shares an inbox with {player._sharesInboxWith}
+                      </span>
                     ) : player.email ? (
                       <span className="inline-flex items-center gap-1">
                         <button

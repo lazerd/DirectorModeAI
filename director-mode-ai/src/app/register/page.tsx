@@ -86,11 +86,34 @@ function RegisterForm() {
        *
        * So: send them the one email that does work — a link to set a password
        * on the account they already have.
+       *
+       * Through /api/auth/forgot-password, not supabase.auth.resetPasswordForEmail:
+       * the stock call's result was ignored, so when /auth/v1/recover 500'd
+       * (QA 2026-10-27) the page still said "we just emailed you a link" over
+       * an empty inbox. Ours sends the club-branded email whose token_hash link
+       * works on any device, and tells us when the send failed — in which case
+       * we say so here instead of promising mail that is not coming.
        */
       if (data.user && (data.user.identities?.length ?? 0) === 0) {
-        const redirectTo =
-          typeof window !== 'undefined' ? `${window.location.origin}/reset-password` : '/reset-password';
-        await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+        let sent = false;
+        try {
+          const res = await fetch('/api/auth/forgot-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email.trim() }),
+          });
+          const json = await res.json().catch(() => ({}));
+          sent = res.ok && json?.ok !== false;
+        } catch {
+          sent = false;
+        }
+        if (!sent) {
+          setError(
+            'This email already has an account, but we couldn’t send the link to choose your password. ' +
+              'Please try “Forgot password” on the sign-in page in a minute.',
+          );
+          return;
+        }
         router.push(`/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent(next)}&mode=existing`);
         return;
       }
