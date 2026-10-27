@@ -25,48 +25,43 @@ export default function FindCoachPage() {
   const [loading, setLoading] = useState(false);
   // Only a signed-in client has "My Lessons" to go back to.
   const [signedIn, setSignedIn] = useState(false);
+  // Set when the viewer is a club member: the list is that club's coaches only.
+  const [clubName, setClubName] = useState<string | null>(null);
 
   useEffect(() => {
     loadAllCoaches();
     createClient().auth.getUser().then(({ data: { user } }) => setSignedIn(!!user));
   }, []);
 
-  const loadAllCoaches = async () => {
+  /*
+   * The list comes from /api/find-coach, which scopes a member to their own
+   * club from the session. Reading lesson_coaches from the browser showed a
+   * member every club's coaches, demo clubs included.
+   */
+  const fetchCoaches = async (q: string) => {
     setLoading(true);
     setSearched(true);
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from('lesson_coaches')
-      .select('id, display_name, slug')
-      .not('slug', 'is', null)
-      .order('display_name', { ascending: true })
-      .limit(50);
-
-    if (error) console.error('Coach load failed:', error);
-    setCoaches(data || []);
+    try {
+      const res = await fetch(`/api/find-coach${q ? `?q=${encodeURIComponent(q)}` : ''}`, { cache: 'no-store' });
+      const j = (await res.json()) as { coaches?: Coach[]; club?: { name: string } | null; error?: string };
+      if (!res.ok) console.error('Coach load failed:', j.error);
+      setCoaches(j.coaches || []);
+      setClubName(j.club?.name ?? null);
+    } catch (err) {
+      console.error('Coach load failed:', err);
+      setCoaches([]);
+    }
     setLoading(false);
   };
 
-  const searchCoaches = async () => {
+  const loadAllCoaches = () => fetchCoaches('');
+
+  const searchCoaches = () => {
     if (!searchQuery.trim()) {
       loadAllCoaches();
       return;
     }
-
-    setLoading(true);
-    setSearched(true);
-
-    const supabase = createClient();
-    const { data, error } = await supabase
-      .from('lesson_coaches')
-      .select('id, display_name, slug')
-      .ilike('display_name', `%${searchQuery}%`)
-      .not('slug', 'is', null)
-      .limit(10);
-
-    if (error) console.error('Coach search failed:', error);
-    setCoaches(data || []);
-    setLoading(false);
+    fetchCoaches(searchQuery.trim());
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -89,8 +84,8 @@ export default function FindCoachPage() {
             </span>
           </Link>
           {signedIn && (
-            <Link href="/client/dashboard" className="text-sm text-white/70 hover:text-white">
-              ← Back to My Lessons
+            <Link href={clubName ? '/member' : '/client/dashboard'} className="text-sm text-white/70 hover:text-white">
+              {clubName ? '← Back to My Tennis' : '← Back to My Lessons'}
             </Link>
           )}
         </div>
@@ -99,7 +94,9 @@ export default function FindCoachPage() {
       <main className="max-w-2xl mx-auto px-4 py-12">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold mb-2 text-gray-900">Find Your Coach</h1>
-          <p className="text-gray-600">Search for your tennis coach to book lessons</p>
+          <p className="text-gray-600">
+            {clubName ? `Coaches at ${clubName}` : 'Search for your tennis coach to book lessons'}
+          </p>
         </div>
 
         {/* Search */}
@@ -136,9 +133,17 @@ export default function FindCoachPage() {
                 <p>
                   {searchQuery.trim()
                     ? `No coaches found matching "${searchQuery}"`
-                    : loading ? 'Loading coaches…' : 'No coaches listed yet.'}
+                    : loading
+                      ? 'Loading coaches…'
+                      : clubName
+                        ? `${clubName} hasn't listed any coaches here yet.`
+                        : 'No coaches listed yet.'}
                 </p>
-                <p className="text-sm mt-2">Ask your coach to share their booking link with you.</p>
+                <p className="text-sm mt-2">
+                  {clubName
+                    ? 'Ask the tennis staff about lessons, or ask your coach to share their booking link.'
+                    : 'Ask your coach to share their booking link with you.'}
+                </p>
               </div>
             ) : (
               <div className="divide-y divide-gray-100">

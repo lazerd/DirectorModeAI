@@ -91,7 +91,7 @@ export default async function MemberHome() {
 
   const { data: club } = await admin
     .from('cc_clubs')
-    .select('id, name, slug, owner_id, logo_url, city, state, timezone, sports')
+    .select('id, name, slug, owner_id, logo_url, city, state, timezone, sports, is_public')
     .eq('id', membership.club_id)
     .maybeSingle();
   if (!club) redirect('/');
@@ -218,9 +218,16 @@ export default async function MemberHome() {
 
       <main className="max-w-3xl mx-auto px-5 py-8 space-y-8">
         {/* quick actions */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {/* The sheet shows every court, booked or open, at the member's rate. */}
-          <Action href={`/courtsheet/${club.slug}`} icon={LayoutGrid} label="Court sheet" tone="#0891b2" />
+        <div className={`grid grid-cols-2 gap-3 ${club.is_public ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
+          {/*
+           * The sheet shows every court, booked or open, at the member's rate.
+           * /courtsheet/[slug] only resolves a club with is_public set, so for
+           * any other club the tile was a 404 (QA report #13). Hidden there; a
+           * public club with no courts yet gets the sheet's own empty state.
+           */}
+          {club.is_public && (
+            <Action href={`/courtsheet/${club.slug}`} icon={LayoutGrid} label="Court sheet" tone="#0891b2" />
+          )}
           <Action href="/member/games" icon={Handshake} label="CourtConnect" tone="#059669" />
           <Action href="/client/dashboard" icon={GraduationCap} label="My lessons" tone="#7c3aed" />
           <Action href="/find-coach" icon={User} label="Find a coach" tone="#ea580c" />

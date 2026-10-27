@@ -327,7 +327,7 @@ export default function ClubSidebar() {
         // Deterministic across pages when someone belongs to more than one club.
         const { data: mems } = await supabase
           .from('cc_club_members')
-          .select('role, club_id, created_at, cc_clubs(slug)')
+          .select('role, club_id, created_at, cc_clubs(slug, is_public)')
           .eq('user_id', user.id);
         if (cancelled) return;
         const primary = pickPrimaryClub(
@@ -338,7 +338,8 @@ export default function ClubSidebar() {
         // No club at all: a captain-only account hides the club rail (below).
         if (!mems || !(mems as unknown as any[]).length) setNoClub(true);
         if (mem && (mem as any).role === 'member') {
-          const slug = (mem as any).cc_clubs?.slug as string | undefined;
+          // /courtsheet/[slug] 404s unless the club is public (QA report #13).
+          const slug = (mem as any).cc_clubs?.is_public ? ((mem as any).cc_clubs?.slug as string | undefined) : undefined;
           setMemberNav([{
             heading: null,
             items: [
