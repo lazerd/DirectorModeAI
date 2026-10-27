@@ -67,6 +67,7 @@ export async function sendQueue(opts: { limit?: number; ids?: string[]; deadline
     if (!claimed?.length) continue;
 
     const res = await sendBilledEmail(null, {
+      platformPaid: true,
       to: r.to_email!,
       subject: r.subject || 'An opportunity from ClubMode Recruiting',
       html,

@@ -13,6 +13,7 @@
 
 import { NextResponse } from 'next/server';
 import { sendBilledEmail } from '@/lib/email';
+import { esc } from '@/lib/escapeHtml';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { computeCompositeRating, computeDoublesComposite } from '@/lib/leagueRatings';
 import { generateToken, isDoubles, CATEGORY_LABELS, type CategoryKey } from '@/lib/leagueUtils';
@@ -245,9 +246,9 @@ export async function POST(request: Request) {
           html: `
             <div style="font-family: -apple-system, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
               <h2 style="color: #ea580c; margin-top: 0;">Confirm your doubles partnership</h2>
-              <p><strong>${captainName}</strong> just registered you as their partner for:</p>
+              <p><strong>${esc(captainName)}</strong> just registered you as their partner for:</p>
               <div style="background: #fff7ed; border-left: 4px solid #ea580c; padding: 14px 18px; border-radius: 6px; margin: 16px 0;">
-                <div style="font-weight: 600; font-size: 16px;">${leagueName}</div>
+                <div style="font-weight: 600; font-size: 16px;">${esc(leagueName)}</div>
                 <div style="color: #6b7280; font-size: 14px; margin-top: 4px;">${categoryLabel}</div>
               </div>
               <p>Click the button below to confirm you're playing. If you didn't expect this email or don't want to play, just ignore it.</p>

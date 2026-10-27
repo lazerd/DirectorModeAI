@@ -134,6 +134,7 @@ async function persistAndNotify(
          <p style="margin:16px 0">They've opted in to being contacted — reply to them directly.</p>`;
 
     await sendBilledEmail(null, { // recruiting emails are platform-paid
+      platformPaid: true,
       to: clubProfile.email,
       subject: `New match: a ${role} open to ${offer}, ${dist} mi away`,
       html: `
@@ -185,6 +186,7 @@ async function persistAndNotify(
         </div>`;
 
     await sendBilledEmail(null, { // recruiting emails are platform-paid
+      platformPaid: true,
       to: candidate.email,
       subject: approveMode
         ? `A club wants to talk — ${role}, ${offer}`

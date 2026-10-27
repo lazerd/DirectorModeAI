@@ -270,6 +270,7 @@ async function meterRequest(
   });
   if (meter.notice && bill.ownerEmail) {
     await sendBilledEmail(null, {
+      platformPaid: true,
       to: bill.ownerEmail,
       operational: true,
       subject: `Ask Claude: $${meter.overageUsd.toFixed(2)} over your monthly allowance`,

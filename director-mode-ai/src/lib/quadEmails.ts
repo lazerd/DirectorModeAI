@@ -8,6 +8,7 @@
 
 import { sendBilledEmail } from './email';
 import { getSupabaseAdmin } from './supabase/admin';
+import { esc } from './escapeHtml';
 
 /** Every send names the event it is about; its owner (events.user_id) pays. */
 type EventRef = { eventId: string | null };
@@ -26,12 +27,26 @@ async function sendForEvent(eventId: string | null, payload: Payload) {
     userId = (data as any)?.user_id ?? null;
     clubId = (data as any)?.club_id ?? null;
   }
-  // No event row (or no owner on it) sends unbilled rather than failing.
+  // No event row (or no owner on it) is refused by sendBilledEmail: nobody to
+  // bill means nobody vouched for the recipient.
   return sendBilledEmail(userId, { ...payload, clubId });
 }
 
 const FROM =
   process.env.RESEND_FROM_EMAIL || 'ClubMode <noreply@mail.clubmode.ai>';
+
+/**
+ * Names here were typed by whoever filled in the public signup form. Escape
+ * them before they go into the HTML, or a "name" can carry its own markup into
+ * a ClubMode-branded email.
+ */
+const TYPED = ['playerName', 'parentName', 'parentEmail', 'partnerName', 'opponentNames'] as const;
+function safe<T extends object>(args: T): T {
+  const out: any = { ...args };
+  for (const k of TYPED) if (typeof out[k] === 'string') out[k] = esc(out[k]);
+  if (Array.isArray(out.matches)) out.matches = out.matches.map((m: any) => ({ ...m, label: esc(m.label) }));
+  return out;
+}
 
 function htmlShell(title: string, body: string) {
   return `
@@ -52,6 +67,7 @@ export async function sendQuadsConfirmEmail(args: EventRef & {
   tournamentDate: string | null;
   publicUrl: string;
 }) {
+  args = safe(args);
   return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
@@ -71,6 +87,7 @@ export async function sendQuadsWaitlistEmail(args: EventRef & {
   tournamentName: string;
   publicUrl: string;
 }) {
+  args = safe(args);
   return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
@@ -90,6 +107,7 @@ export async function sendQuadsPromotedEmail(args: EventRef & {
   tournamentName: string;
   publicUrl: string;
 }) {
+  args = safe(args);
   return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
@@ -115,6 +133,7 @@ export async function sendQuadsScheduleEmail(args: EventRef & {
   }>;
   scoringUrl: string;
 }) {
+  args = safe(args);
   const rows = args.matches
     .map(
       (m) => `
@@ -154,6 +173,7 @@ export async function sendQuadsScoringLinkEmail(args: EventRef & {
   flightName: string | null;
   scoringUrl: string;
 }) {
+  args = safe(args);
   return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
@@ -182,6 +202,7 @@ export async function sendQuadsDoublesPairingEmail(args: EventRef & {
   opponentNames: string;
   rank: number;
 }) {
+  args = safe(args);
   return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
@@ -221,6 +242,7 @@ export async function sendQuadRequestReceivedEmail(args: EventRef & {
   positionInLine: number;
   publicUrl: string;
 }) {
+  args = safe(args);
   const inLine =
     args.positionInLine <= 4
       ? `You're <strong>#${args.positionInLine}</strong> in line for ${args.divisionLabel} — the first four get the spots.`
@@ -256,6 +278,7 @@ export async function sendQuadInviteEmail(args: EventRef & {
   deadlineLabel: string;
   paymentUrl: string;
 }) {
+  args = safe(args);
   return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
@@ -293,6 +316,7 @@ export async function sendQuadInviteExpiredEmail(args: EventRef & {
   divisionLabel: string;
   publicUrl: string;
 }) {
+  args = safe(args);
   return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
@@ -317,6 +341,7 @@ export async function sendQuadCompConfirmedEmail(args: EventRef & {
   venue: string | null;
   couponCode: string | null;
 }) {
+  args = safe(args);
   return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
@@ -366,6 +391,8 @@ export async function sendQuadDirectorNewRequestEmail(args: EventRef & {
   totalRequests: number;
   entriesUrl: string;
 }) {
+  const subjectName = args.playerName; // plain text, so unescaped
+  args = safe(args);
   const rows = args.divisionCounts
     .map((d) => {
       const full = d.count >= d.needed;
@@ -383,7 +410,7 @@ export async function sendQuadDirectorNewRequestEmail(args: EventRef & {
   return sendForEvent(args.eventId, {
     from: FROM,
     to: args.to,
-    subject: `New signup: ${args.playerName} (${args.divisionLabel}) — ${args.totalRequests} total`,
+    subject: `New signup: ${subjectName} (${args.divisionLabel}) — ${args.totalRequests} total`,
     html: htmlShell(
       `${args.playerName} just signed up`,
       `<p><strong>${args.divisionLabel}</strong>${contact ? ` — ${contact}` : ''}</p>

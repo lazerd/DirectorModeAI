@@ -206,11 +206,9 @@ export default function CoachPublicPage() {
       await fetch('/api/lessons/client-request-notify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // The server looks up the coach and this client itself; only ids go over.
         body: JSON.stringify({
-          coachEmail: coachEmail,
-          coachName: coach.display_name,
-          clientName: requestForm.name || user.user_metadata?.full_name || user.email?.split('@')[0],
-          clientEmail: requestForm.email || user.email,
+          coachId: coach.id,
           message: requestForm.message
         })
       });
@@ -260,15 +258,7 @@ export default function CoachPublicPage() {
         await fetch('/api/lessons/booking-notify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            coachEmail: coachEmail,
-            coachName: coach.display_name,
-            clientName: clientName,
-            clientEmail: clientEmail,
-            slotDate: format(parseISO(selectedSlot.start_time), 'MM/dd/yyyy'),
-            slotTime: format(parseISO(selectedSlot.start_time), 'h:mm a') + ' - ' + format(parseISO(selectedSlot.end_time), 'h:mm a'),
-            location: selectedSlot.location
-          })
+          body: JSON.stringify({ slotId: selectedSlot.id })
         });
       } catch (e) {
         console.error('Failed to send notification:', e);
