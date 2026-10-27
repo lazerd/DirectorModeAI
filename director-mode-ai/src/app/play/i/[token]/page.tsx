@@ -26,7 +26,8 @@ import LinkClient from './LinkClient';
  *
  * Opening it never changes anything. The "I'm in" tap is a button on this
  * page, because mail scanners follow links, and a scanner must not take a spot
- * on somebody's behalf.
+ * on somebody's behalf. `?a=yes` / `?a=no` (the email's two buttons) only
+ * point at the matching button on the page; they never act.
  */
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'CourtConnect', robots: { index: false, follow: false } };
@@ -42,7 +43,15 @@ function Shell({ title, body }: { title: string; body: string }) {
   );
 }
 
-export default async function GameLinkPage({ params }: { params: { token: string } }) {
+export default async function GameLinkPage({
+  params,
+  searchParams,
+}: {
+  params: { token: string };
+  searchParams?: { a?: string | string[] };
+}) {
+  const a = Array.isArray(searchParams?.a) ? searchParams?.a[0] : searchParams?.a;
+  const emailAnswer = a === 'yes' || a === 'no' ? a : null;
   const db = getSupabaseAdmin();
   const link = await linkByToken(db, params.token);
   if (!link) return <Shell title="Link not recognized" body="This link may be mistyped. Open CourtConnect in your club's app to see what's on." />;
@@ -87,6 +96,14 @@ export default async function GameLinkPage({ params }: { params: { token: string
     ((genderRows as { id: string; gender: string | null }[] | null) ?? []).map((r) => [r.id, (r.gender ?? '').toLowerCase()]),
   );
   const inLine = new Set(waiting.map((w) => w.person_id));
+  /*
+   * The line, for the host only, in tap order. Nobody is promoted on their own
+   * (the whole line is emailed and the first tap takes it), but the host can
+   * seat someone from it — they're the one who knows who called back.
+   */
+  const line = isPoster
+    ? waiting.map((w) => ({ id: w.person_id, name: roster.find((r) => r.person_id === w.person_id)?.full_name || 'A member' }))
+    : [];
   const addable = isPoster
     ? roster
         .filter((r) => !inGame.has(r.person_id) && !inLine.has(r.person_id))
@@ -122,6 +139,8 @@ export default async function GameLinkPage({ params }: { params: { token: string
       clubName={club.name}
       clubSlug={club.slug}
       myFirstName={firstName(me.full_name)}
+      myName={me.full_name || firstName(me.full_name)}
+      emailAnswer={emailAnswer}
       title={`${longDay(game.starts_at, tz).split(',')[0]} ${clockLabel(game.starts_at, tz)} ${gameKind(game.format, game.gender, game.sport)}`}
       rows={rows}
       note={game.note}
@@ -146,6 +165,7 @@ export default async function GameLinkPage({ params }: { params: { token: string
       }))}
       nudged={!!game.nudged_at}
       addable={addable}
+      line={line}
       friends={friends}
       myLevel={me.ntrp}
       scale={club.levels}

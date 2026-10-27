@@ -45,6 +45,7 @@ const MESSAGES: Record<string, string> = {
   already_cancelled: 'This game was already cancelled.',
   need_one: 'Pick a member or type a guest name.',
   already_in_game: 'They are already in this game.',
+  removed: 'The organizer took you off this game.',
 };
 
 const say = (result: string) => MESSAGES[result] ?? 'Something went wrong. Please try again.';
@@ -166,7 +167,15 @@ export async function hostRemovePlayer(db: Db, gameId: string, actorPersonId: st
   }
   if (r.result === 'not_in') return { ok: false, result: r.result, message: 'They are not in this game any more.' };
   if (r.result !== 'removed') return { ok: false, result: r.result, message: say(r.result) };
-  background('host remove emails', () => afterLeave(db, gameId, r.person_id ?? null, r.name ?? undefined, { byHost: true }));
+  // An invited friend's seat leads back to their link and email, so they hear too.
+  const { data: fl } = r.person_id
+    ? { data: null }
+    : await db.from('pf_guest_links').select('pf_guest_contacts(email)').eq('seat_id', seatId).maybeSingle();
+  const friendEmail = (fl as unknown as { pf_guest_contacts: { email: string } | null } | null)?.pf_guest_contacts?.email;
+  const friend = friendEmail ? { email: friendEmail } : null;
+  background('host remove emails', () =>
+    afterLeave(db, gameId, r.person_id ?? null, r.name ?? undefined, { byHost: true, friend }),
+  );
   return { ok: true, result: 'removed', message: `${r.name || 'They'} is off the game, and the spot is open again.` };
 }
 

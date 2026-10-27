@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { gameFullEmail } from './emails';
+import { addressedTo, gameFullEmail, inviteEmail, removedByHostEmail } from './emails';
+import { sharedInboxes } from './format';
 import { TENNIS_SCALE } from '@/lib/levels';
 import type { Club, Game, GroupMember } from './server';
 
@@ -131,5 +132,51 @@ describe('a guest the host seated', () => {
       isPoster: true,
     });
     expect(mail.subject).toContain('Jamie Visitor is in');
+  });
+});
+
+describe('a shared family inbox', () => {
+  // Pat and Sam Kim read one address (QA, 2026-10-27): identical subjects
+  // threaded together, and Pat could drop Sam by mistake.
+  const invite = (name: string) =>
+    inviteEmail({ ...game, status: 'open' }, club, {
+      to: 'kims@example.com',
+      name,
+      poster: 'Walden B.',
+      token: 'tok',
+      stopToken: null,
+      spotsLeft: 1,
+    });
+
+  it('puts the first name in the subject and the full name on the email', () => {
+    const mail = addressedTo(invite('Sam Kim'), 'Sam Kim', true);
+    expect(mail.subject.startsWith('For Sam: ')).toBe(true);
+    expect(mail.html).toContain('For Sam Kim');
+    expect(mail.html.indexOf('For Sam Kim')).toBeLessThan(mail.html.indexOf('<h1'));
+    expect(addressedTo(invite('Pat Kim'), 'Pat Kim', true).subject).not.toBe(mail.subject);
+  });
+
+  it("leaves everyone else's email exactly as it was", () => {
+    const plain = invite('Peter Schwaikert');
+    expect(addressedTo(plain, 'Peter Schwaikert', false)).toEqual(plain);
+  });
+
+  it('finds the inboxes two people share, whatever the case', () => {
+    const shared = sharedInboxes([
+      { person_id: 'pat', email: 'Kims@example.com' },
+      { person_id: 'sam', email: 'kims@example.com ' },
+      { person_id: 'peter', email: 'peter@example.com' },
+      { person_id: 'nobody', email: null },
+    ]);
+    expect([...shared]).toEqual(['kims@example.com']);
+  });
+});
+
+describe('the email when the host takes someone off', () => {
+  it('says who took them off and which game, with no way back in', () => {
+    const mail = removedByHostEmail(game, club, { to: 'jordan@example.com', name: 'Jordan Lee', poster: 'Walden B.' });
+    expect(mail.subject).toContain('Walden B. took you off the doubles');
+    expect(mail.html).toContain('no longer playing');
+    expect(mail.html).not.toContain('/play/i/');
   });
 });

@@ -21,6 +21,13 @@ type Props = {
   clubName: string;
   clubSlug: string;
   myFirstName: string;
+  /**
+   * Whose link this is, in full. Two people can share one inbox (Pat and Sam
+   * Kim), so the page always says who it is answering for — joined or not.
+   */
+  myName: string;
+  /** Which email button brought them here. It only highlights; it never acts. */
+  emailAnswer: 'yes' | 'no' | null;
   title: string;
   rows: [string, string][];
   note: string | null;
@@ -36,8 +43,10 @@ type Props = {
   nudged: boolean;
   /** Members the host may seat by hand. Empty for everyone but the host. */
   addable: { id: string; name: string }[];
+  /** Who is in line, in tap order. Empty for everyone but the host. */
+  line: { id: string; name: string }[];
   /** The poster's own outside friends and their answer for this game. Empty for everyone else. */
-  friends: { id: string; name: string; email: string; status: 'invited' | 'in' | 'no' | 'left' | null }[];
+  friends: { id: string; name: string; email: string; status: 'invited' | 'in' | 'no' | 'left' | 'removed' | null }[];
   myLevel: number | null;
   /** What this club calls a level — see lib/levels.ts. */
   scale: LevelScale;
@@ -84,16 +93,19 @@ export default function LinkClient(p: Props) {
    * parking lot. A member is picked from the club's list; anyone else goes in
    * as a guest by name and is never written to PlayerVault.
    */
-  async function addPlayer() {
-    if (!pick && !guest.trim()) {
+  async function addPlayer(fromLine?: string) {
+    const personId = fromLine || pick;
+    if (!personId && !guest.trim()) {
       return setNotice({ tone: 'bad', text: 'Pick a member or type a guest name.' });
     }
     setBusy(true);
     setNotice(null);
+    // Seating someone from the line is the same pf_host_add: it turns their
+    // 'wait' row into a seat.
     const r = await postJson<Outcome>(`/api/play/link/${p.token}`, {
       action: 'add',
-      personId: pick || null,
-      guestName: pick ? '' : guest.trim(),
+      personId: personId || null,
+      guestName: personId ? '' : guest.trim(),
     });
     setBusy(false);
     if (r.error) return setNotice({ tone: 'bad', text: r.error });
@@ -238,6 +250,10 @@ export default function LinkClient(p: Props) {
         ? 'This game has already started.'
         : null;
 
+  /* The email button they tapped, ringed so it is the obvious next tap. */
+  const lit = (answer: 'yes' | 'no') => (p.emailAnswer === answer ? ' ring-4 ring-amber-300 ring-offset-2' : '');
+  const spotOpen = p.status === 'open' && p.spotsLeft > 0;
+
   return (
     <main className="min-h-screen bg-slate-50 px-5 py-10 text-slate-900">
       <div className="mx-auto max-w-xl space-y-6">
@@ -252,6 +268,12 @@ export default function LinkClient(p: Props) {
               Hi {p.myFirstName}, this game {needsLabel(p.spotsLeft)}.
             </p>
           )}
+          {!p.isPoster && p.imIn && !closedText && (
+            <p className="mt-2 text-xl font-semibold text-emerald-800">You&rsquo;re in, {p.myFirstName}.</p>
+          )}
+          <p className="mt-2 text-lg text-slate-600">
+            {p.isPoster ? 'This page is for' : 'Answering for'} <span className="font-semibold text-slate-800">{p.myName}</span>
+          </p>
         </header>
 
         {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
@@ -262,11 +284,28 @@ export default function LinkClient(p: Props) {
         </section>
 
         {/* Already in line for a full game */}
-        {p.myWaitPlace > 0 && !p.imIn && !notice && (
+        {p.myWaitPlace > 0 && !p.imIn && !notice && !spotOpen && !closedText && (
           <Notice tone="info">
             You&rsquo;re {p.myWaitPlace === 1 ? 'first' : `number ${p.myWaitPlace}`} in line for this game. We&rsquo;ll
             email you the moment a spot opens.
           </Notice>
+        )}
+
+        {/*
+          In line, and a spot is open. Nobody is moved in automatically — the
+          whole line was emailed and the first tap takes it — so this is the
+          tap. Before 2026-10-27 the page said "we'll email you" with only a
+          "Take me off the list" button, while the email's "Yes, I'll take it"
+          landed here and did nothing.
+        */}
+        {p.myWaitPlace > 0 && !p.imIn && spotOpen && !closedText && !(notice && notice.tone !== 'bad') && (
+          <div className="space-y-3">
+            <p className="text-xl text-slate-700">A spot just opened, and you&rsquo;re in line for it. Still want it?</p>
+            <button onClick={() => act('join')} disabled={busy} className={`${primaryBtn} w-full text-2xl${lit('yes')}`}>
+              {busy ? 'One moment…' : 'Take the spot'}
+            </button>
+            <p className="text-center text-lg text-slate-600">First to tap gets it.</p>
+          </div>
         )}
 
         {/* Someone who was invited and has not joined */}
@@ -282,10 +321,10 @@ export default function LinkClient(p: Props) {
                   This game is full{p.waitingCount > 0 ? `, and ${p.waitingCount} ${p.waitingCount === 1 ? 'person is' : 'people are'} in line` : ''}.
                   Want the spot if someone drops out?
                 </p>
-                <button onClick={() => act('join')} disabled={busy} className={`${primaryBtn} w-full text-2xl`}>
+                <button onClick={() => act('join')} disabled={busy} className={`${primaryBtn} w-full text-2xl${lit('yes')}`}>
                   {busy ? 'One moment…' : 'Put me in line'}
                 </button>
-                <button onClick={() => act('decline')} disabled={busy} className={`${secondaryBtn} w-full text-xl`}>
+                <button onClick={() => act('decline')} disabled={busy} className={`${secondaryBtn} w-full text-xl${lit('no')}`}>
                   No, not this time
                 </button>
               </div>
@@ -293,10 +332,10 @@ export default function LinkClient(p: Props) {
               /* Two answers, one tap each. A "no" is not a dead end: the same
                  email still works if they change their mind. */
               <div className="space-y-3">
-                <button onClick={() => act('join')} disabled={busy} className={`${primaryBtn} w-full text-2xl`}>
+                <button onClick={() => act('join')} disabled={busy} className={`${primaryBtn} w-full text-2xl${lit('yes')}`}>
                   {busy ? 'One moment…' : "Yes, I'm in"}
                 </button>
-                <button onClick={() => act('decline')} disabled={busy} className={`${secondaryBtn} w-full text-xl`}>
+                <button onClick={() => act('decline')} disabled={busy} className={`${secondaryBtn} w-full text-xl${lit('no')}`}>
                   No, not this time
                 </button>
                 <p className="text-center text-lg text-slate-600">First to tap gets the spot.</p>
@@ -385,9 +424,34 @@ export default function LinkClient(p: Props) {
         )}
 
         {p.myWaitPlace > 0 && !p.imIn && !closedText && (
-          <button onClick={() => act('leave')} disabled={busy} className={`${secondaryBtn} w-full`}>
+          <button onClick={() => act('leave')} disabled={busy} className={`${secondaryBtn} w-full${lit('no')}`}>
             Take me off the list
           </button>
+        )}
+
+        {/* The host sees the line, and can seat someone from it when a spot is open. */}
+        {p.isPoster && !closedText && p.line.length > 0 && (
+          <section className="rounded-3xl border border-slate-200 bg-white p-6">
+            <h2 className="text-2xl font-bold">In line</h2>
+            <p className="mt-1 text-lg text-slate-600">
+              {spotOpen
+                ? 'A spot is open. Everyone in line was emailed, and the first to tap takes it. Or seat someone yourself.'
+                : 'If a spot opens, everyone in line is emailed and the first to tap takes it.'}
+            </p>
+            <ol className="mt-4 space-y-3 text-lg">
+              {p.line.map((w, i) => (
+                <li key={w.id} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-slate-500">{i + 1}.</span>
+                  <span className="font-semibold">{w.name}</span>
+                  {spotOpen && (
+                    <button onClick={() => addPlayer(w.id)} disabled={busy} className="ml-auto text-base font-semibold text-emerald-800 underline">
+                      Seat
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </section>
         )}
 
         {/* The host can seat someone who said yes without waiting for a tap. */}
@@ -436,7 +500,7 @@ export default function LinkClient(p: Props) {
                 </span>
               </label>
               <div className="flex flex-col gap-3 sm:flex-row">
-                <button onClick={addPlayer} disabled={busy} className={`${primaryBtn} flex-1`}>
+                <button onClick={() => addPlayer()} disabled={busy} className={`${primaryBtn} flex-1`}>
                   {busy ? 'One moment…' : 'Add them'}
                 </button>
                 <button onClick={() => { setAdding(false); setPick(''); setGuest(''); }} className={`${secondaryBtn} flex-1`}>
@@ -465,7 +529,7 @@ export default function LinkClient(p: Props) {
                   {p.friends.map((f) => {
                     const settled = f.status === 'in' || f.status === 'no';
                     const tag =
-                      f.status === 'in' ? 'playing' : f.status === 'no' ? 'said no' : f.status === 'invited' ? 'invited' : f.status === 'left' ? 'dropped out' : null;
+                      f.status === 'in' ? 'playing' : f.status === 'no' ? 'said no' : f.status === 'invited' ? 'invited' : f.status === 'left' ? 'dropped out' : f.status === 'removed' ? 'taken off' : null;
                     return (
                       <li key={f.id} className="flex items-center gap-3 text-lg">
                         <input

@@ -162,3 +162,20 @@ export function publicLine(g: GameSummary, spotsLeft: number, tz: string, scale:
   const r = ratingLabel(g.rating_min, g.rating_max, scale);
   return [gameTitle(g, tz), `needs ${spotsLeft}`, r].filter(Boolean).join(' · ');
 }
+
+/** An address as an inbox: trimmed and lower-cased, "" for none. */
+export const inbox = (email: string | null | undefined) => (email || '').trim().toLowerCase();
+
+/**
+ * The inboxes more than one club member reads (a couple on one address). Mail
+ * to these says whose it is — see addressedTo in emails.ts.
+ */
+export function sharedInboxes(roster: { person_id: string; email: string | null }[]): Set<string> {
+  const seen = new Map<string, Set<string>>();
+  for (const r of roster) {
+    const e = inbox(r.email);
+    if (!e) continue;
+    seen.set(e, (seen.get(e) ?? new Set<string>()).add(r.person_id));
+  }
+  return new Set([...seen].filter(([, ids]) => ids.size > 1).map(([e]) => e));
+}
