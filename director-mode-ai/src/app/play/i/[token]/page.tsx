@@ -80,6 +80,15 @@ export default async function GameLinkPage({
     .order('joined_at');
   const waiting = (waitRows as { person_id: string }[] | null) ?? [];
   const myWaitPlace = waiting.findIndex((w) => w.person_id === link.person_id) + 1; // 0 = not waiting
+  // Taken off by the host or the club (pf_member_removed_by_host.sql): no one-tap way back in.
+  const { data: mySeat } = await db
+    .from('pf_game_players')
+    .select('removed_by_host')
+    .eq('game_id', game.id)
+    .eq('person_id', link.person_id)
+    .eq('status', 'out')
+    .maybeSingle();
+  const removedByHost = !!(mySeat as { removed_by_host: boolean } | null)?.removed_by_host;
   const tz = club.timezone;
   const started = new Date(game.starts_at).getTime() <= Date.now();
 
@@ -151,6 +160,7 @@ export default async function GameLinkPage({
       isPoster={isPoster}
       imIn={imIn}
       myWaitPlace={myWaitPlace}
+      removedByHost={removedByHost}
       waitingCount={waiting.length}
       /*
        * Everyone invited sees WHO is playing — that is what turns "a game needs

@@ -37,6 +37,8 @@ type Props = {
   imIn: boolean;
   /** 1-based place in line, or 0 when not waiting. */
   myWaitPlace: number;
+  /** The host or the club took them off this game. */
+  removedByHost: boolean;
   waitingCount: number;
   group: { name: string; note: string | null; phone: string | null; seatId: string | null }[];
   /** The host already sent their one reminder to people who never answered. */
@@ -313,7 +315,7 @@ export default function LinkClient(p: Props) {
             {p.isPoster ? 'Your game: ' : ''}
             {p.title}
           </h1>
-          {!p.isPoster && !p.imIn && p.status === 'open' && (
+          {!p.isPoster && !p.imIn && !p.removedByHost && p.status === 'open' && (
             <p className="mt-2 text-xl text-slate-700">
               Hi {p.myFirstName}, this game {needsLabel(p.spotsLeft)}.
             </p>
@@ -327,6 +329,13 @@ export default function LinkClient(p: Props) {
         </header>
 
         {notice && <Notice tone={notice.tone}>{notice.text}</Notice>}
+
+        {/* The host and anyone still in it need to hear it's off too, not just a "Was playing" heading. */}
+        {closedText && (p.isPoster || p.imIn) && <Notice tone="info">{closedText}</Notice>}
+
+        {p.removedByHost && !p.imIn && !closedText && (
+          <Notice tone="info">The organizer took you off this game. If that&rsquo;s a mistake, reply to their email.</Notice>
+        )}
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6">
           <DetailRows rows={p.rows} />
@@ -360,7 +369,7 @@ export default function LinkClient(p: Props) {
 
         {/* Someone who was invited and has not joined */}
         {/* Hidden once a tap has said what happened, so the answer is not shown twice. */}
-        {!p.isPoster && !p.imIn && p.myWaitPlace === 0 && !(notice && notice.tone !== 'bad') && (
+        {!p.isPoster && !p.imIn && p.myWaitPlace === 0 && !p.removedByHost && !(notice && notice.tone !== 'bad') && (
           <>
             {closedText ? (
               <Notice tone="info">{closedText}</Notice>

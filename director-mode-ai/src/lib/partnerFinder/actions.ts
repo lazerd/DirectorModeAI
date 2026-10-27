@@ -28,7 +28,8 @@ const MESSAGES: Record<string, string> = {
   joined_full: "You're in, and that fills the game. Everyone's getting an email with the group.",
   already_in: "You're already in this game.",
   full: "This game just filled. We'll tell you about the next one.",
-  waitlisted: "This game is full, so you're first in line if a spot opens. We'll email you the moment one does.",
+  waitlisted: "This game is full, so you're in line if a spot opens. We'll email you the moment one does.",
+  removed_by_host: "The organizer took you off this game. If that's a mistake, reply to their email.",
   already_waiting: "You're already in line for this game. We'll email you if a spot opens.",
   off_waitlist: "Done — you're off the list for this game.",
   cancelled: 'This game was cancelled.',
@@ -63,6 +64,17 @@ export async function joinGame(
   personId: string,
   via: 'email' | 'board',
 ): Promise<ActionOutcome> {
+  // Someone the host or the club took off doesn't tap their way straight back.
+  const { data: removed } = await db
+    .from('pf_game_players')
+    .select('id')
+    .eq('game_id', gameId)
+    .eq('person_id', personId)
+    .eq('status', 'out')
+    .eq('removed_by_host', true)
+    .maybeSingle();
+  if (removed) return { ok: false, result: 'removed_by_host', message: say('removed_by_host') };
+
   if (via === 'board') {
     // From the board, the level still has to fit. An emailed link was only
     // ever sent to someone who fit, so it is not asked twice.
@@ -91,7 +103,7 @@ export async function joinGame(
    * error. Their position is only worth saying past first.
    */
   if (r.result === 'waitlisted' || r.result === 'already_waiting') {
-    const place = r.position && r.position > 1 ? ` You're number ${r.position} in line.` : '';
+    const place = r.position && r.position > 1 ? ` You're number ${r.position} in line.` : " You're first in line.";
     return { ok: true, result: r.result, message: say(r.result) + place };
   }
 
