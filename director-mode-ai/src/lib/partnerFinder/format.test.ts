@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { zonedWallTimeToIso } from '@/lib/captain/clubTime';
-import { clockLabel, clubDate, gameTitle, publicLine, ratingLabel, shortName } from './format';
+import { changeTellsPlayers, clockLabel, clubDate, gameChanges, gameTitle, maxSpotsFor, publicLine, ratingLabel, shortName } from './format';
 import { levelFits } from './server';
 
 describe('names', () => {
@@ -61,5 +61,45 @@ describe('club time', () => {
     expect(
       publicLine({ starts_at: nineAm, format: 'doubles', spots_needed: 2, rating_min: 3, rating_max: 3.5 }, 1, tz),
     ).toBe('Tue Sep 22 · 9:00am doubles · needs 1 · 3.0–3.5');
+  });
+});
+
+describe('editing a game', () => {
+  const tz = 'America/Los_Angeles';
+  const before = {
+    starts_at: zonedWallTimeToIso('2026-09-22T13:00', tz)!,
+    duration_min: 90,
+    court: '6',
+    note: 'Looking for two guys.',
+    spots_needed: 2,
+  };
+
+  it('says nothing changed when nothing did', () => {
+    expect(gameChanges(before, { ...before, court: ' 6 ' }, tz)).toEqual([]);
+  });
+
+  it('reads a move in the club time, old then new', () => {
+    const moved = { ...before, starts_at: zonedWallTimeToIso('2026-09-23T10:00', tz)! };
+    const changes = gameChanges(before, moved, tz);
+    expect(changes).toEqual([{ field: 'when', label: 'When', from: 'Tue Sep 22, 1:00pm', to: 'Wed Sep 23, 10:00am' }]);
+    expect(changeTellsPlayers(changes)).toBe(true);
+  });
+
+  it('treats a court left blank as "To be decided", and setting one is news', () => {
+    const changes = gameChanges({ ...before, court: null }, { ...before, court: '3' }, tz);
+    expect(changes[0]).toMatchObject({ field: 'court', from: 'To be decided', to: '3' });
+    expect(changeTellsPlayers(changes)).toBe(true);
+  });
+
+  it('counts players in court terms, and a new note or size emails nobody', () => {
+    const changes = gameChanges(before, { ...before, spots_needed: 3, note: '' }, tz);
+    expect(changes.map((c) => c.field)).toEqual(['note', 'spots']);
+    expect(changes[1]).toMatchObject({ from: '3 in all', to: '4 in all' });
+    expect(changeTellsPlayers(changes)).toBe(false);
+  });
+
+  it('never lets singles ask for more than one', () => {
+    expect(maxSpotsFor('singles')).toBe(1);
+    expect(maxSpotsFor('doubles')).toBe(3);
   });
 });

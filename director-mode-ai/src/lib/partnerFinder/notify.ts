@@ -16,7 +16,7 @@
  * unsubscribed from all email and appends the unsubscribe footer.
  */
 import { sendBilledEmails, CreditLimitError } from '@/lib/email';
-import { MAX_RECIPIENTS, shortName, clubDate } from './format';
+import { MAX_RECIPIENTS, shortName, clubDate, gameChanges, type GameEdit } from './format';
 import {
   clubRoster,
   ensureLinks,
@@ -32,6 +32,7 @@ import {
 } from './server';
 import {
   gameCancelledEmail,
+  gameChangedEmail,
   gameFullEmail,
   guestInviteEmail,
   guestUrl,
@@ -334,19 +335,24 @@ export async function afterLeave(
   ]);
 }
 
-export async function afterCancel(db: Db, gameId: string): Promise<void> {
+/**
+ * `byClub`: the director called it off (QA #16), so the email says the club
+ * cancelled it, and the poster, who didn't, hears too.
+ */
+export async function afterCancel(db: Db, gameId: string, opts: { byClub?: boolean } = {}): Promise<void> {
   const game = await loadGame(db, gameId);
   if (!game) return;
   const club = await loadClub(db, game.club_id);
   if (!club) return;
   const group = await gameGroup(db, game);
   const poster = group.find((m) => m.isPoster);
+  const by = opts.byClub ? club.name : poster?.short || 'The poster';
   await deliver(
     club,
     group
-      .filter((m) => !m.isPoster && m.email)
-      .map((m) => gameCancelledEmail(game, club, { to: m.email!, name: m.name, poster: poster?.short || 'The poster' })),
-    poster?.email,
+      .filter((m) => (opts.byClub || !m.isPoster) && m.email)
+      .map((m) => gameCancelledEmail(game, club, { to: m.email!, name: m.name, poster: by })),
+    opts.byClub ? null : poster?.email,
   );
 }
 
@@ -549,4 +555,102 @@ export async function nudgeNonResponders(
   if (quiet.length) sent += (await inviteGuests(db, game, club, quiet.map((l) => l.contact_id), true)).sent;
   await db.from('pf_games').update({ nudged_at: new Date().toISOString() }).eq('id', game.id);
   return { members, friends, sent };
+}
+
+/* ------------------------------------------------------- a game was changed */
+
+/**
+ * Who hears that a game changed: everyone who is in and has an address — the
+ * members and the host's invited friends. A guest the host only typed in by
+ * name has nowhere to be written to. The host made the change, so they are not
+ * told about it; when the CLUB made it, the host is told too.
+ *
+ * The preview and the send both read this, so the names on the confirm step
+ * are the people who get the email.
+ */
+export async function changeAudience(
+  db: Db,
+  game: Game,
+  opts: { byClub: boolean; roster?: RosterRow[] },
+): Promise<{ people: Awaited<ReturnType<typeof gameGroup>>; names: string[]; noEmail: string[] }> {
+  const group = await gameGroup(db, game, opts.roster);
+  const mine = group.filter((m) => opts.byClub || !m.isPoster);
+  const reachable = mine.filter((m) => !!m.email && (!m.isGuest || !!m.guestToken));
+  return {
+    people: reachable,
+    names: reachable.map((m) => `${m.short}${m.isPoster ? ' (posted it)' : m.isGuest ? ' (guest)' : ''}`),
+    noEmail: mine.filter((m) => !reachable.includes(m)).map((m) => m.short),
+  };
+}
+
+/**
+ * After pf_edit_game. A new time or court goes to everyone who is in, old ->
+ * new (gameChangedEmail). Fewer spots that fill the game send the usual
+ * line-up, so the group has each other's names and a link to drop out from;
+ * more spots that reopen a full game tell anyone in line, first to tap.
+ */
+export async function afterEdit(
+  db: Db,
+  gameId: string,
+  info: { old: GameEdit; byClub: boolean; tellPlayers: boolean; becameFull: boolean; reopened: boolean },
+): Promise<void> {
+  const game = await loadGame(db, gameId);
+  if (!game) return;
+  const club = await loadClub(db, game.club_id);
+  if (!club) return;
+  const roster = await clubRoster(db, club.id);
+  const poster = roster.find((r) => r.user_id === game.posted_by);
+
+  if (info.tellPlayers) {
+    const changes = gameChanges(info.old, game, club.timezone);
+    const by = info.byClub ? club.name : shortName(poster?.full_name);
+    const { people } = await changeAudience(db, game, { byClub: info.byClub, roster });
+    const links = await ensureLinks(db, game, people.filter((m) => !m.isGuest).map((m) => m.personId));
+    const messages: GameMessage[] = [];
+    for (const m of people) {
+      if (m.isGuest) {
+        messages.push(
+          forGuest(gameChangedEmail(game, club, { to: m.email!, name: m.name, by, changes, token: m.guestToken! }), m.guestToken!),
+        );
+      } else if (links.has(m.personId)) {
+        messages.push(gameChangedEmail(game, club, { to: m.email!, name: m.name, by, changes, token: links.get(m.personId)! }));
+      }
+    }
+    // A host's change is answered by the host; the club's by the club office.
+    await deliver(club, messages, info.byClub ? null : poster?.email);
+  }
+
+  if (info.becameFull) {
+    await sendToGroup(db, game, club, (m) => gameFullEmail(game, club, { ...m, joiner: null }), roster);
+  }
+
+  if (info.reopened) {
+    const { data: waitingRows } = await db
+      .from('pf_game_players')
+      .select('person_id')
+      .eq('game_id', game.id)
+      .eq('status', 'wait')
+      .order('joined_at');
+    const waiting = ((waitingRows as { person_id: string }[] | null) ?? [])
+      .map((w) => roster.find((r) => r.person_id === w.person_id))
+      .filter((r): r is RosterRow => !!r?.email);
+    if (!waiting.length) return;
+    const playingNow = (await gameGroup(db, game, roster)).map((m) => m.short);
+    const waitLinks = await ensureLinks(db, game, waiting.map((w) => w.person_id));
+    await deliver(
+      club,
+      waiting
+        .filter((w) => waitLinks.has(w.person_id))
+        .map((w) =>
+          waitlistSpotEmail(game, club, {
+            to: w.email!,
+            name: w.full_name,
+            token: waitLinks.get(w.person_id)!,
+            poster: shortName(poster?.full_name),
+            playing: playingNow,
+            why: 'the game now has room for more players',
+          }),
+        ),
+    );
+  }
 }

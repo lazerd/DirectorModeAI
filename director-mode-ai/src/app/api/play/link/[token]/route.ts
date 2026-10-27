@@ -2,7 +2,7 @@
  * POST /api/play/link/[token] — the no-login actions behind an emailed link.
  *
  * { action: 'join' | 'decline' | 'leave' | 'cancel' | 'level' | 'add' | 'message'
- *          | 'guest_save' | 'guest_forget' | 'guest_invite' | 'remove' | 'nudge', ... }
+ *          | 'guest_save' | 'guest_forget' | 'guest_invite' | 'remove' | 'nudge' | 'edit', ... }
  *
  * The token is the credential: it names one game and one person, and it can
  * only act as that person on that game. Same rule as CaptainMode's sub claim.
@@ -14,6 +14,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
   cancelGame,
   declineGame,
+  editGame,
   forgetGuestContact,
   hostAddPlayer,
   hostRemovePlayer,
@@ -59,6 +60,7 @@ export async function POST(req: Request, { params }: { params: { token: string }
     contactId?: unknown;
     contactIds?: unknown;
     seatId?: unknown;
+    save?: unknown;
   };
 
   /*
@@ -77,6 +79,17 @@ export async function POST(req: Request, { params }: { params: { token: string }
   /* The host taking someone off their game. pf_host_remove refuses anyone else. */
   if (body.action === 'remove' && typeof body.seatId === 'string') {
     return NextResponse.json(await hostRemovePlayer(db, link.game_id, link.person_id, body.seatId));
+  }
+
+  /*
+   * The host changing their game: day/time, length, court, note, players
+   * needed. Preview (what changes, who is told) unless `save: true`;
+   * pf_edit_game refuses anyone but the poster.
+   */
+  if (body.action === 'edit') {
+    return NextResponse.json(
+      await editGame(db, link.game_id, { personId: link.person_id }, body as Record<string, unknown>, body.save === true),
+    );
   }
 
   /* The host's one nudge to everyone who never answered. Preview unless send. */

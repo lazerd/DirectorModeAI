@@ -11,7 +11,9 @@ import { background } from './background';
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { afterCancel, afterJoin, afterLeave, inviteGuests, messageSignups, nudgeNonResponders } from './notify';
+import { afterCancel, afterEdit, afterJoin, afterLeave, changeAudience, inviteGuests, messageSignups, nudgeNonResponders } from './notify';
+import { changeTellsPlayers, gameChanges, maxSpotsFor, type GameChange, type GameEdit } from './format';
+import { zonedWallTimeToIso } from '@/lib/captain/clubTime';
 import { clubRoster, guestLinkByToken, genderFits, levelFits, loadClub, loadGame, personGender, memberRow, personRow, resolvePlayingClub, type Club, type Db } from './server';
 
 export type ActionOutcome = {
@@ -168,6 +170,155 @@ export async function hostRemovePlayer(db: Db, gameId: string, actorPersonId: st
   if (r.result !== 'removed') return { ok: false, result: r.result, message: say(r.result) };
   background('host remove emails', () => afterLeave(db, gameId, r.person_id ?? null, r.name ?? undefined, { byHost: true }));
   return { ok: true, result: 'removed', message: `${r.name || 'They'} is off the game, and the spot is open again.` };
+}
+
+/* ------------------------------------------------- the club stepping in */
+
+/*
+ * The director's row actions on /run/members/courtconnect (QA #16). The route
+ * has already checked the account is staff at this game's club
+ * (resolveActiveClub); the Postgres functions check it again under the lock.
+ * Each one is the host's own move, made as the poster, so the seats, the
+ * reopening and the emails are the same whoever asked.
+ */
+
+export async function staffRemovePlayer(db: Db, gameId: string, staffUserId: string, seatId: string): Promise<ActionOutcome> {
+  const { data, error } = await db.rpc('pf_staff_remove', { p_game: gameId, p_staff_user: staffUserId, p_seat: seatId });
+  if (error) return { ok: false, result: 'error', message: say('error') };
+  const r = data as { result: string; person_id?: string | null; name?: string | null };
+  if (r.result === 'not_staff') return { ok: false, result: r.result, message: 'Only club staff can take players off a game.' };
+  if (r.result === 'not_in') return { ok: false, result: r.result, message: 'They are not in this game any more.' };
+  if (r.result !== 'removed') return { ok: false, result: r.result, message: say(r.result) };
+  // Not byHost: the host didn't do this, so they get the usual "can't make it" email.
+  background('staff remove emails', () => afterLeave(db, gameId, r.person_id ?? null, r.name ?? undefined));
+  return { ok: true, result: 'removed', message: `${r.name || 'They'} is off the game. The host has been told, and the spot is open again.` };
+}
+
+export async function staffCancelGame(db: Db, gameId: string, staffUserId: string): Promise<ActionOutcome> {
+  const { data, error } = await db.rpc('pf_staff_cancel_game', { p_game: gameId, p_staff_user: staffUserId });
+  if (error) return { ok: false, result: 'error', message: say('error') };
+  const r = data as { result: string };
+  if (r.result === 'not_staff') return { ok: false, result: r.result, message: 'Only club staff can cancel a game.' };
+  if (r.result !== 'cancelled') return { ok: false, result: r.result, message: say(r.result) };
+  background('staff cancel emails', () => afterCancel(db, gameId, { byClub: true }));
+  return { ok: true, result: 'game_cancelled', message: 'The game is cancelled. We emailed the host and everyone who was playing.' };
+}
+
+/* ------------------------------------------------------- editing a game */
+
+/** Who is making the change: the host by their person, or a staff account. */
+export type EditActor = { personId: string } | { staffUserId: string };
+
+const EDIT_REFUSED: Record<string, string> = {
+  not_poster: 'Only the person who posted the game can change it.',
+  not_staff: 'Only club staff can change this game.',
+  cancelled: 'This game was cancelled, so it cannot be changed.',
+  past: 'This game has already started, so it cannot be changed.',
+  in_past: 'That time has already passed. Pick a time later than now.',
+  too_far: 'Games can be up to 60 days ahead.',
+  bad_duration: 'Please pick how long you want to play.',
+  bad_spots: 'Please pick how many players the game needs.',
+  not_found: "We couldn't find that game.",
+};
+
+const seatedWords = (n: number) => `${n} ${n === 1 ? 'player is' : 'players are'} already in`;
+
+/**
+ * Change a posted game's day/time, length, court, note or players needed
+ * (QA #15). `save: false` is the preview: what changes, old -> new, and who
+ * will be emailed about it, from the same list the send uses. Nothing is
+ * written until `save: true`, and then pf_edit_game decides.
+ *
+ * Only a new time or court emails anyone (changeTellsPlayers), and only the
+ * people who are in. Players needed never goes below the number seated.
+ */
+export async function editGame(
+  db: Db,
+  gameId: string,
+  actor: EditActor,
+  input: Record<string, unknown>,
+  save: boolean,
+): Promise<ActionOutcome & { changes?: GameChange[]; tell?: string[]; noEmail?: string[] }> {
+  const game = await loadGame(db, gameId);
+  const club = game ? await loadClub(db, game.club_id) : null;
+  if (!game || !club) return { ok: false, result: 'not_found', message: say('not_found') };
+  const byClub = 'staffUserId' in actor;
+  const roster = await clubRoster(db, club.id);
+  if (!byClub && roster.find((r) => r.user_id === game.posted_by)?.person_id !== actor.personId) {
+    return { ok: false, result: 'not_poster', message: EDIT_REFUSED.not_poster };
+  }
+  if (game.status === 'cancelled') return { ok: false, result: 'cancelled', message: EDIT_REFUSED.cancelled };
+  if (game.status === 'expired' || new Date(game.starts_at).getTime() <= Date.now()) {
+    return { ok: false, result: 'past', message: EDIT_REFUSED.past };
+  }
+
+  // The same rules as posting a game (api/play/games), in the club's zone.
+  const date = String(input.date ?? '');
+  const time = String(input.time ?? '');
+  const startsAt =
+    /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{2}:\d{2}$/.test(time) ? zonedWallTimeToIso(`${date}T${time}`, club.timezone) : null;
+  if (!startsAt) return { ok: false, result: 'bad_input', message: 'Please pick a day and a time.' };
+  if (new Date(startsAt).getTime() <= Date.now()) return { ok: false, result: 'in_past', message: EDIT_REFUSED.in_past };
+  const duration = Number(input.duration);
+  if (!Number.isInteger(duration) || duration < 30 || duration > 240) {
+    return { ok: false, result: 'bad_duration', message: EDIT_REFUSED.bad_duration };
+  }
+  const spots = Number(input.spots);
+  const most = maxSpotsFor(game.format);
+  if (!Number.isInteger(spots) || spots < 1 || spots > most) {
+    return { ok: false, result: 'bad_spots', message: `Pick 1 to ${most} ${most === 1 ? 'player' : 'players'} besides the host.` };
+  }
+  const court = typeof input.court === 'string' ? input.court.trim().slice(0, 60) : '';
+  const note = typeof input.note === 'string' ? input.note.trim().slice(0, 500) : '';
+  const after: GameEdit = { starts_at: startsAt, duration_min: duration, court: court || null, note: note || null, spots_needed: spots };
+
+  const changes = gameChanges(game, after, club.timezone);
+  if (!changes.length) return { ok: false, result: 'no_change', message: 'Nothing has changed yet.' };
+
+  const { count: seatedCount } = await db
+    .from('pf_game_players')
+    .select('id', { count: 'exact', head: true })
+    .eq('game_id', game.id)
+    .eq('status', 'in');
+  const seated = seatedCount ?? 0;
+  if (spots < seated) {
+    return { ok: false, result: 'below_seated', message: `${seatedWords(seated)}, so the game needs room for at least ${seated}. Take someone off first.` };
+  }
+
+  const tellPlayers = changeTellsPlayers(changes);
+  const audience = tellPlayers ? await changeAudience(db, game, { byClub, roster }) : null;
+  const tell = audience?.names ?? [];
+  if (!save) return { ok: true, result: 'preview', message: '', changes, tell, noEmail: audience?.noEmail ?? [] };
+
+  const { data, error } = await db.rpc('pf_edit_game', {
+    p_game: gameId,
+    p_actor: byClub ? null : actor.personId,
+    p_starts_at: startsAt,
+    p_duration: duration,
+    p_court: court,
+    p_note: note,
+    p_spots: spots,
+    p_staff_user: byClub ? actor.staffUserId : null,
+  });
+  if (error) return { ok: false, result: 'error', message: say('error') };
+  const r = data as { result: string; seated?: number; became_full?: boolean; reopened?: boolean; waiting?: number; old?: GameEdit };
+  if (r.result === 'below_seated') {
+    return { ok: false, result: r.result, message: `${seatedWords(r.seated ?? 0)}. Take someone off first.` };
+  }
+  if (r.result !== 'edited' || !r.old) return { ok: false, result: r.result, message: EDIT_REFUSED[r.result] ?? say(r.result) };
+
+  background('edit emails', () =>
+    afterEdit(db, gameId, {
+      old: r.old!,
+      byClub,
+      tellPlayers,
+      becameFull: !!r.became_full,
+      reopened: !!r.reopened && (r.waiting ?? 0) > 0,
+    }),
+  );
+  const told = tell.length ? ` We're emailing ${tell.join(', ')} about the change.` : '';
+  const full = r.became_full ? ' That fills the game, so everyone gets the line-up.' : '';
+  return { ok: true, result: 'edited', message: `Saved.${told}${full}`, changes, tell };
 }
 
 /**
