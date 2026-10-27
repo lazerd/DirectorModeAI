@@ -101,16 +101,22 @@ export async function POST(_req: Request, { params }: Ctx) {
     );
   }
 
-  // Slot the claimer into the lineup they're covering.
+  // Slot the claimer into the lineup they're covering. The seat may still
+  // carry the dropout's decline stamp and note — clear them, or the captain
+  // page reads the sub as the one who pulled out.
   if (request.lineup_id) {
-    const col = request.slot === 2 ? 'player2_id' : 'player1_id';
-    const confirmCol = request.slot === 2 ? 'player2_confirmed_at' : 'player1_confirmed_at';
+    const slot = request.slot === 2 ? 2 : 1;
+    const now = new Date().toISOString();
     await admin
       .from('captain_lineups')
       .update({
-        [col]: player.id,
-        [confirmCol]: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        [`player${slot}_id`]: player.id,
+        [`player${slot}_confirmed_at`]: now,
+        // They tapped the claim link themselves — same as a player's own yes.
+        [`player${slot}_confirmed_source`]: 'player',
+        [`player${slot}_declined_at`]: null,
+        [`player${slot}_decline_note`]: null,
+        updated_at: now,
       })
       .eq('id', request.lineup_id);
   }

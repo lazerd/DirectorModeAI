@@ -1064,6 +1064,12 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         dropped_player_id: dropped,
       },
       (j) => {
+        // Nobody could be asked: the server left the seat and the dropout
+        // alone, so say it right here (not in the error line far below).
+        if (j.nobody) {
+          toast.error((j.message as string) || "There's nobody left to ask. Nothing was changed.");
+          return;
+        }
         setAskedSubs((a) => ({ ...a, [`${court.courtNumber}-${slot}`]: j.asked as number }));
         toast.success(`Asked ${j.asked as number} subs — first to claim gets the spot.`);
         router.refresh();

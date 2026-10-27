@@ -784,10 +784,40 @@ export async function sendAll(
  * lives on the team, because it is identical for every home match and nobody
  * should retype it eight times a season.
  */
+/**
+ * How many lines of a saved lineup are actually confirmed: every seat the
+ * line needs (one for singles, two for doubles) has a player who said yes and
+ * hasn't since pulled out. A seat with a name on it is not a yes.
+ */
+export function confirmedLineCount(
+  courts: {
+    court_type: 'singles' | 'doubles' | string;
+    player1_id: string | null;
+    player2_id: string | null;
+    player1_confirmed_at: string | null;
+    player2_confirmed_at: string | null;
+    player1_declined_at?: string | null;
+    player2_declined_at?: string | null;
+  }[],
+): number {
+  const seatIn = (id: string | null, yes: string | null, no?: string | null) => !!id && !!yes && !no;
+  return courts.filter((c) => {
+    const one = seatIn(c.player1_id, c.player1_confirmed_at, c.player1_declined_at);
+    if (c.court_type !== 'doubles') return one;
+    return one && seatIn(c.player2_id, c.player2_confirmed_at, c.player2_declined_at);
+  }).length;
+}
+
 /** The sentence the hosting email uses when the captain hasn't written their own. */
 export function defaultLinesNote(
   lineCount?: number | null,
   opts?: {
+    /**
+     * Lines whose players have all said yes (see confirmedLineCount). The
+     * "all N lines covered" promise goes to another club, so it is only made
+     * when every line is confirmed — unknown counts as none.
+     */
+    confirmedLines?: number | null;
     /** Courts the host is running the match on. */
     courtFormat?: number | null;
     /** Junior Team Tennis: lines are shared, so the ask is different. */
@@ -821,7 +851,11 @@ export function defaultLinesNote(
   }
 
   if (!lineCount || lineCount <= 0) return '';
-  return `We've got all ${lineCount} lines covered. If you end up short on any, just let me know so we can plan the courts.`;
+  if ((opts?.confirmedLines ?? 0) >= lineCount) {
+    return `We've got all ${lineCount} lines covered. If you end up short on any, just let me know so we can plan the courts.`;
+  }
+  // Not every line has said yes yet: make no claim about our side, keep the ask.
+  return 'If you end up short on any lines, just let me know so we can plan the courts.';
 }
 
 /**
@@ -841,6 +875,8 @@ export function hostingBodyText(
     address?: string | null;
     hostNotes?: string | null;
     lineCount?: number | null;
+    /** Lines whose players have all confirmed — gates the "all covered" line. */
+    confirmedLines?: number | null;
     linesNote?: string | null;
     /** Passed straight to defaultLinesNote — see the JTT branch there. */
     courtFormat?: number | null;
@@ -871,6 +907,7 @@ export function hostingBodyText(
     opts.linesNote !== undefined && opts.linesNote !== null
       ? opts.linesNote.trim()
       : defaultLinesNote(opts.lineCount, {
+          confirmedLines: opts.confirmedLines,
           courtFormat: opts.courtFormat,
           singlesCourts: opts.singlesCourts,
           doublesCourts: opts.doublesCourts,
