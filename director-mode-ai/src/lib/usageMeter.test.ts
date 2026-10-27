@@ -11,7 +11,7 @@ vi.mock('@/lib/supabase/admin', () => ({
 vi.mock('@/lib/billing', () => ({ resolveBillingUserId: async (id: string) => id }));
 vi.mock('@/lib/assistant/meter', () => ({ paygActive: async () => cardOnFile }));
 
-import { canSend, priceCents } from './usageMeter';
+import { canSend, cappedEmailCents, priceCents } from './usageMeter';
 
 describe('priceCents', () => {
   it('charges 1¢ an email and 3¢ a text', () => {
@@ -25,6 +25,16 @@ describe('priceCents', () => {
     expect(priceCents('email', 0)).toBe(0);
     expect(priceCents('sms', -3)).toBe(0);
     expect(priceCents('email', 2.9)).toBe(2);
+  });
+});
+
+describe('cappedEmailCents', () => {
+  it('bills a penny an email until the club hits $30 for the month', () => {
+    expect(cappedEmailCents(1, 0)).toBe(1);
+    expect(cappedEmailCents(500, 2000)).toBe(500);
+    expect(cappedEmailCents(500, 2800)).toBe(200);
+    expect(cappedEmailCents(1, 3000)).toBe(0);
+    expect(cappedEmailCents(10_000, 0)).toBe(3000);
   });
 });
 

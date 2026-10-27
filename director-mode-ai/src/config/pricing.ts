@@ -36,6 +36,14 @@ export const EMAIL_PRICE_CENTS = 1;
 export const TEXT_PRICE_CENTS = 3;
 
 /**
+ * Email charges stop at this much per club per month (Darrin + Kevin, 2026-10-27):
+ * still a penny an email, but never more than $30 a month for email, however
+ * many go out. Texts and Ask Claude are NOT capped. A club's own lower monthly
+ * limit (usage_limits) still applies on top of this.
+ */
+export const EMAIL_MONTHLY_CAP_CENTS = 3000;
+
+/**
  * On (Darrin, 2026-10-21): a club without a card on file has its emails held
  * and its texts refused until it adds one, and the nightly usage report bills
  * emails and texts alongside Ask Claude. Off = record-only, nothing blocked or

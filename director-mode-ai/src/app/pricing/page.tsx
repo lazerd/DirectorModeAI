@@ -11,6 +11,7 @@ import {
   LayoutGrid,
 } from 'lucide-react';
 import {
+  EMAIL_MONTHLY_CAP_CENTS,
   EMAIL_PRICE_CENTS,
   TEXT_PRICE_CENTS,
   AI_MARKUP,
@@ -125,7 +126,7 @@ export default function PricingPage() {
         </h1>
         <p className="mt-4 text-white/60 max-w-xl mx-auto">
           All {PRODUCT_COUNT} tools to run your racquet-sports club, for your whole staff, at no
-          cost. You pay a penny per email and a few cents per text, billed monthly once you owe $20.
+          cost. You pay a penny per email (never more than {`$${EMAIL_MONTHLY_CAP_CENTS / 100}`} a month) and a few cents per text, billed monthly once you owe $20.
         </p>
       </section>
 
@@ -141,7 +142,7 @@ export default function PricingPage() {
           <PriceRow
             icon={<Mail size={18} className="text-blue-400" />}
             label="Email"
-            note="Every email your club sends"
+            note={`Every email your club sends · capped at $${EMAIL_MONTHLY_CAP_CENTS / 100}/mo`}
             price={`${EMAIL_PRICE_CENTS}¢`}
             unit="each"
           />

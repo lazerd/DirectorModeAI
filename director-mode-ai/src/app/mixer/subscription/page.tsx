@@ -8,6 +8,7 @@ import { CreditCard, Sparkles, Mail, MessageSquare, Inbox, CheckCircle2 } from '
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import {
+  EMAIL_MONTHLY_CAP_CENTS,
   EMAIL_PRICE_CENTS,
   TEXT_PRICE_CENTS,
   AI_MONTHLY_CAP_USD,
@@ -205,7 +206,7 @@ export default async function UsageBillingPage() {
             color="text-blue-400"
             label="Emails sent"
             count={usage.email.billed.units + usage.email.exempt.units}
-            rate={`${EMAIL_PRICE_CENTS}¢ each`}
+            rate={`${EMAIL_PRICE_CENTS}¢ each · max $${EMAIL_MONTHLY_CAP_CENTS / 100}/mo`}
             billedCents={usage.email.billed.cents}
             exemptCents={usage.email.exempt.cents}
           />

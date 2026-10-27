@@ -4,13 +4,14 @@
  *
  * Pricing is Darrin's (2026-10-21, constants in config/pricing): the platform is
  * free, every email is EMAIL_PRICE_CENTS and every text TEXT_PRICE_CENTS, with
- * no allowance. The platform owner's clubs are recorded with exempt=true and
+ * no allowance. Email stops billing at EMAIL_MONTHLY_CAP_CENTS a month (10/27);
+ * texts are never capped. The platform owner's clubs are recorded with exempt=true and
  * never invoiced, the same rule Ask Claude uses.
  *
  * Recording never throws: a metering hiccup must not stop a club's email.
  */
 
-import { EMAIL_PRICE_CENTS, METERING_ENFORCED, TEXT_PRICE_CENTS } from '@/config/pricing';
+import { EMAIL_MONTHLY_CAP_CENTS, EMAIL_PRICE_CENTS, METERING_ENFORCED, TEXT_PRICE_CENTS } from '@/config/pricing';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { resolveBillingUserId } from '@/lib/billing';
 import { isPlatformOwnerEmail } from '@/lib/platformOwner';
@@ -22,6 +23,27 @@ export type SendKind = 'email' | 'sms';
 export function priceCents(kind: SendKind, units: number): number {
   const n = Math.max(0, Math.floor(units));
   return n * (kind === 'email' ? EMAIL_PRICE_CENTS : TEXT_PRICE_CENTS);
+}
+
+/**
+ * What these emails actually bill once the monthly email cap is applied, given
+ * what this club's email has already been billed this month. Emails over the cap
+ * are still recorded (units), just at 0 cents.
+ */
+export function cappedEmailCents(units: number, alreadyBilledCents: number): number {
+  const room = Math.max(0, EMAIL_MONTHLY_CAP_CENTS - Math.max(0, alreadyBilledCents));
+  return Math.min(priceCents('email', units), room);
+}
+
+/** This club's email charges so far this month, in cents (exempt rows included). */
+async function monthEmailCents(billingUserId: string): Promise<number> {
+  const { data } = await getSupabaseAdmin()
+    .from('usage_events')
+    .select('billed_cents')
+    .eq('billing_user_id', billingUserId)
+    .eq('kind', 'email')
+    .gte('created_at', monthStart());
+  return ((data as { billed_cents: number }[] | null) ?? []).reduce((a, r) => a + Number(r.billed_cents || 0), 0);
 }
 
 /** Who pays for this user's sends, and whether that account is the platform owner's. */
@@ -115,6 +137,10 @@ export async function recordSendUsage(args: {
   if (args.units <= 0) return;
   try {
     const { billingUserId, exempt } = await sendBilling(args.userId);
+    const billed =
+      args.kind === 'email'
+        ? cappedEmailCents(args.units, await monthEmailCents(billingUserId))
+        : priceCents(args.kind, args.units);
     const { error } = await getSupabaseAdmin()
       .from('usage_events')
       .insert({
@@ -123,7 +149,7 @@ export async function recordSendUsage(args: {
         club_id: args.clubId ?? null,
         kind: args.kind,
         units: Math.floor(args.units),
-        billed_cents: priceCents(args.kind, args.units),
+        billed_cents: billed,
         exempt,
         ref: args.ref ?? null,
       });
