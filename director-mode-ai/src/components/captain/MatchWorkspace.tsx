@@ -254,6 +254,9 @@ export default function MatchWorkspace({
    * for when the captain knows exactly who is stepping in.
    */
   const [subFor, setSubFor] = useState<{ courtNumber: number; slot: 1 | 2 } | null>(null);
+  // Roster blasts sent this visit, by court-slot. The API doesn't dedupe, so
+  // once asked the big button turns into a receipt instead of a second blast.
+  const [askedSubs, setAskedSubs] = useState<Record<string, number>>({});
   /** Subbing someone out normally means they genuinely cannot play — say why. */
   const [subMarkOut, setSubMarkOut] = useState(true);
   const [subNote, setSubNote] = useState('injured');
@@ -1041,6 +1044,7 @@ This clears ${losing.join(' and ')} — everyone gets re-polled.` : ''),
         dropped_player_id: dropped,
       },
       (j) => {
+        setAskedSubs((a) => ({ ...a, [`${court.courtNumber}-${slot}`]: j.asked as number }));
         toast.success(`Asked ${j.asked as number} subs — first to claim gets the spot.`);
         router.refresh();
       },
@@ -2225,15 +2229,43 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                 : `${bailedInLineup.length} players pulled out of this lineup.`}
             </strong>
             <ul className="mt-1.5 space-y-1 text-red-100/80">
-              {bailedInLineup.map((b) => (
-                <li key={b.playerId}>
-                  {b.name} — {fmtWhen(b.at, timeZone)}
-                  {b.note ? ` · “${b.note}”` : ''}
-                </li>
-              ))}
+              {bailedInLineup.map((b) => {
+                // The one thing to do about a bail: put the whole roster on it.
+                // This used to be a small link inside the court row.
+                const court = courts.find(
+                  (c) => c.player1Id === b.playerId || c.player2Id === b.playerId,
+                );
+                const slot: 1 | 2 = court?.player1Id === b.playerId ? 1 : 2;
+                const key = court ? `${court.courtNumber}-${slot}` : '';
+                const asked = askedSubs[key];
+                return (
+                  <li key={b.playerId} className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span>
+                      {b.name} — {fmtWhen(b.at, timeZone)}
+                      {b.note ? ` · “${b.note}”` : ''}
+                    </span>
+                    {court?.id &&
+                      (asked != null ? (
+                        <span className="rounded-lg bg-emerald-500/15 px-3 py-1.5 font-semibold text-emerald-300">
+                          ✓ Asked {asked} — first to claim gets {labelOf(court)}
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => findSub(court, slot)}
+                          disabled={!!busy}
+                          className="rounded-lg bg-[#D3FB52] px-4 py-2 text-sm font-bold text-black hover:brightness-110 disabled:opacity-40"
+                        >
+                          {busy === `sub-${court.courtNumber}-${slot}`
+                            ? 'Emailing the roster…'
+                            : `📣 Find a sub — email the whole roster`}
+                        </button>
+                      ))}
+                  </li>
+                );
+              })}
             </ul>
             <p className="mt-2 text-red-100/80">
-              Their row is open below — swap someone in, or ask the whole roster from that court.
+              Or swap in someone who already said yes from their court below.
             </p>
           </div>
         )}
@@ -2584,23 +2616,28 @@ Everyone on the sheet is credited with a match for playoff eligibility.`,
                                 : `sub in someone who said yes (${spares.length})`}
                             </button>
 
-                            {c.id && (
-                              <button
-                                onClick={() => findSub(c, slot)}
-                                disabled={!!busy}
-                                className={
-                                  bailed
-                                    ? 'text-red-300 hover:text-red-200 underline'
-                                    : 'text-white/30 hover:text-white underline disabled:opacity-30'
-                                }
-                              >
-                                {busy === `sub-${c.courtNumber}-${slot}`
-                                  ? 'asking subs…'
-                                  : bailed
-                                    ? `or ask the whole roster for ${nameOf(pid)}`
-                                    : 'find a sub'}
-                              </button>
-                            )}
+                            {c.id &&
+                              (askedSubs[rowKey] != null ? (
+                                <span className="font-semibold text-emerald-300">
+                                  ✓ asked {askedSubs[rowKey]} subs
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => findSub(c, slot)}
+                                  disabled={!!busy}
+                                  className={
+                                    bailed
+                                      ? 'rounded-lg bg-[#D3FB52] px-3 py-1.5 text-sm font-bold text-black no-underline hover:brightness-110 disabled:opacity-40'
+                                      : 'text-white/30 hover:text-white underline disabled:opacity-30'
+                                  }
+                                >
+                                  {busy === `sub-${c.courtNumber}-${slot}`
+                                    ? 'emailing the roster…'
+                                    : bailed
+                                      ? `📣 Find a sub for ${nameOf(pid)} — email the roster`
+                                      : 'find a sub'}
+                                </button>
+                              ))}
                           </div>
                             )}
                           </div>
