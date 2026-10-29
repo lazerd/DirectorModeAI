@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { addressedTo, gameChangedEmail, gameFullEmail, inviteEmail, removedByHostEmail } from './emails';
+import { addressedTo, championReferralEmail, gameChangedEmail, gameFullEmail, inviteEmail, removedByHostEmail } from './emails';
 import { sharedInboxes } from './format';
 import { TENNIS_SCALE } from '@/lib/levels';
 import type { Club, Game, GroupMember } from './server';
@@ -201,5 +201,26 @@ describe('the email when a game changes', () => {
     const mail = gameChangedEmail(moved, club, { to: 'gabe@example.com', name: 'Gabrial Fett', by: 'Walden B.', changes, token: 'tok-gabe' });
     expect(mail.subject).toBe('Changed: doubles now Wed Sep 23, 10:00am, court 3');
     expect(/^[\x20-\x7e]*$/.test(mail.subject)).toBe(true);
+  });
+});
+
+describe('championReferralEmail', () => {
+  const m = championReferralEmail(club, { to: 'walden@example.com', name: 'Lawrence Walden Browne', games: 8, code: 'abc123def0' });
+
+  it('thanks them by first name, counts their games, and makes the one ask', () => {
+    expect(m.html).toContain('Hi Lawrence');
+    expect(m.html).toContain('8 games');
+    expect(m.html).toContain('Know someone at another club who organizes games?');
+    expect(m.html).toContain("only time we'll ask");
+  });
+
+  it('links to the CourtConnect front door tagged with their code', () => {
+    expect(m.html).toContain('/courtconnect?ref=abc123def0');
+    expect(m.sms).toContain('/courtconnect?ref=abc123def0');
+  });
+
+  it('keeps the subject ASCII', () => {
+    expect(m.subject).toBe('Thanks for organizing games at Sleepy Hollow Swim & Tennis Club');
+    expect(/^[ -~]*$/.test(m.subject)).toBe(true);
   });
 });

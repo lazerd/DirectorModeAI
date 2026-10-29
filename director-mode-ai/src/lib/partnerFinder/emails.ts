@@ -472,3 +472,33 @@ export function gameChangedEmail(
     sms: ascii(`${club.name}: ${opts.by} changed the ${formatWord(g)}: ${what}. ${linkUrl(opts.token)}`).slice(0, 300),
   };
 }
+
+/** The tagged link a champion shares: the CourtConnect front door, marked as theirs. */
+export const shareUrl = (code: string) => `${APP_URL}/courtconnect?ref=${encodeURIComponent(code)}`;
+
+/**
+ * The one-time thank-you to someone who keeps getting games on court, with a
+ * single low-pressure ask: pass CourtConnect to an organizer at another club.
+ * Sent once per person, ever (pf_referral_invites), and it says so, so it
+ * never reads like the start of a campaign.
+ */
+export function championReferralEmail(
+  club: Club,
+  opts: { to: string; name: string; games: number; code: string },
+): GameMessage {
+  const url = shareUrl(opts.code);
+  const title = `Thanks for getting ${opts.games} games on court`;
+  const body = `
+    <p style="font-size:18px;line-height:1.5;margin:0 0 14px">Hi ${esc(firstName(opts.name))}, you've organized ${opts.games} games on CourtConnect at ${esc(club.name)} that filled up and got played. Thank you. That's what makes it work for everyone else.</p>
+    <p style="font-size:19px;line-height:1.5;margin:0 0 18px;padding:14px 18px;border-left:4px solid ${GREEN};background:#f0fdf4"><strong>Know someone at another club who organizes games?</strong> Share CourtConnect with them.</p>
+    <p style="margin:0 0 14px">${button(url, 'Share CourtConnect')}</p>
+    <p style="font-size:16px;line-height:1.5;color:${MUTED};margin:0 0 6px">Or send them this link, or just forward this email:</p>
+    <p style="font-size:16px;line-height:1.5;margin:0 0 18px;word-break:break-all"><a href="${url}" style="color:${INK}">${esc(url)}</a></p>
+    <p style="font-size:16px;line-height:1.5;color:${MUTED};margin:0">No need to reply, and this is the only time we'll ask.</p>`;
+  return {
+    to: opts.to,
+    subject: ascii(`Thanks for organizing games at ${club.name}`),
+    html: shell(club, esc(title), body),
+    sms: ascii(`${club.name}: thanks for organizing ${opts.games} games on CourtConnect! Know an organizer at another club? Share it: ${url}`),
+  };
+}

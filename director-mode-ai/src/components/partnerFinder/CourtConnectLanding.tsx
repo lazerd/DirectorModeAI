@@ -40,7 +40,11 @@ const DETAILS = [
   'Members never pay and never need an app',
 ];
 
-export default function CourtConnectLanding() {
+/**
+ * `sharedBy` is set when the visitor came from a champion's share link
+ * (/courtconnect?ref=…): a name they know does more than any pitch below it.
+ */
+export default function CourtConnectLanding({ sharedBy }: { sharedBy?: { name: string; club: string } | null } = {}) {
   const cap = EMAIL_MONTHLY_CAP_CENTS / 100;
   return (
     <div className="min-h-screen bg-[#001820] text-white antialiased">
@@ -55,6 +59,11 @@ export default function CourtConnectLanding() {
 
       <main>
         <section className="mx-auto max-w-5xl px-5 pb-16 pt-10 md:pt-20">
+          {sharedBy && (
+            <p className="mb-6 inline-block rounded-full border border-white/15 bg-white/[0.06] px-4 py-2 text-sm text-white/80">
+              {sharedBy.name} uses CourtConnect to organize games at {sharedBy.club} and thought you&rsquo;d want it too.
+            </p>
+          )}
           <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#D3FB52]">CourtConnect by ClubMode</p>
           <h1 className="mt-4 max-w-3xl text-5xl font-bold leading-[1.02] tracking-tight md:text-7xl">
             Need a fourth?

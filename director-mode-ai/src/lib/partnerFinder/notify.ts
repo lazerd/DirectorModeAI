@@ -23,6 +23,7 @@ import {
   gameGroup,
   loadClub,
   loadGame,
+  memberRow,
   GAME_COLS,
   type Club,
   type Db,
@@ -32,6 +33,7 @@ import {
 } from './server';
 import {
   addressedTo,
+  championReferralEmail,
   gameCancelledEmail,
   gameChangedEmail,
   gameFullEmail,
@@ -427,7 +429,9 @@ export async function afterCancel(db: Db, gameId: string, opts: { byClub?: boole
  * The daily cron: close out past games that never filled, and remind today's
  * groups. A game gets one reminder, on the morning of, in the club's own date.
  */
-export async function runHousekeeping(db: Db): Promise<{ expired: number; reminded: number; emails: number }> {
+export async function runHousekeeping(
+  db: Db,
+): Promise<{ expired: number; reminded: number; emails: number; referrals: number }> {
   const { data: expired } = await db.rpc('pf_expire_games');
 
   const now = new Date();
@@ -464,7 +468,47 @@ export async function runHousekeeping(db: Db): Promise<{ expired: number; remind
     emails += await sendToGroup(db, game, club, (m) => reminderEmail(game, club, m));
     reminded++;
   }
-  return { expired: (expired as number) ?? 0, reminded, emails };
+  const referrals = await sendChampionReferrals(db);
+  return { expired: (expired as number) ?? 0, reminded, emails: emails + referrals, referrals };
+}
+
+/** Games that filled and were played before a poster gets the "share CourtConnect" note. */
+export const REFERRAL_AFTER_GAMES = 3;
+
+/**
+ * The one-time "know someone at another club who organizes games?" note to
+ * anyone who has organized REFERRAL_AFTER_GAMES games that filled and got
+ * played. Members already know the organizers at other clubs, which makes
+ * this a better way in than cold outreach, and it only lands after CourtConnect
+ * has worked for them a few times.
+ *
+ * The row is inserted before sending, so an overlapping cron run cannot send it
+ * twice. A send that fails takes the row back out, so it is tried again tomorrow.
+ */
+export async function sendChampionReferrals(db: Db): Promise<number> {
+  const { data } = await db.rpc('pf_referral_candidates', { p_min: REFERRAL_AFTER_GAMES });
+  let sent = 0;
+  for (const c of (data as { user_id: string; club_id: string; games: number }[] | null) ?? []) {
+    const club = await loadClub(db, c.club_id);
+    const me = club ? await memberRow(db, c.club_id, c.user_id) : null;
+    if (!club || !me?.email) continue;
+
+    const code = crypto.randomUUID().replace(/-/g, '').slice(0, 10);
+    const { data: claimed } = await db
+      .from('pf_referral_invites')
+      .insert({ user_id: c.user_id, club_id: c.club_id, code, games: c.games })
+      .select('user_id');
+    if (!claimed?.length) continue;
+
+    const n = await deliver(club, [championReferralEmail(club, { to: me.email, name: me.full_name || '', games: c.games, code })]);
+    if (n) {
+      await db.from('pf_referral_invites').update({ sent_at: new Date().toISOString() }).eq('user_id', c.user_id);
+      sent += n;
+    } else {
+      await db.from('pf_referral_invites').delete().eq('user_id', c.user_id);
+    }
+  }
+  return sent;
 }
 
 /**
