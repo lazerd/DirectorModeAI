@@ -31,6 +31,8 @@ const MESSAGES: Record<string, string> = {
   waitlisted: "This game is full, so you're in line if a spot opens. We'll email you the moment one does.",
   removed_by_host: "The organizer took you off this game. If that's a mistake, reply to their email.",
   already_waiting: "You're already in line for this game. We'll email you if a spot opens.",
+  gender_full_male: "Both men's spots in this mixed game are taken, so you're in line. We'll email you if one opens.",
+  gender_full_female: "Both women's spots in this mixed game are taken, so you're in line. We'll email you if one opens.",
   off_waitlist: "Done — you're off the list for this game.",
   cancelled: 'This game was cancelled.',
   past: 'This game has already started.',
@@ -94,7 +96,7 @@ export async function joinGame(
 
   const { data, error } = await db.rpc('pf_claim_spot', { p_game: gameId, p_person: personId, p_via: via });
   if (error) return { ok: false, result: 'error', message: say('error') };
-  const r = data as { result: string; now_full?: boolean; position?: number };
+  const r = data as { result: string; now_full?: boolean; position?: number; gender?: string };
 
   /*
    * A full game takes the answer as a place in line rather than turning it
@@ -105,6 +107,12 @@ export async function joinGame(
   if (r.result === 'waitlisted' || r.result === 'already_waiting') {
     const place = r.position && r.position > 1 ? ` You're number ${r.position} in line.` : " You're first in line.";
     return { ok: true, result: r.result, message: say(r.result) + place };
+  }
+
+  // Mixed doubles: this person's side of the court is full (pf_mixed_gender_balance.sql).
+  if (r.result === 'gender_full') {
+    const key = r.gender === 'female' ? 'gender_full_female' : 'gender_full_male';
+    return { ok: true, result: 'waitlisted', message: say(key) };
   }
 
   if (r.result !== 'joined') return { ok: r.result === 'already_in', result: r.result, message: say(r.result) };
