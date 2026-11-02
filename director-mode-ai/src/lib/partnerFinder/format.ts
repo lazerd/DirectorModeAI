@@ -164,6 +164,12 @@ export function publicLine(g: GameSummary, spotsLeft: number, tz: string, scale:
 }
 
 /** An address as an inbox: trimmed and lower-cased, "" for none. */
+/** "9" → "Court 9". Posters often type just the number. */
+export function courtLabel(court: string | null | undefined): string {
+  const c = (court || '').trim();
+  return /^\d+[a-z]?$/i.test(c) ? `Court ${c}` : c;
+}
+
 /**
  * The game as a message for a group chat (WhatsApp, a text thread), with a
  * link to the club's CourtConnect page. No names: it goes to everyone in the

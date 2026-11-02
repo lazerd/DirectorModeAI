@@ -24,6 +24,7 @@ import {
   needsLabel,
   ratingLabel,
   shareText,
+  courtLabel,
   type GameFormat,
 } from '@/lib/partnerFinder/format';
 import { levelOptions, levelValue, optionLine, type LevelScale } from '@/lib/levels';
@@ -317,7 +318,7 @@ function GameCard({
               shareText({
                 title: `${g.day.split(',')[0]} ${g.clock} ${g.formatLabel}`,
                 clubName: club.name,
-                facts: [needsLabel(g.spotsLeft), g.ratingFact, g.duration, g.court || ''],
+                facts: [needsLabel(g.spotsLeft), g.ratingFact, g.duration, courtLabel(g.court)],
                 note: g.note,
                 url: `${window.location.origin}/c/${club.slug}/play`,
               })
