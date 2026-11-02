@@ -164,6 +164,20 @@ export function publicLine(g: GameSummary, spotsLeft: number, tz: string, scale:
 }
 
 /** An address as an inbox: trimmed and lower-cased, "" for none. */
+/**
+ * The game as a message for a group chat (WhatsApp, a text thread), with a
+ * link to the club's CourtConnect page. No names: it goes to everyone in the
+ * chat. Asked for by Walden Browne 2026-11-01, whose games fill from his chats.
+ */
+export function shareText(o: { title: string; clubName: string; facts: string[]; note: string | null; url: string }): string {
+  return [
+    `🎾 ${o.title} at ${o.clubName}`,
+    o.facts.filter(Boolean).join(' · '),
+    ...(o.note ? [`"${o.note}"`] : []),
+    `Want in? Tap "I'm in" here: ${o.url}`,
+  ].join('\n');
+}
+
 export const inbox = (email: string | null | undefined) => (email || '').trim().toLowerCase();
 
 /**

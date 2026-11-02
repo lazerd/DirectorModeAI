@@ -7,7 +7,7 @@
  * community. Body text is 18px, every button is at least 56px tall, and every
  * action ends in a sentence saying what happened.
  */
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { levelOptions, type LevelScale } from '@/lib/levels';
 
 export const bigBtn =
@@ -113,6 +113,57 @@ export function LevelPicker({
         >
           Not sure
         </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Share an open game to a group chat: WhatsApp with the message filled in (the
+ * poster picks the group), or copy it to paste anywhere. If the copy is
+ * refused, the text is shown selected so a long-press still gets it.
+ */
+export function ShareGame({ text }: { text: () => string }) {
+  const [shown, setShown] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    const t = text();
+    try {
+      await navigator.clipboard.writeText(t);
+      setCopied(true);
+      setShown(null);
+    } catch {
+      setShown(t);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <a
+          href="#"
+          onClick={(e) => {
+            e.preventDefault();
+            window.open(`https://wa.me/?text=${encodeURIComponent(text())}`, '_blank', 'noopener');
+          }}
+          className={`${secondaryBtn} w-full text-center sm:w-auto`}
+        >
+          Share on WhatsApp
+        </a>
+        <button type="button" onClick={copy} className={`${secondaryBtn} w-full sm:w-auto`}>
+          {copied ? 'Copied! Paste it in your chat' : 'Copy for a group chat'}
+        </button>
+      </div>
+      {shown && (
+        <textarea
+          readOnly
+          value={shown}
+          rows={5}
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          className="w-full rounded-2xl border-2 border-slate-300 p-3 text-lg"
+        />
       )}
     </div>
   );

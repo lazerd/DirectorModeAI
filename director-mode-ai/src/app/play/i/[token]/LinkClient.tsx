@@ -8,12 +8,13 @@ import {
   LevelPicker,
   Notice,
   PeopleList,
+  ShareGame,
   dangerBtn,
   postJson,
   primaryBtn,
   secondaryBtn,
 } from '@/components/partnerFinder/ui';
-import { DURATIONS, durationLabel, needsLabel, type GameChange } from '@/lib/partnerFinder/format';
+import { DURATIONS, durationLabel, needsLabel, shareText, type GameChange } from '@/lib/partnerFinder/format';
 import { levelValue, type LevelScale } from '@/lib/levels';
 
 type Props = {
@@ -30,6 +31,8 @@ type Props = {
   emailAnswer: 'yes' | 'no' | null;
   title: string;
   rows: [string, string][];
+  /** Level, length and court, for the host's group-chat message. No names. */
+  shareFacts: string[];
   note: string | null;
   status: 'open' | 'full' | 'cancelled' | 'expired' | 'past';
   spotsLeft: number;
@@ -572,6 +575,25 @@ export default function LinkClient(p: Props) {
               Add someone who said yes
             </button>
           )
+        )}
+
+        {/* Post it to the club's group chat. */}
+        {p.isPoster && !closedText && spotOpen && (
+          <section className="space-y-3 rounded-3xl border border-slate-200 bg-white p-6">
+            <h2 className="text-2xl font-bold">Post it to a group chat</h2>
+            <p className="text-lg text-slate-600">Members tap the link and join with &ldquo;I&rsquo;m in.&rdquo;</p>
+            <ShareGame
+              text={() =>
+                shareText({
+                  title: p.title,
+                  clubName: p.clubName,
+                  facts: [needsLabel(p.spotsLeft), ...p.shareFacts],
+                  note: p.note,
+                  url: `${window.location.origin}/c/${p.clubSlug}/play`,
+                })
+              }
+            />
+          </section>
         )}
 
         {/* The poster's own friends from outside the club, e.g. from their other club. */}

@@ -154,6 +154,7 @@ export default async function GameLinkPage({
       emailAnswer={emailAnswer}
       title={`${longDay(game.starts_at, tz).split(',')[0]} ${clockLabel(game.starts_at, tz)} ${gameKind(game.format, game.gender, game.sport)}`}
       rows={rows}
+      shareFacts={[level ? `Level ${level}` : '', durationLabel(game.duration_min), game.court || ''].filter(Boolean)}
       note={game.note}
       status={started && game.status !== 'cancelled' ? 'past' : game.status}
       spotsLeft={spotsLeft}

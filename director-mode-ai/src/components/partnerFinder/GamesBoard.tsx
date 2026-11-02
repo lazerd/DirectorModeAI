@@ -23,6 +23,7 @@ import {
   gameKind,
   needsLabel,
   ratingLabel,
+  shareText,
   type GameFormat,
 } from '@/lib/partnerFinder/format';
 import { levelOptions, levelValue, optionLine, type LevelScale } from '@/lib/levels';
@@ -31,6 +32,7 @@ import {
   LevelPicker,
   Notice,
   PeopleList,
+  ShareGame,
   dangerBtn,
   postJson,
   primaryBtn,
@@ -161,7 +163,7 @@ export default function GamesBoard({ clubId }: { clubId: string }) {
       {board.mine.length > 0 && (
         <Section title="Your games">
           {board.mine.map((g) => (
-            <GameCard key={g.id} game={g} onDone={(m) => { say(m); load(); }} />
+            <GameCard key={g.id} game={g} club={board.club} onDone={(m) => { say(m); load(); }} />
           ))}
         </Section>
       )}
@@ -233,10 +235,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function GameCard({
   game: g,
+  club,
   myLevelKnown = true,
   onDone,
 }: {
   game: BoardGame;
+  /** Only on the poster's own games: it's what the share message names and links to. */
+  club?: Board['club'];
   myLevelKnown?: boolean;
   onDone: (m: Msg) => void;
 }) {
@@ -302,6 +307,22 @@ function GameCard({
           {g.answers.noReply.length > 0 && (
             <p className="mt-1 text-slate-600">No answer yet: {g.answers.noReply.join(', ')}</p>
           )}
+        </div>
+      )}
+
+      {g.isMine && club && g.status === 'open' && g.spotsLeft > 0 && (
+        <div className="mt-4">
+          <ShareGame
+            text={() =>
+              shareText({
+                title: `${g.day.split(',')[0]} ${g.clock} ${g.formatLabel}`,
+                clubName: club.name,
+                facts: [needsLabel(g.spotsLeft), g.ratingFact, g.duration, g.court || ''],
+                note: g.note,
+                url: `${window.location.origin}/c/${club.slug}/play`,
+              })
+            }
+          />
         </div>
       )}
 

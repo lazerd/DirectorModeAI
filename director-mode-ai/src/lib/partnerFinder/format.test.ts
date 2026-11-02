@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { zonedWallTimeToIso } from '@/lib/captain/clubTime';
-import { changeTellsPlayers, clockLabel, clubDate, gameChanges, gameTitle, maxSpotsFor, publicLine, ratingLabel, shortName } from './format';
+import { changeTellsPlayers, clockLabel, clubDate, gameChanges, gameTitle, maxSpotsFor, publicLine, ratingLabel, shareText, shortName } from './format';
 import { levelFits } from './server';
 
 describe('names', () => {
@@ -101,5 +101,23 @@ describe('editing a game', () => {
   it('never lets singles ask for more than one', () => {
     expect(maxSpotsFor('singles')).toBe(1);
     expect(maxSpotsFor('doubles')).toBe(3);
+  });
+});
+
+describe('shareText', () => {
+  it('reads as a group-chat message with the link last and no names', () => {
+    const t = shareText({
+      title: 'Sunday 9:00am mixed doubles',
+      clubName: 'Sleepy Hollow',
+      facts: ['needs 2 players', 'Level 2.5–3.5', '1½ hours', ''],
+      note: 'Friendly, all welcome',
+      url: 'https://clubmode.ai/c/sleepy-hollow/play',
+    });
+    expect(t.split('\n')).toEqual([
+      '🎾 Sunday 9:00am mixed doubles at Sleepy Hollow',
+      'needs 2 players · Level 2.5–3.5 · 1½ hours',
+      '"Friendly, all welcome"',
+      'Want in? Tap "I\'m in" here: https://clubmode.ai/c/sleepy-hollow/play',
+    ]);
   });
 });
