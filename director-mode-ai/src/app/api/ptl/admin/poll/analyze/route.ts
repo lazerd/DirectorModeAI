@@ -156,7 +156,7 @@ export async function POST() {
       max_tokens: 6000,
       system: CONTEXT,
       tools: [PLAN_TOOL as any],
-      tool_choice: { type: 'tool', name: 'pilot_plan' } as any,
+      tool_choice: { type: 'auto' } as any,
       messages: [
         {
           role: 'user',
@@ -166,7 +166,8 @@ export async function POST() {
             'Read every response, including the notes. Build one concrete pilot plan the group can say yes to. ' +
             'Follow the majority where there is one, say plainly where people disagree, and use the notes to break ties. ' +
             'Assign tasks to the people who volunteered for them; mark anything nobody took as "Needs an owner". ' +
-            'Keep the open decisions open: recommend, but do not state them as decided. Write plainly, no hype.',
+            'Keep the open decisions open: recommend, but do not state them as decided. Write plainly, no hype. ' +
+            'Return the result by calling the pilot_plan tool exactly once.',
         },
       ],
     });

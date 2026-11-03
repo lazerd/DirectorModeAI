@@ -25,6 +25,20 @@ const PLAN_LABELS: Record<string, string> = {
   incentives: 'Incentive to play',
 };
 
+/** Claude occasionally leaves a section out; render what's there instead of crashing. */
+function normalize(x: any): Analysis | null {
+  if (!x || typeof x !== 'object') return null;
+  return {
+    headline: x.headline ?? '',
+    by_question: Array.isArray(x.by_question) ? x.by_question : [],
+    plan: x.plan && typeof x.plan === 'object' ? x.plan : {},
+    owners: Array.isArray(x.owners) ? x.owners : [],
+    decisions_needed: Array.isArray(x.decisions_needed) ? x.decisions_needed : [],
+    risks: Array.isArray(x.risks) ? x.risks : [],
+    next_steps: Array.isArray(x.next_steps) ? x.next_steps : [],
+  };
+}
+
 export default function PollAnalysis({
   initial,
   initialCount,
@@ -36,7 +50,8 @@ export default function PollAnalysis({
   initialAt: string | null;
   responseCount: number;
 }) {
-  const [a, setA] = useState<Analysis | null>(initial);
+  const [a, setRaw] = useState<Analysis | null>(normalize(initial));
+  const setA = (x: Analysis | null) => setRaw(normalize(x));
   const [basedOn, setBasedOn] = useState(initialCount);
   const [at, setAt] = useState<string | null>(initialAt);
   const [busy, setBusy] = useState(false);
