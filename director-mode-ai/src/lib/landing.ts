@@ -4,8 +4,8 @@
  * (sessionStorage) so a visitor who lands on /mixermode and then runs a round
  * on /try is still tied to the letter that brought them.
  */
-export const LANDING_PAGES = ['mixermode', 'pulse'] as const;
-export const LANDING_EVENTS = ['view', 'cta', 'first_round', 'submitted'] as const;
+export const LANDING_PAGES = ['mixermode', 'pulse', 'home'] as const;
+export const LANDING_EVENTS = ['view', 'cta', 'first_round', 'submitted', 'pick_players', 'pick_captains', 'pick_directors', 'ask'] as const;
 export type LandingPage = (typeof LANDING_PAGES)[number];
 export type LandingEvent = (typeof LANDING_EVENTS)[number];
 
