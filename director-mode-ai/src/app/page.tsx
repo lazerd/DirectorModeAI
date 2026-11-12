@@ -33,5 +33,5 @@ export default async function HomePage() {
   } catch {
     // An auth hiccup must never blank the front page: show the guest door.
   }
-  return signedIn ? <PlatformHome /> : <GuestHome />;
+  return signedIn ? <PlatformHome fallbackToGuest /> : <GuestHome />;
 }

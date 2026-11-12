@@ -14,6 +14,7 @@ import ProductShowcase from "@/components/shared/ProductShowcase";
 import AppShellDemo from "@/components/home/AppShellDemo";
 import RotatingWord from "@/components/home/RotatingWord";
 import Reveal from "@/components/home/Reveal";
+import GuestHome from "@/components/home/GuestHome";
 import { PRODUCTS, PRODUCT_COUNT, SECTIONS, FOR_PLAYERS, FOR_YOU, ALL_TOOLS_ITEM, type Tool } from "@/config/nav";
 
 /** The rotating word in the headline. Module-level so its identity is stable. */
@@ -38,7 +39,13 @@ const PATCHWORK = [
   .map((p) => ({ ...p, t: PRODUCTS.find((x) => x.name === p.tool) }))
   .filter((p): p is typeof p & { t: Tool } => !!p.t);
 
-export default function PlatformHome() {
+/**
+ * fallbackToGuest: set by "/" only. The server picks this page when it sees a
+ * session, but a phone can show "/" from a restored tab or carry a session the
+ * browser can no longer use. If the browser decides nobody is signed in, show
+ * the guest page instead of this one. /platform leaves it off on purpose.
+ */
+export default function PlatformHome({ fallbackToGuest = false }: { fallbackToGuest?: boolean } = {}) {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -125,6 +132,8 @@ export default function PlatformHome() {
     if (!user && t.name === 'CaptainMode') return router.push('/captainmode');
     return t.href.startsWith('/lessons') ? goToLessons() : goToTool(t.href);
   };
+
+  if (fallbackToGuest && !loading && !user) return <GuestHome />;
 
   return (
     <div className="min-h-screen bg-[#001820] text-white antialiased" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
