@@ -115,14 +115,51 @@ export function formatMatchWhen(matchAt: string, timeZone?: string): string {
   }).format(d);
 }
 
-function shell(title: string, body: string, footer?: string): string {
+/**
+ * @param playerToken  The reader's own player token. Every email to one of our
+ *   players passes it, and gets the "Helpful links" footer; emails to captains
+ *   and other clubs leave it out.
+ */
+function shell(title: string, body: string, footer?: string, playerToken?: string): string {
   return `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:${INK}">
     <h1 style="font-size:20px;margin:0 0 16px">${title}</h1>
     ${body}
     ${footer ? `<p style="font-size:12px;color:#64748b;margin-top:24px">${footer}</p>` : ''}
+    ${playerToken ? helpfulLinks(playerToken) : ''}
     ${SEE_WHAT_I_SEE}
   </div>`;
+}
+
+/** Marks the player's own links so a coach's copy can drop them (ccPayloads). */
+export const PLAYER_LINKS_START = '<!--cm-player-links-->';
+export const PLAYER_LINKS_END = '<!--/cm-player-links-->';
+
+/**
+ * "Helpful links" — the foot of every email to a player.
+ *
+ * A Fall B2/B3 player asked for her availability link in every email, and was
+ * unsure whether she had to update TopDog as well as ClubMode. So this says
+ * plainly what the captain builds the lineup from, and nothing about TopDog:
+ * it is not ours to say whether a league uses it. TopDog itself is not linked —
+ * ClubMode stores TopDog match ids, not a team page, and a guessed URL that 404s
+ * is worse than none.
+ *
+ * The plain-text half of every send is derived from this HTML (lib/email.ts),
+ * so the wording reads as sentences on its own.
+ */
+export function helpfulLinks(token: string): string {
+  const link = `${BASE}/captain/availability/${token}`;
+  return `${PLAYER_LINKS_START}<div style="margin:24px 0 0;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+      <p style="font-size:12px;color:#64748b;margin:0 0 6px;text-transform:uppercase;letter-spacing:.06em">Helpful links</p>
+      <p style="font-size:14px;color:#334155;margin:0 0 4px">
+        <a href="${link}" style="color:#0369a1;font-weight:600">Your availability for every match</a>
+      </p>
+      <p style="font-size:13px;color:#475569;margin:0">
+        Your captain builds lineups from your ClubMode availability. Update it here.
+        The link is yours, no login needed.
+      </p>
+    </div>${PLAYER_LINKS_END}`;
 }
 
 /**
@@ -236,6 +273,7 @@ export function availabilityEmail(
        </div>
        <p style="font-size:14px;color:#475569">Or <a href="${link}" style="color:#0369a1">see your whole schedule</a>.</p>`,
       'One tap — no login needed.',
+      r.token,
     ),
   };
 }
@@ -262,6 +300,89 @@ export function nudgeEmail(
          ${button(`${link}?m=${m.id}&r=maybe`, '? Maybe', '#e2e8f0')}
        </div>`,
       'One tap — no login needed.',
+      r.token,
+    ),
+  };
+}
+
+export type AvailabilityAnswer = 'yes' | 'no' | 'maybe';
+
+const ANSWER_LABEL: Record<AvailabilityAnswer, string> = {
+  yes: 'Available',
+  no: 'Not available',
+  maybe: 'Maybe',
+};
+
+/** "Tue, Nov 24" in club time — the day the lineup email goes out. */
+function dayOf(iso: string, tz?: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: tz || CLUB_TZ,
+  }).format(new Date(iso));
+}
+
+/**
+ * Availability check — a couple of days before the captain builds the lineup,
+ * every player sees the answer we have on file for them.
+ *
+ * Asked for by a Fall B2/B3 player: tell me what you think I said, and when
+ * the lineup goes out, so I only act if it's wrong. A player who already
+ * answered gets ONE link to her page, not one-tap answer buttons: those buttons
+ * record on arrival, and a mail scanner opening all three must never be able to
+ * overwrite an answer she already gave. A player with no answer gets the usual
+ * one-tap buttons — there is nothing of hers to overwrite.
+ *
+ * @param lineupAt  When the lineup email is scheduled, or null when the
+ *   captain sends it by hand (then the date is left out rather than guessed).
+ */
+export function availabilityCheckEmail(
+  team: string,
+  m: MatchInfo,
+  r: Recipient,
+  answer: AvailabilityAnswer | null,
+  lineupAt: string | null,
+  tz?: string,
+  c?: EmailCustom,
+): { to: string; subject: string; html: string } {
+  const link = `${BASE}/captain/availability/${r.token}`;
+  const vars = varsFor(team, r.name, m, tz);
+  const when = formatMatchWhen(m.matchAt, tz);
+  const lineupLine = lineupAt
+    ? `The lineup goes out on <strong>${dayOf(lineupAt, tz)}</strong>.`
+    : 'Your captain builds the lineup from these answers.';
+
+  const status = answer
+    ? `<div style="margin:16px 0;padding:14px 16px;border-radius:10px;background:#f0fdf4;border:1px solid #bbf7d0">
+         <p style="font-size:16px;margin:0 0 6px">You're marked as <strong>${ANSWER_LABEL[answer]}</strong> for this match.</p>
+         <p style="font-size:14px;color:#475569;margin:0">If this is right, there's no need to do anything. ${lineupLine}</p>
+       </div>
+       <div style="margin:16px 0 8px">${button(link, 'Change my answer', '#e2e8f0')}</div>`
+    : `<div style="margin:16px 0;padding:14px 16px;border-radius:10px;background:#fffbeb;border:1px solid #fcd34d">
+         <p style="font-size:16px;margin:0 0 6px;color:#92400e"><strong>We don't have an answer from you yet.</strong></p>
+         <p style="font-size:14px;color:#78350f;margin:0">Tap one so your captain can count you in or out. ${lineupLine}</p>
+       </div>
+       <div style="margin:16px 0 8px">
+         ${button(`${link}?m=${m.id}&r=yes`, '✓ Available', BRAND)}
+         ${button(`${link}?m=${m.id}&r=no`, '✗ Not available', '#e2e8f0')}
+         ${button(`${link}?m=${m.id}&r=maybe`, '? Maybe', '#e2e8f0')}
+       </div>`;
+
+  return {
+    to: r.email,
+    subject: subjectOf(
+      c,
+      answer
+        ? `${team} ${when}: you're marked ${ANSWER_LABEL[answer]}`
+        : `${team} ${when}: we don't have your answer yet`,
+      vars,
+    ),
+    html: shell(
+      `Hi ${escapeHtml(r.name)}, checking your availability`,
+      `${introBlock(c, vars)}${matchLines(m, tz)}${status}`,
+      'No login needed.',
+      r.token,
     ),
   };
 }
@@ -294,6 +415,7 @@ export function preseasonIntakeEmail(
          You can come back to the same link any time to change your answers.
        </p>`,
       'No login needed — this link is yours.',
+      r.token,
     ),
   };
 }
@@ -466,6 +588,8 @@ export function lineupEmail(
        <table style="width:100%;border-collapse:collapse;margin:12px 0">${table}${openRows}</table>
        ${singlesNote(m.singlesNextUp)}
        ${confirm}`,
+      undefined,
+      r.token,
     ),
   };
 }
@@ -520,6 +644,8 @@ export function matchReminderEmail(
        <p style="font-size:13px;color:#64748b;margin:14px 0 0">
          Something come up? <a href="${BASE}/captain/confirm/${r.token}/${m.id}?a=out" style="color:#b91c1c">Let your captain know you can't make it</a>.
        </p>`,
+      undefined,
+      r.token,
     ),
   };
 }
@@ -549,6 +675,8 @@ export function hostUpdateEmail(
        <p style="font-size:13px;color:#64748b;margin:14px 0 0">
          Something come up? <a href="${BASE}/captain/confirm/${r.token}/${m.id}?a=out" style="color:#b91c1c">Let your captain know you can't make it</a>.
        </p>`,
+      undefined,
+      r.token,
     ),
   };
 }
@@ -653,6 +781,8 @@ export function subRequestEmail(
       `${matchLines(m, tz)}
        <div style="margin:20px 0">${button(link, '✓ I can play — claim this spot', BRAND)}</div>
        <p style="font-size:14px;color:#475569">First to claim gets the spot, so tap quickly if you can make it.</p>`,
+      undefined,
+      r.token,
     ),
   };
 }
@@ -740,6 +870,7 @@ export function seasonAvailabilityEmail(
          No login, no app — the link above is yours for the whole season. Bookmark it.
        </p>`,
       'Sent by your captain through ClubMode.',
+      r.token,
     ),
   };
 }
@@ -1094,6 +1225,7 @@ export function matchRecapEmail(
        ${opts.record ? `<p style="font-size:14px;color:#475569;margin:14px 0 0"><strong>Season record:</strong> ${escapeHtml(opts.record)}</p>` : ''}
        ${next}`,
       'Sent by your captain through CaptainMode.',
+      r.token,
     ),
   };
 }
@@ -1378,6 +1510,7 @@ export function makeupPollEmail(
        ${rows}
        <p style="font-size:14px;color:#475569">Or <a href="${link}" style="color:#0369a1">open your answers page</a> — you can change an answer any time.</p>`,
       'One tap — no login needed.',
+      r.token,
     ),
   };
 }

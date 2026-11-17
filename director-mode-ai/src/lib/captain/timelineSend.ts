@@ -9,9 +9,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   availabilityEmail,
+  availabilityCheckEmail,
   nudgeEmail,
   lineupEmail,
   matchReminderEmail,
+  type AvailabilityAnswer,
   type EmailCustom,
   type LineupRow,
   type MatchInfo,
@@ -20,6 +22,7 @@ import {
 import {
   buildTimeline,
   resolveSettings,
+  sendAtForKind,
   EMAIL_KINDS,
   type EmailKind,
   type MatchRow,
@@ -53,7 +56,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 
 export const MATCH_COLUMNS =
   'id, team_id, match_at, status, is_home, opponent, location, arrival_note, ' +
-  'opposing_captain_name, opposing_captain_phone, availability_poll_sent_at, ' +
+  'opposing_captain_name, opposing_captain_phone, availability_poll_sent_at, availability_check_sent_at, ' +
   'nudge_sent_at, lineup_email_sent_at, reminder_sent_at, court_format, singles_courts, doubles_courts, ' +
   'match_coach_id';
 
@@ -80,6 +83,8 @@ export type TeamEmailContext = {
   matchInfo: Map<string, MatchInfo>;
   roster: PlayerRow[];
   answered: Map<string, Set<string>>;
+  /** match_id -> player_id -> the answer on file. The availability check prints it. */
+  answers: Map<string, Map<string, AvailabilityAnswer>>;
   courts: Map<string, CourtRow[]>;
   settings: Record<EmailKind, ResolvedSetting>;
   overrides: OverrideRow[];
@@ -148,8 +153,8 @@ export async function loadTeamEmailContext(
         .eq('team_id', team.id)
         .eq('active', true),
       matchIds.length
-        ? db.from('captain_availability').select('match_id, player_id').in('match_id', matchIds)
-        : Promise.resolve({ data: [] as { match_id: string; player_id: string }[] }),
+        ? db.from('captain_availability').select('match_id, player_id, status').in('match_id', matchIds)
+        : Promise.resolve({ data: [] as { match_id: string; player_id: string; status: AvailabilityAnswer }[] }),
       matchIds.length
         ? db
             .from('captain_lineups')
@@ -211,9 +216,12 @@ export async function loadTeamEmailContext(
   const roster = ((players as PlayerRow[]) || []).filter((p) => !!p.email);
 
   const answered = new Map<string, Set<string>>();
-  for (const a of (avail as { match_id: string; player_id: string }[]) || []) {
+  const answers = new Map<string, Map<string, AvailabilityAnswer>>();
+  for (const a of (avail as { match_id: string; player_id: string; status: AvailabilityAnswer }[]) || []) {
     if (!answered.has(a.match_id)) answered.set(a.match_id, new Set());
     answered.get(a.match_id)!.add(a.player_id);
+    if (!answers.has(a.match_id)) answers.set(a.match_id, new Map());
+    answers.get(a.match_id)!.set(a.player_id, a.status);
   }
 
   const courts = new Map<string, CourtRow[]>();
@@ -286,6 +294,7 @@ export async function loadTeamEmailContext(
     matchInfo,
     roster,
     answered,
+    answers,
     courts,
     settings: resolveSettings((settingRows as SettingRow[]) || []),
     overrides: (ovRows as OverrideRow[]) || [],
@@ -309,6 +318,9 @@ function ccsFor(
   matchId: string,
   playerAddresses: string[],
 ): TeamCc[] {
+  // The availability check is one player's own answer, not a team-wide
+  // message: a copy would show a coach somebody else's "you're marked No".
+  if (kind === 'check') return [];
   const base = kind === 'nudge' ? [] : ctx.teamCcs;
   // The whole roster, not just this send's recipients — a parent is never a
   // copy recipient, even on a send their own child is not in.
@@ -372,6 +384,17 @@ function playerPayloadsFor(
   if (kind === 'poll') {
     return audience.flatMap((p) =>
       withSecondContact(availabilityEmail(teamName, info, recipientOf(p), ctx.timeZone, custom), p.contact2_email),
+    );
+  }
+
+  if (kind === 'check') {
+    const mine = ctx.answers.get(matchId) || new Map<string, AvailabilityAnswer>();
+    const lineupAt = scheduledLineupAt(ctx, matchId);
+    return audience.flatMap((p) =>
+      withSecondContact(
+        availabilityCheckEmail(teamName, info, recipientOf(p), mine.get(p.id) ?? null, lineupAt, ctx.timeZone, custom),
+        p.contact2_email,
+      ),
     );
   }
 
@@ -472,6 +495,20 @@ function playerPayloadsFor(
 }
 
 /**
+ * When the lineup email for this match will go out, for the check's "the
+ * lineup goes out on …" line. Null when it won't go out on its own (lineup
+ * emails off, or skipped for this match) — then the email names no date
+ * rather than promising one the captain never set.
+ */
+function scheduledLineupAt(ctx: TeamEmailContext, matchId: string): string | null {
+  const info = ctx.matchInfo.get(matchId);
+  if (!info || !ctx.settings.lineup.enabled) return null;
+  const mine = ctx.overrides.filter((o) => o.match_id === matchId);
+  if (mine.some((o) => o.kind === 'lineup' && o.skip)) return null;
+  return sendAtForKind('lineup', info.matchAt, ctx.settings, mine);
+}
+
+/**
  * Who a given send would actually reach, for the preview's recipient list.
  * Mirrors payloadsFor exactly, including the targeted-send filter — the two
  * lists are shown side by side in the preview and must never disagree.
@@ -555,6 +592,7 @@ function sampleSubject(kind: EmailKind, ctx: TeamEmailContext, matchId: string):
   const tz = ctx.timeZone;
   if (kind === 'poll') return availabilityEmail(t, info, r, tz, custom).subject;
   if (kind === 'nudge') return nudgeEmail(t, info, r, tz, custom).subject;
+  if (kind === 'check') return availabilityCheckEmail(t, info, r, null, null, tz, custom).subject;
   if (kind === 'lineup') return lineupEmail(t, info, [], r, false, tz, custom).subject;
   return matchReminderEmail(t, info, r, null, tz, custom).subject;
 }

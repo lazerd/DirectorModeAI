@@ -3,6 +3,7 @@ import {
   buildTimeline,
   dueAtFor,
   isDue,
+  sendAtForKind,
   tickAtOrBefore,
   resolveSettings,
   type MatchRow,
@@ -229,5 +230,44 @@ describe('isDue agrees with the timeline', () => {
   it('never fires after the match has started', () => {
     const now = new Date('2026-09-01T17:00:00.000Z');
     expect(isDue('reminder', match(), settings.reminder, null, now)).toBe(false);
+  });
+});
+
+describe('availability check', () => {
+  const on = (rows: Parameters<typeof resolveSettings>[0] = []) =>
+    resolveSettings([
+      { kind: 'check', enabled: true, lead_days: 2, subject_override: null, intro_override: null },
+      ...rows,
+    ]);
+
+  it('is off by default, so a deploy never starts mailing anyone', () => {
+    const now = new Date('2026-08-24T00:00:00.000Z');
+    const settings = resolveSettings([]);
+    expect(settings.check.enabled).toBe(false);
+    expect(isDue('check', match(), settings.check, null, now, { settings, overrides: [] })).toBe(false);
+    expect(pick(build(now.toISOString()), 'check').status).toBe('off');
+  });
+
+  it('goes two days before the lineup, and moves with the lineup lead', () => {
+    const settings = on();
+    // Match 9/1 16:30Z, lineup 7 days → 8/25 16:30Z, check 2 days before → 8/23 16:30Z → 16:00Z tick.
+    expect(sendAtForKind('check', match().match_at, settings, [])).toBe('2026-08-23T16:00:00.000Z');
+    const later = on([{ kind: 'lineup', enabled: true, lead_days: 5, subject_override: null, intro_override: null }]);
+    expect(sendAtForKind('check', match().match_at, later, [])).toBe('2026-08-25T16:00:00.000Z');
+  });
+
+  it('follows a per-match lineup send time', () => {
+    const settings = on();
+    const ov = { kind: 'lineup' as const, send_at: '2026-08-28T16:00:00.000Z' };
+    expect(sendAtForKind('check', match().match_at, settings, [ov])).toBe('2026-08-26T16:00:00.000Z');
+  });
+
+  it('needs the full settings to be due, and stands down once the lineup is out', () => {
+    const settings = on();
+    const now = new Date('2026-08-24T00:00:00.000Z');
+    expect(isDue('check', match(), settings.check, null, now)).toBe(false);
+    expect(isDue('check', match(), settings.check, null, now, { settings, overrides: [] })).toBe(true);
+    const out = match({ lineup_email_sent_at: '2026-08-23T16:00:00.000Z' });
+    expect(isDue('check', out, settings.check, null, now, { settings, overrides: [] })).toBe(false);
   });
 });

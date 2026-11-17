@@ -14,6 +14,23 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { formatPhone } from './phone';
+import { PLAYER_LINKS_START, PLAYER_LINKS_END } from './emails';
+
+/**
+ * A copy must not carry the player's "Helpful links" footer: it is that
+ * player's personal availability page, and a coach who tapped "update it here"
+ * would be answering for someone else's child.
+ */
+function withoutPlayerLinks(html: string): string {
+  let out = html;
+  for (;;) {
+    const i = out.indexOf(PLAYER_LINKS_START);
+    if (i < 0) return out;
+    const j = out.indexOf(PLAYER_LINKS_END, i);
+    if (j < 0) return out;
+    out = out.slice(0, i) + out.slice(j + PLAYER_LINKS_END.length);
+  }
+}
 
 export type TeamCc = { name: string; email: string; role: string };
 
@@ -132,7 +149,7 @@ export function ccPayloads(
       `<p style="font-size:13px;color:#64748b;margin:0">` +
       `Copy for ${c.name} — this is what went to the team. The buttons below are the players' own links, so there is nothing for you to answer.` +
       `</p></div>` +
-      sample.html,
+      withoutPlayerLinks(sample.html),
   }));
 }
 

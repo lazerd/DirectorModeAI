@@ -13,9 +13,9 @@
  * match day itself — thirty minutes of notice. Early is harmless, late is not.
  */
 
-export type EmailKind = 'poll' | 'nudge' | 'lineup' | 'reminder';
+export type EmailKind = 'poll' | 'check' | 'nudge' | 'lineup' | 'reminder';
 
-export const EMAIL_KINDS: EmailKind[] = ['poll', 'nudge', 'lineup', 'reminder'];
+export const EMAIL_KINDS: EmailKind[] = ['poll', 'check', 'nudge', 'lineup', 'reminder'];
 
 /** Vercel cron: "0 16 * * *" in vercel.json. Keep in sync with it. */
 export const CRON_UTC_HOUR = 16;
@@ -29,8 +29,15 @@ export type KindMeta = {
   defaultLeadDays: number;
   defaultEnabled: boolean;
   needsLineup: boolean;
+  /**
+   * When set, `leadDays` counts back from THAT kind's send, not from the match.
+   * The availability check is "2 days before the lineup goes out", so a captain
+   * who moves the lineup to 5 days out moves the check with it.
+   */
+  relativeTo?: EmailKind;
   sentColumn:
     | 'availability_poll_sent_at'
+    | 'availability_check_sent_at'
     | 'nudge_sent_at'
     | 'lineup_email_sent_at'
     | 'reminder_sent_at';
@@ -48,6 +55,19 @@ export const KIND_META: Record<EmailKind, KindMeta> = {
     needsLineup: false,
     sentColumn: 'availability_poll_sent_at',
   },
+  check: {
+    label: 'Availability check',
+    blurb: 'Shows each player the answer we have for them before the lineup is built; tap to change it.',
+    audience: 'Everyone on the roster with an email',
+    // Days before the LINEUP send (see relativeTo), not before the match.
+    defaultLeadDays: 2,
+    // Off by default and never switched on by a deploy or a migration: live
+    // teams are mid-season. The captain turns it on from the timeline.
+    defaultEnabled: false,
+    needsLineup: false,
+    relativeTo: 'lineup',
+    sentColumn: 'availability_check_sent_at',
+  },
   lineup: {
     label: 'Lineup',
     blurb: 'The court assignments, with a confirm button for anyone playing.',
@@ -61,6 +81,10 @@ export const KIND_META: Record<EmailKind, KindMeta> = {
     label: 'Availability nudge',
     blurb: 'Chases only the players who never answered the poll.',
     audience: 'Players with no answer yet',
+    // Wanted: just before the lineup (lineup lead + 1). Not moved yet
+    // (2026-11-17): a team still on defaults had a match whose unsent nudge
+    // would have turned instantly due on the next run. Chasing before the
+    // lineup is what the availability check does in the meantime.
     defaultLeadDays: 2,
     defaultEnabled: true,
     needsLineup: false,
@@ -110,6 +134,8 @@ export type MatchRow = {
   is_home: boolean;
   opponent: string | null;
   availability_poll_sent_at: string | null;
+  /** Optional so match fixtures written before the check existed still type. */
+  availability_check_sent_at?: string | null;
   nudge_sent_at: string | null;
   lineup_email_sent_at: string | null;
   reminder_sent_at: string | null;
@@ -201,6 +227,44 @@ export function sendAtFor(
   return tickAtOrBefore(dueAtFor(matchAt, leadDays, override));
 }
 
+/**
+ * Due moment for one kind on one match, with relative kinds resolved. The
+ * availability check is due `leadDays` before the lineup's own due moment —
+ * including a per-match lineup send_at — unless the check itself has an
+ * explicit send_at for this match.
+ */
+export function dueAtForKind(
+  kind: EmailKind,
+  matchAt: string,
+  settings: Record<EmailKind, ResolvedSetting>,
+  overrides: Pick<OverrideRow, 'kind' | 'send_at'>[],
+): string {
+  const own = overrides.find((o) => o.kind === kind) || null;
+  const rel = KIND_META[kind].relativeTo;
+  if (!rel || own?.send_at) return dueAtFor(matchAt, settings[kind].leadDays, own as OverrideRow | null);
+  const anchorOv = overrides.find((o) => o.kind === rel) || null;
+  const anchor = new Date(dueAtFor(matchAt, settings[rel].leadDays, anchorOv as OverrideRow | null));
+  return new Date(anchor.getTime() - settings[kind].leadDays * DAY).toISOString();
+}
+
+/** sendAtFor for any kind, relative kinds included. */
+export function sendAtForKind(
+  kind: EmailKind,
+  matchAt: string,
+  settings: Record<EmailKind, ResolvedSetting>,
+  overrides: Pick<OverrideRow, 'kind' | 'send_at'>[],
+): string {
+  return tickAtOrBefore(dueAtForKind(kind, matchAt, settings, overrides));
+}
+
+/**
+ * The availability check exists to be read BEFORE the lineup. Once the lineup
+ * has gone out it would only contradict it, so it stands down.
+ */
+function checkMooted(kind: EmailKind, m: MatchRow): boolean {
+  return kind === 'check' && !!m.lineup_email_sent_at;
+}
+
 export function sentAtOf(match: MatchRow, kind: EmailKind): string | null {
   return match[KIND_META[kind].sentColumn] ?? null;
 }
@@ -266,8 +330,9 @@ export function buildTimeline(args: BuildTimelineArgs): TimelineEvent[] {
     for (const kind of EMAIL_KINDS) {
       const setting = settings[kind];
       const ov = overrides.find((o) => o.match_id === m.id && o.kind === kind) || null;
-      const dueAt = dueAtFor(m.match_at, setting.leadDays, ov);
-      const sendAt = sendAtFor(m.match_at, setting.leadDays, ov);
+      const mine = overrides.filter((o) => o.match_id === m.id);
+      const dueAt = dueAtForKind(kind, m.match_at, settings, mine);
+      const sendAt = tickAtOrBefore(dueAt);
       const sentAt = sentAtOf(m, kind);
       const audience = audienceFor(kind, m, counts);
 
@@ -282,6 +347,9 @@ export function buildTimeline(args: BuildTimelineArgs): TimelineEvent[] {
       } else if (m.status !== 'scheduled') {
         status = 'skipped';
         reason = `Match is ${m.status}.`;
+      } else if (checkMooted(kind, m)) {
+        status = 'skipped';
+        reason = 'The lineup already went out, so there is nothing left to check.';
       } else if (!setting.enabled) {
         status = 'off';
         reason = `${KIND_META[kind].label} emails are turned off for this team.`;
@@ -333,12 +401,23 @@ export function isDue(
   setting: ResolvedSetting,
   ov: OverrideRow | null,
   now: Date,
+  /**
+   * Every setting and this match's overrides. Required for a kind timed off
+   * another kind (the availability check): without it the anchor is unknown,
+   * and an unknown send time is never treated as due.
+   */
+  all?: { settings: Record<EmailKind, ResolvedSetting>; overrides: OverrideRow[] },
 ): boolean {
   if (!setting.enabled) return false;
   if (ov?.skip) return false;
   if (m.status !== 'scheduled') return false;
   if (sentAtOf(m, kind)) return false;
+  if (checkMooted(kind, m)) return false;
   if (new Date(m.match_at).getTime() <= now.getTime()) return false;
+  if (KIND_META[kind].relativeTo && !all) return false;
   // Same instant the dashboard prints, so "goes out today" is literally true.
-  return new Date(sendAtFor(m.match_at, setting.leadDays, ov)).getTime() <= now.getTime();
+  const sendAt = all
+    ? sendAtForKind(kind, m.match_at, all.settings, all.overrides.filter((o) => o.match_id === m.id))
+    : sendAtFor(m.match_at, setting.leadDays, ov);
+  return new Date(sendAt).getTime() <= now.getTime();
 }

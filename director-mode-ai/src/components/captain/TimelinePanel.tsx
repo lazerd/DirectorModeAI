@@ -25,6 +25,7 @@ type Setting = {
 
 const KIND_COLOR: Record<EmailKind, string> = {
   poll: '#D3FB52',
+  check: '#86efac',
   lineup: '#7dd3fc',
   nudge: '#fbbf24',
   reminder: '#c4b5fd',
@@ -231,6 +232,7 @@ function Row({
 
 const KIND_LABEL: Record<EmailKind, string> = {
   poll: 'Availability poll',
+  check: 'Availability check',
   lineup: 'Lineup',
   nudge: 'Nudge',
   reminder: 'Day-before reminder',
@@ -348,7 +350,9 @@ function RuleCard({
           style={{ color: '#fff' }}
           className="w-20 px-2.5 py-1.5 rounded-lg bg-[#001820] border border-white/10 focus:outline-none focus:border-[#D3FB52]/50"
         />
-        <span className="text-white/50">days before each match</span>
+        <span className="text-white/50">
+          {setting.meta.relativeTo === 'lineup' ? 'days before the lineup email' : 'days before each match'}
+        </span>
       </div>
 
       <button

@@ -38,13 +38,15 @@ export async function GET(request: NextRequest) {
   const now = new Date();
   const summary = {
     polls: 0,
+    checks: 0,
     lineups: 0,
     nudges: 0,
     reminders: 0,
     errors: [] as string[],
   };
-  const counter: Record<EmailKind, 'polls' | 'lineups' | 'nudges' | 'reminders'> = {
+  const counter: Record<EmailKind, 'polls' | 'checks' | 'lineups' | 'nudges' | 'reminders'> = {
     poll: 'polls',
+    check: 'checks',
     lineup: 'lineups',
     nudge: 'nudges',
     reminder: 'reminders',
@@ -87,7 +89,7 @@ export async function GET(request: NextRequest) {
       for (const m of ctx.matches as MatchRow[]) {
         for (const kind of EMAIL_KINDS) {
           const ov = ctx.overrides.find((o) => o.match_id === m.id && o.kind === kind) || null;
-          if (!isDue(kind, m, ctx.settings[kind], ov, now)) continue;
+          if (!isDue(kind, m, ctx.settings[kind], ov, now, ctx)) continue;
 
           try {
             const payloads = payloadsFor(kind, ctx, m.id);
