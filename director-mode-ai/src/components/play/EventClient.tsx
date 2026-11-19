@@ -11,6 +11,9 @@ import { standings, teamScore, type GuestMatch } from '@/lib/mixer/guestMixer';
 import { Directions, PlaceMap, PlacePicker, type Place } from './PlacePicker';
 import { FORMAT_NAME, directionsUrl, awards, perCourt, spotsLine, whenLine, type PlayEvent } from '@/lib/play/core';
 import { BrandContext, C, PlayHeader, api, getKey, getName, setKey, setName } from './shared';
+import { getMyLevel, levelLabel, levelNote, levelNum, setMyLevel } from '@/lib/play/levels';
+import { LevelChips } from './Levels';
+import { WeatherCard } from './Weather';
 
 export type Res = { event: PlayEvent; playerKey?: string; code?: string };
 
@@ -22,6 +25,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
   const [tab, setTab] = useState<'courts' | 'table'>('courts');
   const [isNew, setIsNew] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [moving, setMoving] = useState(false);
   const lastRound = useRef<number>(0);
 
   const refresh = useCallback(async (k = key) => {
@@ -86,18 +90,23 @@ export default function EventClient({ code, initial }: { code: string; initial: 
         )}
         <EventCard e={e} onStatus={() => setSheet(true)} />
         <CrownStrip e={e} />
+        {e.status === 'open' && <WeatherCard e={e} isHost={e.isHost} onRainCheck={() => setMoving(true)} />}
+        {moving && e.isHost && e.status === 'open' && <MoveGame e={e} busy={busy} act={act} onDone={() => setMoving(false)} />}
         {err && <p className="mt-3 rounded-xl bg-[#fbe9e5] px-4 py-3 text-[14px] text-[#9c3a25]">{err}</p>}
 
         {e.status === 'open' && <OpenView e={e} meName={meR?.name} busy={busy} act={act} code={code} />}
         {e.status === 'live' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code={code} />}
         {e.status === 'done' && <DoneView e={e} busy={busy} act={act} code={code} myName={meR?.name} />}
 
+        {e.season && <SeasonTable e={e} />}
         {e.status !== 'done' && <PlaceMap e={e} className="mt-6" />}
-        {e.isHost && <HostPanel e={e} busy={busy} act={act} hostKey={key} />}
+        {e.isHost && <HostPanel e={e} busy={busy} act={act} hostKey={key} onMove={() => { setMoving(true); scrollTo({ top: 0, behavior: 'smooth' }); }} />}
         {sheet && <StatusSheet e={e} busy={busy} act={act} hostKey={e.isHost ? key : null} onClose={() => setSheet(false)} />}
 
         <div className="mt-10 text-center text-[13px]" style={{ color: C.muted }}>
           <Link href="/play" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Host your own game in 60 seconds</Link>
+          <span className="mx-2">·</span>
+          <Link href={`/play/near?sport=${e.sport}`} className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Find a game near me</Link>
           <div className="mt-2">CourtConnect by ClubMode · no app, no account</div>
         </div>
       </main>
@@ -112,7 +121,7 @@ export function EventCard({ e, onStatus }: { e: PlayEvent; onStatus: () => void 
   return (
     <section className="rounded-3xl p-5 text-white shadow-lg" style={{ background: C.ink }}>
       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: '#bccdbb' }}>
-        <span>{e.sport} · {FORMAT_NAME[e.format]}{e.level ? ` · ${e.level}` : ''}</span>
+        <span>{e.sport} · {FORMAT_NAME[e.format]}{e.level_min != null || e.level_max != null ? ` · ${levelLabel({ min: e.level_min ?? null, max: e.level_max ?? null }, e.sport)}` : e.level ? ` · ${e.level}` : ''}</span>
         <button type="button" onClick={onStatus} aria-label="Game status" className="flex items-center gap-1 rounded-full px-2.5 py-1 uppercase" style={e.status === 'live' ? { background: C.lime, color: C.ink } : { background: '#ffffff24', color: '#fff' }}>
           {e.status === 'open' ? 'Open' : e.status === 'live' ? '● Live' : 'Final'} <span aria-hidden>›</span>
         </button>
@@ -146,12 +155,16 @@ function JoinBox({ e, act, busy }: { e: PlayEvent; act: (b: Record<string, unkno
   const [name, setN] = useState('');
   const [g, setG] = useState<'male' | 'female' | ''>('');
   const [team, setTeam] = useState<'A' | 'B' | ''>('');
-  useEffect(() => setN(getName()), []);
+  const [lvl, setLvl] = useState<number | null>(null);
+  useEffect(() => { setN(getName()); setLvl(getMyLevel(e.sport)); }, [e.sport]);
+  const range = { min: e.level_min ?? null, max: e.level_max ?? null };
+  const note = levelNote(range, lvl, e.sport);
   const full = e.rsvps.filter((r) => r.status === 'in').length >= e.spots && e.status === 'open';
   const go = async () => {
     if (!name.trim()) return;
     setName(name.trim());
-    await act({ action: 'join', name: name.trim(), gender: g || null, team: team || null });
+    setMyLevel(e.sport, lvl);
+    await act({ action: 'join', name: name.trim(), gender: g || null, team: team || null, level_num: lvl });
   };
   return (
     <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
@@ -166,6 +179,14 @@ function JoinBox({ e, act, busy }: { e: PlayEvent; act: (b: Record<string, unkno
           {busy === 'join' ? <Loader2 className="h-5 w-5 animate-spin" /> : full ? 'Waitlist' : 'I’m in'}
         </button>
       </form>
+      <div className="mt-3">
+        <LevelChips sport={e.sport} value={lvl} onChange={setLvl} size="sm" />
+        <div className="mt-1 text-[12px]" style={{ color: note === 'below' || note === 'above' ? '#9c5a12' : C.muted }}>
+          {note === 'below' ? `This one is ${levelLabel(range, e.sport)}. You can still join; the host sees your level.`
+            : note === 'above' ? `This one is ${levelLabel(range, e.sport)}, a step below you. Still welcome; the host sees your level.`
+            : note === 'fits' ? 'Right in range.' : 'Your level (optional). It helps the host balance the courts.'}
+        </div>
+      </div>
       {e.format === 'team-battle' && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px]">
           {(['A', 'B'] as const).map((t) => (
@@ -297,7 +318,7 @@ export function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?
           </div>
         )}
         <div className="mt-3 flex flex-wrap gap-2">
-          {ins.map((r) => <span key={r.id} className="rounded-full px-3 py-1.5 text-[14px]" style={{ background: r.id === e.me ? C.lime : '#eef1e8' }}>{r.name}{r.is_host ? ' · host' : ''}</span>)}
+          {ins.map((r) => <span key={r.id} className="rounded-full px-3 py-1.5 text-[14px]" style={{ background: r.id === e.me ? C.lime : '#eef1e8' }}>{r.name}{r.level_num != null && <span className="ml-1 text-[12px] font-semibold tabular-nums" style={{ color: C.muted }}>{levelNum(r.level_num)}</span>}{r.is_host ? ' · host' : ''}</span>)}
           {Array.from({ length: Math.max(0, e.spots - ins.length) }).slice(0, 12).map((_, i) => <span key={i} className="rounded-full border border-dashed px-3 py-1.5 text-[14px]" style={{ borderColor: '#b9c4b5', color: '#9aa79c' }}>open</span>)}
         </div>
         {waits.length > 0 && <p className="mt-3 text-[13px]" style={{ color: C.muted }}>Waitlist: {waits.map((w) => w.name).join(', ')}</p>}
@@ -494,6 +515,76 @@ export function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: s
 }
 
 /* ------------------------------------------------------------------ */
+function Toggle({ on, disabled, onChange, title, sub }: { on: boolean; disabled?: boolean; onChange: (v: boolean) => void; title: string; sub: string }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} disabled={disabled} onClick={() => onChange(!on)}
+      className="flex items-center gap-3 rounded-2xl p-3 text-left disabled:opacity-60" style={{ background: '#eef1e8' }}>
+      <span className="min-w-0 flex-1"><span className="block text-[14px] font-semibold">{title}</span><span className="block text-[12px]" style={{ color: C.muted }}>{sub}</span></span>
+      <span className="relative h-7 w-12 shrink-0 rounded-full transition-colors" style={{ background: on ? C.ink : '#c9d1c4' }}>
+        <span className="absolute top-1 h-5 w-5 rounded-full bg-white transition-all" style={{ left: on ? 24 : 4 }} />
+      </span>
+    </button>
+  );
+}
+
+/** Rain check: pick a new time, then tell the group. Everyone already in stays in. */
+function MoveGame({ e, busy, act, onDone }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; onDone: () => void }) {
+  const base = e.starts_at ? new Date(Date.parse(e.starts_at) + 864e5) : new Date(Date.now() + 864e5);
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  const [v, setV] = useState(`${base.getFullYear()}-${p2(base.getMonth() + 1)}-${p2(base.getDate())}T${p2(base.getHours())}:${p2(base.getMinutes())}`);
+  const [moved, setMoved] = useState<string | null>(null);
+  const url = `${location.origin}/p/${e.code}`;
+  if (moved) return (
+    <section className="mt-4 rounded-3xl p-5 shadow-sm" style={{ background: C.lime }}>
+      <div className="text-[17px] font-semibold">Moved to {moved}. Now tell the group.</div>
+      <p className="mt-1 text-[14px]">Same link. Everyone who was in is still in.</p>
+      <div className="mt-3"><GroupChatButtons text={() => `🌧️ Rain check: ${e.title} is moved to ${moved}.\nSame link, you're still in. Can't make the new time? Tap "Can't make it" so a sub gets your spot.\n${url}`} /></div>
+      <button onClick={onDone} className="mt-3 text-[14px] font-semibold underline underline-offset-4">Done</button>
+    </section>
+  );
+  return (
+    <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
+      <div className="text-[17px] font-semibold">Move the game</div>
+      <p className="mt-1 text-[14px]" style={{ color: C.muted }}>Pick the new time. Everyone stays in, and you get a message for the group.</p>
+      <input type="datetime-local" value={v} onChange={(x) => setV(x.target.value)} aria-label="New time" className="mt-3 w-full rounded-xl border px-3 py-3 text-[16px]" style={{ borderColor: C.line }} />
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button onClick={onDone} className="rounded-xl py-3 text-[15px] font-semibold" style={{ background: '#eef1e8' }}>Cancel</button>
+        <button disabled={!!busy || !v} onClick={async () => {
+          const iso = new Date(v).toISOString();
+          const r = await act({ action: 'edit', draft: { starts_at: iso, when_text: null } }, 'move');
+          if (r) setMoved(whenLine({ starts_at: iso, when_text: null }) ?? 'the new time');
+        }} className="flex items-center justify-center gap-2 rounded-xl py-3 text-[15px] font-semibold text-white disabled:opacity-50" style={{ background: C.ink }}>
+          {busy === 'move' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Move it
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/** A weekly series: the running table across nights. */
+function SeasonTable({ e }: { e: PlayEvent }) {
+  const s = e.season!;
+  const meName = e.rsvps.find((r) => r.id === e.me)?.name.toLowerCase();
+  return (
+    <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
+      <div className="flex items-baseline justify-between">
+        <div className="text-[16px] font-semibold">Season table</div>
+        <div className="text-[12px]" style={{ color: C.muted }}>{s.nights} nights</div>
+      </div>
+      <table className="mt-2 w-full text-[14px] tabular-nums">
+        <thead><tr className="text-left text-[11px] uppercase tracking-[1px]" style={{ color: C.muted }}><th className="py-1">#</th><th>Player</th><th className="text-right">Nights</th><th className="text-right">W–L</th><th className="text-right">Games</th></tr></thead>
+        <tbody>
+          {s.rows.slice(0, 12).map((r, i) => (
+            <tr key={r.name} className="border-t" style={{ borderColor: '#eef1e8', background: r.name.toLowerCase() === meName ? '#f1ffc8' : undefined }}>
+              <td className="py-1.5 font-semibold">{i + 1}</td><td className="font-semibold">{r.name}</td><td className="text-right">{r.nights}</td><td className="text-right">{r.wins}–{r.losses}</td><td className="text-right">{r.games}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+
 /** Host fixes or pins the place after the game is made. */
 function ChangePlace({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
   const [open, setOpen] = useState(false);
@@ -519,7 +610,7 @@ function ChangePlace({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Re
   );
 }
 
-export function HostPanel({ e, busy, act, hostKey }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null }) {
+export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null; onMove?: () => void }) {
   const [names, setNames] = useState('');
   const [open, setOpen] = useState(false);
   const m = e.state.mixer;
@@ -551,6 +642,15 @@ export function HostPanel({ e, busy, act, hostKey }: { e: PlayEvent; busy: strin
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-2">
         {e.status === 'open' && <SubButton e={e} />}
         <ChangePlace e={e} busy={busy} act={act} />
+        {e.status === 'open' && onMove && <Btn onClick={onMove}><Clock className="h-4 w-4" />Move the game (rain check)</Btn>}
+        <Toggle on={!!e.listed} disabled={!!busy || (!e.listed && e.place_lat == null)} onChange={(v) => act({ action: 'list', on: v }, 'list')}
+          title="Let nearby players find it" sub={e.place_lat == null ? 'Pin the place first. Then players near you at this level can find it and tap in.' : 'Shows on “Games near me” while it needs players, and pings nearby players at this level.'} />
+        <Toggle on={!!e.repeat_weekly} disabled={!!busy} onChange={(v) => act({ action: 'weekly', on: v }, 'weekly')}
+          title="Every week" sub="Next week’s game makes itself after this one, and a season table keeps score across nights." />
+        {e.repeat_weekly && e.state.weeklyPaywall && !e.state.nextCode && (
+          <a href="/play/pass" className="rounded-2xl p-3 text-[14px] font-semibold" style={{ background: C.lime }}>Next week’s game is waiting on a Host Pass. Get one and it’s made right away ›</a>
+        )}
+        {e.state.nextCode && <Link href={`/p/${e.state.nextCode}`} className="rounded-2xl p-3 text-center text-[14px] font-semibold" style={{ background: '#eef1e8' }}>Next week’s game is up ›</Link>}
         {e.status === 'open' && (
           <Btn primary onClick={() => act({ action: 'start' })} disabled={ins.length < need}>
             {busy === 'start' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}

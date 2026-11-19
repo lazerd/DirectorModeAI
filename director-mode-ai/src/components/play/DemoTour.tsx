@@ -16,6 +16,7 @@ import { parseSentence, whenLine, type PlayDraft, type PlayEvent } from '@/lib/p
 import { DEMO_BRAND, DEMO_SPORTS, DEMO_TAGLINE, HOST, isDemoSport, type DemoSport, ME, apply, courtOf, demoDraft, makeEvent, nextFriday, rng, simScore, type Act } from '@/lib/play/demo';
 import { DoneView, EventCard, HostPanel, LiveView, OpenView, StatusSheet, type Res } from './EventClient';
 import EventPicker from './EventPicker';
+import { PlaceMap } from './PlacePicker';
 import { BrandContext, C, PlayHeader } from './shared';
 
 type PhoneId = 'host' | 'chat' | 'maya';
@@ -562,6 +563,7 @@ function EventScreen({ e, act, busy, tab, setTab, sheet, setSheet, banner }: {
         {e.status === 'open' && <OpenView e={e} meName={meR?.name} busy={busy} act={act} code="demo" />}
         {e.status === 'live' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code="demo" />}
         {e.status === 'done' && <DoneView e={e} busy={busy} act={act} code="demo" myName={meR?.name} />}
+        {e.status === 'open' && <PlaceMap e={e} className="mt-6" />}
         {e.isHost && <HostPanel e={e} busy={busy} act={act} hostKey={null} />}
         {sheet && <StatusSheet e={e} busy={busy} act={act} hostKey={e.isHost ? 'demo-host-link' : null} onClose={() => setSheet(false)} />}
       </main>

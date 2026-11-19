@@ -1,3 +1,4 @@
+import { parseLevelRange } from './levels';
 /**
  * CourtConnect "one link runs the night" — shared, pure logic (safe in the browser).
  *
@@ -26,6 +27,13 @@ export interface PlayDraft {
   place_lat?: number | null;
   place_lng?: number | null;
   level: string | null;
+  /** Derived from `level` and the sport's scale (NTRP / DUPR / Playtomic). */
+  level_min?: number | null;
+  level_max?: number | null;
+  /** Shows up in "Games near me" (needs a pinned place). */
+  listed?: boolean;
+  /** A weekly series: next week's game is made when this one is played. */
+  repeat_weekly?: boolean;
   spots: number;
   courts: number;
   round_minutes: number;
@@ -37,6 +45,7 @@ export interface PlayRsvp {
   name: string;
   gender: 'male' | 'female' | null;
   level: string | null;
+  level_num?: number | null;
   team?: 'A' | 'B' | null;
   status: 'in' | 'wait' | 'out';
   is_host: boolean;
@@ -47,6 +56,8 @@ export interface PlayState {
   mixer?: GuestMixer;
   roundStartedAt?: string | null;
   nextCode?: string | null;
+  /** A weekly series couldn't make next week's game: the host needs a pass. */
+  weeklyPaywall?: boolean;
   teamNames?: { A: string; B: string } | null;
   preview?: { headline: string; lines: { id: string; name: string; line: string }[]; at: string } | null;
   recap?: {
@@ -67,6 +78,8 @@ export interface PlayEvent extends PlayDraft {
   isHost: boolean;
   me: string | null; // my rsvp id
   prevCode?: string | null;
+  /** A weekly series' running table (2+ nights played). */
+  season?: { nights: number; rows: { name: string; nights: number; wins: number; losses: number; games: number }[] } | null;
   crown?: { slug: string; place: string; king: { name: string; wins: number } | null; queen: { name: string; wins: number } | null } | null;
 }
 
@@ -114,6 +127,9 @@ export function normalizeDraft(d: Partial<PlayDraft>): PlayDraft {
     location: str(d.location, 120),
     ...normalizePlace(d),
     level: str(d.level, 40),
+    ...(() => { const r = parseLevelRange(str(d.level, 40), sport); return { level_min: r?.min ?? null, level_max: r?.max ?? null }; })(),
+    listed: d.listed === true,
+    repeat_weekly: d.repeat_weekly === true,
     spots, courts,
     round_minutes: clampInt(d.round_minutes, 5, 120, sport === 'pickleball' ? 15 : 20),
     notes: str(d.notes, 300),
@@ -158,7 +174,7 @@ export function parseSentence(text: string, now = new Date()): PlayDraft {
   const courts = mCourts ? +mCourts[1] : undefined;
   if (!spots && courts) spots = courts * perCourt(format);
 
-  const lvl = t.match(/(\d\.\d)\s*(?:-|–|to)\s*(\d\.\d)/) || t.match(/(\d\.\d)\+?/);
+  const lvl = t.match(/(\d\.\d{1,2})\s*(?:-|–|to)\s*(\d\.\d{1,2})/) || t.match(/(\d\.\d{1,2})\+?/);
   const level = lvl ? (lvl[2] ? `${lvl[1]}–${lvl[2]}` : lvl[0].trim()) : /beginner|advanced|intermediate/.exec(t)?.[0] ?? null;
 
   // when

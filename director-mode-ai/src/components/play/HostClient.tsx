@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, Users, Trophy, LayoutGrid } from 'lucide-react';
 import { PlacePicker } from './PlacePicker';
+import { levelLabel } from '@/lib/play/levels';
+import { levelPresets } from './Levels';
 import { normalizeDraft, parseSentence, perCourt, whenLine, type PlayDraft } from '@/lib/play/core';
 import { C, PlayHeader, apiRaw, canListen, getClub, getHostId, getName, listen, savePending, setClub, setKey, setName, takePending } from './shared';
 import Paywall, { type PaywallInfo } from './Paywall';
@@ -52,6 +54,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   }, []);
 
   const touched = useRef<Set<string>>(new Set());
+  const [listed, setListed] = useState(true);
   async function build(t = text) {
     if (!t.trim()) return;
     setErr('');
@@ -172,6 +175,11 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: C.lime }} />Watch a Friday night run itself
           </a>
         )}
+        {!draft && (
+          <a href="/play/near" className="mx-auto mt-3 flex w-fit items-center gap-2 rounded-full px-4 py-2 text-[14px] font-semibold" style={{ background: C.lime, color: C.ink }}>
+            <MapPin className="h-4 w-4" />Looking for a game? Find one near me
+          </a>
+        )}
 
         {!draft && (
           <section className="mt-12 grid gap-3">
@@ -217,8 +225,15 @@ export default function HostClient({ initial, club, resume }: { initial?: string
               <Pick label="Sport" value={draft.sport} options={[['tennis', 'Tennis'], ['pickleball', 'Pickleball'], ['padel', 'Padel']]} onChange={(v) => set({ sport: v as PlayDraft['sport'] })} />
               <label className="col-span-2 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
                 <span style={{ color: '#bccdbb' }}>Level</span>
-                <input value={draft.level ?? ''} onChange={(e) => set({ level: e.target.value })} placeholder="any (e.g. 3.5–4.0)" className="w-full bg-transparent text-white outline-none placeholder:text-[#9fb3a6]" />
+                <input value={draft.level ?? ''} onChange={(e) => set({ level: e.target.value })} placeholder={draft.sport === 'pickleball' ? 'any (e.g. 3.5–4.0 DUPR)' : draft.sport === 'padel' ? 'any (e.g. 2.5–3.5, intermediate)' : 'any (e.g. 3.5–4.0 NTRP)'} className="w-full bg-transparent text-white outline-none placeholder:text-[#9fb3a6]" />
+                {draft.level?.trim() && <span className="shrink-0 text-[11px] font-semibold" style={{ color: draft.level_min != null || draft.level_max != null ? C.lime : '#ffb4a2' }}>{draft.level_min != null || draft.level_max != null ? levelLabel({ min: draft.level_min ?? null, max: draft.level_max ?? null }, draft.sport) : '?'}</span>}
               </label>
+              <div className="col-span-2 flex flex-wrap gap-1.5">
+                {levelPresets(draft.sport).map((x) => (
+                  <button key={x} type="button" onClick={() => set({ level: draft.level === x ? '' : x })} className="rounded-lg px-2.5 py-1 text-[12px] font-semibold"
+                    style={draft.level === x ? { background: C.lime, color: C.ink } : { background: '#ffffff14', color: '#fff' }}>{x}</button>
+                ))}
+              </div>
               {draft.kind === 'social' && <Stepper label="Min / round" value={draft.round_minutes} min={5} max={120} step={5} onChange={(v) => set({ round_minutes: v })} />}
             </div>
           </section>
@@ -233,8 +248,17 @@ export default function HostClient({ initial, club, resume }: { initial?: string
               <input type="checkbox" checked={playing} onChange={(e) => setPlaying(e.target.checked)} className="h-5 w-5 bg-white accent-[#103c32]" />
               I&apos;m playing too (counts as 1 of the {draft.spots})
             </label>
+            <label className="flex items-start gap-2 text-[14px]">
+              <input type="checkbox" checked={listed && draft.place_lat != null} disabled={draft.place_lat == null} onChange={(e) => setListed(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 bg-white accent-[#103c32]" />
+              <span>Let nearby players find it{draft.level_min != null || draft.level_max != null ? ` (${levelLabel({ min: draft.level_min ?? null, max: draft.level_max ?? null }, draft.sport)})` : ''}
+                <span className="block text-[12px]" style={{ color: C.muted }}>{draft.place_lat == null ? 'Pin the place above to turn this on.' : 'Shows on “Games near me” while it needs players.'}</span></span>
+            </label>
+            <label className="flex items-center gap-2 text-[14px]">
+              <input type="checkbox" checked={!!draft.repeat_weekly} onChange={(e) => set({ repeat_weekly: e.target.checked })} className="h-5 w-5 bg-white accent-[#103c32]" />
+              Every week (next week’s game makes itself)
+            </label>
             {err && <p className="text-[14px] text-[#b4432f]">{err}</p>}
-            <button onClick={() => create()} disabled={saving} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
+            <button onClick={() => create({ ...draft, listed: listed && draft.place_lat != null })} disabled={saving} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : null} Make my link
             </button>
             <p className="text-center text-[12px]" style={{ color: C.muted }}>{whenLine(draft) ?? 'No time yet'} · {draft.location?.trim() || 'no place yet'} · No account needed</p>

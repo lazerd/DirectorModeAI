@@ -77,6 +77,9 @@ export function demoDraft(now = new Date(), sport: DemoSport = 'tennis'): PlayDr
   return normalizeDraft({
     title: sport === 'tennis' ? DEMO_TITLE : `Friday ${k.label} Mixer`, sport, kind: 'social', format: 'maximize-courts',
     when_text: 'Friday 6pm', starts_at: nextFriday(now).toISOString(), location: k.place, level: k.level,
+    // Lakeside Park in Oakland is real, so the map and Directions work in the demo.
+    ...(k.place === 'Lakeside Park' ? { place_address: 'Oakland, California', place_lat: 37.8045, place_lng: -122.2561 } : {}),
+    listed: true,
     spots: 12, courts: 3, round_minutes: sport === 'pickleball' ? 15 : 20,
     notes: `Players: ${CREW.map((c) => first(c.name)).join(', ')}`,
   });
@@ -150,6 +153,8 @@ export function apply(e0: PlayEvent, b: Act, seed = 7): Applied {
       if (l) { if (b.mode === 'skip') l.skipped = true; else if (b.mode === 'show') l.skipped = false; else l.line = soften(l.line); }
       break;
     }
+    case 'weekly': e.repeat_weekly = b.on === true; break;
+    case 'list': e.listed = b.on === true; break;
     default: break; // watch, team, gender, teamnames: nothing to do in a demo
   }
   e.version++;

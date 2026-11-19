@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createEvent, PlayError } from '@/lib/play/server';
+import { nearbyNeedOne } from '@/lib/play/notify';
 import { hostingAllowed, passCheckoutUrl, PASS_PRICES } from '@/lib/play/passes';
 import type { PlayDraft } from '@/lib/play/core';
 
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
       }, { status: 402 });
     }
     const made = await createEvent(b.draft ?? {}, b.host ?? {}, { source: b.source, hostId, clubCode });
+    if (b.draft?.listed) await nearbyNeedOne(made.code).catch(() => {});
     return NextResponse.json(made);
   } catch (e) {
     const err = e instanceof PlayError ? e : new PlayError('Something went wrong', 500);

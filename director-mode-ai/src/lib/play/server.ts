@@ -6,7 +6,9 @@ import { crownFor } from './crown';
 import { hostingAllowed, passCheckoutUrl } from './passes';
 import { callTheGame, hypeJoin, hypePreview, softenLine, type Spice } from './recap';
 import { FORMAT_NAME, whenLine } from './core';
-import { crownChanged, watchCrown } from './notify';
+import { crownChanged, nearbyNeedOne, watchCrown } from './notify';
+import { LEVEL_SCALE, levelNum, type LevelSport } from './levels';
+import { standings } from '@/lib/mixer/guestMixer';
 import { normalizeDraft, type PlayDraft, type PlayEvent, type PlayRsvp, type PlayState } from './core';
 
 const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -28,8 +30,14 @@ async function loadRsvps(eventId: string) {
 
 /** The page's view of an event for whoever holds `key` (host key or a player key). */
 export async function view(c: string, key?: string | null): Promise<PlayEvent | null> {
-  const row = await loadRow(c);
+  let row = await loadRow(c);
   if (!row) return null;
+  if (weeklyDue(row)) { await makeNext(row, await loadRsvps(row.id), true).catch(async (x) => {
+    const msg = x instanceof Error ? x.message : String(x);
+    if (msg === 'paywall') { if (!row!.state?.weeklyPaywall) await mutate(row!, (r) => ({ state: { ...r.state, weeklyPaywall: true } })); }
+    else console.error('[play] weekly next failed', row!.code, msg);
+    return null;
+  }); row = (await loadRow(c)) ?? row; }
   const rs = await loadRsvps(row.id);
   const me = key ? rs.find((r) => r.player_key === key && r.status !== 'out') ?? null : null;
   let prevCode: string | null = null;
@@ -44,7 +52,10 @@ export async function view(c: string, key?: string | null): Promise<PlayEvent | 
   return {
     ...(pub as Omit<Row, 'host_key' | 'id' | 'parent_id'>),
     crown: cr ? { slug: cr.slug, place: cr.place, king: slim(cr.king), queen: slim(cr.queen) } : null,
-    rsvps: rs.filter((r) => r.status !== 'out').map(({ id, name, gender, level, status, is_host, created_at, team }) => ({ id, name, gender, level, status, is_host, created_at, team: team ?? null })),
+    rsvps: rs.filter((r) => r.status !== 'out').map(({ id, name, gender, level, level_num, status, is_host, created_at, team }) => ({ id, name, gender, level, level_num: level_num == null ? null : Number(level_num), status, is_host, created_at, team: team ?? null })),
+    level_min: row.level_min == null ? null : Number(row.level_min),
+    level_max: row.level_max == null ? null : Number(row.level_max),
+    season: await seasonFor(row).catch(() => null),
     isHost: !!key && key === host_key,
     me: me?.id ?? null,
     prevCode,
@@ -145,7 +156,11 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
         const live = rs.filter((r) => r.status === 'in');
         team = live.filter((r) => r.team === 'A').length <= live.filter((r) => r.team === 'B').length ? 'A' : 'B';
       }
-      const { data, error } = await db.from('play_rsvps').insert({ event_id: row.id, name, gender: gender(body.gender), level: s(body.level, 20) || null, player_key: pk, status, team }).select('id').single();
+      const sc = LEVEL_SCALE[(row.sport as LevelSport) in LEVEL_SCALE ? (row.sport as LevelSport) : 'tennis'];
+      const ln = Number(body.level_num);
+      const level_num = body.level_num != null && body.level_num !== '' && Number.isFinite(ln) && ln >= sc.min && ln <= sc.max ? Math.round(ln * 100) / 100 : null;
+      const levelText = level_num != null ? `${levelNum(level_num)} ${sc.short}` : s(body.level, 20) || null;
+      const { data, error } = await db.from('play_rsvps').insert({ event_id: row.id, name, gender: gender(body.gender), level: levelText, level_num, player_key: pk, status, team }).select('id').single();
       if (error) throw new PlayError(error.message, 500);
       if (row.status === 'live') await addToMixer(row, { id: data.id, name, gender: gender(body.gender), team });
       if (row.status === 'open' && status === 'in') await hype(c, { id: data.id, name }).catch(() => {});
@@ -154,7 +169,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     case 'leave': {
       if (!mine) throw new PlayError('You are not on this one.');
       await db.from('play_rsvps').update({ status: 'out' }).eq('id', mine.id);
-      if (row.status === 'open') await promoteWaitlist(row);
+      if (row.status === 'open') { await promoteWaitlist(row); await nearbyNeedOne(row.code).catch(() => {}); }
       if (row.status === 'live') await mutate(row, (r) => r.state?.mixer ? { state: { ...r.state, mixer: { ...r.state.mixer, players: r.state.mixer.players.map((p) => p.id === mine.id ? { ...p, out: true } : p) } } } : null);
       return {};
     }
@@ -177,6 +192,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       hostOnly();
       const id = s(body.id, 60);
       await db.from('play_rsvps').update({ status: 'out' }).eq('id', id).eq('event_id', row.id);
+      if (row.status === 'open') await nearbyNeedOne(row.code).catch(() => {});
       if (row.status === 'live') await mutate(row, (r) => r.state?.mixer ? { state: { ...r.state, mixer: { ...r.state.mixer, players: r.state.mixer.players.map((p) => p.id === id ? { ...p, out: true } : p) } } } : null);
       else await promoteWaitlist(row);
       return {};
@@ -202,6 +218,18 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       const t = body.team === 'A' || body.team === 'B' ? body.team : null;
       await db.from('play_rsvps').update({ team: t }).eq('id', id).eq('event_id', row.id);
       await mutate(row, (r) => r.state?.mixer ? { state: { ...r.state, mixer: { ...r.state.mixer, players: r.state.mixer.players.map((p) => p.id === id ? { ...p, team: t ?? undefined } : p) } } } : null);
+      return {};
+    }
+    case 'weekly': {
+      hostOnly();
+      await mutate(row, () => ({ repeat_weekly: body.on === true }));
+      return {};
+    }
+    case 'list': {
+      hostOnly();
+      if (body.on === true && row.place_lat == null) throw new PlayError('Pin the place on the map first, so nearby players can find it.');
+      await mutate(row, () => ({ listed: body.on === true }));
+      if (body.on === true) await nearbyNeedOne(row.code).catch(() => {});
       return {};
     }
     case 'teamnames': {
@@ -308,22 +336,61 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     }
     case 'runback': {
       hostOnly();
-      if (row.state?.nextCode) return { code: row.state.nextCode };
-      const next = row.starts_at ? new Date(Date.parse(row.starts_at) + 7 * 864e5).toISOString() : null;
-      const host = rs.find((r) => r.is_host && r.status === 'in');
-      const r2 = row as Row & { host_id?: string | null; club_code?: string | null };
-      const gate = await hostingAllowed(r2.host_id ?? null, r2.club_code ?? null, { runback: true });
-      if (!gate.ok && passCheckoutUrl('host', r2.host_id ?? 'x')) throw new PlayError('PAYWALL', 402);
-      const made = await createEvent({ ...row, starts_at: next, when_text: next ? null : row.when_text }, { name: row.host_name, playing: !!host, gender: host?.gender ?? null }, { parentId: row.id, hostId: r2.host_id, clubCode: r2.club_code });
-      // the new event answers to the same host key
-      await db.from('play_events').update({ host_key: row.host_key }).eq('code', made.code);
-      if (host) await db.from('play_rsvps').update({ player_key: row.host_key }).eq('player_key', made.hostKey);
-      await mutate(row, (r) => ({ state: { ...r.state, nextCode: made.code } }));
-      return { code: made.code };
+      return { code: await makeNext(row, rs, false) };
     }
     default:
       throw new PlayError('Unknown action');
   }
+}
+
+/** Next week's game in the series (Run it back, or automatic for a weekly series). */
+async function makeNext(row: Row, rs: Awaited<ReturnType<typeof loadRsvps>>, auto: boolean): Promise<string> {
+  if (row.state?.nextCode) return row.state.nextCode;
+  const db = getSupabaseAdmin();
+  const next = row.starts_at ? new Date(Date.parse(row.starts_at) + 7 * 864e5).toISOString() : null;
+  const host = rs.find((r) => r.is_host && r.status === 'in');
+  const r2 = row as Row & { host_id?: string | null; club_code?: string | null };
+  const gate = await hostingAllowed(r2.host_id ?? null, r2.club_code ?? null, { runback: true });
+  if (!gate.ok && passCheckoutUrl('host', r2.host_id ?? 'x')) { if (auto) throw new Error('paywall'); throw new PlayError('PAYWALL', 402); }
+  const made = await createEvent({ ...row, starts_at: next, when_text: next ? null : row.when_text }, { name: row.host_name, playing: !!host, gender: host?.gender ?? null }, { parentId: row.id, hostId: r2.host_id, clubCode: r2.club_code });
+  // the new event answers to the same host key
+  await db.from('play_events').update({ host_key: row.host_key }).eq('code', made.code);
+  if (host) await db.from('play_rsvps').update({ player_key: row.host_key }).eq('player_key', made.hostKey);
+  await mutate(row, (r) => ({ state: { ...r.state, nextCode: made.code, weeklyPaywall: false } }));
+  if (row.listed) await nearbyNeedOne(made.code).catch(() => {});
+  return made.code;
+}
+
+/** A weekly game makes next week's once it's been played (ended, or 4 hours past its start). */
+function weeklyDue(row: Row): boolean {
+  if (!row.repeat_weekly || row.state?.nextCode || !row.starts_at) return false;
+  return row.status === 'done' || Date.parse(row.starts_at) + 4 * 3600e3 < Date.now();
+}
+
+/** The running table for a weekly series: every night's mixer, added up by name. */
+async function seasonFor(row: Row): Promise<PlayEvent['season']> {
+  if (!row.parent_id && !row.repeat_weekly && !row.state?.nextCode) return null;
+  const { data } = await getSupabaseAdmin().from('play_events').select('id, parent_id, state').eq('host_key', row.host_key).order('created_at').limit(200);
+  const all = (data ?? []) as { id: string; parent_id: string | null; state: PlayState }[];
+  const byId = new Map(all.map((x) => [x.id, x]));
+  let first = byId.get(row.id); let guard = 0;
+  while (first?.parent_id && byId.has(first.parent_id) && guard++ < 100) first = byId.get(first.parent_id);
+  const chain: typeof all = []; let cur = first; guard = 0;
+  while (cur && guard++ < 100) { chain.push(cur); const id = cur.id; cur = all.find((x) => x.parent_id === id); }
+  const played = chain.filter((x) => x.state?.mixer?.rounds?.some((r) => r.matches.some((m) => m.scoreA != null)));
+  if (played.length < 2) return null;
+  const tab = new Map<string, { name: string; nights: number; wins: number; losses: number; games: number }>();
+  for (const night of played) {
+    for (const st of standings(night.state.mixer!)) {
+      if (!st.played) continue;
+      const k = st.name.trim().toLowerCase();
+      const t = tab.get(k) ?? { name: st.name, nights: 0, wins: 0, losses: 0, games: 0 };
+      t.nights++; t.wins += st.wins; t.losses += st.losses; t.games += st.gamesFor;
+      tab.set(k, t);
+    }
+  }
+  const rows = [...tab.values()].sort((a, b) => b.wins - a.wins || a.losses - b.losses || b.games - a.games).slice(0, 30);
+  return { nights: played.length, rows };
 }
 
 /** Pre-game hype: a whole preview, or one new line for a player who just joined. */
