@@ -65,8 +65,42 @@ export default function PassClient() {
           <Paywall info={{ prices: st.prices, host: st.checkout?.host ?? null, club: st.checkout?.club ?? null } as PaywallInfo}
             title={st.freeUsed ? 'You’ve used your free event.' : 'Your first event is free. After that:'} />
         )}
-        <p className="mt-6 text-center text-[12px]" style={{ color: C.muted }}>Passes live on the phone you bought them on. New phone? Reply to your Lemon Squeezy receipt and we&apos;ll move it.</p>
+        {st && !st.pass && <Restore onDone={() => location.reload()} />}
       </main>
     </div>
+  );
+}
+
+/** Bought a pass on another phone: email code → this phone hosts too. */
+function Restore({ onDone }: { onDone: () => void }) {
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const post = async (body: Record<string, string>) => {
+    setBusy(true); setMsg('');
+    try {
+      const r = await fetch('/api/p/pass/restore', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...body, hostId: getHostId() }) });
+      return (await r.json()) as { ok?: boolean; sent?: boolean; error?: string };
+    } finally { setBusy(false); }
+  };
+  return (
+    <section className="mt-6 rounded-3xl bg-white p-5 shadow-sm">
+      <div className="text-[16px] font-semibold">Already have a pass on another phone?</div>
+      {step === 'email' ? (
+        <form className="mt-2 flex gap-2" onSubmit={async (x) => { x.preventDefault(); const j = await post({ email }); if (j.sent) setStep('code'); else setMsg(j.error || 'No active pass for that email.'); }}>
+          <input type="email" required value={email} onChange={(x) => setEmail(x.target.value)} placeholder="Email you bought it with" aria-label="Email" className="min-w-0 flex-1 rounded-xl border bg-white px-3 py-2.5 text-[16px] outline-none" style={{ borderColor: C.line }} />
+          <button disabled={busy} className="rounded-xl px-4 font-semibold text-white disabled:opacity-60" style={{ background: C.ink }}>Send code</button>
+        </form>
+      ) : (
+        <form className="mt-2 flex gap-2" onSubmit={async (x) => { x.preventDefault(); const j = await post({ email, code }); if (j.ok) onDone(); else setMsg('That code didn’t work. Check the email and try again.'); }}>
+          <input inputMode="numeric" required value={code} onChange={(x) => setCode(x.target.value)} placeholder="6-digit code" aria-label="Code" className="min-w-0 flex-1 rounded-xl border bg-white px-3 py-2.5 text-[16px] tracking-[4px] outline-none" style={{ borderColor: C.line }} />
+          <button disabled={busy} className="rounded-xl px-4 font-semibold" style={{ background: C.lime, color: C.ink }}>Move it here</button>
+        </form>
+      )}
+      {step === 'code' && <p className="mt-2 text-[13px]" style={{ color: C.muted }}>If {email} has a pass, we just emailed it a code. It works for 15 minutes.</p>}
+      {msg && <p className="mt-2 text-[13px] text-[#9c3a25]">{msg}</p>}
+    </section>
   );
 }

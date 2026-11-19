@@ -26,7 +26,8 @@ export async function activePass(hostId: string | null, clubCode: string | null)
   const now = new Date().toISOString();
   const ok = (p: { status: string; ends_at: string | null } | null) => !!p && ACTIVE.includes(p.status) && (!p.ends_at || p.ends_at > now);
   if (hostId) {
-    const { data } = await db.from('play_passes').select('kind, status, ends_at, club_code, club_name').eq('host_id', hostId).order('created_at', { ascending: false });
+    const safe = /^[A-Za-z0-9_-]{8,64}$/.test(hostId) ? hostId : '-';
+    const { data } = await db.from('play_passes').select('kind, status, ends_at, club_code, club_name').or(`host_id.eq.${safe},extra_host_ids.cs.{${safe}}`).order('created_at', { ascending: false });
     const p = (data ?? []).find(ok);
     if (p) return p;
   }

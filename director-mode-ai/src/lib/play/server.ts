@@ -6,6 +6,7 @@ import { crownFor } from './crown';
 import { hostingAllowed, passCheckoutUrl } from './passes';
 import { callTheGame, hypeJoin, hypePreview, softenLine, type Spice } from './recap';
 import { whenLine } from './core';
+import { crownChanged, watchCrown } from './notify';
 import { normalizeDraft, type PlayDraft, type PlayEvent, type PlayRsvp, type PlayState } from './core';
 
 const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -190,6 +191,13 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       if (row.status === 'open') await promoteWaitlist({ ...row, spots: d.spots });
       return {};
     }
+    case 'watch': {
+      if (!mine) throw new PlayError('Join first, then you can get crown alerts.', 403);
+      if (!row.location) throw new PlayError('This game has no place, so there is no crown to watch.');
+      const ok = await watchCrown(row.location, mine.name, String(body.email ?? ''));
+      if (!ok) throw new PlayError('That email doesn’t look right.');
+      return {};
+    }
     case 'hype': {
       hostOnly();
       await hype(c, null);
@@ -252,6 +260,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       }
       const recap = await callTheGame(m, fresh.title, spice, crown).catch((e) => { console.error('[play] recap failed', e); return null; });
       if (recap) await mutate(fresh, (r) => ({ state: { ...r.state, recap } }));
+      if (action === 'end' && crown) await crownChanged(crown.place, crown.before, crown.after).catch((e) => console.error('[play] crown alert failed', e));
       return {};
     }
     case 'recap_me': {

@@ -257,6 +257,7 @@ function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?: strin
             {ics && <a href={ics} download={`${code}.ics`} className="flex items-center gap-1 rounded-xl bg-white/70 px-3 py-2"><Calendar className="h-4 w-4" />Add to calendar</a>}
             {!me.is_host && <button onClick={() => act({ action: 'leave' })} className="rounded-xl bg-white/40 px-3 py-2">Can&apos;t make it</button>}
           </div>
+          <CrownAlert e={e} act={act} />
         </section>
       ) : (
         <JoinBox e={e} act={act} busy={busy} />
@@ -410,6 +411,7 @@ function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: string; 
     <>
       <SportsDesk e={e} act={act} busy={busy} code={code} />
       {!e.me && !e.isHost && <YourGroup />}
+      {e.me && <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm"><CrownAlert e={e} act={act} /></div>}
       {aw.length > 0 && (
         <section className="mt-4 overflow-hidden rounded-3xl shadow-sm" style={{ background: C.lime }}>
           <div className="p-6 text-center">
@@ -686,5 +688,29 @@ function YourGroup() {
         <button className="rounded-xl px-4 font-semibold" style={{ background: C.lime, color: C.ink }}>Go</button>
       </form>
     </section>
+  );
+}
+
+/* "Email me if my crown changes": the only thing we ask for, and only if they want it. */
+function CrownAlert({ e, act }: { e: PlayEvent; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
+  const [email, setEmail] = useState('');
+  const [done, setDone] = useState(false);
+  useEffect(() => { try { setDone(localStorage.getItem('cc_watch_' + (e.crown?.slug ?? '')) === '1'); setEmail(localStorage.getItem('cc_email') || ''); } catch { /* */ } }, [e.crown?.slug]);
+  if (!e.location || !e.crown) return null;
+  if (done) return <p className="mt-3 text-[13px]">👑 Crown alerts on for {e.crown.place}.</p>;
+  return (
+    <form className="mt-3" onSubmit={async (x) => {
+      x.preventDefault();
+      const r = await act({ action: 'watch', email: email.trim() }, 'watch');
+      if (r) { setDone(true); try { localStorage.setItem('cc_watch_' + e.crown!.slug, '1'); localStorage.setItem('cc_email', email.trim()); } catch { /* */ } }
+    }}>
+      <div className="text-[13px] font-semibold">👑 Email me if the crown at {e.crown.place} changes hands</div>
+      <div className="mt-1.5 flex gap-2">
+        <input type="email" required value={email} onChange={(x) => setEmail(x.target.value)} placeholder="you@email.com" aria-label="Email for crown alerts"
+          className="min-w-0 flex-1 rounded-xl border bg-white px-3 py-2 text-[16px] outline-none" style={{ borderColor: C.line }} />
+        <button className="rounded-xl px-3 text-[14px] font-semibold text-white" style={{ background: C.ink }}>Alert me</button>
+      </div>
+      <p className="mt-1 text-[11px]" style={{ color: C.muted }}>Only crown news. One tap to unsubscribe.</p>
+    </form>
   );
 }
