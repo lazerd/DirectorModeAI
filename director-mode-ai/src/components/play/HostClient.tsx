@@ -96,7 +96,14 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not make it'); setSaving(false); }
   }
 
-  const set = (p: Partial<PlayDraft>) => setDraft((d) => (d ? normalizeDraft({ ...d, ...p }) : d));
+  // Typed text stays exactly as typed (normalizeDraft trims, which ate every space as you typed it).
+  // The server normalizes again when the game is saved.
+  const set = (p: Partial<PlayDraft>) => setDraft((d) => {
+    if (!d) return d;
+    const raw: Partial<PlayDraft> = {};
+    for (const k of ['title', 'location', 'level', 'notes'] as const) if (typeof p[k] === 'string') (raw as Record<string, string>)[k] = p[k] as string;
+    return { ...normalizeDraft({ ...d, ...p }), ...raw };
+  });
   const field = 'w-full rounded-xl border bg-white px-3 py-2.5 text-[16px] outline-none focus:ring-2';
 
   return (
@@ -219,7 +226,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             <button onClick={() => create()} disabled={saving} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : null} Make my link
             </button>
-            <p className="text-center text-[12px]" style={{ color: C.muted }}>{whenLine(draft) ?? 'No time yet'} · {draft.location ?? 'no place yet'} · No account needed</p>
+            <p className="text-center text-[12px]" style={{ color: C.muted }}>{whenLine(draft) ?? 'No time yet'} · {draft.location?.trim() || 'no place yet'} · No account needed</p>
             {paywall ? <Paywall info={paywall} /> : <p className="text-center text-[12px]" style={{ color: C.muted }}>Your first event is free. Joining is always free.</p>}
           </section>
         )}
