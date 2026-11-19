@@ -1,15 +1,15 @@
 import type { Metadata } from 'next';
 import DemoTour from '@/components/play/DemoTour';
 
-const title = 'RacquetsAIRL: watch a Friday night run itself';
-const description = 'Tennis, pickleball, padel. One sentence. One link. Everybody plays. No app, no account.';
+const title = 'RacquetsIRL: Racquet Sports. Together. In Real Life.';
+const description = 'Watch a Friday night run itself. Tennis, pickleball, padel. One sentence. One link. Everybody plays. No app, no account.';
 
 export const metadata: Metadata = {
   title, description,
-  alternates: { canonical: '/racquetsairl' },
-  openGraph: { title, description, url: '/racquetsairl' },
+  alternates: { canonical: '/racquetsirl' },
+  openGraph: { title, description, url: '/racquetsirl' },
 };
 
-export default function RacquetsAIRLPage() {
+export default function RacquetsIRLPage() {
   return <DemoTour />;
 }

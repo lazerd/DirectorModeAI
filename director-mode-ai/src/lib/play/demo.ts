@@ -9,7 +9,8 @@
 import { generateRound, newMixer, standings, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { awards, normalizeDraft, type PlayDraft, type PlayEvent, type PlayRsvp } from '@/lib/play/core';
 
-export const DEMO_BRAND = 'RacquetsAIRL';
+export const DEMO_BRAND = 'RacquetsIRL';
+export const DEMO_TAGLINE = 'Racquet Sports. Together. In Real Life.';
 export const DEMO_TITLE = 'Friday Night Mixer';
 
 /** One night, three racquet sports. Everything sport-specific in the tour lives here. */

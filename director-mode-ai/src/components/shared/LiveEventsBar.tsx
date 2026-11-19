@@ -59,7 +59,7 @@ const HIDDEN = [
   // Same for PTL: a Sleepy Hollow mixer advertised across the top of the
   // Premier Tennis League draft board belongs to a different product.
   '/ptl',
-  '/racquetsairl',
+  '/racquetsirl',
   '/invite',
   '/join',
   '/event',

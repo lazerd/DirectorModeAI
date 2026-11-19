@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * /racquetsairl (and /play/demo): a Friday night that runs itself, on three phones.
+ * /racquetsirl (and /play/demo): a Friday night that runs itself, on three phones.
  *
  * Host (Jordan) · the group chat · a player (Maya). The screens inside the
  * phones are the real event screens (EventCard, OpenView, LiveView, DoneView,
@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { ArrowRight, Check, Loader2, Pause, Play, RotateCcw, Sparkles } from 'lucide-react';
 import { standings } from '@/lib/mixer/guestMixer';
 import { parseSentence, whenLine, type PlayDraft, type PlayEvent } from '@/lib/play/core';
-import { DEMO_BRAND, DEMO_SPORTS, HOST, isDemoSport, type DemoSport, ME, apply, courtOf, demoDraft, makeEvent, nextFriday, rng, simScore, type Act } from '@/lib/play/demo';
+import { DEMO_BRAND, DEMO_SPORTS, DEMO_TAGLINE, HOST, isDemoSport, type DemoSport, ME, apply, courtOf, demoDraft, makeEvent, nextFriday, rng, simScore, type Act } from '@/lib/play/demo';
 import { DoneView, EventCard, HostPanel, LiveView, OpenView, StatusSheet, type Res } from './EventClient';
 import EventPicker from './EventPicker';
 import { BrandContext, C, PlayHeader } from './shared';
@@ -511,7 +511,7 @@ export default function DemoTour() {
           <div className="flex min-w-0 items-center gap-2.5">
             <Logo s={wide ? 30 : 26} />
             <div className="min-w-0 leading-tight"><div className={`${wide ? 'text-[18px]' : 'text-[16px]'} font-semibold tracking-tight`}>{DEMO_BRAND}</div>
-              <div className="truncate text-[11px]" style={{ color: '#9fb3a6' }}>{wide ? 'Live demo: the real app, running a real night by itself' : 'Live demo · runs itself'}</div></div>
+              <div className="truncate text-[11px]" style={{ color: '#9fb3a6' }}>{DEMO_TAGLINE}</div></div>
           </div>
           {wide && <SportPills sport={sport} onPick={pickSport} />}
           <Link href="/play" style={{ background: C.lime, color: C.ink }} className={`shrink-0 whitespace-nowrap rounded-full font-semibold ${wide ? 'px-4 py-2 text-[14px]' : 'px-3 py-1.5 text-[13px]'}`}>{wide ? 'Host your own' : 'Try it'} <ArrowRight className="inline h-4 w-4" /></Link>
@@ -760,6 +760,7 @@ function EndCard({ onReplay }: { onReplay: () => void }) {
     <div className="demo-fade absolute inset-0 z-50 grid place-items-center rounded-3xl p-4" style={{ background: '#07231cee', backdropFilter: 'blur(6px)' }}>
       <div className="w-full max-w-lg text-center">
         <Logo s={48} />
+        <div className="mt-3 text-[13px] font-semibold uppercase tracking-[2px]" style={{ color: C.lime }}>{DEMO_BRAND} · {DEMO_TAGLINE}</div>
         <h2 className="mt-4 text-[44px] font-semibold leading-[1.02] tracking-[-2px]">A whole night.<br />Zero clipboards.</h2>
         <p className="mx-auto mt-3 max-w-md text-[16px]" style={{ color: '#b8cbbd' }}>One sentence, one link, every phone on the right court, and a recap people actually share. Your first one is on us.</p>
         <form className="mt-6 flex gap-2 rounded-2xl bg-white p-2" onSubmit={(x) => { x.preventDefault(); location.href = `/play?q=${encodeURIComponent(q.trim() || 'Doubles this Saturday 9am, 4 players')}`; }}>

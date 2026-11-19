@@ -24,8 +24,8 @@ const nextConfig = {
       ]),
       // The director view was built as "Partner Finder".
       { source: '/run/members/partner-finder', destination: '/run/members/courtconnect', permanent: false },
-      // RacquetsAIRL (the demo) however people type it, plus the old TennisIRL links.
-      ...['/tennisirl', '/tennis-irl', '/irl', '/airl', '/racquetsirl', '/racquets-irl', '/racquets-airl', '/racquetsai'].map((source) => ({ source, destination: '/racquetsairl', permanent: false })),
+      // RacquetsIRL (the demo) however people type it, plus the old TennisIRL / RacquetsAIRL links.
+      ...['/tennisirl', '/tennis-irl', '/irl', '/airl', '/racquetsairl', '/racquets-irl', '/racquets-airl', '/racquetsai', '/racketsirl', '/rackets-irl'].map((source) => ({ source, destination: '/racquetsirl', permanent: false })),
     ];
   },
   async rewrites() {

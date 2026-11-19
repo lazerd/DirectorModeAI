@@ -239,10 +239,10 @@ export async function middleware(request: NextRequest) {
   // written against a host we are trying to retire.
   const legacy = redirectLegacyHost(request);
   if (legacy) return legacy;
-  // RacquetsAIRL however people capitalize it (redirects in next.config match case-insensitively, so this lives here).
+  // RacquetsIRL however people capitalize it (redirects in next.config match case-insensitively, so this lives here).
   const pth = request.nextUrl.pathname;
-  if (pth !== '/racquetsairl' && pth.toLowerCase() === '/racquetsairl') {
-    const u = request.nextUrl.clone(); u.pathname = '/racquetsairl';
+  if (pth !== '/racquetsirl' && pth.toLowerCase() === '/racquetsirl') {
+    const u = request.nextUrl.clone(); u.pathname = '/racquetsirl';
     return NextResponse.redirect(u, 307);
   }
 
