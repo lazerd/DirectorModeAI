@@ -33,6 +33,7 @@ export interface PlayRsvp {
   name: string;
   gender: 'male' | 'female' | null;
   level: string | null;
+  team?: 'A' | 'B' | null;
   status: 'in' | 'wait' | 'out';
   is_host: boolean;
   created_at: string;
@@ -42,6 +43,7 @@ export interface PlayState {
   mixer?: GuestMixer;
   roundStartedAt?: string | null;
   nextCode?: string | null;
+  teamNames?: { A: string; B: string } | null;
   preview?: { headline: string; lines: { id: string; name: string; line: string }[]; at: string } | null;
   recap?: {
     headline: string; story: string; spice: 'mild' | 'club' | 'locker'; crown?: string | null; at: string;
@@ -75,11 +77,12 @@ export function clampInt(v: unknown, lo: number, hi: number, dflt: number): numb
 export const perCourt = (f: GuestFormat) => (f === 'singles' ? 2 : 4);
 
 export const FORMAT_NAME: Record<GuestFormat, string> = {
-  'maximize-courts': 'Optimize Courts', 'king-of-court': 'King of the Court', doubles: 'Doubles', 'mixed-doubles': 'Mixed doubles', singles: 'Singles',
+  'maximize-courts': 'Optimize Courts', 'king-of-court': 'King of the Court', 'team-battle': 'Team Battle', doubles: 'Doubles', 'mixed-doubles': 'Mixed doubles', singles: 'Singles',
 };
 export const FORMAT_BLURB: Record<GuestFormat, string> = {
   'maximize-courts': 'Every court full: doubles where it fits, singles with the rest, fewest sit-outs.',
   'king-of-court': 'Winners move up a court, losers move down. Court 1 is the King court.',
+  'team-battle': 'Two teams, lines matched by strength like team tennis. Every court counts toward the team score.',
   doubles: 'Rotating doubles partners every round.',
   'mixed-doubles': 'One man and one woman per team, partners rotate.',
   singles: 'One-on-one, new opponent each round.',
@@ -88,7 +91,7 @@ export const FORMAT_BLURB: Record<GuestFormat, string> = {
 /** Fill in anything missing and keep every number in range. */
 export function normalizeDraft(d: Partial<PlayDraft>): PlayDraft {
   const sport: Sport = d.sport === 'pickleball' ? 'pickleball' : 'tennis';
-  let format: GuestFormat = d.format === 'singles' || d.format === 'mixed-doubles' || d.format === 'maximize-courts' || d.format === 'king-of-court' ? d.format : 'doubles';
+  let format: GuestFormat = d.format === 'singles' || d.format === 'mixed-doubles' || d.format === 'maximize-courts' || d.format === 'king-of-court' || d.format === 'team-battle' ? d.format : 'doubles';
   const spots = clampInt(d.spots, 2, 96, format === 'singles' ? 2 : 4);
   const kind: PlayKind = d.kind === 'game' || d.kind === 'social' ? d.kind : spots <= perCourt(format) ? 'game' : 'social';
   // A social with plain doubles becomes Optimize Courts unless the host chose otherwise (d.format set explicitly).
@@ -164,7 +167,7 @@ export function parseSentence(text: string, now = new Date()): PlayDraft {
   const kind: PlayKind = /mixer|social|round ?robin|party|king of/.test(t) ? 'social' : spots && spots > perCourt(format) ? 'social' : 'game';
   const words = { game: format === 'singles' ? 'Singles' : 'Doubles', social: /round ?robin/.test(t) ? 'Round Robin' : 'Mixer' };
   const title = `${dayLabel && dayLabel !== 'Today' && dayLabel !== 'Tomorrow' ? dayLabel + ' ' : ''}${format === 'mixed-doubles' ? 'Mixed ' : ''}${sport === 'pickleball' ? 'Pickleball ' : ''}${words[kind]}`;
-  const fmt: GuestFormat = /king of (the )?court|up and down the river/.test(t) ? 'king-of-court' : kind === 'social' && format === 'doubles' && !/\bdoubles only\b/.test(t) ? 'maximize-courts' : format;
+  const fmt: GuestFormat = /team battle|\bvs\.? (the )?|us vs them|ryder cup|davis cup|club vs/.test(t) && kind === 'social' ? 'team-battle' : /king of (the )?court|up and down the river/.test(t) ? 'king-of-court' : kind === 'social' && format === 'doubles' && !/\bdoubles only\b/.test(t) ? 'maximize-courts' : format;
   return normalizeDraft({ title, sport, kind, format: fmt, spots, courts, level, when_text, starts_at, location, notes: null });
 }
 
@@ -217,6 +220,7 @@ export function whenLine(e: Pick<PlayDraft, 'when_text' | 'starts_at'>, tz?: str
 /** How a format fills the courts for this many players (mirrors RoundGenerator's maximize-courts policy). */
 export function courtPlan(format: GuestFormat, players: number, courts: number): { doubles: number; singles: number; sit: number } {
   if (format === 'singles') { const s = Math.min(courts, Math.floor(players / 2)); return { doubles: 0, singles: s, sit: players - 2 * s }; }
+  if (format === 'team-battle') { const n = Math.floor(players / 2); const d = Math.min(courts, Math.floor(n / 2)); const s = Math.min(courts - d, n - 2 * d); return { doubles: d, singles: s, sit: players - 4 * d - 2 * s }; }
   if (format !== 'maximize-courts') { const d = Math.min(courts, Math.floor(players / 4)); return { doubles: d, singles: 0, sit: players - 4 * d }; }
   const d = Math.min(Math.floor(players / 4), courts);
   let s = Math.min(Math.floor((players - 4 * d) / 2), courts - d);

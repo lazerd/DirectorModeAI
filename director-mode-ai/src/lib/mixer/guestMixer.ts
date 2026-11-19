@@ -9,7 +9,8 @@
  */
 import { RoundGenerator, type HistoricalMatch } from '@/lib/advancedMatchGeneration';
 
-export type GuestFormat = 'maximize-courts' | 'king-of-court' | 'doubles' | 'mixed-doubles' | 'singles';
+export type GuestFormat = 'maximize-courts' | 'king-of-court' | 'team-battle' | 'doubles' | 'mixed-doubles' | 'singles';
+export type Team = 'A' | 'B';
 export type Gender = 'male' | 'female';
 
 export interface GuestPlayer {
@@ -18,6 +19,8 @@ export interface GuestPlayer {
   gender?: Gender;
   /** Left the event. Kept so their past rounds still show and still count. */
   out?: boolean;
+  /** Team Battle side. */
+  team?: Team;
 }
 
 export interface GuestMatch {
@@ -49,6 +52,7 @@ export const FORMAT_LABELS: Record<GuestFormat, string> = {
   // Darrin's #1 event: doubles wherever possible, singles with the rest, every court full.
   'maximize-courts': 'Optimize Courts',
   'king-of-court': 'King of the Court',
+  'team-battle': 'Team Battle',
   doubles: 'Doubles',
   'mixed-doubles': 'Mixed doubles',
   singles: 'Singles',
@@ -120,6 +124,12 @@ export function cannotGenerate(m: GuestMixer): string | null {
   if (active.length < need) {
     return `Add at least ${need} players to make a round.`;
   }
+  if (m.format === 'team-battle') {
+    const a = active.filter((p) => p.team === 'A').length, b = active.filter((p) => p.team === 'B').length;
+    const none = active.length - a - b;
+    if (none) return `Put ${none === 1 ? 'one player' : `${none} players`} on a team first.`;
+    if (!a || !b) return 'Team Battle needs players on both teams.';
+  }
   if (m.format === 'king-of-court' && m.rounds.length) {
     const last = m.rounds[m.rounds.length - 1];
     const missing = last.matches.filter((x) => x.scoreA == null || x.scoreB == null).length;
@@ -169,10 +179,16 @@ export function generateRound(m: GuestMixer, opts: { seed?: number; replaceLast?
   }
 
   const gen = new RoundGenerator(
-    active.map((p) => ({ player_id: p.id, name: p.name, gender: p.gender })),
+    active.map((p, i) => ({ player_id: p.id, name: p.name, gender: p.gender, team_id: p.team, strength_order: i + 1 })),
     base.courts,
     base.format === 'king-of-court' ? 'doubles' : base.format,
   );
+  if (base.format === 'team-battle') {
+    const n = Math.min(active.filter((p) => p.team === 'A').length, active.filter((p) => p.team === 'B').length);
+    const doublesCourts = Math.min(base.courts, Math.floor(n / 2));
+    const singlesCourts = Math.min(base.courts - doublesCourts, n - 2 * doublesCourts);
+    gen.setTeamBattleConfig({ singlesCourts, doublesCourts, team1Id: 'A', team2Id: 'B' });
+  }
   gen.setRandomize(true);
   if (opts.seed != null) gen.setSeed(opts.seed);
   const past = history(base);
@@ -255,7 +271,7 @@ export function parseSaved(raw: string | null): GuestMixer | null {
   try {
     const v = JSON.parse(raw);
     if (!v || v.version !== 1 || !Array.isArray(v.players) || !Array.isArray(v.rounds)) return null;
-    if (!['maximize-courts', 'king-of-court', 'doubles', 'mixed-doubles', 'singles'].includes(v.format)) return null;
+    if (!['maximize-courts', 'king-of-court', 'team-battle', 'doubles', 'mixed-doubles', 'singles'].includes(v.format)) return null;
     return v as GuestMixer;
   } catch {
     return null;
@@ -299,4 +315,19 @@ function riverRound(m: GuestMixer, number: number): GuestRound | null {
     return { court: i + 1, teamA: [x[0], y[1]], teamB: [x[1], y[0]], scoreA: null, scoreB: null };
   });
   return { number, matches, sittingOut };
+}
+
+/** Team Battle scoreboard: courts won per team, and games. */
+export function teamScore(m: GuestMixer): { A: number; B: number; gamesA: number; gamesB: number } {
+  const t = new Map(m.players.map((p) => [p.id, p.team]));
+  const out = { A: 0, B: 0, gamesA: 0, gamesB: 0 };
+  for (const r of m.rounds) for (const x of r.matches) {
+    if (x.scoreA == null || x.scoreB == null) continue;
+    const sideA = t.get(x.teamA[0]) === 'B' ? 'B' : 'A';
+    const sideB = sideA === 'A' ? 'B' : 'A';
+    out[sideA === 'A' ? 'gamesA' : 'gamesB'] += x.scoreA;
+    out[sideB === 'A' ? 'gamesA' : 'gamesB'] += x.scoreB;
+    if (x.scoreA > x.scoreB) out[sideA]++; else if (x.scoreB > x.scoreA) out[sideB]++;
+  }
+  return out;
 }

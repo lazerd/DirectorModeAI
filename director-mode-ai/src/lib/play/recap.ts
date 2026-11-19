@@ -1,6 +1,6 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
-import { standings, type GuestMixer } from '@/lib/mixer/guestMixer';
+import { standings, teamScore, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { awards } from './core';
 
 /**
@@ -44,6 +44,7 @@ function facts(m: GuestMixer, title: string, crown: CrownChange | null) {
     standings: st.map((s, i) => ({ place: i + 1, name: s.name, wins: s.wins, losses: s.losses, games_for: s.gamesFor, games_against: s.gamesAgainst, results_in_order: streak[s.name] })),
     awards: awards(m).map((a) => ({ award: a.title, who: a.who, why: a.why })),
     rounds,
+    team_battle: m.format === 'team-battle' ? { teams: m.players.reduce((acc, p) => { if (p.team) (acc[p.team] ||= []).push(p.name); return acc; }, {} as Record<string, string[]>), courts_won: teamScore(m), team_names: (m as GuestMixer & { teamNames?: unknown }).teamNames ?? null } : null,
     king_of_the_court: crown ? { place: crown.place, before_tonight: crown.before, after_tonight: crown.after, changed_hands: !!crown.after && crown.before !== crown.after } : null,
   };
 }

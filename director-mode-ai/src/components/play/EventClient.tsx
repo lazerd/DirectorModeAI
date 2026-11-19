@@ -7,7 +7,7 @@ import {
   Calendar, Check, Clock, Copy, Loader2, MapPin, MessageCircle, Minus, Play, Plus, QrCode, RefreshCw,
   Share2, Shuffle, Square, Trophy, UserPlus, X,
 } from 'lucide-react';
-import { standings, type GuestMatch } from '@/lib/mixer/guestMixer';
+import { standings, teamScore, type GuestMatch } from '@/lib/mixer/guestMixer';
 import { FORMAT_NAME, awards, perCourt, spotsLine, whenLine, type PlayEvent } from '@/lib/play/core';
 import { C, PlayHeader, api, getKey, getName, setKey, setName } from './shared';
 
@@ -134,12 +134,13 @@ function EventCard({ e }: { e: PlayEvent }) {
 function JoinBox({ e, act, busy }: { e: PlayEvent; act: (b: Record<string, unknown>) => Promise<Res | undefined>; busy: string }) {
   const [name, setN] = useState('');
   const [g, setG] = useState<'male' | 'female' | ''>('');
+  const [team, setTeam] = useState<'A' | 'B' | ''>('');
   useEffect(() => setN(getName()), []);
   const full = e.rsvps.filter((r) => r.status === 'in').length >= e.spots && e.status === 'open';
   const go = async () => {
     if (!name.trim()) return;
     setName(name.trim());
-    await act({ action: 'join', name: name.trim(), gender: g || null });
+    await act({ action: 'join', name: name.trim(), gender: g || null, team: team || null });
   };
   return (
     <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
@@ -154,6 +155,15 @@ function JoinBox({ e, act, busy }: { e: PlayEvent; act: (b: Record<string, unkno
           {busy === 'join' ? <Loader2 className="h-5 w-5 animate-spin" /> : full ? 'Waitlist' : 'I’m in'}
         </button>
       </form>
+      {e.format === 'team-battle' && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px]">
+          {(['A', 'B'] as const).map((t) => (
+            <button key={t} type="button" onClick={() => setTeam(team === t ? '' : t)} className="rounded-lg border px-3 py-1.5 font-semibold"
+              style={team === t ? { background: t === 'A' ? C.lime : '#ff9fc4', color: C.ink, borderColor: 'transparent' } : { borderColor: C.line }}>{teamName(e, t)}</button>
+          ))}
+          <span style={{ color: C.muted }}>{team ? '' : 'or we’ll even out the teams'}</span>
+        </div>
+      )}
       {e.format === 'mixed-doubles' && (
         <div className="mt-2 flex gap-2 text-[13px]">
           {(['male', 'female'] as const).map((x) => (
@@ -178,7 +188,7 @@ function groupText(e: PlayEvent, url: string) {
 }
 
 /** WhatsApp with the message filled in, or copy it to paste anywhere (falls back to selected text). */
-function GroupChatButtons({ text, compact }: { text: () => string; compact?: boolean }) {
+function GroupChatButtons({ text }: { text: () => string; compact?: boolean }) {
   const [copied, setCopied] = useState(false);
   const [shown, setShown] = useState<string | null>(null);
   const copy = async () => {
@@ -188,7 +198,7 @@ function GroupChatButtons({ text, compact }: { text: () => string; compact?: boo
   };
   return (
     <div className="grid gap-2">
-      <div className={`grid gap-2 ${compact ? 'grid-cols-2' : 'grid-cols-2'}`}>
+      <div className="grid grid-cols-2 gap-2">
         <a href={`https://wa.me/?text=${encodeURIComponent(text())}`} target="_blank" rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-white" style={{ background: '#1f9e57' }}>
           <MessageCircle className="h-5 w-5" />WhatsApp
@@ -265,6 +275,16 @@ function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?: strin
       <TaleOfTheTape e={e} act={act} busy={busy} />
       <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
         <div className="text-[16px] font-semibold">Who&apos;s in ({ins.length}/{e.spots})</div>
+        {e.format === 'team-battle' && (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            {(['A', 'B'] as const).map((t) => (
+              <div key={t} className="rounded-2xl p-3" style={{ background: t === 'A' ? '#f1ffc8' : '#ffe4ef' }}>
+                <div className="text-[13px] font-bold">{teamName(e, t)} · {ins.filter((r) => r.team === t).length}</div>
+                <div className="mt-1 text-[14px]">{ins.filter((r) => r.team === t).map((r) => r.name).join(', ') || '—'}</div>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap gap-2">
           {ins.map((r) => <span key={r.id} className="rounded-full px-3 py-1.5 text-[14px]" style={{ background: r.id === e.me ? C.lime : '#eef1e8' }}>{r.name}{r.is_host ? ' · host' : ''}</span>)}
           {Array.from({ length: Math.max(0, e.spots - ins.length) }).slice(0, 12).map((_, i) => <span key={i} className="rounded-full border border-dashed px-3 py-1.5 text-[14px]" style={{ borderColor: '#b9c4b5', color: '#9aa79c' }}>open</span>)}
@@ -302,6 +322,7 @@ function LiveView({ e, tab, setTab, busy, act, canScore, code }: { e: PlayEvent;
           <div className={`text-[40px] font-semibold leading-none tabular-nums ${left != null && left <= 0 ? 'text-[#b4432f]' : ''}`}>{mm}</div></div>
       </section>
 
+      {e.format === 'team-battle' && <TeamBoard e={e} />}
       {e.me && round && (
         <section className="mt-3 rounded-3xl p-5 shadow-sm" style={{ background: sitting ? '#e9eae3' : C.lime }}>
           {mine ? (
@@ -409,6 +430,7 @@ function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: string; 
   };
   return (
     <>
+      {e.format === 'team-battle' && <TeamBoard e={e} final />}
       <SportsDesk e={e} act={act} busy={busy} code={code} />
       {!e.me && !e.isHost && <YourGroup />}
       {e.me && <div className="mt-3 rounded-2xl bg-white p-4 shadow-sm"><CrownAlert e={e} act={act} /></div>}
@@ -490,7 +512,7 @@ function HostPanel({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Reco
           <button aria-label="More courts" onClick={() => act({ action: 'courts', courts: e.courts + 1 })} className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: '#eef1e8' }}><Plus className="h-4 w-4" /></button>
         </div>
       </div>
-      <div className="mt-3 grid gap-2">
+      <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-2">
         {e.status === 'open' && <SubButton e={e} />}
         {e.status === 'open' && (
           <Btn primary onClick={() => act({ action: 'start' })} disabled={ins.length < need}>
@@ -509,6 +531,7 @@ function HostPanel({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Reco
             </div>
           </>
         )}
+        {e.format === 'team-battle' && <TeamNames e={e} act={act} />}
         <button onClick={() => setOpen((v) => !v)} className="mt-1 flex items-center justify-center gap-2 text-[14px] font-semibold"><UserPlus className="h-4 w-4" />Add players or manage the list</button>
         {open && (
           <div className="grid gap-2">
@@ -519,6 +542,9 @@ function HostPanel({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Reco
               {e.rsvps.filter((r) => r.status !== 'out').map((r) => (
                 <span key={r.id} className="inline-flex items-center gap-1 rounded-full py-1 pl-3 pr-1 text-[13px]" style={{ background: '#eef1e8' }}>
                   {r.name}{r.status === 'wait' ? ' (waitlist)' : ''}
+                  {e.format === 'team-battle' && (
+                    <button onClick={() => act({ action: 'team', id: r.id, team: r.team === 'A' ? 'B' : 'A' })} className="rounded-full px-1.5 text-[11px] font-bold" style={{ background: r.team === 'B' ? '#ff9fc4' : r.team === 'A' ? C.lime : '#fff' }}>{r.team ? teamName(e, r.team).slice(0, 10) : 'Team?'}</button>
+                  )}
                   {e.format === 'mixed-doubles' && (
                     <button onClick={() => act({ action: 'gender', id: r.id, gender: r.gender === 'male' ? 'female' : 'male' })} className="rounded-full bg-white px-1.5 text-[11px] font-bold">{r.gender === 'male' ? 'M' : r.gender === 'female' ? 'W' : 'M/W?'}</button>
                   )}
@@ -711,6 +737,39 @@ function CrownAlert({ e, act }: { e: PlayEvent; act: (b: Record<string, unknown>
         <button className="rounded-xl px-3 text-[14px] font-semibold text-white" style={{ background: C.ink }}>Alert me</button>
       </div>
       <p className="mt-1 text-[11px]" style={{ color: C.muted }}>Only crown news. One tap to unsubscribe.</p>
+    </form>
+  );
+}
+
+/* ---------- Team Battle ---------- */
+function teamName(e: PlayEvent, t: 'A' | 'B') { return e.state.teamNames?.[t] || (t === 'A' ? 'Team A' : 'Team B'); }
+
+function TeamBoard({ e, final }: { e: PlayEvent; final?: boolean }) {
+  const m = e.state.mixer;
+  if (!m) return null;
+  const sc = teamScore(m);
+  const lead = sc.A === sc.B ? null : sc.A > sc.B ? 'A' : 'B';
+  return (
+    <section className="mt-3 overflow-hidden rounded-3xl shadow-sm" style={{ background: C.ink }}>
+      <div className="px-5 pt-4 text-[11px] font-semibold uppercase tracking-[2px]" style={{ color: '#bccdbb' }}>{final ? 'Final · courts won' : 'Team score · courts won'}</div>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-5 pb-4 pt-1 text-white">
+        <div><div className="truncate text-[15px] font-semibold" style={{ color: C.lime }}>{teamName(e, 'A')}</div><div className="text-[48px] font-bold leading-none tabular-nums">{sc.A}</div></div>
+        <div className="text-[20px]" style={{ color: '#9fb3a6' }}>vs</div>
+        <div className="text-right"><div className="truncate text-[15px] font-semibold" style={{ color: '#ff9fc4' }}>{teamName(e, 'B')}</div><div className="text-[48px] font-bold leading-none tabular-nums">{sc.B}</div></div>
+      </div>
+      {final && <div className="px-5 pb-4 text-[16px] font-semibold" style={{ color: C.lime }}>{lead ? `🏆 ${teamName(e, lead)} wins it` : 'All square. Run it back.'} <span className="font-normal" style={{ color: '#bccdbb' }}>· games {sc.gamesA}–{sc.gamesB}</span></div>}
+    </section>
+  );
+}
+
+function TeamNames({ e, act }: { e: PlayEvent; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
+  const [A, setA] = useState(teamName(e, 'A'));
+  const [B, setB] = useState(teamName(e, 'B'));
+  return (
+    <form className="flex gap-2" onSubmit={(x) => { x.preventDefault(); act({ action: 'teamnames', A, B }); }}>
+      <input value={A} onChange={(x) => setA(x.target.value)} aria-label="Team A name" className="min-w-0 flex-1 rounded-xl border bg-white px-3 py-2 text-[15px]" style={{ borderColor: C.line }} />
+      <input value={B} onChange={(x) => setB(x.target.value)} aria-label="Team B name" className="min-w-0 flex-1 rounded-xl border bg-white px-3 py-2 text-[15px]" style={{ borderColor: C.line }} />
+      <button className="rounded-xl px-3 text-[13px] font-semibold" style={{ background: '#eef1e8' }}>Name teams</button>
     </form>
   );
 }

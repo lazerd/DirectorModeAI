@@ -200,7 +200,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
           </section>
         )}
 
-        {draft && <EventPicker value={draft.format} spots={draft.spots} courts={draft.courts} onChange={(f) => set({ format: f, kind: draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' ? 'social' : draft.kind })} />}
+        {draft && <EventPicker value={draft.format} spots={draft.spots} courts={draft.courts} onChange={(f) => set({ format: f, kind: draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' || f === 'team-battle' ? 'social' : draft.kind })} />}
 
         {draft && (
           <section className="mt-4 grid gap-3">

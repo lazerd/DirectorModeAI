@@ -44,7 +44,7 @@ export async function view(c: string, key?: string | null): Promise<PlayEvent | 
   return {
     ...(pub as Omit<Row, 'host_key' | 'id' | 'parent_id'>),
     crown: cr ? { slug: cr.slug, place: cr.place, king: slim(cr.king), queen: slim(cr.queen) } : null,
-    rsvps: rs.filter((r) => r.status !== 'out').map(({ id, name, gender, level, status, is_host, created_at }) => ({ id, name, gender, level, status, is_host, created_at })),
+    rsvps: rs.filter((r) => r.status !== 'out').map(({ id, name, gender, level, status, is_host, created_at, team }) => ({ id, name, gender, level, status, is_host, created_at, team: team ?? null })),
     isHost: !!key && key === host_key,
     me: me?.id ?? null,
     prevCode,
@@ -67,7 +67,7 @@ export async function createEvent(d: Partial<PlayDraft>, host: { name?: string |
     let playerKey: string | null = null;
     if (host.playing && host.name?.trim()) {
       playerKey = hostKey; // the host's own RSVP answers to the host key
-      await db.from('play_rsvps').insert({ event_id: data.id, name: host.name.trim().slice(0, 40), gender: host.gender ?? null, player_key: hostKey, is_host: true, status: 'in' });
+      await db.from('play_rsvps').insert({ event_id: data.id, name: host.name.trim().slice(0, 40), gender: host.gender ?? null, player_key: hostKey, is_host: true, status: 'in', team: draft.format === 'team-battle' ? 'A' : null });
     }
     return { code: data.code as string, hostKey, playerKey };
   }
@@ -103,14 +103,14 @@ async function promoteWaitlist(row: Row) {
 }
 
 /** A newcomer during a live event joins the rotation from the next round. */
-async function addToMixer(row: Row, p: { id: string; name: string; gender: 'male' | 'female' | null }) {
+async function addToMixer(row: Row, p: { id: string; name: string; gender: 'male' | 'female' | null; team?: 'A' | 'B' | null }) {
   await mutate(row, (r) => {
     if (r.status !== 'live' || !r.state?.mixer) return null;
     const m = r.state.mixer;
     if (m.players.some((x) => x.id === p.id && !x.out)) return null;
     const players = m.players.some((x) => x.id === p.id)
       ? m.players.map((x) => (x.id === p.id ? { ...x, out: false } : x))
-      : [...m.players, { id: p.id, name: p.name, ...(p.gender ? { gender: p.gender } : {}) }];
+      : [...m.players, { id: p.id, name: p.name, ...(p.gender ? { gender: p.gender } : {}), ...(p.team ? { team: p.team } : {}) }];
     return { state: { ...r.state, mixer: { ...m, players } } };
   });
 }
@@ -140,9 +140,14 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       const inN = rs.filter((r) => r.status === 'in').length;
       const status = row.status === 'live' || inN < row.spots ? 'in' : 'wait';
       const pk = mine?.player_key ?? newKey();
-      const { data, error } = await db.from('play_rsvps').insert({ event_id: row.id, name, gender: gender(body.gender), level: s(body.level, 20) || null, player_key: pk, status }).select('id').single();
+      let team: 'A' | 'B' | null = body.team === 'A' || body.team === 'B' ? body.team : null;
+      if (row.format === 'team-battle' && !team) {
+        const live = rs.filter((r) => r.status === 'in');
+        team = live.filter((r) => r.team === 'A').length <= live.filter((r) => r.team === 'B').length ? 'A' : 'B';
+      }
+      const { data, error } = await db.from('play_rsvps').insert({ event_id: row.id, name, gender: gender(body.gender), level: s(body.level, 20) || null, player_key: pk, status, team }).select('id').single();
       if (error) throw new PlayError(error.message, 500);
-      if (row.status === 'live') await addToMixer(row, { id: data.id, name, gender: gender(body.gender) });
+      if (row.status === 'live') await addToMixer(row, { id: data.id, name, gender: gender(body.gender), team });
       if (row.status === 'open' && status === 'in') await hype(c, { id: data.id, name }).catch(() => {});
       return { playerKey: pk };
     }
@@ -191,6 +196,20 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       if (row.status === 'open') await promoteWaitlist({ ...row, spots: d.spots });
       return {};
     }
+    case 'team': { // Team Battle: a player picks their side, or the host moves anyone
+      const id = s(body.id, 60) || mine?.id || '';
+      if (!isHost && mine?.id !== id) throw new PlayError('Not allowed.', 403);
+      const t = body.team === 'A' || body.team === 'B' ? body.team : null;
+      await db.from('play_rsvps').update({ team: t }).eq('id', id).eq('event_id', row.id);
+      await mutate(row, (r) => r.state?.mixer ? { state: { ...r.state, mixer: { ...r.state.mixer, players: r.state.mixer.players.map((p) => p.id === id ? { ...p, team: t ?? undefined } : p) } } } : null);
+      return {};
+    }
+    case 'teamnames': {
+      hostOnly();
+      const A = s(body.A, 24) || 'Team A', B = s(body.B, 24) || 'Team B';
+      await mutate(row, (r) => ({ state: { ...r.state, teamNames: { A, B } } }));
+      return {};
+    }
     case 'watch': {
       if (!mine) throw new PlayError('Join first, then you can get crown alerts.', 403);
       if (!row.location) throw new PlayError('This game has no place, so there is no crown to watch.');
@@ -205,7 +224,14 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     }
     case 'start': {
       hostOnly();
-      const players = rs.filter((r) => r.status === 'in').map((r) => ({ id: r.id, name: r.name, ...(r.gender ? { gender: r.gender } : {}) }));
+      if (row.format === 'team-battle') { // anyone without a side goes to the smaller team
+        const ins = rs.filter((r) => r.status === 'in');
+        for (const r of ins.filter((x) => !x.team)) {
+          const t = ins.filter((x) => x.team === 'A').length <= ins.filter((x) => x.team === 'B').length ? 'A' : 'B';
+          r.team = t; await db.from('play_rsvps').update({ team: t }).eq('id', r.id);
+        }
+      }
+      const players = rs.filter((r) => r.status === 'in').map((r) => ({ id: r.id, name: r.name, ...(r.gender ? { gender: r.gender } : {}), ...(r.team ? { team: r.team } : {}) }));
       await mutate(row, (r) => {
         const m: GuestMixer = { ...newMixer(), name: r.title, courts: r.courts, format: r.format, players, rounds: [] };
         m.rounds = [generateRound(m)];
@@ -258,7 +284,8 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
         const [before, after] = await Promise.all([crownFor(fresh.location, { excludeCode: fresh.code }), crownFor(fresh.location)]);
         if (after) crown = { place: after.place, before: before?.king?.name ?? null, after: after.king?.name ?? null };
       }
-      const recap = await callTheGame(m, fresh.title, spice, crown).catch((e) => { console.error('[play] recap failed', e); return null; });
+      const named = fresh.state?.teamNames ? ({ ...m, teamNames: fresh.state.teamNames } as typeof m) : m;
+      const recap = await callTheGame(named, fresh.title, spice, crown).catch((e) => { console.error('[play] recap failed', e); return null; });
       if (recap) await mutate(fresh, (r) => ({ state: { ...r.state, recap } }));
       if (action === 'end' && crown) await crownChanged(crown.place, crown.before, crown.after).catch((e) => console.error('[play] crown alert failed', e));
       return {};

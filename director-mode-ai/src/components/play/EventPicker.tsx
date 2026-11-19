@@ -38,7 +38,13 @@ function planLine(f: GuestFormat, spots: number, courts: number) {
   return { text: `${spots} players on ${courts} court${courts === 1 ? '' : 's'}: ${parts} · ${sit}${idle}`, warn: courts - used > 0 || p.sit > 2 };
 }
 
-const SMALL: { f: GuestFormat; title: string; blurb: string; art: React.ReactNode }[] = [
+const T: Dot[] = [{ x: 17, y: 31, c: 'a' }, { x: 37, y: 31, c: 'a' }, { x: 17, y: 61, c: 'w' }, { x: 37, y: 61, c: 'w' }];
+const TS: Dot[] = [{ x: 27, y: 31, c: 'a' }, { x: 27, y: 61, c: 'w' }];
+const SMALL: { f: GuestFormat; title: string; blurb: string; art: React.ReactNode; wide?: boolean }[] = [
+  {
+    f: 'team-battle', wide: true, title: 'Team Battle', blurb: 'Two teams, lines matched by strength like team tennis. Every court counts for the team.',
+    art: <><Court dots={T} /><Court dots={T} /><Court dots={TS} /><span style={{ color: '#d4ff49', fontWeight: 800, fontSize: 22, marginLeft: 8, whiteSpace: 'nowrap' }}>5 <span style={{ color: '#9fb3a6' }}>–</span> <span style={{ color: '#ff9fc4' }}>3</span></span></>,
+  },
   {
     f: 'king-of-court', title: 'King of the Court', blurb: 'Winners move up, losers move down. Hold court 1.',
     art: <><Court dots={D} crown arrow="up" /><Court dots={D} arrow="down" dim /></>,
@@ -78,7 +84,7 @@ export default function EventPicker({ value, spots, courts, onChange }: { value:
         {SMALL.map((t) => {
           const m = planLine(t.f, spots, courts);
           return (
-            <button key={t.f} type="button" role="radio" aria-checked={value === t.f} onClick={() => onChange(t.f)} className={`${s.tile} ${s.small} ${value === t.f ? s.on : ''}`}>
+            <button key={t.f} type="button" role="radio" aria-checked={value === t.f} onClick={() => onChange(t.f)} className={`${s.tile} ${s.small} ${value === t.f ? s.on : ''}`} style={t.wide ? { gridColumn: '1 / -1', minHeight: 0 } : undefined}>
               <span className={s.check}>✓</span>
               <div className={s.art}>{t.art}</div>
               <div className={s.smallTitle} style={{ position: 'relative', zIndex: 1 }}>{t.title}</div>
