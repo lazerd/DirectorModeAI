@@ -20,6 +20,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
   const [err, setErr] = useState('');
   const [tab, setTab] = useState<'courts' | 'table'>('courts');
   const [isNew, setIsNew] = useState(false);
+  const [sheet, setSheet] = useState(false);
   const lastRound = useRef<number>(0);
 
   const refresh = useCallback(async (k = key) => {
@@ -27,6 +28,9 @@ export default function EventClient({ code, initial }: { code: string; initial: 
   }, [code, key]);
 
   useEffect(() => {
+    const q = new URLSearchParams(location.search);
+    const hk = q.get('host');
+    if (hk && /^[A-Za-z0-9_-]{8,80}$/.test(hk)) { setKey(code, hk); q.delete('host'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '')); }
     const k = getKey(code);
     setK(k);
     setIsNew(new URLSearchParams(location.search).has('new'));
@@ -76,9 +80,10 @@ export default function EventClient({ code, initial }: { code: string; initial: 
         {e.prevCode == null && isNew && e.isHost && e.status === 'open' && (
           <div className="mb-3 rounded-2xl p-4 text-[14px]" style={{ background: C.lime }}>
             <b>Your link is ready.</b> Send it to your group chat. Everything else happens on this page, so keep it handy.
+            {key && <HostLinkButtons code={code} hostKey={key} />}
           </div>
         )}
-        <EventCard e={e} />
+        <EventCard e={e} onStatus={() => setSheet(true)} />
         <CrownStrip e={e} />
         {err && <p className="mt-3 rounded-xl bg-[#fbe9e5] px-4 py-3 text-[14px] text-[#9c3a25]">{err}</p>}
 
@@ -86,7 +91,8 @@ export default function EventClient({ code, initial }: { code: string; initial: 
         {e.status === 'live' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code={code} />}
         {e.status === 'done' && <DoneView e={e} busy={busy} act={act} code={code} myName={meR?.name} />}
 
-        {e.isHost && <HostPanel e={e} busy={busy} act={act} />}
+        {e.isHost && <HostPanel e={e} busy={busy} act={act} hostKey={key} />}
+        {sheet && <StatusSheet e={e} busy={busy} act={act} hostKey={e.isHost ? key : null} onClose={() => setSheet(false)} />}
 
         <div className="mt-10 text-center text-[13px]" style={{ color: C.muted }}>
           <Link href="/play" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Host your own game in 60 seconds</Link>
@@ -98,16 +104,16 @@ export default function EventClient({ code, initial }: { code: string; initial: 
 }
 
 /* ------------------------------------------------------------------ */
-function EventCard({ e }: { e: PlayEvent }) {
+function EventCard({ e, onStatus }: { e: PlayEvent; onStatus: () => void }) {
   const when = whenLine(e);
   const n = e.rsvps.filter((r) => r.status === 'in').length;
   return (
     <section className="rounded-3xl p-5 text-white shadow-lg" style={{ background: C.ink }}>
       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: '#bccdbb' }}>
         <span>{e.sport} · {FORMAT_NAME[e.format]}{e.level ? ` · ${e.level}` : ''}</span>
-        <span className="rounded-full px-2 py-0.5" style={e.status === 'live' ? { background: C.lime, color: C.ink } : { background: '#ffffff18' }}>
-          {e.status === 'open' ? 'Open' : e.status === 'live' ? '● Live' : 'Final'}
-        </span>
+        <button type="button" onClick={onStatus} aria-label="Game status" className="flex items-center gap-1 rounded-full px-2.5 py-1 uppercase" style={e.status === 'live' ? { background: C.lime, color: C.ink } : { background: '#ffffff24', color: '#fff' }}>
+          {e.status === 'open' ? 'Open' : e.status === 'live' ? '● Live' : 'Final'} <span aria-hidden>›</span>
+        </button>
       </div>
       <h1 className="mt-2 text-[30px] font-medium leading-[1.05] tracking-tight">{e.title}</h1>
       <div className="mt-3 grid gap-1.5 text-[15px]">
@@ -120,10 +126,10 @@ function EventCard({ e }: { e: PlayEvent }) {
         {e.host_name && <div className="text-[13px]" style={{ color: '#bccdbb' }}>Hosted by {e.host_name}</div>}
       </div>
       {e.status === 'open' && (
-        <>
+        <button type="button" onClick={onStatus} className="block w-full text-left">
           <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full" style={{ width: `${Math.min(100, (n / e.spots) * 100)}%`, background: C.lime }} /></div>
-          <div className="mt-2 text-[13px]" style={{ color: '#dfe8dc' }}>{spotsLine(e)}</div>
-        </>
+          <div className="mt-2 flex justify-between text-[13px]" style={{ color: '#dfe8dc' }}><span>{spotsLine(e)}</span><span className="font-semibold" style={{ color: C.lime }}>Status ›</span></div>
+        </button>
       )}
       {e.notes && <p className="mt-3 text-[14px]" style={{ color: '#dfe8dc' }}>{e.notes}</p>}
     </section>
@@ -483,7 +489,7 @@ function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: string; 
 }
 
 /* ------------------------------------------------------------------ */
-function HostPanel({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
+function HostPanel({ e, busy, act, hostKey }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null }) {
   const [names, setNames] = useState('');
   const [open, setOpen] = useState(false);
   const m = e.state.mixer;
@@ -555,7 +561,8 @@ function HostPanel({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Reco
           </div>
         )}
       </div>
-      <p className="mt-3 text-[12px]" style={{ color: C.muted }}>Only this browser can run the event. Keep the link: it&apos;s your host remote.</p>
+      <p className="mt-3 text-[12px]" style={{ color: C.muted }}>Run it from another phone too: send yourself the host link. Don&apos;t post that one in the group.</p>
+      {hostKey && <HostLinkButtons code={e.code} hostKey={hostKey} />}
     </section>
   );
 }
@@ -771,5 +778,103 @@ function TeamNames({ e, act }: { e: PlayEvent; act: (b: Record<string, unknown>,
       <input value={B} onChange={(x) => setB(x.target.value)} aria-label="Team B name" className="min-w-0 flex-1 rounded-xl border bg-white px-3 py-2 text-[15px]" style={{ borderColor: C.line }} />
       <button className="rounded-xl px-3 text-[13px] font-semibold" style={{ background: '#eef1e8' }}>Name teams</button>
     </form>
+  );
+}
+
+/* ---------- Status: who's in, who we're still waiting on, what to do next ---------- */
+/** Names the host typed into the notes ("Players: Kevin & Dana, Lawrence & Haley"). */
+function expectedNames(notes: string | null | undefined): string[] {
+  if (!notes) return [];
+  const body = notes.replace(/^[^:]{0,24}:\s*/, (m) => (/player|who|roster|group|list|invite|crew/i.test(m) ? '' : m));
+  const parts = body.split(/\s*(?:,|;|&|\+|\/|\n|\band\b)\s*/i).map((x) => x.trim().replace(/[.!?]+$/, ''));
+  const ok = parts.filter((x) => /^[A-Z][a-zA-Z'’.-]{1,20}( [A-Z][a-zA-Z'’.-]{0,20})?$/.test(x));
+  return ok.length >= 2 ? Array.from(new Set(ok)).slice(0, 40) : [];
+}
+const firstName = (n: string) => n.trim().split(/\s+/)[0].toLowerCase();
+
+function HostLinkButtons({ code, hostKey }: { code: string; hostKey: string }) {
+  const [copied, setCopied] = useState(false);
+  const url = `${location.origin}/p/${code}?host=${hostKey}`;
+  const msg = `My CourtConnect host link (don't share it): ${url}`;
+  return (
+    <div className="mt-2 grid grid-cols-2 gap-2 text-[13px] font-semibold">
+      <a href={`sms:?&body=${encodeURIComponent(msg)}`} className="flex items-center justify-center gap-1.5 rounded-xl bg-white/80 py-2.5" style={{ color: C.ink }}><MessageCircle className="h-4 w-4" />Text me my host link</a>
+      <button type="button" onClick={async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2500); } catch { window.prompt('Your host link', url); } }}
+        className="flex items-center justify-center gap-1.5 rounded-xl bg-white/80 py-2.5" style={{ color: C.ink }}>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}{copied ? 'Copied' : 'Copy host link'}</button>
+    </div>
+  );
+}
+
+function StatusSheet({ e, busy, act, hostKey, onClose }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null; onClose: () => void }) {
+  const ins = e.rsvps.filter((r) => r.status === 'in');
+  const wait = e.rsvps.filter((r) => r.status === 'wait');
+  const have = new Set(e.rsvps.map((r) => firstName(r.name)));
+  const missing = expectedNames(e.notes).filter((n) => !have.has(firstName(n)));
+  const open = Math.max(0, e.spots - ins.length);
+  const need = perCourt(e.format);
+  const when = whenLine(e);
+  const ms = e.starts_at ? Date.parse(e.starts_at) - Date.now() : NaN;
+  const until = Number.isFinite(ms) && ms > 0 ? (ms > 36 * 3600e3 ? `in ${Math.round(ms / 86400e3)} days` : ms > 3600e3 ? `in ${Math.round(ms / 3600e3)} hours` : `in ${Math.max(1, Math.round(ms / 60e3))} min`) : '';
+  const url = `${location.origin}/p/${e.code}`;
+  const nudge = () => [
+    `🏓 ${e.title}${when ? ' · ' + when : ''}`,
+    `In so far: ${ins.map((r) => r.name.split(' ')[0]).join(', ') || 'nobody yet'}.`,
+    missing.length ? `Still need a tap from ${missing.join(', ')} 👀` : open ? `${open} spot${open === 1 ? '' : 's'} left.` : 'Full. Waitlist is open.',
+    `Tap "I'm in" (5 seconds, no app): ${url}`,
+  ].join('\n');
+  const isHost = !!hostKey;
+  const plan = ins.length >= need ? `${ins.length} could start now` : `need ${need - ins.length} more to start`;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45" onClick={onClose}>
+      <div role="dialog" aria-label="Game status" className="max-h-[88vh] w-full max-w-xl overflow-y-auto rounded-t-3xl p-5 pb-8 shadow-2xl" style={{ background: C.paper, color: C.ink }} onClick={(x) => x.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Game status</div>
+          <button aria-label="Close" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full" style={{ background: '#eef1e8' }}><X className="h-4 w-4" /></button>
+        </div>
+        <div className="mt-2 text-[30px] font-semibold leading-tight tracking-tight">{e.status === 'open' ? `${ins.length} of ${e.spots} in` : e.status === 'live' ? 'Playing now' : 'Final'}</div>
+        <div className="text-[14px]" style={{ color: C.muted }}>{[when, until, e.status === 'open' ? plan : ''].filter(Boolean).join(' · ')}</div>
+
+        <div className="mt-4 rounded-2xl bg-white p-4">
+          <div className="text-[13px] font-semibold">✅ In ({ins.length})</div>
+          <div className="mt-1 text-[15px]">{ins.map((r) => r.name).join(', ') || '—'}</div>
+          {wait.length > 0 && <><div className="mt-3 text-[13px] font-semibold">⏳ Waitlist ({wait.length})</div><div className="mt-1 text-[15px]">{wait.map((r) => r.name).join(', ')}</div></>}
+          {missing.length > 0 && (
+            <>
+              <div className="mt-3 text-[13px] font-semibold">👀 Haven&apos;t tapped in ({missing.length})</div>
+              <div className="mt-1 text-[15px]">{missing.join(', ')}</div>
+              <div className="mt-1 text-[12px]" style={{ color: C.muted }}>From the names in the game notes.</div>
+            </>
+          )}
+        </div>
+
+        {e.status === 'open' && (
+          <div className="mt-4 grid gap-2">
+            {isHost && missing.length > 0 && (
+              <button disabled={!!busy} onClick={() => act({ action: 'add', names: missing.join(', ') }, 'add')} className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold disabled:opacity-60" style={{ background: C.lime }}>
+                {busy === 'add' ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}They&apos;re coming. Add all {missing.length}
+              </button>
+            )}
+            <div className="mt-1 text-[13px] font-semibold">{missing.length ? 'Nudge the group' : open ? `Fill the last ${open}` : 'Tell the group'}</div>
+            <GroupChatButtons text={nudge} />
+            {isHost && (
+              <button disabled={!!busy || ins.length < need} onClick={async () => { const r = await act({ action: 'start' }, 'start'); if (r) onClose(); }} className="mt-1 flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-50" style={{ background: C.ink }}>
+                {busy === 'start' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}{ins.length < need ? `Need ${need - ins.length} more to start` : `Start with who's here (${ins.length})`}
+              </button>
+            )}
+          </div>
+        )}
+
+        {isHost ? (
+          <div className="mt-5 rounded-2xl p-4" style={{ background: '#eef1e8' }}>
+            <div className="text-[13px] font-semibold">Run this game from another phone</div>
+            <HostLinkButtons code={e.code} hostKey={hostKey!} />
+          </div>
+        ) : (
+          <p className="mt-5 text-[13px]" style={{ color: C.muted }}>
+            Hosting this one{e.host_name ? `, ${e.host_name.split(' ')[0]}` : ''}? Open your <b>host link</b> on this phone to get the controls. On the phone you made the game on, tap “Open ›” then “Copy host link”.
+          </p>
+        )}
+      </div>
+    </div>
   );
 }
