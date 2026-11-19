@@ -24,6 +24,8 @@ const nextConfig = {
       ]),
       // The director view was built as "Partner Finder".
       { source: '/run/members/partner-finder', destination: '/run/members/courtconnect', permanent: false },
+      // TennisIRL however people type it.
+      ...['/TennisIRL', '/TennisIrl', '/Tennisirl', '/tennis-irl', '/irl'].map((source) => ({ source, destination: '/tennisirl', permanent: false })),
     ];
   },
   async rewrites() {
