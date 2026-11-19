@@ -194,7 +194,7 @@ function GroupChatButtons({ text, compact }: { text: () => string; compact?: boo
           <MessageCircle className="h-5 w-5" />WhatsApp
         </a>
         <button type="button" onClick={copy} className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold" style={{ background: C.lime, color: C.ink }}>
-          {copied ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}{copied ? 'Copied! Paste it' : 'Copy for group chat'}
+          {copied ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}{copied ? 'Copied! Paste it' : 'Copy message'}
         </button>
       </div>
       {shown && <textarea readOnly value={shown} rows={5} autoFocus onFocus={(x) => x.currentTarget.select()} className="w-full rounded-xl border bg-white p-3 text-[15px]" style={{ borderColor: C.line }} />}
