@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, Users, Trophy, LayoutGrid } from 'lucide-react';
+import { PlacePicker } from './PlacePicker';
 import { normalizeDraft, parseSentence, perCourt, whenLine, type PlayDraft } from '@/lib/play/core';
 import { C, PlayHeader, apiRaw, canListen, getClub, getHostId, getName, listen, savePending, setClub, setKey, setName, takePending } from './shared';
 import Paywall, { type PaywallInfo } from './Paywall';
@@ -50,10 +51,12 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const touched = useRef<Set<string>>(new Set());
   async function build(t = text) {
     if (!t.trim()) return;
     setErr('');
     const quick = parseSentence(t);
+    touched.current = new Set();
     setDraft(quick);
     setThinking(true);
     try {
@@ -63,7 +66,14 @@ export default function HostClient({ initial, club, resume }: { initial?: string
         const starts = j.local_start && !isNaN(Date.parse(j.local_start)) ? new Date(j.local_start).toISOString() : quick.starts_at;
         // Optimize Courts is the default for any social unless they said "doubles only" (host can still switch).
         const fmt = j.draft.kind === 'social' && j.draft.format === 'doubles' && !/doubles only|only doubles/i.test(t) ? 'maximize-courts' : j.draft.format;
-        setDraft(normalizeDraft({ ...j.draft, format: fmt, starts_at: starts, when_text: j.draft.when_text ?? quick.when_text, location: j.draft.location ?? quick.location }));
+        const ai = normalizeDraft({ ...j.draft, format: fmt, starts_at: starts, when_text: j.draft.when_text ?? quick.when_text, location: j.draft.location ?? quick.location });
+        // Anything the host already changed while it was tidying up stays theirs.
+        setDraft((d) => {
+          if (!d) return ai;
+          const keep: Record<string, unknown> = {};
+          for (const k of touched.current) keep[k] = d[k as keyof PlayDraft];
+          return { ...ai, ...keep } as PlayDraft;
+        });
       }
     } catch { /* keep the quick reading */ }
     setThinking(false);
@@ -100,6 +110,8 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   // The server normalizes again when the game is saved.
   const set = (p: Partial<PlayDraft>) => setDraft((d) => {
     if (!d) return d;
+    for (const k of Object.keys(p)) touched.current.add(k);
+    if ('location' in p) ['place_address', 'place_lat', 'place_lng'].forEach((k) => touched.current.add(k));
     const raw: Partial<PlayDraft> = {};
     for (const k of ['title', 'location', 'level', 'notes'] as const) if (typeof p[k] === 'string') (raw as Record<string, string>)[k] = p[k] as string;
     return { ...normalizeDraft({ ...d, ...p }), ...raw };
@@ -196,8 +208,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
                 {!draft.starts_at && <span style={{ color: '#bccdbb' }}>{draft.when_text ?? 'Pick a time'}</span>}
               </label>
               <label className="flex items-center gap-2"><MapPin className="h-4 w-4 shrink-0" style={{ color: C.lime }} />
-                <input value={draft.location ?? ''} onChange={(e) => set({ location: e.target.value })} placeholder="Where? (courts, park, club)"
-                  className="w-full bg-transparent text-white outline-none placeholder:text-[#9fb3a6]" />
+                <PlacePicker value={draft} onChange={(p) => set(p)} />
               </label>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">

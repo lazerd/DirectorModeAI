@@ -8,7 +8,8 @@ import {
   Share2, Shuffle, Square, Trophy, UserPlus, X,
 } from 'lucide-react';
 import { standings, teamScore, type GuestMatch } from '@/lib/mixer/guestMixer';
-import { FORMAT_NAME, awards, perCourt, spotsLine, whenLine, type PlayEvent } from '@/lib/play/core';
+import { Directions, PlaceMap, PlacePicker, type Place } from './PlacePicker';
+import { FORMAT_NAME, directionsUrl, awards, perCourt, spotsLine, whenLine, type PlayEvent } from '@/lib/play/core';
 import { BrandContext, C, PlayHeader, api, getKey, getName, setKey, setName } from './shared';
 
 export type Res = { event: PlayEvent; playerKey?: string; code?: string };
@@ -91,6 +92,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
         {e.status === 'live' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code={code} />}
         {e.status === 'done' && <DoneView e={e} busy={busy} act={act} code={code} myName={meR?.name} />}
 
+        {e.status !== 'done' && <PlaceMap e={e} className="mt-6" />}
         {e.isHost && <HostPanel e={e} busy={busy} act={act} hostKey={key} />}
         {sheet && <StatusSheet e={e} busy={busy} act={act} hostKey={e.isHost ? key : null} onClose={() => setSheet(false)} />}
 
@@ -119,9 +121,12 @@ export function EventCard({ e, onStatus }: { e: PlayEvent; onStatus: () => void 
       <div className="mt-3 grid gap-1.5 text-[15px]">
         {when && <div className="flex items-center gap-2"><Clock className="h-4 w-4" style={{ color: C.lime }} />{when}</div>}
         {e.location && (
-          <a className="flex items-center gap-2 underline-offset-4 hover:underline" target="_blank" rel="noreferrer" href={`https://maps.google.com/?q=${encodeURIComponent(e.location)}`}>
-            <MapPin className="h-4 w-4" style={{ color: C.lime }} />{e.location}
-          </a>
+          <div className="flex items-center justify-between gap-3">
+            <a className="flex min-w-0 items-center gap-2 underline-offset-4 hover:underline" target="_blank" rel="noreferrer" href={directionsUrl(e) ?? '#'}>
+              <MapPin className="h-4 w-4 shrink-0" style={{ color: C.lime }} /><span className="min-w-0">{e.location}{e.place_address && <span className="block truncate text-[12px]" style={{ color: '#bccdbb' }}>{e.place_address}</span>}</span>
+            </a>
+            {e.place_lat == null && <Directions e={e} light />}
+          </div>
         )}
         {e.host_name && <div className="text-[13px]" style={{ color: '#bccdbb' }}>Hosted by {e.host_name}</div>}
       </div>
@@ -489,6 +494,31 @@ export function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: s
 }
 
 /* ------------------------------------------------------------------ */
+/** Host fixes or pins the place after the game is made. */
+function ChangePlace({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
+  const [open, setOpen] = useState(false);
+  const [p, setP] = useState<Place>({ location: e.location, place_address: e.place_address ?? null, place_lat: e.place_lat ?? null, place_lng: e.place_lng ?? null });
+  if (!open) return (
+    <button type="button" onClick={() => { setP({ location: e.location, place_address: e.place_address ?? null, place_lat: e.place_lat ?? null, place_lng: e.place_lng ?? null }); setOpen(true); }}
+      className="flex items-center justify-center gap-2 rounded-2xl py-3 text-[14px] font-semibold" style={{ background: '#eef1e8' }}>
+      <MapPin className="h-4 w-4" />{e.place_lat != null ? 'Change the place' : e.location ? 'Pin the place on the map' : 'Add the place'}
+    </button>
+  );
+  return (
+    <div className="rounded-2xl p-3" style={{ background: '#eef1e8' }}>
+      <div className="rounded-xl bg-white px-3 py-2.5 text-[15px]"><PlacePicker value={p} onChange={setP} dark={false} autoFocus /></div>
+      <div className="mt-1.5 text-[12px]" style={{ color: C.muted }}>Pick a suggestion to pin it on the map. Everyone’s page updates.</div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => setOpen(false)} className="rounded-xl bg-white py-2.5 text-[14px] font-semibold">Cancel</button>
+        <button type="button" disabled={!!busy || !p.location?.trim()} onClick={async () => { const r = await act({ action: 'edit', draft: { ...p, location: p.location?.trim() || null } }, 'edit'); if (r) setOpen(false); }}
+          className="flex items-center justify-center gap-1.5 rounded-xl py-2.5 text-[14px] font-semibold text-white disabled:opacity-50" style={{ background: C.ink }}>
+          {busy === 'edit' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Save place
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function HostPanel({ e, busy, act, hostKey }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null }) {
   const [names, setNames] = useState('');
   const [open, setOpen] = useState(false);
@@ -520,6 +550,7 @@ export function HostPanel({ e, busy, act, hostKey }: { e: PlayEvent; busy: strin
       </div>
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-2">
         {e.status === 'open' && <SubButton e={e} />}
+        <ChangePlace e={e} busy={busy} act={act} />
         {e.status === 'open' && (
           <Btn primary onClick={() => act({ action: 'start' })} disabled={ins.length < need}>
             {busy === 'start' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}

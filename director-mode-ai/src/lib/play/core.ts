@@ -21,6 +21,10 @@ export interface PlayDraft {
   when_text: string | null;
   starts_at: string | null; // ISO
   location: string | null;
+  /** Set when the place was picked from map suggestions: full address and pin. */
+  place_address?: string | null;
+  place_lat?: number | null;
+  place_lng?: number | null;
   level: string | null;
   spots: number;
   courts: number;
@@ -108,11 +112,30 @@ export function normalizeDraft(d: Partial<PlayDraft>): PlayDraft {
     when_text: str(d.when_text, 80),
     starts_at: starts,
     location: str(d.location, 120),
+    ...normalizePlace(d),
     level: str(d.level, 40),
     spots, courts,
     round_minutes: clampInt(d.round_minutes, 5, 120, sport === 'pickleball' ? 15 : 20),
     notes: str(d.notes, 300),
   };
+}
+
+/** A pin only counts with a name next to it and real coordinates. */
+function normalizePlace(d: Partial<PlayDraft>): Pick<PlayDraft, 'place_address' | 'place_lat' | 'place_lng'> {
+  const lat = Number(d.place_lat), lng = Number(d.place_lng);
+  const ok = !!(typeof d.location === 'string' && d.location.trim()) && d.place_lat != null && d.place_lng != null
+    && Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+  const addr = typeof d.place_address === 'string' && d.place_address.trim() ? d.place_address.trim().slice(0, 200) : null;
+  return ok ? { place_address: addr, place_lat: lat, place_lng: lng } : { place_address: addr && d.location ? addr : null, place_lat: null, place_lng: null };
+}
+
+/** Directions that open the phone's maps app (Apple Maps on iPhone, Google elsewhere). */
+export function directionsUrl(e: Pick<PlayDraft, 'location' | 'place_address' | 'place_lat' | 'place_lng'>, apple = false): string | null {
+  const q = [e.location, e.place_address].filter(Boolean).join(', ');
+  if (!q && e.place_lat == null) return null;
+  const pin = e.place_lat != null && e.place_lng != null ? `${e.place_lat},${e.place_lng}` : '';
+  if (apple) return `https://maps.apple.com/?${pin ? `daddr=${pin}&q=${encodeURIComponent(e.location ?? '')}` : `daddr=${encodeURIComponent(q)}`}`;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(pin || q)}`;
 }
 
 const DAYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
