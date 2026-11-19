@@ -66,3 +66,28 @@ export async function api<T = unknown>(url: string, body?: unknown, key?: string
   if (!r.ok) throw new Error((j as { error?: string }).error || 'Something went wrong');
   return j as T;
 }
+
+/* ---------- hosting identity (no account) + club pass membership ---------- */
+const HOST_ID = 'cc_host_id_v1';
+export function getHostId(): string {
+  try {
+    let v = localStorage.getItem(HOST_ID);
+    if (!v) {
+      v = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
+      localStorage.setItem(HOST_ID, v);
+    }
+    return v;
+  } catch { return ''; }
+}
+const CLUB = 'cc_club_v1';
+export const getClub = () => { try { return localStorage.getItem(CLUB) || ''; } catch { return ''; } };
+export const setClub = (c: string) => { try { localStorage.setItem(CLUB, c); } catch { /* */ } };
+const PENDING = 'cc_pending_v1';
+export const savePending = (v: unknown) => { try { localStorage.setItem(PENDING, JSON.stringify(v)); } catch { /* */ } };
+export function takePending<T>(): T | null {
+  try { const v = localStorage.getItem(PENDING); localStorage.removeItem(PENDING); return v ? (JSON.parse(v) as T) : null; } catch { return null; }
+}
+export const peekPending = () => { try { return !!localStorage.getItem(PENDING); } catch { return false; } };
+export function apiRaw(url: string, body: unknown): Promise<Response> {
+  return fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+}

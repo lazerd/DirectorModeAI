@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { act, PlayError, view } from '@/lib/play/server';
 
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // the AI recap runs when a host ends the night
 const keyOf = (req: Request) => req.headers.get('x-play-key');
 
 export async function GET(req: Request, { params }: { params: { code: string } }) {

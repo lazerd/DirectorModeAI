@@ -3,6 +3,8 @@ import { randomBytes } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { generateRound, newMixer, roundComplete, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { crownFor } from './crown';
+import { hostingAllowed, passCheckoutUrl } from './passes';
+import { callTheGame, softenLine, type Spice } from './recap';
 import { normalizeDraft, type PlayDraft, type PlayEvent, type PlayRsvp, type PlayState } from './core';
 
 const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -47,7 +49,7 @@ export async function view(c: string, key?: string | null): Promise<PlayEvent | 
   };
 }
 
-export async function createEvent(d: Partial<PlayDraft>, host: { name?: string | null; playing?: boolean; gender?: 'male' | 'female' | null }, opts: { source?: string; parentId?: string } = {}) {
+export async function createEvent(d: Partial<PlayDraft>, host: { name?: string | null; playing?: boolean; gender?: 'male' | 'female' | null }, opts: { source?: string; parentId?: string; hostId?: string | null; clubCode?: string | null } = {}) {
   const db = getSupabaseAdmin();
   const draft = normalizeDraft(d);
   const hostKey = newKey();
@@ -56,6 +58,7 @@ export async function createEvent(d: Partial<PlayDraft>, host: { name?: string |
     const { data, error } = await db.from('play_events').insert({
       ...draft, code: c, host_key: hostKey, host_name: host.name?.trim().slice(0, 40) || null,
       source_text: opts.source?.slice(0, 500) ?? null, parent_id: opts.parentId ?? null, state: {},
+      host_id: opts.hostId?.slice(0, 64) ?? null, club_code: opts.clubCode?.slice(0, 20) ?? null,
     }).select('id, code').single();
     if (error?.code === '23505') continue;
     if (error) throw new PlayError(error.message, 500);
@@ -225,9 +228,34 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       });
       return {};
     }
-    case 'end': {
+    case 'end':
+    case 'recap': {
       hostOnly();
-      await mutate(row, (r) => ({ status: 'done', state: { ...r.state, mixer: r.state?.mixer ? { ...r.state.mixer, rounds: r.state.mixer.rounds.filter((x, i, all) => i < all.length - 1 || x.matches.some((y) => y.scoreA != null)) } : r.state?.mixer } }));
+      if (action === 'end') {
+        await mutate(row, (r) => ({ status: 'done', state: { ...r.state, mixer: r.state?.mixer ? { ...r.state.mixer, rounds: r.state.mixer.rounds.filter((x, i, all) => i < all.length - 1 || x.matches.some((y) => y.scoreA != null)) } : r.state?.mixer } }));
+      }
+      const fresh = (await loadRow(c))!;
+      const m = fresh.state?.mixer;
+      if (!m) return {};
+      const spice: Spice = body.spice === 'mild' || body.spice === 'locker' ? body.spice : 'club';
+      let crown = null;
+      if (fresh.location) {
+        const [before, after] = await Promise.all([crownFor(fresh.location, { excludeCode: fresh.code }), crownFor(fresh.location)]);
+        if (after) crown = { place: after.place, before: before?.king?.name ?? null, after: after.king?.name ?? null };
+      }
+      const recap = await callTheGame(m, fresh.title, spice, crown).catch((e) => { console.error('[play] recap failed', e); return null; });
+      if (recap) await mutate(fresh, (r) => ({ state: { ...r.state, recap } }));
+      return {};
+    }
+    case 'recap_me': {
+      if (!mine) throw new PlayError('Not allowed.', 403);
+      const mode = body.mode === 'skip' ? 'skip' : body.mode === 'show' ? 'show' : 'soften';
+      const cur = row.state?.recap;
+      const ln = cur?.lines.find((l) => l.id === mine.id);
+      if (!cur || !ln || !row.state?.mixer) return {};
+      let text = ln.line;
+      if (mode === 'soften') text = (await softenLine(row.state.mixer, row.title, ln).catch(() => null)) ?? ln.line;
+      await mutate(row, (r) => r.state?.recap ? { state: { ...r.state, recap: { ...r.state.recap, lines: r.state.recap.lines.map((l) => l.id !== mine.id ? l : { ...l, line: text, skipped: mode === 'skip' }) } } } : null);
       return {};
     }
     case 'reopen': {
@@ -240,7 +268,10 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       if (row.state?.nextCode) return { code: row.state.nextCode };
       const next = row.starts_at ? new Date(Date.parse(row.starts_at) + 7 * 864e5).toISOString() : null;
       const host = rs.find((r) => r.is_host && r.status === 'in');
-      const made = await createEvent({ ...row, starts_at: next, when_text: next ? null : row.when_text }, { name: row.host_name, playing: !!host, gender: host?.gender ?? null }, { parentId: row.id });
+      const r2 = row as Row & { host_id?: string | null; club_code?: string | null };
+      const gate = await hostingAllowed(r2.host_id ?? null, r2.club_code ?? null, { runback: true });
+      if (!gate.ok && passCheckoutUrl('host', r2.host_id ?? 'x')) throw new PlayError('PAYWALL', 402);
+      const made = await createEvent({ ...row, starts_at: next, when_text: next ? null : row.when_text }, { name: row.host_name, playing: !!host, gender: host?.gender ?? null }, { parentId: row.id, hostId: r2.host_id, clubCode: r2.club_code });
       // the new event answers to the same host key
       await db.from('play_events').update({ host_key: row.host_key }).eq('code', made.code);
       if (host) await db.from('play_rsvps').update({ player_key: row.host_key }).eq('player_key', made.hostKey);

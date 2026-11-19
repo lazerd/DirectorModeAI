@@ -14,6 +14,7 @@ import { createServiceClient } from '@/lib/supabase/server';
 import { releaseHeldEmails } from '@/lib/email';
 import { DEFAULT_MONTHLY_LIMIT_USD, EMAIL_MONTHLY_CAP_CENTS } from '@/config/pricing';
 import { background } from '@/lib/partnerFinder/background';
+import { recordPassFromWebhook } from '@/lib/play/passes';
 import {
   verifyWebhookSignature,
   mapSubscriptionStatus,
@@ -76,6 +77,13 @@ export async function POST(request: NextRequest) {
   ]);
 
   try {
+    // ---- CourtConnect hosting passes (no account: keyed by the host's device id).
+    if (SUBSCRIPTION_LIFECYCLE.has(eventName) && (custom.price_key === 'cc_host' || custom.price_key === 'cc_club')) {
+      await recordPassFromWebhook(custom, data, attrs);
+      await service.from('billing_events').insert({ user_id: null, event_type: eventName, stripe_event_id: eventKey, metadata: { ...attrs, cc: custom } });
+      return NextResponse.json({ received: true, courtconnect: true });
+    }
+
     // ---- CaptainMode: a per-captain subscription, NOT the club's Pro plan.
     // Writes captain_subscriptions and must never touch profiles.plan_tier —
     // a captain can be on ClubMode free and still pay for CaptainMode.

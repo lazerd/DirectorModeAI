@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, Users, Trophy, LayoutGrid } from 'lucide-react';
 import { normalizeDraft, parseSentence, perCourt, whenLine, type PlayDraft } from '@/lib/play/core';
-import { C, PlayHeader, api, canListen, getName, listen, setKey, setName } from './shared';
+import { C, PlayHeader, apiRaw, canListen, getClub, getHostId, getName, listen, savePending, setClub, setKey, setName, takePending } from './shared';
+import Paywall, { type PaywallInfo } from './Paywall';
 import { trackEvent } from '@/lib/analytics';
 
 const EXAMPLES = [
@@ -20,7 +21,7 @@ function localNow() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())} (${d.toLocaleDateString('en-US', { weekday: 'long' })})`;
 }
 
-export default function HostClient({ initial }: { initial?: string }) {
+export default function HostClient({ initial, club, resume }: { initial?: string; club?: string; resume?: boolean }) {
   const router = useRouter();
   const [text, setText] = useState(initial ?? '');
   const [draft, setDraft] = useState<PlayDraft | null>(null);
@@ -32,11 +33,17 @@ export default function HostClient({ initial }: { initial?: string }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const started = useRef(false);
+  const [paywall, setPaywall] = useState<PaywallInfo | null>(null);
 
   useEffect(() => {
     setMicOk(canListen());
     setHost(getName());
     trackEvent('feature_use', 'play_host_open', 'courtconnect', {});
+    if (club && /^[a-z0-9]{4,20}$/.test(club)) setClub(club);
+    if (resume && !started.current) {
+      const p = takePending<{ draft: PlayDraft; host: string; playing: boolean; text: string }>();
+      if (p) { started.current = true; setDraft(p.draft); setHost(p.host); setPlaying(p.playing); setText(p.text); create(p.draft, p.host, p.playing, p.text); return; }
+    }
     if (initial && !started.current) { started.current = true; build(initial); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -64,16 +71,24 @@ export default function HostClient({ initial }: { initial?: string }) {
     if (stop) setMic(() => stop);
   }
 
-  async function create() {
-    if (!draft) return;
-    if (!host.trim()) { setErr('Add your name so people know who is hosting.'); return; }
+  async function create(d = draft, h = host, pl = playing, src = text) {
+    if (!d) return;
+    if (!h.trim()) { setErr('Add your name so people know who is hosting.'); return; }
     setSaving(true); setErr('');
     try {
-      setName(host.trim());
-      const r = await api<{ code: string; hostKey: string }>('/api/p', { draft, host: { name: host.trim(), playing }, source: text });
-      setKey(r.code, r.hostKey);
-      trackEvent('feature_use', 'play_created', 'courtconnect', { kind: draft.kind, spots: draft.spots });
-      router.push(`/p/${r.code}?new=1`);
+      setName(h.trim());
+      const r = await apiRaw('/api/p', { draft: d, host: { name: h.trim(), playing: pl }, source: src, hostId: getHostId(), clubCode: getClub() || undefined });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 402) {
+        savePending({ draft: d, host: h.trim(), playing: pl, text: src });
+        setPaywall(j.paywall as PaywallInfo); setSaving(false);
+        trackEvent('feature_use', 'play_paywall', 'courtconnect', {});
+        return;
+      }
+      if (!r.ok) throw new Error(j.error || 'Could not make it');
+      setKey(j.code, j.hostKey);
+      trackEvent('feature_use', 'play_created', 'courtconnect', { kind: d.kind, spots: d.spots });
+      router.push(`/p/${j.code}?new=1`);
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not make it'); setSaving(false); }
   }
 
@@ -190,10 +205,11 @@ export default function HostClient({ initial }: { initial?: string }) {
               I&apos;m playing too (counts as 1 of the {draft.spots})
             </label>
             {err && <p className="text-[14px] text-[#b4432f]">{err}</p>}
-            <button onClick={create} disabled={saving} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
+            <button onClick={() => create()} disabled={saving} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : null} Make my link
             </button>
             <p className="text-center text-[12px]" style={{ color: C.muted }}>{whenLine(draft) ?? 'No time yet'} · {draft.location ?? 'no place yet'} · No account needed</p>
+            {paywall ? <Paywall info={paywall} /> : <p className="text-center text-[12px]" style={{ color: C.muted }}>Your first event is free. Joining is always free.</p>}
           </section>
         )}
       </main>

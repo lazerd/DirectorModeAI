@@ -57,7 +57,10 @@ export default function EventClient({ code, initial }: { code: string; initial: 
       if (r.playerKey) { setKey(code, r.playerKey); setK(r.playerKey); }
       if (r.event) setE(r.event);
       return r;
-    } catch (x) { setErr(x instanceof Error ? x.message : 'Something went wrong'); }
+    } catch (x) {
+      if (x instanceof Error && x.message === 'PAYWALL') { location.href = '/play/pass'; return; }
+      setErr(x instanceof Error ? x.message : 'Something went wrong');
+    }
     finally { setBusy(''); }
   }
 
@@ -370,6 +373,7 @@ function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: string; 
   };
   return (
     <>
+      <SportsDesk e={e} act={act} busy={busy} code={code} />
       {aw.length > 0 && (
         <section className="mt-4 overflow-hidden rounded-3xl shadow-sm" style={{ background: C.lime }}>
           <div className="p-6 text-center">
@@ -527,5 +531,86 @@ function CrownStrip({ e }: { e: PlayEvent }) {
       <span className="flex-1"><b className="block text-[12px] uppercase tracking-[1.5px]" style={{ color: '#8a6d00' }}>King of the Court</b>{line}</span>
       <span aria-hidden="true">›</span>
     </Link>
+  );
+}
+
+/* ---------- "Call the game": the AI sportscaster recap ---------- */
+function SportsDesk({ e, act, busy, code }: { e: PlayEvent; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; busy: string; code: string }) {
+  const r = e.state.recap;
+  const [sharing, setSharing] = useState(false);
+  if (!r) {
+    if (!e.state.mixer) return null;
+    if (!e.isHost) return <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-[14px] shadow-sm">🎙️ The sportscaster&apos;s write-up of tonight lands here in a moment, with a line about you.</p>;
+    return (
+      <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
+        <div className="text-[18px] font-semibold">🎙️ Call the game</div>
+        <p className="mt-1 text-[14px]" style={{ color: C.muted }}>Our sportscaster writes up tonight from the real scores, with a line for every player.</p>
+        <div className="mt-3 grid grid-cols-3 gap-2 text-[14px] font-semibold">
+          {(['mild', 'club', 'locker'] as const).map((sp) => (
+            <button key={sp} disabled={!!busy} onClick={() => act({ action: 'recap', spice: sp }, 'recap')} className="rounded-xl py-3 disabled:opacity-50" style={{ background: sp === 'club' ? C.lime : '#eef1e8' }}>
+              {busy === 'recap' ? '…' : sp === 'mild' ? 'Mild' : sp === 'club' ? 'Club' : 'Locker room'}
+            </button>
+          ))}
+        </div>
+      </section>
+    );
+  }
+  const mine = r.lines.find((l) => l.id === e.me);
+  const shareMine = async () => {
+    if (!mine) return;
+    setSharing(true);
+    const url = `${location.origin}/p/${code}`;
+    const text = `${mine.tag}: ${mine.line} ${url}`;
+    try {
+      const blob = await fetch(`/p/${code}/card/${mine.id}`).then((x) => x.blob());
+      const file = new File([blob], 'courtconnect.png', { type: 'image/png' });
+      const nav = navigator as Navigator & { canShare?: (d: unknown) => boolean };
+      if (nav.canShare?.({ files: [file] })) await navigator.share({ files: [file], text });
+      else if (navigator.share) await navigator.share({ text, url });
+      else window.open(`/p/${code}/card/${mine.id}`, '_blank');
+    } catch { /* cancelled */ }
+    setSharing(false);
+  };
+  return (
+    <section className="mt-4 overflow-hidden rounded-3xl bg-white shadow-sm">
+      <div className="border-b-4 px-5 pb-3 pt-4" style={{ borderColor: C.ink }}>
+        <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[2px]" style={{ color: C.muted }}>
+          <span>🎙️ The CourtConnect Daily</span><span>{r.spice === 'locker' ? 'Locker room edition' : r.spice === 'mild' ? 'Family edition' : 'Club edition'}</span>
+        </div>
+        <h2 className="mt-2 font-serif text-[28px] font-bold leading-[1.1]">{r.headline}</h2>
+      </div>
+      <div className="px-5 py-4">
+        {r.crown && <p className="mb-3 rounded-xl px-3 py-2 text-[15px] font-semibold" style={{ background: '#fff7d6' }}>{r.crown}</p>}
+        <p className="font-serif text-[16px] leading-relaxed">{r.story}</p>
+      </div>
+      {mine && !mine.skipped && (
+        <div className="mx-4 mb-4 rounded-2xl p-4" style={{ background: C.lime }}>
+          <div className="text-[12px] font-semibold uppercase tracking-[1.5px]">You, tonight · {mine.tag}</div>
+          <p className="mt-1 text-[17px] font-medium leading-snug">{mine.line}</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-[13px] font-semibold">
+            <button onClick={shareMine} className="rounded-xl px-4 py-2 text-white" style={{ background: C.ink }}>{sharing ? 'Opening…' : 'Share my card'}</button>
+            <button disabled={!!busy} onClick={() => act({ action: 'recap_me', mode: 'soften' }, 'soften')} className="rounded-xl bg-white/70 px-3 py-2">{busy === 'soften' ? 'Softening…' : 'Soften it'}</button>
+            <button disabled={!!busy} onClick={() => act({ action: 'recap_me', mode: 'skip' })} className="rounded-xl bg-white/40 px-3 py-2">Leave me out</button>
+          </div>
+        </div>
+      )}
+      {mine?.skipped && (
+        <p className="mx-5 mb-4 text-[13px]" style={{ color: C.muted }}>You&apos;re left out of the write-up. <button className="underline" onClick={() => act({ action: 'recap_me', mode: 'show' })}>Put me back</button></p>
+      )}
+      <div className="grid gap-px border-t bg-[#eef1e8]" style={{ borderColor: '#eef1e8' }}>
+        {r.lines.filter((l) => !l.skipped && l.id !== e.me).map((l) => (
+          <div key={l.id} className="bg-white px-5 py-3">
+            <div className="text-[13px] font-semibold">{l.name} <span className="font-normal" style={{ color: C.muted }}>· {l.tag}</span></div>
+            <p className="text-[15px] leading-snug">{l.line}</p>
+          </div>
+        ))}
+      </div>
+      {e.isHost && (
+        <div className="flex items-center justify-between border-t px-5 py-3 text-[13px]" style={{ borderColor: '#eef1e8', color: C.muted }}>
+          <span>Call it again:</span>
+          <span className="flex gap-2">{(['mild', 'club', 'locker'] as const).map((sp) => <button key={sp} disabled={!!busy} onClick={() => act({ action: 'recap', spice: sp }, 'recap')} className="rounded-lg px-2 py-1 font-semibold" style={{ background: '#eef1e8' }}>{busy === 'recap' ? '…' : sp === 'locker' ? 'Locker' : sp[0].toUpperCase() + sp.slice(1)}</button>)}</span>
+        </div>
+      )}
+    </section>
   );
 }

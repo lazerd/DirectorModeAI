@@ -42,6 +42,10 @@ export interface PlayState {
   mixer?: GuestMixer;
   roundStartedAt?: string | null;
   nextCode?: string | null;
+  recap?: {
+    headline: string; story: string; spice: 'mild' | 'club' | 'locker'; crown?: string | null; at: string;
+    lines: { id: string; name: string; tag: string; line: string; skipped?: boolean }[];
+  } | null;
 }
 
 /** The event as the page sees it (never includes the host key). */
