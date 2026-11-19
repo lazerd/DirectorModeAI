@@ -239,6 +239,12 @@ export async function middleware(request: NextRequest) {
   // written against a host we are trying to retire.
   const legacy = redirectLegacyHost(request);
   if (legacy) return legacy;
+  // TennisIRL however people capitalize it (redirects in next.config match case-insensitively, so this lives here).
+  const pth = request.nextUrl.pathname;
+  if (pth !== '/tennisirl' && pth.toLowerCase() === '/tennisirl') {
+    const u = request.nextUrl.clone(); u.pathname = '/tennisirl';
+    return NextResponse.redirect(u, 307);
+  }
 
   // Before any session work: a PTL page has no use for a ClubMode auth cookie,
   // and the rewrite has to happen before routing decides what this path is.
