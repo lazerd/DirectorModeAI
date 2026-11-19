@@ -114,6 +114,8 @@ const COLLAPSED = 72;
  * business covering their screen.
  */
 const PUBLIC_PREFIXES = [
+  // CourtConnect games: standalone, for players with no club account.
+  '/play', '/p', '/court',
   // --- marketing and auth: a stranger from a cold email should never see the
   // director rail, and on a phone its floating opener sat on top of the logo.
   '/pricing',

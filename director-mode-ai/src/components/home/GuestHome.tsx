@@ -11,7 +11,7 @@ import s from './GuestHome.module.css';
  * Kevin Carey's 11/11/26 prototype.
  *
  * Every door opens a page that works today, signed out:
- *   Players   → /courtconnect  (CourtConnect landing)
+ *   Players   → /play          (CourtConnect: one link fills and runs a game)
  *   Captains  → /captainmode   (CaptainMode landing: free, sends are metered)
  *   Directors → /try           (the full no-signup MixerMode)
  *
@@ -22,7 +22,7 @@ import s from './GuestHome.module.css';
 type Door = 'players' | 'captains' | 'directors';
 
 const DOORS: Record<Door, { href: string; event: LandingEvent }> = {
-  players: { href: '/courtconnect', event: 'pick_players' },
+  players: { href: '/play', event: 'pick_players' },
   captains: { href: '/captainmode', event: 'pick_captains' },
   directors: { href: '/try', event: 'pick_directors' },
 };
@@ -55,8 +55,9 @@ export default function GuestHome() {
     if (!value.trim()) return;
     logLanding('home', 'ask');
     const door = routeRequest(value);
-    setUnclear(!door);
-    if (door) go(door);
+    if (door === 'captains') { go(door); return; }
+    // Anything else is a game or a mixer: hand the sentence to CourtConnect, which builds it.
+    router.push(`/play?q=${encodeURIComponent(value.trim())}`);
   };
 
   return (
@@ -131,7 +132,7 @@ export default function GuestHome() {
               value={text}
               onChange={(e) => { setText(e.target.value); setUnclear(false); }}
               aria-label="What would you like to do?"
-              placeholder="Or just tell us what you’d like to do…"
+              placeholder="Or just say it: “Doubles Friday 6pm, need 3 more”"
               maxLength={250}
             />
             <button className={s.send} aria-label="Find the right tool" type="submit">↑</button>

@@ -70,6 +70,8 @@ const PUBLIC = [
   // Club-owned public websites. "Ask ClubMode" on a club's own homepage tells
   // their visitors whose software it is, which is not the club's to give away.
   '/c',
+  // CourtConnect games: a standalone player product (/play, /p/<code>, /court/<place>).
+  '/play', '/p', '/court',
 ];
 const HIDDEN_PATHS = (path: string) =>
   path === '/' || isClubPublicPath(path) || PUBLIC.some((p) => path === p || path.startsWith(p + '/'));
