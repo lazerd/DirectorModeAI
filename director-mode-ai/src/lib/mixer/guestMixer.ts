@@ -9,7 +9,7 @@
  */
 import { RoundGenerator, type HistoricalMatch } from '@/lib/advancedMatchGeneration';
 
-export type GuestFormat = 'doubles' | 'mixed-doubles' | 'singles';
+export type GuestFormat = 'maximize-courts' | 'king-of-court' | 'doubles' | 'mixed-doubles' | 'singles';
 export type Gender = 'male' | 'female';
 
 export interface GuestPlayer {
@@ -46,6 +46,9 @@ export interface GuestMixer {
 }
 
 export const FORMAT_LABELS: Record<GuestFormat, string> = {
+  // Darrin's #1 event: doubles wherever possible, singles with the rest, every court full.
+  'maximize-courts': 'Optimize Courts',
+  'king-of-court': 'King of the Court',
   doubles: 'Doubles',
   'mixed-doubles': 'Mixed doubles',
   singles: 'Singles',
@@ -106,7 +109,7 @@ export function activePlayers(m: GuestMixer): GuestPlayer[] {
 
 /** Smallest roster that fills one court in this format. */
 export function minPlayers(format: GuestFormat): number {
-  return format === 'singles' ? 2 : 4;
+  return format === 'singles' || format === 'maximize-courts' ? 2 : 4;
 }
 
 /** Why the next round can't be made yet, or null when it can. */
@@ -116,6 +119,11 @@ export function cannotGenerate(m: GuestMixer): string | null {
   if (m.courts < 1) return 'Add at least one court.';
   if (active.length < need) {
     return `Add at least ${need} players to make a round.`;
+  }
+  if (m.format === 'king-of-court' && m.rounds.length) {
+    const last = m.rounds[m.rounds.length - 1];
+    const missing = last.matches.filter((x) => x.scoreA == null || x.scoreB == null).length;
+    if (missing) return `Enter ${missing === 1 ? 'the last court' : `${missing} courts`}' score${missing === 1 ? '' : 's'} first: winners move up, losers move down.`;
   }
   if (m.format === 'mixed-doubles') {
     const unset = active.filter((p) => !p.gender).length;
@@ -155,11 +163,15 @@ export function generateRound(m: GuestMixer, opts: { seed?: number; replaceLast?
   const base = opts.replaceLast ? { ...m, rounds: m.rounds.slice(0, -1) } : m;
   const number = base.rounds.length + 1;
   const active = activePlayers(base);
+  if (base.format === 'king-of-court' && base.rounds.length) {
+    const r = riverRound(base, number);
+    if (r) return r;
+  }
 
   const gen = new RoundGenerator(
     active.map((p) => ({ player_id: p.id, name: p.name, gender: p.gender })),
     base.courts,
-    base.format,
+    base.format === 'king-of-court' ? 'doubles' : base.format,
   );
   gen.setRandomize(true);
   if (opts.seed != null) gen.setSeed(opts.seed);
@@ -243,9 +255,48 @@ export function parseSaved(raw: string | null): GuestMixer | null {
   try {
     const v = JSON.parse(raw);
     if (!v || v.version !== 1 || !Array.isArray(v.players) || !Array.isArray(v.rounds)) return null;
-    if (!['doubles', 'mixed-doubles', 'singles'].includes(v.format)) return null;
+    if (!['maximize-courts', 'king-of-court', 'doubles', 'mixed-doubles', 'singles'].includes(v.format)) return null;
     return v as GuestMixer;
   } catch {
     return null;
   }
+}
+
+/**
+ * King of the Court ("up and down the river"): winners move up a court, losers
+ * move down; court 1 is the King court (its winners stay), the bottom court's
+ * losers stay or rotate out for anyone who sat. Winners split up so nobody keeps
+ * a partner. Returns null when the roster or courts changed (then it reshuffles).
+ */
+function riverRound(m: GuestMixer, number: number): GuestRound | null {
+  const prev = m.rounds[m.rounds.length - 1];
+  const ms = [...prev.matches].sort((a, b) => a.court - b.court);
+  if (!ms.length || ms.some((x) => x.teamA.length !== 2 || x.teamB.length !== 2 || x.scoreA == null || x.scoreB == null)) return null;
+  const active = new Set(activePlayers(m).map((p) => p.id));
+  const onCourt = ms.flatMap((x) => [...x.teamA, ...x.teamB]);
+  if (onCourt.some((id) => !active.has(id))) return null; // someone left mid-night
+  if (ms.length !== Math.min(m.courts, Math.floor(active.size / 4))) return null;
+  const W = ms.map((x) => ((x.scoreA ?? 0) >= (x.scoreB ?? 0) ? x.teamA : x.teamB));
+  const L = ms.map((x) => ((x.scoreA ?? 0) >= (x.scoreB ?? 0) ? x.teamB : x.teamA));
+  const n = ms.length;
+  const groups: string[][][] = Array.from({ length: n }, () => []);
+  for (let i = 0; i < n; i++) {
+    groups[Math.max(0, i - 1)].push(W[i]);
+    groups[Math.min(n - 1, i + 1)].push(L[i]);
+  }
+  // anyone who sat (or just arrived) comes in on the bottom court; the bottom losers sit
+  const waiting = [...active].filter((id) => !onCourt.includes(id));
+  let sittingOut: string[] = [];
+  if (waiting.length >= 2) {
+    const inc = waiting.slice(0, 2);
+    const bottom = groups[n - 1];
+    const losersHere = bottom[bottom.length - 1];
+    sittingOut = [...losersHere, ...waiting.slice(2)];
+    bottom[bottom.length - 1] = inc;
+  } else sittingOut = waiting;
+  const matches: GuestMatch[] = groups.map((g, i) => {
+    const [x, y] = g; // split each incoming pair across the net-side teams
+    return { court: i + 1, teamA: [x[0], y[1]], teamB: [x[1], y[0]], scoreA: null, scoreB: null };
+  });
+  return { number, matches, sittingOut };
 }

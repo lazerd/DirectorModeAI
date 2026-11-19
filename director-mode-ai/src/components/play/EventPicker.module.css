@@ -1,0 +1,64 @@
+/* CourtConnect event picker. Court-green glass, ball-lime for the chosen format. */
+.wrap { margin-top: 18px; }
+.eyebrow { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.eyebrow b { font-size: 11px; letter-spacing: 2.2px; text-transform: uppercase; color: #5f7167; }
+.eyebrow span { font-size: 12px; color: #5f7167; }
+
+.tile {
+  position: relative; display: block; width: 100%; text-align: left; cursor: pointer; overflow: hidden;
+  border-radius: 22px; border: 1px solid #ffffff14; color: #f2f6ec;
+  background:
+    radial-gradient(120% 140% at 100% 0%, #1c5a47 0%, transparent 55%),
+    linear-gradient(160deg, #0e2f27 0%, #0a231d 100%);
+  box-shadow: 0 1px 0 #ffffff10 inset, 0 12px 28px #0b2a2233;
+  transition: transform .25s cubic-bezier(.2,.8,.2,1), box-shadow .25s, border-color .25s;
+}
+.tile:hover { transform: translateY(-2px); box-shadow: 0 1px 0 #ffffff14 inset, 0 18px 36px #0b2a2244; }
+.tile:focus-visible { outline: 3px solid #d4ff49; outline-offset: 3px; }
+.tile.on { border-color: #d4ff49; box-shadow: 0 0 0 1px #d4ff49, 0 0 32px #d4ff4933, 0 18px 36px #0b2a2244; }
+.tile::after { /* faint court lines */
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .07;
+  background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(120deg, transparent 30%, #000 100%);
+}
+
+.hero { display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; padding: 20px 20px 18px; min-height: 210px; }
+.badge { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase;
+  color: #103c32; background: #d4ff49; border-radius: 999px; padding: 4px 10px; }
+.heroTitle { font-size: 30px; line-height: 1; font-weight: 700; letter-spacing: -1.2px; margin: 12px 0 8px; }
+.blurb { font-size: 13.5px; line-height: 1.45; color: #c3d3c1; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.chips span { font-size: 11px; font-weight: 600; padding: 4px 9px; border-radius: 999px; background: #ffffff12; color: #e3ecdf; border: 1px solid #ffffff12; }
+
+.math { position: relative; z-index: 1; margin-top: 12px; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: #e3ecdf; font-variant-numeric: tabular-nums; }
+.math i { font-style: normal; width: 7px; height: 7px; border-radius: 50%; background: #d4ff49; box-shadow: 0 0 10px #d4ff49; }
+.math.warn i { background: #ffc14d; box-shadow: 0 0 10px #ffc14d; }
+
+.art { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.court { width: 54px; height: 92px; flex-shrink: 0; }
+.dot { transition: transform .6s cubic-bezier(.2,.8,.2,1); }
+.float { animation: float 3.2s ease-in-out infinite; }
+.float2 { animation: float 3.2s ease-in-out .8s infinite; }
+@keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.small { padding: 14px 14px 13px; min-height: 172px; display: flex; flex-direction: column; }
+.small .art { justify-content: flex-start; height: 70px; }
+.small .court { width: 40px; height: 68px; }
+.smallTitle { font-size: 17px; font-weight: 700; letter-spacing: -.4px; margin-top: 10px; }
+.smallBlurb { font-size: 12px; line-height: 1.4; color: #b4c6b3; margin-top: 3px; }
+.check { position: absolute; top: 12px; right: 12px; z-index: 2; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  background: #d4ff49; color: #103c32; font-size: 13px; font-weight: 900; transform: scale(0); transition: transform .25s cubic-bezier(.2,1.4,.4,1); }
+.on .check { transform: scale(1); }
+
+@media (max-width: 420px) {
+  .hero { grid-template-columns: 1fr; }
+  .hero .art { justify-content: flex-start; }
+  .heroTitle { font-size: 27px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile, .dot, .check { transition: none; }
+  .float, .float2 { animation: none; }
+  .tile:hover { transform: none; }
+}

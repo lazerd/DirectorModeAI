@@ -6,10 +6,12 @@ import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, Users, Trophy, Layou
 import { normalizeDraft, parseSentence, perCourt, whenLine, type PlayDraft } from '@/lib/play/core';
 import { C, PlayHeader, apiRaw, canListen, getClub, getHostId, getName, listen, savePending, setClub, setKey, setName, takePending } from './shared';
 import Paywall, { type PaywallInfo } from './Paywall';
+import EventPicker from './EventPicker';
 import { trackEvent } from '@/lib/analytics';
 
 const EXAMPLES = [
   'Doubles Friday 6pm at Heather Farm, 3.5–4.0, need 3 more',
+  'Social Friday 6pm, 14 players, 4 courts, optimize courts',
   'Pickleball mixer Saturday 9am, 12 players, 3 courts',
   'Mixed doubles social Sunday 4pm, 16 people, 4 courts',
   'Singles hit tomorrow 7am at Rossmoor',
@@ -59,7 +61,9 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       if (r.status === 200) {
         const j = (await r.json()) as { draft: PlayDraft; local_start: string | null };
         const starts = j.local_start && !isNaN(Date.parse(j.local_start)) ? new Date(j.local_start).toISOString() : quick.starts_at;
-        setDraft(normalizeDraft({ ...j.draft, starts_at: starts, when_text: j.draft.when_text ?? quick.when_text, location: j.draft.location ?? quick.location }));
+        // Optimize Courts is the default for any social unless they said "doubles only" (host can still switch).
+        const fmt = j.draft.kind === 'social' && j.draft.format === 'doubles' && !/doubles only|only doubles/i.test(t) ? 'maximize-courts' : j.draft.format;
+        setDraft(normalizeDraft({ ...j.draft, format: fmt, starts_at: starts, when_text: j.draft.when_text ?? quick.when_text, location: j.draft.location ?? quick.location }));
       }
     } catch { /* keep the quick reading */ }
     setThinking(false);
@@ -148,7 +152,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
           <section className="mt-12 grid gap-3">
             {[
               [Users, 'Fill it', 'Drop the link in the group chat. People tap “I’m in”. No app, no account. Full? They go on the waitlist and move up on their own.'],
-              [LayoutGrid, 'Run it', 'At the courts, tap Start. Partners rotate automatically and every phone shows “Court 2: you & Sam vs Jo & Lee”, with a round clock.'],
+              [LayoutGrid, 'Run it', 'At the courts, tap Start. Optimize Courts fills every court (doubles where it fits, singles with the rest) and every phone shows “Court 2: you & Sam vs Jo & Lee”, with a round clock.'],
               [Trophy, 'Remember it', 'Scores in, and the night ends with a recap and awards everyone wants to share. One tap runs it back next week.'],
             ].map(([Icon, h, p]) => {
               const I = Icon as typeof Users;
@@ -186,7 +190,6 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">
               <Stepper label="Players" value={draft.spots} min={2} max={96} onChange={(v) => set({ spots: v, kind: v > perCourt(draft.format) ? 'social' : 'game', courts: Math.max(1, Math.min(draft.courts, Math.ceil(v / perCourt(draft.format)))) })} />
               <Stepper label="Courts" value={draft.courts} min={1} max={24} onChange={(v) => set({ courts: v })} />
-              <Pick label="Format" value={draft.format} options={[['doubles', 'Doubles'], ['mixed-doubles', 'Mixed'], ['singles', 'Singles']]} onChange={(v) => set({ format: v as PlayDraft['format'] })} />
               <Pick label="Sport" value={draft.sport} options={[['tennis', 'Tennis'], ['pickleball', 'Pickleball']]} onChange={(v) => set({ sport: v as PlayDraft['sport'] })} />
               <label className="col-span-2 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
                 <span style={{ color: '#bccdbb' }}>Level</span>
@@ -196,6 +199,8 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             </div>
           </section>
         )}
+
+        {draft && <EventPicker value={draft.format} spots={draft.spots} courts={draft.courts} onChange={(f) => set({ format: f, kind: draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' ? 'social' : draft.kind })} />}
 
         {draft && (
           <section className="mt-4 grid gap-3">

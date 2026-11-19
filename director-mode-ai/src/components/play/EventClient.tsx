@@ -8,7 +8,7 @@ import {
   Share2, Shuffle, Square, Trophy, UserPlus, X,
 } from 'lucide-react';
 import { standings, type GuestMatch } from '@/lib/mixer/guestMixer';
-import { awards, perCourt, spotsLine, whenLine, type PlayEvent } from '@/lib/play/core';
+import { FORMAT_NAME, awards, perCourt, spotsLine, whenLine, type PlayEvent } from '@/lib/play/core';
 import { C, PlayHeader, api, getKey, getName, setKey, setName } from './shared';
 
 type Res = { event: PlayEvent; playerKey?: string; code?: string };
@@ -104,7 +104,7 @@ function EventCard({ e }: { e: PlayEvent }) {
   return (
     <section className="rounded-3xl p-5 text-white shadow-lg" style={{ background: C.ink }}>
       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: '#bccdbb' }}>
-        <span>{e.sport} · {e.format === 'mixed-doubles' ? 'mixed doubles' : e.format}{e.level ? ` · ${e.level}` : ''}</span>
+        <span>{e.sport} · {FORMAT_NAME[e.format]}{e.level ? ` · ${e.level}` : ''}</span>
         <span className="rounded-full px-2 py-0.5" style={e.status === 'live' ? { background: C.lime, color: C.ink } : { background: '#ffffff18' }}>
           {e.status === 'open' ? 'Open' : e.status === 'live' ? '● Live' : 'Final'}
         </span>
@@ -166,29 +166,63 @@ function JoinBox({ e, act, busy }: { e: PlayEvent; act: (b: Record<string, unkno
   );
 }
 
+/** The message a group chat gets: several lines, link last so WhatsApp previews it. */
+function groupText(e: PlayEvent, url: string) {
+  const when = whenLine(e);
+  return [
+    `🎾 ${e.title}`,
+    [when, e.location, e.level].filter(Boolean).join(' · '),
+    `${FORMAT_NAME[e.format]} · ${spotsLine(e)}`,
+    `Tap to join: ${url}`,
+  ].filter(Boolean).join('\n');
+}
+
+/** WhatsApp with the message filled in, or copy it to paste anywhere (falls back to selected text). */
+function GroupChatButtons({ text, compact }: { text: () => string; compact?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  const [shown, setShown] = useState<string | null>(null);
+  const copy = async () => {
+    const t = text();
+    try { await navigator.clipboard.writeText(t); setCopied(true); setShown(null); setTimeout(() => setCopied(false), 2500); }
+    catch { setShown(t); }
+  };
+  return (
+    <div className="grid gap-2">
+      <div className={`grid gap-2 ${compact ? 'grid-cols-2' : 'grid-cols-2'}`}>
+        <a href={`https://wa.me/?text=${encodeURIComponent(text())}`} target="_blank" rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-white" style={{ background: '#1f9e57' }}>
+          <MessageCircle className="h-5 w-5" />WhatsApp
+        </a>
+        <button type="button" onClick={copy} className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold" style={{ background: C.lime, color: C.ink }}>
+          {copied ? <Check className="h-5 w-5" /> : <Copy className="h-5 w-5" />}{copied ? 'Copied! Paste it' : 'Copy for group chat'}
+        </button>
+      </div>
+      {shown && <textarea readOnly value={shown} rows={5} autoFocus onFocus={(x) => x.currentTarget.select()} className="w-full rounded-xl border bg-white p-3 text-[15px]" style={{ borderColor: C.line }} />}
+    </div>
+  );
+}
+
 function ShareBox({ e, code }: { e: PlayEvent; code: string }) {
   const [qr, setQr] = useState('');
   const [showQr, setShowQr] = useState(false);
-  const [copied, setCopied] = useState(false);
-  const url = typeof window !== 'undefined' ? `${location.origin}/p/${code}` : `https://clubmode.ai/p/${code}`;
-  const msg = `${e.title}${whenLine(e) ? ' · ' + whenLine(e) : ''}${e.location ? ' · ' + e.location : ''}. ${spotsLine(e)}. Tap to join: ${url}`;
+  const url = `${location.origin}/p/${code}`;
+  const msg = () => groupText(e, url);
   useEffect(() => { QRCode.toDataURL(url, { margin: 1, width: 480, color: { dark: '#103c32', light: '#ffffff' } }).then(setQr).catch(() => {}); }, [url]);
   const share = async () => {
-    try { if (navigator.share) { await navigator.share({ title: e.title, text: msg, url }); return; } } catch { return; }
-    await navigator.clipboard?.writeText(msg); setCopied(true); setTimeout(() => setCopied(false), 2000);
+    try { if (navigator.share) { await navigator.share({ title: e.title, text: msg() }); return; } } catch { return; }
+    await navigator.clipboard?.writeText(msg());
   };
   return (
     <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
       <div className="text-[16px] font-semibold">Invite people</div>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-[13px] font-semibold">
-        <button onClick={share} className="flex flex-col items-center gap-1 rounded-2xl py-3" style={{ background: C.lime }}><Share2 className="h-5 w-5" />Share</button>
-        <a href={`sms:?&body=${encodeURIComponent(msg)}`} className="flex flex-col items-center gap-1 rounded-2xl py-3" style={{ background: '#eef1e8' }}><MessageCircle className="h-5 w-5" />Text</a>
+      <p className="mb-3 text-[13px]" style={{ color: C.muted }}>Drop it in your group chat. Anyone can tap in, no app.</p>
+      <GroupChatButtons text={msg} />
+      <div className="mt-2 grid grid-cols-3 gap-2 text-[13px] font-semibold">
+        <a href={`sms:?&body=${encodeURIComponent(msg())}`} className="flex flex-col items-center gap-1 rounded-2xl py-3" style={{ background: '#eef1e8' }}><MessageCircle className="h-5 w-5" />Text</a>
+        <button onClick={share} className="flex flex-col items-center gap-1 rounded-2xl py-3" style={{ background: '#eef1e8' }}><Share2 className="h-5 w-5" />More</button>
         <button onClick={() => setShowQr((v) => !v)} className="flex flex-col items-center gap-1 rounded-2xl py-3" style={{ background: '#eef1e8' }}><QrCode className="h-5 w-5" />QR code</button>
       </div>
-      <button onClick={async () => { await navigator.clipboard?.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-        className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border py-2 text-[13px]" style={{ borderColor: C.line, color: C.muted }}>
-        {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? 'Copied' : url.replace(/^https?:\/\//, '')}
-      </button>
+      <p className="mt-2 text-center text-[13px]" style={{ color: C.muted }}>{url.replace(/^https?:\/\//, '')}</p>
       {showQr && qr && (
         <div className="mt-3 text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -411,6 +445,7 @@ function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: string; 
           <Link href="/play" className="flex items-center justify-center rounded-2xl py-3.5 text-[15px] font-semibold" style={{ background: C.lime }}>Host your own</Link>
         )}
       </div>
+      <div className="mt-2"><GroupChatButtons text={() => `🏆 ${e.title}: ${aw[0] ? `${aw[0].who} took it (${aw[0].why}).` : 'final results are in.'}${e.state.recap ? '\n🎙️ ' + e.state.recap.headline : ''}\nFull recap: ${url}`} /></div>
       {joinedNext && next && <p className="mt-2 text-center text-[13px]"><Link className="underline" href={`/p/${next}`}>See next week&apos;s game</Link></p>}
       {st.length > 0 && (
         <section className="mt-4 rounded-3xl bg-white p-4 shadow-sm">
@@ -500,21 +535,16 @@ function HostPanel({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Reco
 /* "Your game always happens": one tap drafts the urgent ask for open spots. */
 function SubButton({ e }: { e: PlayEvent }) {
   const open = e.spots - e.rsvps.filter((r) => r.status === 'in').length;
-  const [done, setDone] = useState(false);
   if (open <= 0) return null;
   const url = `${location.origin}/p/${e.code}`;
   const soon = e.starts_at && Date.parse(e.starts_at) - Date.now() < 18 * 3600e3;
   const when = whenLine(e) ?? '';
-  const msg = `Need ${open} for ${e.format === 'singles' ? 'singles' : e.sport === 'pickleball' ? 'pickleball' : 'doubles'}${soon ? ' — ' + (when.toUpperCase() || 'SOON') : when ? ' ' + when : ''}${e.location ? ', ' + e.location : ''}${e.level ? ', ' + e.level : ''}. First to tap gets it: ${url}`;
-  const go = async () => {
-    try { if (navigator.share) { await navigator.share({ text: msg }); setDone(true); return; } } catch { return; }
-    await navigator.clipboard?.writeText(msg); setDone(true);
-  };
+  const msg = () => `Need ${open} for ${e.format === 'singles' ? 'singles' : e.sport === 'pickleball' ? 'pickleball' : 'doubles'}${soon ? ' — ' + (when.toUpperCase() || 'SOON') : when ? ' ' + when : ''}${e.location ? ', ' + e.location : ''}${e.level ? ', ' + e.level : ''}. First to tap gets it: ${url}`;
   return (
-    <button onClick={go} className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold" style={{ background: C.lime, color: C.ink }}>
-      {done ? <Check className="h-5 w-5" /> : <MessageCircle className="h-5 w-5" />}
-      {done ? 'Sent — first to tap gets the spot' : `Need ${open} more? Send the sub call`}
-    </button>
+    <div className="rounded-2xl p-3" style={{ background: '#eef1e8' }}>
+      <div className="mb-2 text-[14px] font-semibold">Need {open} more? Send the sub call</div>
+      <GroupChatButtons text={msg} compact />
+    </div>
   );
 }
 

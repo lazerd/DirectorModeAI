@@ -21,7 +21,7 @@ const TOOL = {
       title: { type: 'string', description: 'Short, warm title, max 6 words, e.g. "Friday Night Doubles Mixer". No emoji.' },
       sport: { type: 'string', enum: ['tennis', 'pickleball'] },
       kind: { type: 'string', enum: ['game', 'social'], description: 'game = one court, a fixed group (e.g. a doubles 4some or a singles hit). social = rotating partners across courts (mixer, round robin).' },
-      format: { type: 'string', enum: ['doubles', 'mixed-doubles', 'singles'] },
+      format: { type: 'string', enum: ['maximize-courts', 'king-of-court', 'doubles', 'mixed-doubles', 'singles'], description: 'king-of-court if they say King of the Court or up-and-down-the-river. maximize-courts ("Optimize Courts": doubles where possible, singles with leftovers, every court full) is the DEFAULT for any social/mixer/round robin unless they say mixed or singles. A fixed 4some = doubles.' },
       local_start: { type: 'string', description: 'Start as local wall-clock "YYYY-MM-DDTHH:mm", resolved against the current local time given. Omit if no time was said.' },
       when_text: { type: 'string', description: 'How to say it, e.g. "Fri 6pm". Omit if no time.' },
       location: { type: 'string', description: 'Courts / park / club as said. Omit if none.' },
