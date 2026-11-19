@@ -5,7 +5,7 @@ import { generateRound, newMixer, roundComplete, type GuestMixer } from '@/lib/m
 import { crownFor } from './crown';
 import { hostingAllowed, passCheckoutUrl } from './passes';
 import { callTheGame, hypeJoin, hypePreview, softenLine, type Spice } from './recap';
-import { whenLine } from './core';
+import { FORMAT_NAME, whenLine } from './core';
 import { crownChanged, watchCrown } from './notify';
 import { normalizeDraft, type PlayDraft, type PlayEvent, type PlayRsvp, type PlayState } from './core';
 
@@ -331,7 +331,7 @@ async function hype(c: string, joined: { id: string; name: string } | null) {
   const row = await loadRow(c);
   if (!row || row.status !== 'open') return;
   const rs = (await loadRsvps(row.id)).filter((r) => r.status === 'in');
-  const ev = { title: row.title, when: whenLine(row, 'America/Los_Angeles'), location: row.location, level: row.level, spots: row.spots, sport: row.sport };
+  const ev = { title: row.title, when: whenLine(row, 'America/Los_Angeles'), location: row.location, level: row.level, spots: row.spots, sport: row.sport, format: FORMAT_NAME[row.format as keyof typeof FORMAT_NAME] ?? row.format };
   const cur = row.state?.preview;
   if (joined && cur) {
     const line = await hypeJoin(ev, joined.name, rs.filter((r) => r.id !== joined.id).map((r) => r.name));

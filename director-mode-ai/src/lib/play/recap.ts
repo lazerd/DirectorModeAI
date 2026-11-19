@@ -130,16 +130,19 @@ const HYPE_RULES = `You are the hype announcer for a recreational tennis/pickleb
 - Playful fight-night / sports-betting energy, but warm. Everyone should want to be in it.
 - You know NOTHING about these players' skill: never claim stats, results, ratings, or history. Joke about the occasion, the time, the place, showing up, bragging rights.
 - Never mention looks, body, age, gender, ethnicity, money or anything personal. No profanity.
-- Wit over volume: no ALL CAPS, at most one exclamation mark per line, no cliches like "in the building" or "heating up". Dry, clever, specific to the time and place.`;
+- Wit over volume: no ALL CAPS, at most one exclamation mark per line, no cliches like "in the building" or "heating up". Dry, clever, specific to the time and place.
+- Never state how many spots are open or how many players are in: the page shows the live count right below you, and a number you write goes stale on the next join.
+- These players have CONFIRMED, they have not arrived. Never say they showed up, arrived or are at the courts. Get the time right or leave it out.
+- Match the format you are given: no "bracket", "seeds" or "draw" unless it is a tournament.`;
 
-export async function hypePreview(ev: { title: string; when: string | null; location: string | null; level: string | null; spots: number; sport: string }, players: { id: string; name: string }[]): Promise<Preview | null> {
+export async function hypePreview(ev: { title: string; when: string | null; location: string | null; level: string | null; spots: number; sport: string; format?: string }, players: { id: string; name: string }[]): Promise<Preview | null> {
   if (!KEY) return null;
   const client = new Anthropic({ apiKey: KEY });
   const r = await client.messages.create({
     model: process.env.AI_MODEL_ROUTER ?? 'claude-haiku-4-5',
     max_tokens: 700,
     system: HYPE_RULES,
-    messages: [{ role: 'user', content: `Game: ${JSON.stringify({ ...ev, players_in: players.map((p) => p.name), open_spots: Math.max(0, ev.spots - players.length) })}
+    messages: [{ role: 'user', content: `Game: ${JSON.stringify({ ...ev, players_in: players.map((p) => p.name) })}
 Reply with JSON only: {"headline": "<max 10 words, fight-night poster style>", "lines": [{"name": "<exact name>", "line": "<max 14 words, betting-line style hype>"}]} with one line per player in players_in.` }],
   });
   const t = r.content.find((c) => c.type === 'text');
@@ -156,14 +159,14 @@ Reply with JSON only: {"headline": "<max 10 words, fight-night poster style>", "
 }
 
 /** One line for a player who just tapped "I'm in". */
-export async function hypeJoin(ev: { title: string; when: string | null; location: string | null }, name: string, others: string[]): Promise<string | null> {
+export async function hypeJoin(ev: { title: string; when: string | null; location: string | null; format?: string }, name: string, others: string[]): Promise<string | null> {
   if (!KEY) return null;
   const client = new Anthropic({ apiKey: KEY });
   const r = await client.messages.create({
     model: process.env.AI_MODEL_ROUTER ?? 'claude-haiku-4-5',
     max_tokens: 80,
     system: HYPE_RULES,
-    messages: [{ role: 'user', content: `${name} just confirmed for "${ev.title}"${ev.when ? ' (' + ev.when + ')' : ''}${ev.location ? ' at ' + ev.location : ''}. Already in: ${others.join(', ') || 'nobody yet'}. Write ONE announcer line (max 14 words) about ${name} confirming. Reply with only the line.` }],
+    messages: [{ role: 'user', content: `${name} just confirmed for "${ev.title}"${ev.format ? ' (format: ' + ev.format + ')' : ''}${ev.when ? ' (' + ev.when + ')' : ''}${ev.location ? ' at ' + ev.location : ''}. Already in: ${others.join(', ') || 'nobody yet'}. Write ONE announcer line (max 14 words) about ${name} confirming. Reply with only the line.` }],
   });
   const t = r.content.find((c) => c.type === 'text');
   return t && t.type === 'text' ? t.text.trim().replace(/^"|"$/g, '').slice(0, 160) : null;
