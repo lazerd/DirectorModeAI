@@ -149,6 +149,12 @@ export default function HostClient({ initial, club, resume }: { initial?: string
         )}
 
         {!draft && (
+          <a href="/play/demo" className="mx-auto mt-5 flex w-fit items-center gap-2 rounded-full px-4 py-2 text-[14px] font-semibold" style={{ background: C.ink, color: '#fff' }}>
+            <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: C.lime }} />Watch a Friday night run itself
+          </a>
+        )}
+
+        {!draft && (
           <section className="mt-12 grid gap-3">
             {[
               [Users, 'Fill it', 'Drop the link in the group chat. People tap “I’m in”. No app, no account. Full? They go on the waitlist and move up on their own.'],

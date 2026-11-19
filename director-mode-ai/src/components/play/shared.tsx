@@ -1,11 +1,16 @@
 'use client';
 
 import Link from 'next/link';
+import { createContext, useContext } from 'react';
+
+/** Product name in the header and recap. The demo sets its own. */
+export const BrandContext = createContext('CourtConnect');
 
 /** Brand colors from the signed-out homepage (Kevin's design). */
 export const C = { paper: '#f4f5ef', ink: '#103c32', muted: '#6a7b71', lime: '#d4ff49', line: '#173b2c22', card: '#ffffff' };
 
 export function PlayHeader({ right }: { right?: React.ReactNode }) {
+  const brand = useContext(BrandContext);
   return (
     <header className="mx-auto flex h-16 w-full max-w-xl items-center justify-between px-5">
       <Link href="/" className="inline-flex items-center gap-2 text-[19px] font-semibold tracking-tight" style={{ color: C.ink }}>
@@ -13,7 +18,7 @@ export function PlayHeader({ right }: { right?: React.ReactNode }) {
           <rect width="32" height="32" rx="11" fill={C.lime} />
           <path d="M18 7 10 17h7l-3 8 9-12h-7l2-6Z" stroke={C.ink} strokeWidth="1.7" strokeLinejoin="round" />
         </svg>
-        CourtConnect
+        {brand}
       </Link>
       {right}
     </header>

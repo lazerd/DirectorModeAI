@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import QRCode from 'qrcode';
 import {
@@ -9,9 +9,9 @@ import {
 } from 'lucide-react';
 import { standings, teamScore, type GuestMatch } from '@/lib/mixer/guestMixer';
 import { FORMAT_NAME, awards, perCourt, spotsLine, whenLine, type PlayEvent } from '@/lib/play/core';
-import { C, PlayHeader, api, getKey, getName, setKey, setName } from './shared';
+import { BrandContext, C, PlayHeader, api, getKey, getName, setKey, setName } from './shared';
 
-type Res = { event: PlayEvent; playerKey?: string; code?: string };
+export type Res = { event: PlayEvent; playerKey?: string; code?: string };
 
 export default function EventClient({ code, initial }: { code: string; initial: PlayEvent }) {
   const [e, setE] = useState<PlayEvent>(initial);
@@ -104,7 +104,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
 }
 
 /* ------------------------------------------------------------------ */
-function EventCard({ e, onStatus }: { e: PlayEvent; onStatus: () => void }) {
+export function EventCard({ e, onStatus }: { e: PlayEvent; onStatus: () => void }) {
   const when = whenLine(e);
   const n = e.rsvps.filter((r) => r.status === 'in').length;
   return (
@@ -259,7 +259,7 @@ function icsHref(e: PlayEvent, code: string) {
   return `data:text/calendar;charset=utf-8,${encodeURIComponent(body)}`;
 }
 
-function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?: string; busy: string; act: (b: Record<string, unknown>) => Promise<Res | undefined>; code: string }) {
+export function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?: string; busy: string; act: (b: Record<string, unknown>) => Promise<Res | undefined>; code: string }) {
   const ins = e.rsvps.filter((r) => r.status === 'in'), waits = e.rsvps.filter((r) => r.status === 'wait');
   const me = e.rsvps.find((r) => r.id === e.me);
   const ics = icsHref(e, code);
@@ -311,7 +311,7 @@ function useClock(startIso: string | null | undefined, minutes: number) {
   return left;
 }
 
-function LiveView({ e, tab, setTab, busy, act, canScore, code }: { e: PlayEvent; tab: 'courts' | 'table'; setTab: (t: 'courts' | 'table') => void; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; canScore: boolean; code: string }) {
+export function LiveView({ e, tab, setTab, busy, act, canScore, code }: { e: PlayEvent; tab: 'courts' | 'table'; setTab: (t: 'courts' | 'table') => void; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; canScore: boolean; code: string }) {
   const m = e.state.mixer!;
   const round = m.rounds[m.rounds.length - 1];
   const name = (id: string) => m.players.find((p) => p.id === id)?.name ?? '?';
@@ -412,7 +412,7 @@ function CourtCard({ x, name, me, canScore, save, saving }: { x: GuestMatch; nam
 }
 
 /* ------------------------------------------------------------------ */
-function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; code: string; myName?: string }) {
+export function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; code: string; myName?: string }) {
   const m = e.state.mixer;
   const aw = useMemo(() => (m ? awards(m) : []), [m]);
   const st = m ? standings(m) : [];
@@ -489,7 +489,7 @@ function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: string; 
 }
 
 /* ------------------------------------------------------------------ */
-function HostPanel({ e, busy, act, hostKey }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null }) {
+export function HostPanel({ e, busy, act, hostKey }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null }) {
   const [names, setNames] = useState('');
   const [open, setOpen] = useState(false);
   const m = e.state.mixer;
@@ -604,6 +604,7 @@ function CrownStrip({ e }: { e: PlayEvent }) {
 /* ---------- "Call the game": the AI sportscaster recap ---------- */
 function SportsDesk({ e, act, busy, code }: { e: PlayEvent; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; busy: string; code: string }) {
   const r = e.state.recap;
+  const brand = useContext(BrandContext);
   const [sharing, setSharing] = useState(false);
   if (!r) {
     if (!e.state.mixer) return null;
@@ -642,7 +643,7 @@ function SportsDesk({ e, act, busy, code }: { e: PlayEvent; act: (b: Record<stri
     <section className="mt-4 overflow-hidden rounded-3xl bg-white shadow-sm">
       <div className="border-b-4 px-5 pb-3 pt-4" style={{ borderColor: C.ink }}>
         <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[2px]" style={{ color: C.muted }}>
-          <span>🎙️ The CourtConnect Daily</span><span>{r.spice === 'locker' ? 'Locker room edition' : r.spice === 'mild' ? 'Family edition' : 'Club edition'}</span>
+          <span>🎙️ The {brand} Daily</span><span>{r.spice === 'locker' ? 'Locker room edition' : r.spice === 'mild' ? 'Family edition' : 'Club edition'}</span>
         </div>
         <h2 className="mt-2 font-serif text-[28px] font-bold leading-[1.1]">{r.headline}</h2>
       </div>
@@ -692,7 +693,7 @@ function TaleOfTheTape({ e, act, busy }: { e: PlayEvent; act: (b: Record<string,
   if (!p) return busy === 'hype' ? <p className="mt-4 text-center text-[14px]" style={{ color: C.muted }}>🎙️ The announcer is warming up…</p> : null;
   const ins = new Set(e.rsvps.filter((r) => r.status === 'in').map((r) => r.id));
   return (
-    <section className="mt-4 overflow-hidden rounded-3xl text-white shadow-sm" style={{ background: '#1d1d1b' }}>
+    <section data-demo="tape" className="mt-4 overflow-hidden rounded-3xl text-white shadow-sm" style={{ background: '#1d1d1b' }}>
       <div className="px-5 pt-4 text-[11px] font-semibold uppercase tracking-[2px]" style={{ color: C.lime }}>🎙️ Tale of the tape</div>
       <h2 className="px-5 pb-3 pt-1 text-[24px] font-bold uppercase leading-[1.05] tracking-tight">{p.headline}</h2>
       <div className="grid gap-px bg-white/10">
@@ -805,7 +806,7 @@ function HostLinkButtons({ code, hostKey }: { code: string; hostKey: string }) {
   );
 }
 
-function StatusSheet({ e, busy, act, hostKey, onClose }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null; onClose: () => void }) {
+export function StatusSheet({ e, busy, act, hostKey, onClose }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null; onClose: () => void }) {
   const ins = e.rsvps.filter((r) => r.status === 'in');
   const wait = e.rsvps.filter((r) => r.status === 'wait');
   const have = new Set(e.rsvps.map((r) => firstName(r.name)));
