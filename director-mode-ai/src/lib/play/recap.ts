@@ -93,7 +93,7 @@ export async function callTheGame(m: GuestMixer, title: string, spice: Spice, cr
   const client = new Anthropic({ apiKey: KEY });
   const r = await client.messages.create({
     model: MODEL,
-    max_tokens: 1500,
+    max_tokens: 4096,
     tools: [TOOL],
     tool_choice: { type: 'auto' },
     system: `You are the sportscaster for a recreational tennis/pickleball group. Tone: ${SPICE[spice]}\n${RULES}`,
@@ -101,9 +101,12 @@ export async function callTheGame(m: GuestMixer, title: string, spice: Spice, cr
   });
   const use = r.content.find((c) => c.type === 'tool_use');
   if (!use || use.type !== 'tool_use') return null;
-  const x = use.input as { headline: string; story: string; lines: { name: string; tag: string; line: string }[] };
+  const x = use.input as { headline: string; story: string; lines: { name: string; tag: string; line: string }[] | string };
+  // 5.5 sometimes hands back the array as a JSON string; a cut-off reply drops it entirely.
+  if (typeof x.lines === 'string') { try { x.lines = JSON.parse(x.lines); } catch { x.lines = []; } }
+  if (!Array.isArray(x.lines) || !x.lines.length) console.warn('[play] recap had no lines', r.stop_reason, typeof x.lines);
   const byName = new Map(m.players.map((p) => [p.name.toLowerCase(), p.id]));
-  const lines: RecapLine[] = (x.lines ?? []).map((l) => ({ id: byName.get(String(l.name).toLowerCase()) ?? '', name: l.name, tag: String(l.tag).slice(0, 40), line: String(l.line).slice(0, 240) })).filter((l) => l.id);
+  const lines: RecapLine[] = ((x.lines as { name: string; tag: string; line: string }[]) ?? []).map((l) => ({ id: byName.get(String(l.name).toLowerCase()) ?? '', name: l.name, tag: String(l.tag).slice(0, 40), line: String(l.line).slice(0, 240) })).filter((l) => l.id);
   const crownLine = crown?.after && crown.before !== crown.after
     ? `👑 ${crown.after} takes the crown at ${crown.place}${crown.before ? ` from ${crown.before}` : ''}.`
     : crown?.after ? `👑 ${crown.after} still rules ${crown.place}.` : null;
