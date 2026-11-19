@@ -8,7 +8,7 @@
  */
 import { standings, type GuestFormat, type GuestMixer } from '@/lib/mixer/guestMixer';
 
-export type Sport = 'tennis' | 'pickleball';
+export type Sport = 'tennis' | 'pickleball' | 'padel';
 export type PlayKind = 'game' | 'social';
 export type PlayStatus = 'open' | 'live' | 'done';
 
@@ -66,7 +66,7 @@ export interface PlayEvent extends PlayDraft {
   crown?: { slug: string; place: string; king: { name: string; wins: number } | null; queen: { name: string; wins: number } | null } | null;
 }
 
-export const SPORT_LABEL: Record<Sport, string> = { tennis: 'Tennis', pickleball: 'Pickleball' };
+export const SPORT_LABEL: Record<Sport, string> = { tennis: 'Tennis', pickleball: 'Pickleball', padel: 'Padel' };
 
 export function clampInt(v: unknown, lo: number, hi: number, dflt: number): number {
   const n = Math.round(Number(v));
@@ -90,7 +90,7 @@ export const FORMAT_BLURB: Record<GuestFormat, string> = {
 
 /** Fill in anything missing and keep every number in range. */
 export function normalizeDraft(d: Partial<PlayDraft>): PlayDraft {
-  const sport: Sport = d.sport === 'pickleball' ? 'pickleball' : 'tennis';
+  const sport: Sport = d.sport === 'pickleball' || d.sport === 'padel' ? d.sport : 'tennis';
   let format: GuestFormat = d.format === 'singles' || d.format === 'mixed-doubles' || d.format === 'maximize-courts' || d.format === 'king-of-court' || d.format === 'team-battle' ? d.format : 'doubles';
   const spots = clampInt(d.spots, 2, 96, format === 'singles' ? 2 : 4);
   const kind: PlayKind = d.kind === 'game' || d.kind === 'social' ? d.kind : spots <= perCourt(format) ? 'game' : 'social';
@@ -166,7 +166,7 @@ export function parseSentence(text: string, now = new Date()): PlayDraft {
 
   const kind: PlayKind = /mixer|social|round ?robin|party|king of/.test(t) ? 'social' : spots && spots > perCourt(format) ? 'social' : 'game';
   const words = { game: format === 'singles' ? 'Singles' : 'Doubles', social: /round ?robin/.test(t) ? 'Round Robin' : 'Mixer' };
-  const title = `${dayLabel && dayLabel !== 'Today' && dayLabel !== 'Tomorrow' ? dayLabel + ' ' : ''}${format === 'mixed-doubles' ? 'Mixed ' : ''}${sport === 'pickleball' ? 'Pickleball ' : ''}${words[kind]}`;
+  const title = `${dayLabel && dayLabel !== 'Today' && dayLabel !== 'Tomorrow' ? dayLabel + ' ' : ''}${format === 'mixed-doubles' ? 'Mixed ' : ''}${sport === 'tennis' ? '' : SPORT_LABEL[sport] + ' '}${words[kind]}`;
   const fmt: GuestFormat = /team battle|\bvs\.? (the )?|us vs them|ryder cup|davis cup|club vs/.test(t) && kind === 'social' ? 'team-battle' : /king of (the )?court|up and down the river/.test(t) ? 'king-of-court' : kind === 'social' && format === 'doubles' && !/\bdoubles only\b/.test(t) ? 'maximize-courts' : format;
   return normalizeDraft({ title, sport, kind, format: fmt, spots, courts, level, when_text, starts_at, location, notes: null });
 }

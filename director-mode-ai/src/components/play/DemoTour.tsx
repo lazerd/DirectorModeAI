@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * /play/demo: a Friday night that runs itself, on three phones.
+ * /racquetsairl (and /play/demo): a Friday night that runs itself, on three phones.
  *
  * Host (Jordan) · the group chat · a player (Maya). The screens inside the
  * phones are the real event screens (EventCard, OpenView, LiveView, DoneView,
@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { ArrowRight, Check, Loader2, Pause, Play, RotateCcw, Sparkles } from 'lucide-react';
 import { standings } from '@/lib/mixer/guestMixer';
 import { parseSentence, whenLine, type PlayDraft, type PlayEvent } from '@/lib/play/core';
-import { DEMO_BRAND, DEMO_SENTENCE, HOST, ME, apply, courtOf, demoDraft, makeEvent, nextFriday, rng, simScore, type Act } from '@/lib/play/demo';
+import { DEMO_BRAND, DEMO_SPORTS, HOST, isDemoSport, type DemoSport, ME, apply, courtOf, demoDraft, makeEvent, nextFriday, rng, simScore, type Act } from '@/lib/play/demo';
 import { DoneView, EventCard, HostPanel, LiveView, OpenView, StatusSheet, type Res } from './EventClient';
 import EventPicker from './EventPicker';
 import { BrandContext, C, PlayHeader } from './shared';
@@ -34,7 +34,7 @@ const CHAPTERS = [
 
 /* ---------------- tour state ---------------- */
 interface Tour {
-  e: PlayEvent; hostId: string | null; mayaId: string | null;
+  sport: DemoSport; e: PlayEvent; hostId: string | null; mayaId: string | null;
   host: 'compose' | 'event'; compose: string; draft: PlayDraft | null; tidy: boolean; hostName: string; banner: boolean;
   maya: 'lock' | 'event';
   notif: { phone: PhoneId; title: string; body: string; k: number } | null;
@@ -46,8 +46,8 @@ interface Tour {
   toast: { phone: PhoneId; text: string; k: number } | null;
   next: number | null; ended: boolean;
 }
-const fresh = (): Tour => ({
-  e: makeEvent(demoDraft()), hostId: null, mayaId: null,
+const fresh = (sport: DemoSport = 'tennis'): Tour => ({
+  sport, e: makeEvent(demoDraft(new Date(), sport)), hostId: null, mayaId: null,
   host: 'compose', compose: '', draft: null, tidy: false, hostName: '', banner: false,
   maya: 'lock',
   notif: null, chat: [], typing: null,
@@ -70,6 +70,7 @@ export default function DemoTour() {
   const [driving, setDriving] = useState(false);
   const [speed, setSpeed] = useState(1);
   const [picked, setPicked] = useState<PhoneId | null>(null); // mobile: a phone the visitor chose
+  const sportRef = useRef<DemoSport>('tennis');
   const ctl = useRef({ run: 0, ff: -1, paused: false, speed: 1 });
   ctl.current.paused = paused; ctl.current.speed = speed;
   const phones = useRef<Record<PhoneId, { screen: HTMLDivElement | null; scroller: HTMLDivElement | null }>>({ host: { screen: null, scroller: null }, chat: { screen: null, scroller: null }, maya: { screen: null, scroller: null } });
@@ -99,7 +100,8 @@ export default function DemoTour() {
   const startTour = useCallback((from = 0) => {
     const id = ++ctl.current.run;
     ctl.current.ff = from;
-    S.current = fresh(); msgId.current = 0; force();
+    S.current = fresh(sportRef.current);
+    const K = DEMO_SPORTS[sportRef.current], E = K.emoji; msgId.current = 0; force();
     setDriving(false); setPaused(false); setPicked(null);
     const live = () => { if (ctl.current.run !== id) throw CANCEL; };
     const ff = () => S.current.chapter < ctl.current.ff;
@@ -160,7 +162,7 @@ export default function DemoTour() {
       for (const x of order) {
         let [a, b] = simScore(S.current.e, x.teamA, x.teamB, r);
         const isMine = x.court === mine?.court;
-        if (isMine && t.mayaId) { const mayaA = x.teamA.includes(t.mayaId); const w = 6, l = r() < 0.5 ? 2 : 3; [a, b] = mayaA ? [w, l] : [l, w]; } // the tour follows Maya's good night
+        if (isMine && t.mayaId) { const mayaA = x.teamA.includes(t.mayaId); const w = K.win, l = K.mayaLose(r); [a, b] = mayaA ? [w, l] : [l, w]; } // the tour follows Maya's good night
         if (isMine && opts.maya && !ff()) {
           beat('Maya enters her court’s score herself: a few taps, Save.', 'maya');
           set({ mayaTab: 'courts' });
@@ -209,14 +211,14 @@ export default function DemoTour() {
       chapter(0);
       beat('Jordan has a Friday group and three courts. Watch what one sentence does.', 'host');
       await wait(1600);
-      await type((v) => set({ compose: v }), DEMO_SENTENCE);
+      await type((v) => set({ compose: v }), K.sentence);
       await wait(500);
       await tap('host', '[aria-label="Make it"]');
-      const parsed = parseSentence(DEMO_SENTENCE);
+      const parsed = parseSentence(K.sentence);
       set({ draft: { ...parsed, starts_at: nextFriday().toISOString() }, tidy: true });
-      beat('It reads the sentence: Friday 6pm, Lakeside Park, 12 players, 3 courts, 3.5–4.0.');
+      beat(`It reads the sentence: ${K.read}.`);
       await wait(2200);
-      set({ draft: demoDraft(), tidy: false });
+      set({ draft: demoDraft(new Date(), sportRef.current), tidy: false });
       beat('Then it tidies the title and picks the format: Optimize Courts, so every court is full and nobody sits.');
       await scrollTo('host', '[data-demo="picker"]', 'start');
       await wait(2600);
@@ -234,7 +236,7 @@ export default function DemoTour() {
       chapter(1);
       await tap('host', 'text:WhatsApp');
       const when = whenLine(S.current.e) ?? 'Friday 6pm';
-      post({ from: 'Jordan', text: `Friday night mixer, who's in? 🎾\nTap to join: clubmode.ai/p/demo`, link: { title: S.current.e.title, sub: `${when} · Lakeside Park · 3.5–4.0 · 12 spots` } });
+      post({ from: 'Jordan', text: `Friday night ${K.label === 'Tennis' ? '' : K.label.toLowerCase() + ' '}mixer, who's in? ${E}\nTap to join 👇`, link: { title: S.current.e.title, sub: `${when} · ${K.place} · ${K.level} · 12 spots` } });
       beat('Jordan drops it in the group chat.', 'chat');
       await wait(1600);
       await typing('Priya'); post({ from: 'Priya', text: 'IN 🙋‍♀️' }); joinAs('Priya S');
@@ -249,7 +251,7 @@ export default function DemoTour() {
 
       /* 3 · Everyone taps in */
       chapter(2);
-      set({ notif: { phone: 'maya', title: 'Friday Tennis Crew', body: 'Jordan: Friday night mixer, who’s in? 🎾 Tap to join…', k: Date.now() } });
+      set({ notif: { phone: 'maya', title: K.crew, body: `Jordan: Friday night mixer, who’s in? ${E} Tap to join…`, k: Date.now() } });
       beat('Maya sees it on her lock screen.', 'maya');
       await wait(2000);
       await tap('maya', '[data-demo="lock-notif"]');
@@ -288,7 +290,7 @@ export default function DemoTour() {
       beat('Who’s in, and who hasn’t tapped yet (from the names in the notes): Ben and Lauren.');
       await wait(3000);
       await tap('host', '[role="dialog"] a[href*="wa.me"]');
-      post({ from: 'Jordan', text: `🎾 ${S.current.e.title} · ${when}\nStill need a tap from Ben, Lauren 👀\nTap "I'm in": clubmode.ai/p/demo` });
+      post({ from: 'Jordan', text: `${E} ${S.current.e.title} · ${when}\nStill need a tap from Ben, Lauren 👀\nTap "I'm in" on the link above ☝️` });
       set({ sheet: false });
       beat('One tap sends the nudge, with their names in it.', 'chat');
       await wait(1500);
@@ -381,7 +383,7 @@ export default function DemoTour() {
       say('host', 'Next Friday is up. Same crew, one tap each.');
       await wait(1200);
       const nf = nextFriday(new Date(), 1).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      post({ from: 'Jordan', text: `Same time next week? 🎾\nclubmode.ai/p/demo2`, link: { title: S.current.e.title, sub: `${nf}, 6 PM · Lakeside Park · 12 spots` } });
+      post({ from: 'Jordan', text: `Same time next week? ${E}`, link: { title: S.current.e.title, sub: `${nf}, 6 PM · ${K.place} · 12 spots` } });
       set({ next: 1 });
       beat('The crew piles back in before anyone’s left the parking lot.', 'chat');
       for (const [nm, says] of [['Priya', 'in'], ['Maya', 'obviously'], ['Dev', 'in'], ['Marcus', 'in'], ['Chris', null], ['Elena', 'in!'], ['Aisha', null], ['Tom', 'bringing balls again'], ['Sofia', null]] as [string, string | null][]) {
@@ -395,19 +397,50 @@ export default function DemoTour() {
     })().catch((x) => { if (x !== CANCEL) console.error('[demo]', x); });
   }, [set]);
 
-  useEffect(() => { const id = setTimeout(() => startTour(0), 600); return () => { clearTimeout(id); ctl.current.run++; }; }, [startTour]);
+  const [sport, setSport] = useState<DemoSport>('tennis');
+  useEffect(() => {
+    const q = new URLSearchParams(location.search).get('sport');
+    if (isDemoSport(q)) { sportRef.current = q; setSport(q); }
+    const id = setTimeout(() => startTour(0), 600); return () => { clearTimeout(id); ctl.current.run++; };
+  }, [startTour]);
+  const pickSport = (x: DemoSport) => {
+    if (x === sportRef.current) return;
+    sportRef.current = x; setSport(x);
+    const u = new URL(location.href); if (x === 'tennis') u.searchParams.delete('sport'); else u.searchParams.set('sport', x);
+    history.replaceState(null, '', u.toString());
+    startTour(0);
+  };
 
-  /* ---------- layout: three phones on desktop, one on a phone ---------- */
+  /*
+   * ---------- layout: fit the window, never cut a phone off ----------
+   * wide:  narrator column on the left (window >= 1024px).
+   * three: all three phones side by side, only if they stay readable;
+   *        otherwise one big phone that follows the action, with tabs.
+   * ph:    the phone's (unscaled) height. A short window gets a shorter
+   *        phone rather than a phone that runs off the bottom.
+   */
   const stage = useRef<HTMLDivElement>(null);
   const [wide, setWide] = useState(true);
+  const [three, setThree] = useState(true);
   const [sc, setSc] = useState(0.7);
+  const [ph, setPh] = useState(868);
   useLayoutEffect(() => {
     const fit = () => {
-      const w = stage.current?.clientWidth ?? 1000, h = window.innerHeight;
-      const isWide = window.innerWidth >= 1024;
-      setWide(isWide);
-      const s = isWide ? Math.min(0.86, (w - 48) / (3 * 414), (h - 150) / 880) : Math.min(1, (w - 8) / 414, (h - 210) / 880);
-      scale.current = Math.max(0.5, s); setSc(scale.current);
+      const W = window.innerWidth, H = window.innerHeight;
+      const isWide = W >= 1024;
+      const stageW = isWide ? Math.min(W, 1500) - 32 - 340 - 24 : W - 16;
+      let s: number, h: number, tri = false;
+      if (isWide) {
+        const avail = H - 74 - 44 - 20; // header, phone labels, breathing room
+        const s3 = Math.min(0.86, (stageW - 48) / (3 * 414));
+        if (s3 >= 0.56 && avail / s3 >= 620) { tri = true; s = s3; h = Math.min(868, avail / s3); }
+        else { const a1 = avail - 52; s = Math.min(0.92, stageW / 414, a1 / 640); h = Math.min(868, Math.max(640, a1 / s)); }
+      } else {
+        const avail = H - 54 - 128 - 50 - 22; // header, narrator, tabs, bottom gap
+        s = Math.min(1, (stageW - 8) / 414); h = Math.min(868, Math.max(440, avail / s));
+      }
+      setWide(isWide); setThree(tri); setPh(Math.round(h));
+      scale.current = s; setSc(s);
     };
     fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit);
   }, []);
@@ -427,13 +460,15 @@ export default function DemoTour() {
 
   const phone = (id: PhoneId, label: string, sub: string, body: React.ReactNode, overlay?: React.ReactNode) => (
     <div key={id} className="flex flex-col items-center">
-      <div className="mb-2 text-center">
-        <div className="text-[13px] font-semibold" style={{ color: t.focus === id ? C.lime : '#e9efe6' }}>{label}</div>
-        <div className="text-[11px]" style={{ color: '#9fb3a6' }}>{sub}</div>
-      </div>
-      <div style={{ width: 414 * sc, height: 868 * sc }} className="relative" onPointerDownCapture={grab} onClickCapture={stopLinks(id)}>
+      {wide && (
+        <div className="mb-2 text-center">
+          <div className="text-[13px] font-semibold" style={{ color: t.focus === id ? C.lime : '#e9efe6' }}>{label}</div>
+          <div className="text-[11px]" style={{ color: '#9fb3a6' }}>{sub}</div>
+        </div>
+      )}
+      <div style={{ width: 414 * sc, height: ph * sc }} className="relative" onPointerDownCapture={grab} onClickCapture={stopLinks(id)}>
         <div className="absolute left-0 top-0 origin-top-left rounded-[58px] p-3 transition-shadow duration-500"
-          style={{ width: 414, height: 868, transform: `scale(${sc})`, background: '#0b0d0c', boxShadow: t.focus === id && wide ? `0 0 0 3px ${C.lime}, 0 30px 80px #000a` : '0 0 0 1px #2a2f2c, 0 30px 80px #0008' }}>
+          style={{ width: 414, height: ph, transform: `scale(${sc})`, background: '#0b0d0c', boxShadow: t.focus === id && three ? `0 0 0 3px ${C.lime}, 0 30px 80px #000a` : '0 0 0 1px #2a2f2c, 0 30px 80px #0008' }}>
           <div ref={(el) => { phones.current[id].screen = el; }} className="relative h-full w-full overflow-hidden rounded-[46px]" style={{ transform: 'translateZ(0)', background: C.paper }}>
             <div className="absolute inset-x-0 top-0 z-30 flex h-11 items-center justify-between px-8 text-[14px] font-semibold"
               style={id === 'chat' ? { color: '#fff', background: '#0b6b5a' } : id === 'maya' && t.maya === 'lock' ? { color: '#fff' } : { color: C.ink, background: C.paper }}>
@@ -472,21 +507,22 @@ export default function DemoTour() {
       <style>{CSS}</style>
       <div className="min-h-screen" style={{ background: '#07231c', color: '#e9efe6' }}>
         <div className="h-1 w-full bg-white/10"><div className="h-full transition-all duration-700" style={{ width: `${progress}%`, background: C.lime }} /></div>
-        <header className="mx-auto flex max-w-[1500px] items-center justify-between gap-3 px-5 py-3">
-          <div className="flex items-center gap-3">
-            <Logo s={30} />
-            <div className="leading-tight"><div className="text-[18px] font-semibold tracking-tight">{DEMO_BRAND}</div>
-              <div className="text-[11px]" style={{ color: '#9fb3a6' }}>Live demo: the real app, running a real night by itself</div></div>
+        <header className={`mx-auto flex max-w-[1500px] items-center justify-between gap-3 ${wide ? 'px-5 py-3' : 'px-3 py-2'}`}>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <Logo s={wide ? 30 : 26} />
+            <div className="min-w-0 leading-tight"><div className={`${wide ? 'text-[18px]' : 'text-[16px]'} font-semibold tracking-tight`}>{DEMO_BRAND}</div>
+              <div className="truncate text-[11px]" style={{ color: '#9fb3a6' }}>{wide ? 'Live demo: the real app, running a real night by itself' : 'Live demo · runs itself'}</div></div>
           </div>
-          <Link href="/play" style={{ background: C.lime, color: C.ink }} className="shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-[14px] font-semibold">{wide ? 'Host your own' : 'Try it'} <ArrowRight className="inline h-4 w-4" /></Link>
+          {wide && <SportPills sport={sport} onPick={pickSport} />}
+          <Link href="/play" style={{ background: C.lime, color: C.ink }} className={`shrink-0 whitespace-nowrap rounded-full font-semibold ${wide ? 'px-4 py-2 text-[14px]' : 'px-3 py-1.5 text-[13px]'}`}>{wide ? 'Host your own' : 'Try it'} <ArrowRight className="inline h-4 w-4" /></Link>
         </header>
 
-        <div className={`mx-auto max-w-[1500px] px-4 pb-10 ${wide ? 'grid grid-cols-[340px_1fr] gap-6' : ''}`}>
-          <Narrator t={t} wide={wide} paused={paused} driving={driving} speed={speed}
+        <div className={`mx-auto max-w-[1500px] ${wide ? 'grid grid-cols-[340px_1fr] gap-6 px-4 pb-10' : 'px-2 pb-3'}`}>
+          <Narrator t={t} wide={wide} paused={paused} driving={driving} speed={speed} pills={!wide && <SportPills sport={sport} onPick={pickSport} small />}
             onToggle={() => { setPaused((v) => !v); setDriving(false); }} onRestart={() => startTour(0)} onSpeed={() => setSpeed((v) => (v === 1 ? 2 : 1))} onJump={(i) => startTour(i)} />
           <div ref={stage} className="relative">
-            {!wide && (
-              <div className="mb-3 flex justify-center gap-1 rounded-full bg-white/10 p-1 text-[13px] font-semibold">
+            {!three && (
+              <div className={`mb-2 flex justify-center gap-1 rounded-full bg-white/10 p-1 text-[13px] font-semibold ${wide ? 'mx-auto max-w-md' : ''}`}>
                 {(['host', 'chat', 'maya'] as PhoneId[]).map((p) => (
                   <button key={p} onClick={() => setPicked(p)} className="relative flex-1 rounded-full py-2" style={shown === p ? { background: C.lime, color: C.ink } : {}}>
                     {p === 'host' ? 'Host' : p === 'chat' ? 'Group chat' : 'Player'}
@@ -495,8 +531,8 @@ export default function DemoTour() {
                 ))}
               </div>
             )}
-            <div className={wide ? 'flex items-start justify-center gap-6' : 'flex justify-center'}>
-              {wide ? [all.host, all.chat, all.maya] : all[shown]}
+            <div className={three ? 'flex items-start justify-center gap-6' : 'flex justify-center'}>
+              {three ? [all.host, all.chat, all.maya] : all[shown]}
             </div>
             {t.ended && <EndCard onReplay={() => startTour(0)} />}
           </div>
@@ -537,7 +573,7 @@ function Compose({ t }: { t: Tour }) {
   const d = t.draft;
   return (
     <div className="min-h-full pb-16" style={{ background: C.paper, color: C.ink }}>
-      <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Tennis · Pickleball</span>} />
+      <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Tennis · Pickleball · Padel</span>} />
       <main className="px-5">
         {!d && (
           <section className="pt-6 text-center">
@@ -560,7 +596,7 @@ function Compose({ t }: { t: Tour }) {
               <div>🕕 {whenLine(d)}</div><div>📍 {d.location}</div>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">
-              {[['Players', d.spots], ['Courts', d.courts], ['Sport', 'Tennis'], ['Level', d.level]].map(([k, v]) => (
+              {[['Players', d.spots], ['Courts', d.courts], ['Sport', DEMO_SPORTS[t.sport].label], ['Level', d.level]].map(([k, v]) => (
                 <div key={k as string} className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}><span style={{ color: '#bccdbb' }}>{k}</span><b>{v}</b></div>
               ))}
             </div>
@@ -605,8 +641,8 @@ function Chat({ t, onScroll }: { t: Tour; onScroll: { scroller: HTMLDivElement |
     <div className="min-h-[800px]" style={{ background: '#efe7dd' }}>
       <div className="sticky top-0 z-20 flex items-center gap-3 px-4 pb-3 pt-2 text-white" style={{ background: '#0b6b5a' }}>
         <span className="text-[22px]">‹</span>
-        <div className="grid h-10 w-10 place-items-center rounded-full text-[20px]" style={{ background: '#ffffff30' }}>🎾</div>
-        <div className="leading-tight"><div className="text-[16px] font-semibold">Friday Tennis Crew</div><div className="text-[12px] opacity-80">{t.typing ? `${t.typing} is typing…` : 'Jordan, Priya, Marcus, Maya, Dev +7'}</div></div>
+        <div className="grid h-10 w-10 place-items-center rounded-full text-[20px]" style={{ background: '#ffffff30' }}>{DEMO_SPORTS[t.sport].emoji}</div>
+        <div className="leading-tight"><div className="text-[16px] font-semibold">{DEMO_SPORTS[t.sport].crew}</div><div className="text-[12px] opacity-80">{t.typing ? `${t.typing} is typing…` : 'Jordan, Priya, Marcus, Maya, Dev +7'}</div></div>
       </div>
       <div className="grid gap-1.5 px-3 py-4 text-[15px]">
         <div className="mx-auto mb-2 rounded-lg px-3 py-1 text-[12px]" style={{ background: '#fff8c4', color: '#5b5b4a' }}>Today</div>
@@ -629,10 +665,10 @@ function Chat({ t, onScroll }: { t: Tour; onScroll: { scroller: HTMLDivElement |
                   <div className="mb-1 overflow-hidden rounded-xl p-3 text-white" style={{ background: C.ink }}>
                     <div className="text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.lime }}>🎙️ {m.card.name} · {m.card.tag}</div>
                     <div className="mt-1 text-[15px] font-medium leading-snug">{m.card.line}</div>
-                    <div className="mt-2 text-[11px]" style={{ color: '#9fb3a6' }}>{DEMO_BRAND} · Friday Night Mixer</div>
+                    <div className="mt-2 text-[11px]" style={{ color: '#9fb3a6' }}>{DEMO_BRAND} · {t.e.title}</div>
                   </div>
                 )}
-                {m.text && <div className="whitespace-pre-line leading-snug">{m.text.replace(/clubmode\.ai\/p\/\w+/, (u) => u)}</div>}
+                {m.text && <div className="whitespace-pre-line leading-snug">{m.text}</div>}
                 <div className="mt-0.5 text-right text-[10px]" style={{ color: '#667781' }}>{mine ? <>5:{(10 + m.id).toString().padStart(2, '0')} <Check className="inline h-3 w-3 text-[#53bdeb]" /></> : `5:${(10 + m.id).toString().padStart(2, '0')}`}</div>
               </div>
             </div>
@@ -645,8 +681,21 @@ function Chat({ t, onScroll }: { t: Tour; onScroll: { scroller: HTMLDivElement |
 }
 
 /* ---------------- narrator + end card ---------------- */
-function Narrator({ t, wide, paused, driving, speed, onToggle, onRestart, onSpeed, onJump }: {
-  t: Tour; wide: boolean; paused: boolean; driving: boolean; speed: number; onToggle: () => void; onRestart: () => void; onSpeed: () => void; onJump: (i: number) => void;
+function SportPills({ sport, onPick, small }: { sport: DemoSport; onPick: (s: DemoSport) => void; small?: boolean }) {
+  return (
+    <div role="tablist" aria-label="Sport" className={`flex shrink-0 gap-1 rounded-full bg-white/10 p-1 font-semibold ${small ? 'text-[12px]' : 'text-[13px]'}`}>
+      {(['tennis', 'pickleball', 'padel'] as DemoSport[]).map((x) => (
+        <button key={x} role="tab" aria-selected={sport === x} onClick={() => onPick(x)}
+          className={`rounded-full ${small ? 'px-2.5 py-1' : 'px-3.5 py-1.5'}`} style={sport === x ? { background: C.lime, color: C.ink } : { color: '#cfe0d2' }}>
+          {DEMO_SPORTS[x].label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Narrator({ t, wide, paused, driving, speed, pills, onToggle, onRestart, onSpeed, onJump }: {
+  t: Tour; wide: boolean; paused: boolean; driving: boolean; speed: number; pills?: React.ReactNode; onToggle: () => void; onRestart: () => void; onSpeed: () => void; onJump: (i: number) => void;
 }) {
   const ch = CHAPTERS[Math.max(0, t.chapter)];
   const controls = (
@@ -659,14 +708,22 @@ function Narrator({ t, wide, paused, driving, speed, onToggle, onRestart, onSpee
     </div>
   );
   if (!wide) return (
-    <div className="mb-3 rounded-2xl bg-white/5 p-4">
+    <div className="mb-2 rounded-2xl bg-white/5 px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] font-semibold uppercase tracking-[2px]" style={{ color: C.lime }}>Step {Math.max(1, t.chapter + 1)} of {CHAPTERS.length}</div>
-        {controls}
+        {pills}
+        <div className="flex items-center gap-1.5">
+          <button onClick={onToggle} aria-label={paused ? 'Play' : 'Pause'} className="grid h-8 w-8 place-items-center rounded-full" style={{ background: C.lime, color: C.ink }}>{paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}</button>
+          <button onClick={onSpeed} className="h-8 rounded-full bg-white/10 px-2 text-[12px] font-semibold">{speed}×</button>
+          <button onClick={onRestart} aria-label="Restart" className="grid h-8 w-8 place-items-center rounded-full bg-white/10"><RotateCcw className="h-3.5 w-3.5" /></button>
+        </div>
       </div>
-      <div className="mt-1 text-[24px] font-semibold leading-tight tracking-tight">{ch.t}</div>
-      <p key={t.beat} className="demo-fade mt-1 text-[14px] leading-snug" style={{ color: '#cfe0d2' }}>{t.beat || ch.d}</p>
-      {driving && <p className="mt-2 text-[12px]" style={{ color: C.lime }}>You’re driving. Everything on the phone works. Tap Resume to continue the tour.</p>}
+      <div className="mt-2 flex items-baseline gap-2">
+        <span className="text-[11px] font-semibold tracking-[1px]" style={{ color: C.lime }}>{Math.max(1, t.chapter + 1)}/{CHAPTERS.length}</span>
+        <span className="text-[17px] font-semibold leading-tight tracking-tight">{ch.t}</span>
+      </div>
+      <p key={t.beat} className="demo-fade mt-0.5 line-clamp-2 min-h-[36px] text-[13px] leading-snug" style={{ color: '#cfe0d2' }}>
+        {driving ? 'You’re driving. Everything on the phone works. Tap ▶ to resume.' : t.beat || ch.d}
+      </p>
     </div>
   );
   return (

@@ -9,9 +9,33 @@
 import { generateRound, newMixer, standings, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { awards, normalizeDraft, type PlayDraft, type PlayEvent, type PlayRsvp } from '@/lib/play/core';
 
-export const DEMO_BRAND = 'TennisIRL';
-export const DEMO_SENTENCE = 'Friday night mixer 6pm at Lakeside Park, 3 courts, 12 players, 3.5–4.0';
+export const DEMO_BRAND = 'RacquetsAIRL';
 export const DEMO_TITLE = 'Friday Night Mixer';
+
+/** One night, three racquet sports. Everything sport-specific in the tour lives here. */
+export type DemoSport = 'tennis' | 'pickleball' | 'padel';
+export const DEMO_SPORTS: Record<DemoSport, {
+  label: string; emoji: string; sentence: string; place: string; level: string; crew: string; read: string;
+  /** Winning score and a loser's score for Maya's court (the tour follows her good night). */
+  win: number; mayaLose: (r: () => number) => number;
+}> = {
+  tennis: {
+    label: 'Tennis', emoji: '🎾', sentence: 'Friday night mixer 6pm at Lakeside Park, 3 courts, 12 players, 3.5–4.0',
+    place: 'Lakeside Park', level: '3.5–4.0', crew: 'Friday Tennis Crew', read: 'Friday 6pm, Lakeside Park, 12 players, 3 courts, 3.5–4.0',
+    win: 6, mayaLose: (r) => (r() < 0.5 ? 2 : 3),
+  },
+  pickleball: {
+    label: 'Pickleball', emoji: '🏓', sentence: 'Friday night pickleball mixer 6pm at Lakeside Park, 3 courts, 12 players, 3.5–4.0 DUPR',
+    place: 'Lakeside Park', level: '3.5–4.0', crew: 'Friday Pickle Crew', read: 'pickleball, Friday 6pm, Lakeside Park, 12 players, 3 courts, 3.5–4.0 DUPR',
+    win: 11, mayaLose: (r) => (r() < 0.5 ? 5 : 7),
+  },
+  padel: {
+    label: 'Padel', emoji: '🎾', sentence: 'Friday night padel mixer 6pm at Lakeside Padel Club, 3 courts, 12 players, intermediate',
+    place: 'Lakeside Padel Club', level: 'Intermediate', crew: 'Friday Padel Crew', read: 'padel, Friday 6pm, Lakeside Padel Club, 12 players, 3 courts, intermediate',
+    win: 6, mayaLose: (r) => (r() < 0.5 ? 2 : 3),
+  },
+};
+export const isDemoSport = (v: unknown): v is DemoSport => v === 'tennis' || v === 'pickleball' || v === 'padel';
 export const HOST = 'Jordan P';
 export const ME = 'Maya L';
 
@@ -47,11 +71,12 @@ export function nextFriday(now = new Date(), weeks = 0) {
   return d;
 }
 
-export function demoDraft(now = new Date()): PlayDraft {
+export function demoDraft(now = new Date(), sport: DemoSport = 'tennis'): PlayDraft {
+  const k = DEMO_SPORTS[sport];
   return normalizeDraft({
-    title: DEMO_TITLE, sport: 'tennis', kind: 'social', format: 'maximize-courts',
-    when_text: 'Friday 6pm', starts_at: nextFriday(now).toISOString(), location: 'Lakeside Park', level: '3.5–4.0',
-    spots: 12, courts: 3, round_minutes: 20,
+    title: sport === 'tennis' ? DEMO_TITLE : `Friday ${k.label} Mixer`, sport, kind: 'social', format: 'maximize-courts',
+    when_text: 'Friday 6pm', starts_at: nextFriday(now).toISOString(), location: k.place, level: k.level,
+    spots: 12, courts: 3, round_minutes: sport === 'pickleball' ? 15 : 20,
     notes: `Players: ${CREW.map((c) => first(c.name)).join(', ')}`,
   });
 }
@@ -137,6 +162,10 @@ export function simScore(e: PlayEvent, teamA: string[], teamB: string[], r: () =
   const pA = 1 / (1 + Math.exp(-(sa - sb) * 2.2));
   const aWins = r() < pA;
   const close = r();
+  if (e.sport === 'pickleball') { // games to 11, win by 2
+    const lose = close < 0.22 ? 9 : close < 0.5 ? 7 : close < 0.8 ? 5 : 3;
+    return aWins ? [11, lose] : [lose, 11];
+  }
   const lose = close < 0.22 ? 6 : close < 0.5 ? 4 : close < 0.8 ? 3 : 2;
   const win = lose === 6 ? 7 : 6;
   return aWins ? [win, lose] : [lose, win];
@@ -189,7 +218,7 @@ function callTheGame(e: PlayEvent, spice: 'mild' | 'club' | 'locker'): NonNullab
   return { headline, story, spice, crown: null, at: new Date().toISOString(), lines };
 }
 
-const soften = (l: string) => (/Revenge|angry|orbit|motor/.test(l) ? 'Great tennis, great company, and a forehand that is coming around fast.' : l.replace('Loudly reminded everyone about it.', 'Classy about it, too.'));
+const soften = (l: string) => (/Revenge|angry|orbit|motor/.test(l) ? 'Great rallies, great company, and a forehand that is coming around fast.' : l.replace('Loudly reminded everyone about it.', 'Classy about it, too.'));
 
 /** Who in a round is on the court with this player, for the "You're on Court 2" alert. */
 export function courtOf(e: PlayEvent, id: string | null) {

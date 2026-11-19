@@ -101,7 +101,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
 
   return (
     <div className="min-h-screen pb-16" style={{ background: C.paper, color: C.ink }}>
-      <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Tennis · Pickleball</span>} />
+      <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Tennis · Pickleball · Padel</span>} />
       <main className="mx-auto w-full max-w-xl px-5">
         {!draft && (
           <section className="pt-6 text-center">
@@ -196,7 +196,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">
               <Stepper label="Players" value={draft.spots} min={2} max={96} onChange={(v) => set({ spots: v, kind: v > perCourt(draft.format) ? 'social' : 'game', courts: Math.max(1, Math.min(draft.courts, Math.ceil(v / perCourt(draft.format)))) })} />
               <Stepper label="Courts" value={draft.courts} min={1} max={24} onChange={(v) => set({ courts: v })} />
-              <Pick label="Sport" value={draft.sport} options={[['tennis', 'Tennis'], ['pickleball', 'Pickleball']]} onChange={(v) => set({ sport: v as PlayDraft['sport'] })} />
+              <Pick label="Sport" value={draft.sport} options={[['tennis', 'Tennis'], ['pickleball', 'Pickleball'], ['padel', 'Padel']]} onChange={(v) => set({ sport: v as PlayDraft['sport'] })} />
               <label className="col-span-2 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
                 <span style={{ color: '#bccdbb' }}>Level</span>
                 <input value={draft.level ?? ''} onChange={(e) => set({ level: e.target.value })} placeholder="any (e.g. 3.5–4.0)" className="w-full bg-transparent text-white outline-none placeholder:text-[#9fb3a6]" />

@@ -14,12 +14,12 @@ const MODEL = process.env.AI_MODEL_ROUTER ?? 'claude-haiku-4-5';
 
 const TOOL = {
   name: 'make_event',
-  description: 'The tennis or pickleball get-together the person described.',
+  description: 'The tennis, pickleball or padel get-together the person described.',
   input_schema: {
     type: 'object' as const,
     properties: {
       title: { type: 'string', description: 'Short, warm title, max 6 words, e.g. "Friday Night Doubles Mixer". No emoji.' },
-      sport: { type: 'string', enum: ['tennis', 'pickleball'] },
+      sport: { type: 'string', enum: ['tennis', 'pickleball', 'padel'] },
       kind: { type: 'string', enum: ['game', 'social'], description: 'game = one court, a fixed group (e.g. a doubles 4some or a singles hit). social = rotating partners across courts (mixer, round robin).' },
       format: { type: 'string', enum: ['maximize-courts', 'king-of-court', 'team-battle', 'doubles', 'mixed-doubles', 'singles'], description: 'team-battle if two teams/clubs/groups play each other ("Team Battle", "us vs them", "Ryder Cup"). king-of-court if they say King of the Court or up-and-down-the-river. maximize-courts ("Optimize Courts": doubles where possible, singles with leftovers, every court full) is the DEFAULT for any social/mixer/round robin unless they say mixed or singles. A fixed 4some = doubles.' },
       local_start: { type: 'string', description: 'Start as local wall-clock "YYYY-MM-DDTHH:mm", resolved against the current local time given. Omit if no time was said.' },

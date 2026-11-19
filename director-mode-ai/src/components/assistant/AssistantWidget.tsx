@@ -72,6 +72,8 @@ const PUBLIC = [
   '/c',
   // CourtConnect games: a standalone player product (/play, /p/<code>, /court/<place>).
   '/play', '/p', '/court',
+  // The RacquetsAIRL demo stands alone: none of the ClubMode suite on it.
+  '/racquetsairl',
 ];
 const HIDDEN_PATHS = (path: string) =>
   path === '/' || isClubPublicPath(path) || PUBLIC.some((p) => path === p || path.startsWith(p + '/'));
