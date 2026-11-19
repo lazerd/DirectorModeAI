@@ -121,3 +121,49 @@ export async function softenLine(m: GuestMixer, title: string, line: RecapLine):
   const t = r.content.find((c) => c.type === 'text');
   return t && t.type === 'text' ? t.text.trim().replace(/^"|"$/g, '').slice(0, 240) : null;
 }
+
+/* ---------- Pre-game: "Tale of the Tape". The invite is the entertainment. ---------- */
+export interface Preview { headline: string; lines: { id: string; name: string; line: string }[]; at: string }
+
+const HYPE_RULES = `You are the hype announcer for a recreational tennis/pickleball game being organized.
+- Playful fight-night / sports-betting energy, but warm. Everyone should want to be in it.
+- You know NOTHING about these players' skill: never claim stats, results, ratings, or history. Joke about the occasion, the time, the place, showing up, bragging rights.
+- Never mention looks, body, age, gender, ethnicity, money or anything personal. No profanity.
+- Wit over volume: no ALL CAPS, at most one exclamation mark per line, no cliches like "in the building" or "heating up". Dry, clever, specific to the time and place.`;
+
+export async function hypePreview(ev: { title: string; when: string | null; location: string | null; level: string | null; spots: number; sport: string }, players: { id: string; name: string }[]): Promise<Preview | null> {
+  if (!KEY) return null;
+  const client = new Anthropic({ apiKey: KEY });
+  const r = await client.messages.create({
+    model: process.env.AI_MODEL_ROUTER ?? 'claude-haiku-4-5',
+    max_tokens: 700,
+    system: HYPE_RULES,
+    messages: [{ role: 'user', content: `Game: ${JSON.stringify({ ...ev, players_in: players.map((p) => p.name), open_spots: Math.max(0, ev.spots - players.length) })}
+Reply with JSON only: {"headline": "<max 10 words, fight-night poster style>", "lines": [{"name": "<exact name>", "line": "<max 14 words, betting-line style hype>"}]} with one line per player in players_in.` }],
+  });
+  const t = r.content.find((c) => c.type === 'text');
+  if (!t || t.type !== 'text') return null;
+  try {
+    const j = JSON.parse(t.text.slice(t.text.indexOf('{'), t.text.lastIndexOf('}') + 1)) as { headline: string; lines: { name: string; line: string }[] };
+    const byName = new Map(players.map((p) => [p.name.toLowerCase(), p.id]));
+    return {
+      headline: String(j.headline).slice(0, 100),
+      lines: (j.lines ?? []).map((l) => ({ id: byName.get(String(l.name).toLowerCase()) ?? '', name: l.name, line: String(l.line).slice(0, 160) })).filter((l) => l.id),
+      at: new Date().toISOString(),
+    };
+  } catch { return null; }
+}
+
+/** One line for a player who just tapped "I'm in". */
+export async function hypeJoin(ev: { title: string; when: string | null; location: string | null }, name: string, others: string[]): Promise<string | null> {
+  if (!KEY) return null;
+  const client = new Anthropic({ apiKey: KEY });
+  const r = await client.messages.create({
+    model: process.env.AI_MODEL_ROUTER ?? 'claude-haiku-4-5',
+    max_tokens: 80,
+    system: HYPE_RULES,
+    messages: [{ role: 'user', content: `${name} just confirmed for "${ev.title}"${ev.when ? ' (' + ev.when + ')' : ''}${ev.location ? ' at ' + ev.location : ''}. Already in: ${others.join(', ') || 'nobody yet'}. Write ONE announcer line (max 14 words) about ${name} confirming. Reply with only the line.` }],
+  });
+  const t = r.content.find((c) => c.type === 'text');
+  return t && t.type === 'text' ? t.text.trim().replace(/^"|"$/g, '').slice(0, 160) : null;
+}

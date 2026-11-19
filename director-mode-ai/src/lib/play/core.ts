@@ -42,6 +42,7 @@ export interface PlayState {
   mixer?: GuestMixer;
   roundStartedAt?: string | null;
   nextCode?: string | null;
+  preview?: { headline: string; lines: { id: string; name: string; line: string }[]; at: string } | null;
   recap?: {
     headline: string; story: string; spice: 'mild' | 'club' | 'locker'; crown?: string | null; at: string;
     lines: { id: string; name: string; tag: string; line: string; skipped?: boolean }[];

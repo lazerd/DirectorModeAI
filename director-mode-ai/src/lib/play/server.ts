@@ -4,7 +4,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { generateRound, newMixer, roundComplete, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { crownFor } from './crown';
 import { hostingAllowed, passCheckoutUrl } from './passes';
-import { callTheGame, softenLine, type Spice } from './recap';
+import { callTheGame, hypeJoin, hypePreview, softenLine, type Spice } from './recap';
+import { whenLine } from './core';
 import { normalizeDraft, type PlayDraft, type PlayEvent, type PlayRsvp, type PlayState } from './core';
 
 const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
@@ -141,6 +142,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       const { data, error } = await db.from('play_rsvps').insert({ event_id: row.id, name, gender: gender(body.gender), level: s(body.level, 20) || null, player_key: pk, status }).select('id').single();
       if (error) throw new PlayError(error.message, 500);
       if (row.status === 'live') await addToMixer(row, { id: data.id, name, gender: gender(body.gender) });
+      if (row.status === 'open' && status === 'in') await hype(c, { id: data.id, name }).catch(() => {});
       return { playerKey: pk };
     }
     case 'leave': {
@@ -186,6 +188,11 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       const d = normalizeDraft({ ...row, ...(body.draft as Partial<PlayDraft>) });
       await mutate(row, (r) => ({ ...d, state: r.state?.mixer ? { ...r.state, mixer: { ...r.state.mixer, courts: d.courts, format: r.status === 'live' ? r.state.mixer.format : d.format, name: d.title } } : r.state }));
       if (row.status === 'open') await promoteWaitlist({ ...row, spots: d.spots });
+      return {};
+    }
+    case 'hype': {
+      hostOnly();
+      await hype(c, null);
       return {};
     }
     case 'start': {
@@ -237,7 +244,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       const fresh = (await loadRow(c))!;
       const m = fresh.state?.mixer;
       if (!m) return {};
-      const spice: Spice = body.spice === 'mild' || body.spice === 'locker' ? body.spice : 'club';
+      const spice: Spice = body.spice === 'mild' || body.spice === 'locker' || body.spice === 'club' ? body.spice : fresh.sport === 'pickleball' ? 'club' : 'mild';
       let crown = null;
       if (fresh.location) {
         const [before, after] = await Promise.all([crownFor(fresh.location, { excludeCode: fresh.code }), crownFor(fresh.location)]);
@@ -281,6 +288,24 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     default:
       throw new PlayError('Unknown action');
   }
+}
+
+/** Pre-game hype: a whole preview, or one new line for a player who just joined. */
+async function hype(c: string, joined: { id: string; name: string } | null) {
+  const row = await loadRow(c);
+  if (!row || row.status !== 'open') return;
+  const rs = (await loadRsvps(row.id)).filter((r) => r.status === 'in');
+  const ev = { title: row.title, when: whenLine(row, 'America/Los_Angeles'), location: row.location, level: row.level, spots: row.spots, sport: row.sport };
+  const cur = row.state?.preview;
+  if (joined && cur) {
+    const line = await hypeJoin(ev, joined.name, rs.filter((r) => r.id !== joined.id).map((r) => r.name));
+    if (!line) return;
+    await mutate(row, (r) => r.state?.preview ? { state: { ...r.state, preview: { ...r.state.preview, lines: [...r.state.preview.lines.filter((l) => l.id !== joined.id), { id: joined.id, name: joined.name, line }] } } } : null);
+    return;
+  }
+  if (!rs.length) return;
+  const p = await hypePreview(ev, rs.map((r) => ({ id: r.id, name: r.name })));
+  if (p) await mutate(row, (r) => ({ state: { ...r.state, preview: p } }));
 }
 
 export { roundComplete };

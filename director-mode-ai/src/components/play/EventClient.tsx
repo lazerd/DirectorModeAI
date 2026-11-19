@@ -227,6 +227,7 @@ function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?: strin
       ) : (
         <JoinBox e={e} act={act} busy={busy} />
       )}
+      <TaleOfTheTape e={e} act={act} busy={busy} />
       <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
         <div className="text-[16px] font-semibold">Who&apos;s in ({ins.length}/{e.spots})</div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -374,6 +375,7 @@ function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: string; 
   return (
     <>
       <SportsDesk e={e} act={act} busy={busy} code={code} />
+      {!e.me && !e.isHost && <YourGroup />}
       {aw.length > 0 && (
         <section className="mt-4 overflow-hidden rounded-3xl shadow-sm" style={{ background: C.lime }}>
           <div className="p-6 text-center">
@@ -611,6 +613,48 @@ function SportsDesk({ e, act, busy, code }: { e: PlayEvent; act: (b: Record<stri
           <span className="flex gap-2">{(['mild', 'club', 'locker'] as const).map((sp) => <button key={sp} disabled={!!busy} onClick={() => act({ action: 'recap', spice: sp }, 'recap')} className="rounded-lg px-2 py-1 font-semibold" style={{ background: '#eef1e8' }}>{busy === 'recap' ? '…' : sp === 'locker' ? 'Locker' : sp[0].toUpperCase() + sp.slice(1)}</button>)}</span>
         </div>
       )}
+    </section>
+  );
+}
+
+/* ---------- Pre-game "Tale of the Tape": the invite is the entertainment ---------- */
+function TaleOfTheTape({ e, act, busy }: { e: PlayEvent; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; busy: string }) {
+  const p = e.state.preview;
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!p && e.isHost && !asked.current && e.rsvps.some((r) => r.status === 'in')) { asked.current = true; act({ action: 'hype' }, 'hype'); }
+  }, [p, e.isHost, e.rsvps, act]);
+  if (!p) return busy === 'hype' ? <p className="mt-4 text-center text-[14px]" style={{ color: C.muted }}>🎙️ The announcer is warming up…</p> : null;
+  const ins = new Set(e.rsvps.filter((r) => r.status === 'in').map((r) => r.id));
+  return (
+    <section className="mt-4 overflow-hidden rounded-3xl text-white shadow-sm" style={{ background: '#1d1d1b' }}>
+      <div className="px-5 pt-4 text-[11px] font-semibold uppercase tracking-[2px]" style={{ color: C.lime }}>🎙️ Tale of the tape</div>
+      <h2 className="px-5 pb-3 pt-1 text-[24px] font-bold uppercase leading-[1.05] tracking-tight">{p.headline}</h2>
+      <div className="grid gap-px bg-white/10">
+        {p.lines.filter((l) => ins.has(l.id)).map((l) => (
+          <div key={l.id} className="px-5 py-2.5" style={{ background: '#1d1d1b' }}>
+            <span className="font-semibold" style={{ color: l.id === e.me ? C.lime : '#fff' }}>{l.name}</span>
+            <span className="text-[14px]" style={{ color: '#d6d6cf' }}> · {l.line}</span>
+          </div>
+        ))}
+        {e.spots - ins.size > 0 && <div className="px-5 py-2.5 text-[14px]" style={{ background: '#1d1d1b', color: '#9b9b93' }}>{e.spots - ins.size} spot{e.spots - ins.size === 1 ? '' : 's'} open. Your line is waiting.</div>}
+      </div>
+      {e.isHost && <button disabled={!!busy} onClick={() => act({ action: 'hype' }, 'hype')} className="w-full py-2.5 text-[13px] font-semibold" style={{ color: C.lime }}>{busy === 'hype' ? 'Re-hyping…' : '↻ Re-hype with everyone who’s in'}</button>}
+    </section>
+  );
+}
+
+/* A friend's recap is a dead end unless the viewer can start their own. */
+function YourGroup() {
+  const [q, setQ] = useState('');
+  return (
+    <section className="mt-4 rounded-3xl p-5 text-white shadow-sm" style={{ background: C.ink }}>
+      <div className="text-[20px] font-semibold leading-tight">Your group deserves a sportscaster.</div>
+      <p className="mt-1 text-[14px]" style={{ color: '#bccdbb' }}>Say when and where you play. You get the link, the hype, and the write-up. Your first one is free.</p>
+      <form className="mt-3 flex gap-2" onSubmit={(x) => { x.preventDefault(); location.href = `/play?q=${encodeURIComponent(q.trim() || 'Doubles this weekend')}`; }}>
+        <input value={q} onChange={(x) => setQ(x.target.value)} placeholder="Doubles Sat 8am at Orinda CC" aria-label="Your game" className="min-w-0 flex-1 rounded-xl bg-white px-3 py-3 text-[16px] outline-none" style={{ color: C.ink }} />
+        <button className="rounded-xl px-4 font-semibold" style={{ background: C.lime, color: C.ink }}>Go</button>
+      </form>
     </section>
   );
 }
