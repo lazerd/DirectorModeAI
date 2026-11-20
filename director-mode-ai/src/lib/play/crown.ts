@@ -17,15 +17,26 @@ export const placeSlug = (loc: string | null | undefined) =>
 export interface CrownRow { key: string; name: string; wins: number; losses: number; gamesFor: number; gamesAgainst: number; events: number; gender?: 'male' | 'female' }
 export interface Crown { slug: string; place: string; king: CrownRow | null; queen: CrownRow | null; ladder: CrownRow[]; events: number; since: string }
 
+// A short in-memory cache: every poll of a game page asks for its place's crown.
+const crownCache = new Map<string, { at: number; v: Crown | null }>();
 export async function crownFor(location: string | null | undefined, opts: { excludeCode?: string } = {}): Promise<Crown | null> {
   const slug = placeSlug(location);
   if (!slug) return null;
+  const ck = slug + '|' + (opts.excludeCode ?? '');
+  const hit = crownCache.get(ck);
+  if (hit && Date.now() - hit.at < 120000) return hit.v;
+  const v = await crownForRaw(slug, opts, location ?? '');
+  if (crownCache.size > 500) crownCache.clear();
+  crownCache.set(ck, { at: Date.now(), v });
+  return v;
+}
+async function crownForRaw(slug: string, opts: { excludeCode?: string }, location: string): Promise<Crown | null> {
   const since = new Date(Date.now() - CROWN_DAYS * 864e5).toISOString();
   const { data } = await getSupabaseAdmin().from('play_events')
     .select('code, location, state, updated_at').eq('status', 'done').gte('updated_at', since).not('location', 'is', null).limit(500);
   const evs = (data ?? []).filter((e) => placeSlug(e.location) === slug && e.code !== opts.excludeCode);
   const rows = new Map<string, CrownRow>();
-  let place = location ?? '';
+  let place = location;
   for (const ev of evs) {
     place = ev.location || place;
     const m = (ev.state as { mixer?: GuestMixer })?.mixer;

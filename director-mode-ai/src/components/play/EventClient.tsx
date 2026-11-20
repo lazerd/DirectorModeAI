@@ -43,13 +43,21 @@ export default function EventClient({ code, initial }: { code: string; initial: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  // live: poll fast; otherwise slowly. Pause when the tab is hidden.
+  // Server time costs money (free plan), so poll gently: live 10s, open 60s, done never.
+  // Pause when the tab is hidden, and stop after 10 idle minutes until the person touches the page.
   useEffect(() => {
-    const ms = e.status === 'live' ? 4000 : 15000;
-    const id = setInterval(() => { if (!document.hidden) refresh(); }, ms);
-    const vis = () => { if (!document.hidden) refresh(); };
+    if (e.status === 'done') return;
+    const ms = e.status === 'live' ? 10000 : 60000;
+    let last = Date.now();
+    const poke = () => { const idle = Date.now() - last > 10 * 60000; last = Date.now(); if (idle) refresh(); };
+    const id = setInterval(() => { if (!document.hidden && Date.now() - last < 10 * 60000) refresh(); }, ms);
+    const vis = () => { if (!document.hidden) { last = Date.now(); refresh(); } };
     document.addEventListener('visibilitychange', vis);
-    return () => { clearInterval(id); document.removeEventListener('visibilitychange', vis); };
+    for (const ev of ['pointerdown', 'keydown', 'scroll'] as const) window.addEventListener(ev, poke, { passive: true });
+    return () => {
+      clearInterval(id); document.removeEventListener('visibilitychange', vis);
+      for (const ev of ['pointerdown', 'keydown', 'scroll'] as const) window.removeEventListener(ev, poke);
+    };
   }, [e.status, refresh]);
 
   // a new round: buzz the phone
