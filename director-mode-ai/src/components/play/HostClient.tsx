@@ -39,6 +39,10 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   const [err, setErr] = useState('');
   const started = useRef(false);
   const [paywall, setPaywall] = useState<PaywallInfo | null>(null);
+  // Kevin's scorecard: time from first intent to a created game.
+  const t0 = useRef<number | null>(null);
+  const drafted = useRef(false);
+  const mark = () => { if (t0.current == null) t0.current = Date.now(); };
 
   useEffect(() => {
     setMicOk(canListen());
@@ -57,6 +61,8 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   const [listed, setListed] = useState(true);
   async function build(t = text) {
     if (!t.trim()) return;
+    mark();
+    if (!drafted.current) { drafted.current = true; trackEvent('feature_use', 'play_draft', 'courtconnect', {}); }
     setErr('');
     const quick = parseSentence(t);
     touched.current = new Set();
@@ -82,7 +88,9 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     setThinking(false);
   }
 
+  const usedMic = useRef(false);
   function talk() {
+    mark(); usedMic.current = true;
     if (mic) { mic(); setMic(null); return; }
     const stop = listen((t, fin) => { setText(t); if (fin) { setMic(null); build(t); } }, () => setMic(null));
     if (stop) setMic(() => stop);
@@ -104,7 +112,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       }
       if (!r.ok) throw new Error(j.error || 'Could not make it');
       setKey(j.code, j.hostKey);
-      trackEvent('feature_use', 'play_created', 'courtconnect', { kind: d.kind, spots: d.spots });
+      trackEvent('feature_use', 'play_created', 'courtconnect', { kind: d.kind, spots: d.spots, ms: t0.current ? Date.now() - t0.current : null, voice: usedMic.current });
       router.push(`/p/${j.code}?new=1`);
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not make it'); setSaving(false); }
   }
@@ -130,7 +138,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             <div className="text-[10px] font-semibold uppercase tracking-[2px]" style={{ color: C.muted }}>One link runs the whole thing</div>
             <h1 className="mt-4 text-[44px] font-medium leading-[1.02] tracking-[-2.5px] sm:text-[56px]">Get a game<br />together.</h1>
             <p className="mx-auto mt-4 max-w-sm text-[15px] leading-relaxed" style={{ color: C.muted }}>
-              Say what you want. You get one link for the group chat. People tap in, and at the courts everyone&apos;s phone shows where to play next.
+              Set up your next tennis, pickleball or padel mixer in under 60 seconds. Free. No signup. Just play.
             </p>
           </section>
         )}
@@ -139,7 +147,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
           <div className="flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
             <textarea
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => { mark(); setText(e.target.value); }}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); build(); } }}
               rows={2}
               placeholder="e.g. Doubles Friday 6pm at Heather Farm, need 3 more"
@@ -160,8 +168,9 @@ export default function HostClient({ initial, club, resume }: { initial?: string
           {mic && <p className="mt-2 text-center text-sm" style={{ color: C.muted }}>Listening… say when, where, how many</p>}
         </form>
 
+        {!draft && <p className="mt-4 text-center text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Or tap one to start</p>}
         {!draft && (
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
+          <div className="mt-2 flex flex-wrap justify-center gap-2">
             {EXAMPLES.map((x) => (
               <button key={x} onClick={() => { setText(x); build(x); }} className="rounded-full border bg-white/60 px-3 py-1.5 text-[12px]" style={{ borderColor: C.line, color: C.muted }}>
                 {x}

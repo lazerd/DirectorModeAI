@@ -14,6 +14,7 @@ import { BrandContext, C, PlayHeader, api, getKey, getName, setKey, setName } fr
 import { getMyLevel, levelLabel, levelNote, levelNum, setMyLevel } from '@/lib/play/levels';
 import { LevelChips } from './Levels';
 import { WeatherCard } from './Weather';
+import { trackEvent } from '@/lib/analytics';
 
 export type Res = { event: PlayEvent; playerKey?: string; code?: string };
 
@@ -40,6 +41,11 @@ export default function EventClient({ code, initial }: { code: string; initial: 
     setK(k);
     setIsNew(new URLSearchParams(location.search).has('new'));
     refresh(k);
+    // A fresh invite open: this phone has no host/player key for the game yet. Count once per phone.
+    try {
+      const seen = `cc_open_${code}`;
+      if (!k && !hk && !localStorage.getItem(seen)) { localStorage.setItem(seen, '1'); trackEvent('feature_use', 'play_link_open', 'courtconnect', { code }); }
+    } catch { /* private mode */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 

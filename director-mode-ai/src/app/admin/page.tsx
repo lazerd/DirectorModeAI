@@ -7,11 +7,13 @@ import ProductsTab from '@/components/admin/ProductsTab';
 import FeaturesTab from '@/components/admin/FeaturesTab';
 import SessionsTab from '@/components/admin/SessionsTab';
 import TestingTab from '@/components/admin/TestingTab';
+import PlayScorecardTab from '@/components/admin/PlayScorecardTab';
 
-type Tab = 'overview' | 'products' | 'features' | 'sessions' | 'testing';
+type Tab = 'overview' | 'play' | 'products' | 'features' | 'sessions' | 'testing';
 
 const TABS: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: 'overview', label: 'Overview', icon: BarChart3 },
+  { id: 'play', label: '/play scorecard', icon: Sparkles },
   { id: 'products', label: 'Products', icon: Package },
   { id: 'features', label: 'Features', icon: Sparkles },
   { id: 'sessions', label: 'Sessions', icon: Monitor },
@@ -220,6 +222,7 @@ export default function AdminPage() {
       {/* Tab Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'overview' && <OverviewTab key={`overview-${refreshKey}`} />}
+        {activeTab === 'play' && <PlayScorecardTab key={`play-${refreshKey}`} />}
         {activeTab === 'products' && <ProductsTab key={`products-${refreshKey}`} />}
         {activeTab === 'features' && <FeaturesTab key={`features-${refreshKey}`} />}
         {activeTab === 'sessions' && <SessionsTab key={`sessions-${refreshKey}`} />}
