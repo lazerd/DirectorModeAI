@@ -43,8 +43,8 @@ const ACCESS = [
   { value: 'staff', label: 'Staff only' },
   // "In CourtConnect" is the question a director actually asks here: an account
   // is what CourtConnect can email, and a roster row on its own is not.
-  { value: 'members', label: 'In CourtConnect (has an account)' },
-  { value: 'roster', label: 'Roster only — not in CourtConnect' },
+  { value: 'members', label: 'In Racquets IRL (has an account)' },
+  { value: 'roster', label: 'Roster only — not in Racquets IRL' },
 ];
 
 type VaultPlayer = {
@@ -454,14 +454,14 @@ export default function PlayerVaultPage() {
           <p className="mt-2 text-xs text-gray-500">
             Anyone with this link gets a member login. For people you already know, <strong>Add</strong> in the Access
             column seats them as members immediately with no email sent — they can join games straight from the
-            CourtConnect email they get. Your subscription covers your whole team — give a director, coach, or front-desk person <strong>staff access</strong> in the Access column and they can run events and enter scores at no extra charge.
+            Racquets IRL email they get. Your subscription covers your whole team — give a director, coach, or front-desk person <strong>staff access</strong> in the Access column and they can run events and enter scores at no extra charge.
           </p>
         </div>
       )}
 
       {/* Who CourtConnect can actually reach */}
       <p className="mb-4 text-sm text-gray-400">
-        <strong className="text-white">{memberCount}</strong> in CourtConnect
+        <strong className="text-white">{memberCount}</strong> in Racquets IRL
         <span className="text-gray-500"> (have an account, can be emailed about games)</span> ·{' '}
         <strong className="text-white">{rosterOnly}</strong> on the roster only
         <span className="text-gray-500"> — use Add or Invite in the Access column to bring them in.</span>
@@ -533,7 +533,7 @@ export default function PlayerVaultPage() {
               if (
                 confirm(
                   `Add ${selectedIds.length} player(s) to ${club?.name || 'the club'} as members?\n\n` +
-                    'No email is sent. They will start receiving CourtConnect emails when a game fits their level.',
+                    'No email is sent. They will start receiving Racquets IRL emails when a game fits their level.',
                 )
               ) {
                 addToClub(selectedIds, 'bulk');

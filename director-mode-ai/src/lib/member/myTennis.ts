@@ -218,7 +218,7 @@ export async function loadMyTennis(admin: SupabaseClient<any, 'public', any>, ct
           at: wall(g.starts_at),
           end: wall(end),
           title: `${cap(g.format || 'tennis')} game`,
-          source: 'CourtConnect',
+          source: 'Racquets IRL',
           where: g.court ? `Court ${String(g.court).replace(/^court\s*/i, '')}` : ctx.club.name,
           status: r.status === 'in' ? "You're in" : 'On the waitlist',
           tone: r.status === 'in' ? ('yes' as const) : ('wait' as const),

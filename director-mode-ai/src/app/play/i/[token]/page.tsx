@@ -33,7 +33,7 @@ import LinkClient from './LinkClient';
  * point at the matching button on the page; they never act.
  */
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'CourtConnect', robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: 'Racquets IRL', robots: { index: false, follow: false } };
 
 function Shell({ title, body }: { title: string; body: string }) {
   return (
@@ -57,7 +57,7 @@ export default async function GameLinkPage({
   const emailAnswer = a === 'yes' || a === 'no' ? a : null;
   const db = getSupabaseAdmin();
   const link = await linkByToken(db, params.token);
-  if (!link) return <Shell title="Link not recognized" body="This link may be mistyped. Open CourtConnect in your club's app to see what's on." />;
+  if (!link) return <Shell title="Link not recognized" body="This link may be mistyped. Open Racquets IRL in your club's app to see what's on." />;
 
   const [game, club] = await Promise.all([loadGame(db, link.game_id), loadClub(db, link.club_id)]);
   if (!game || !club) return <Shell title="Game not found" body="This game is no longer on the board." />;

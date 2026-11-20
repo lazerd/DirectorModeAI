@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { createContext, useContext } from 'react';
 
 /** Product name in the header and recap. The demo sets its own. */
-export const BrandContext = createContext('CourtConnect');
+export const BrandContext = createContext('Racquets IRL');
 
 /** Brand colors from the signed-out homepage (Kevin's design). */
 export const C = { paper: '#f4f5ef', ink: '#103c32', muted: '#6a7b71', lime: '#d4ff49', line: '#173b2c22', card: '#ffffff' };

@@ -49,7 +49,7 @@ export const VARIANT_LABEL: Record<Variant, string> = {
   C: 'C: Benchmarks, for the director personally',
   M: 'M: MixerMode landing page (split test)',
   P: 'P: Director Pulse landing page (split test)',
-  T1: 'T1: CourtConnect, members find games',
+  T1: 'T1: Racquets IRL, members find games',
   T2: 'T2: CourtSheet + CalendarMode, scheduling',
   T3: 'T3: LeagueMode, leagues and ladders',
   T4: 'T4: TournamentMode, draws on phones',
@@ -142,7 +142,7 @@ const INTRO: Record<'A' | 'B' | 'C' | 'M' | 'P', Letter> = {
         `We believe the club software we've been hard at work building the past couple of years would make things easier for the members at ${club} and for the people who run it.`,
         `There's a sample club set up so you can look around instead of reading a pitch. No login, nothing to install.`,
         link,
-        `Members can find a game at their level on their own with CourtConnect, and MixerMode makes your events a breeze to run.`,
+        `Members can find a game at their level on their own with Racquets IRL, and MixerMode makes your events a breeze to run.`,
         `If you'd like us to set up a demo just for ${club}, reply to this email and we'd be happy to put one together.`,
         ...toolsLine(tools),
       ].join('\n\n'),
@@ -203,7 +203,7 @@ function oneTool(subject: (club: string) => string, lines: (club: string) => { p
 
 const ONE_TOOL: Partial<Record<Variant, Letter>> = {
   T1: oneTool((club) => `Finding games at ${club}`, (club) => ({
-    pitch: `We built a tool called CourtConnect to help members at ${club} find matches at their level on their own, without staff coordinating text chains or keeping lists by hand.`,
+    pitch: `We built a tool called Racquets IRL to help members at ${club} find matches at their level on their own, without staff coordinating text chains or keeping lists by hand.`,
     here: `Here's how it works in a sample club, no login required:`,
     close: `It's one of ${N} tools we've built for racquet sports directors. If it looks like something that could save your team time, we'd love to hear your thoughts.`,
     toolsLead: `Every tool we've built:`,

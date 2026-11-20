@@ -3,7 +3,7 @@ import { ImageResponse } from 'next/og';
 // The card a group chat shows when someone pastes the link. Edge + plain REST
 // (same Windows font-path reason as app/opengraph-image.tsx).
 export const runtime = 'edge';
-export const alt = 'CourtConnect game';
+export const alt = 'Racquets IRL game';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
 
@@ -41,7 +41,7 @@ export default async function Image({ params }: { params: { code: string } }) {
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: ink, color: '#fff', padding: 64, fontFamily: 'sans-serif' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, fontSize: 30, color: '#bccdbb' }}>
           <div style={{ width: 44, height: 44, borderRadius: 14, background: lime, display: 'flex' }} />
-          CourtConnect · {e ? `${e.sport}${e.level ? ' · ' + e.level : ''}` : 'tennis · pickleball · padel'}
+          Racquets IRL · {e ? `${e.sport}${e.level ? ' · ' + e.level : ''}` : 'tennis · pickleball · padel'}
         </div>
         <div style={{ fontSize: 84, fontWeight: 700, letterSpacing: -3, lineHeight: 1.02, marginTop: 40, display: 'flex' }}>{e?.title ?? 'Get a game together'}</div>
         <div style={{ fontSize: 40, marginTop: 24, color: '#dfe8dc', display: 'flex' }}>{[when, e?.location].filter(Boolean).join(' · ')}</div>

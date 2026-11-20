@@ -210,12 +210,12 @@ async function history(ctx: Ctx, p: Person): Promise<{ lines: string[]; blocking
   const pr = ((prefs as { notify_games: boolean; phone: string | null }[] | null) ?? [])[0];
   const lines: string[] = [];
   if (p.user_id) lines.push('has a login');
-  if (s.length) lines.push(`${s.length} CourtConnect game answer${s.length === 1 ? '' : 's'} (${s.filter((x) => x.status === 'in').length} in)`);
+  if (s.length) lines.push(`${s.length} Racquets IRL game answer${s.length === 1 ? '' : 's'} (${s.filter((x) => x.status === 'in').length} in)`);
   if (posted.length) lines.push(`posted ${posted.length} game${posted.length === 1 ? '' : 's'}`);
   if (emailed) lines.push(`emailed about ${emailed} game${emailed === 1 ? '' : 's'}`);
   if ((friends as unknown[] | null)?.length) lines.push(`${(friends as unknown[]).length} saved guest contact(s)`);
   if ((att as unknown[] | null)?.length) lines.push(`${(att as unknown[]).length} class attendance mark(s)`);
-  if (pr && (pr.notify_games === false || pr.phone)) lines.push('changed their CourtConnect settings');
+  if (pr && (pr.notify_games === false || pr.phone)) lines.push('changed their Racquets IRL settings');
   return { lines, blocking: lines.length > 0 };
 }
 
@@ -254,7 +254,7 @@ async function findPerson(input: { name?: string }, ctx: Ctx): Promise<ToolResul
         email,
         phone: p.phone,
         on_playervault: true,
-        membership: p.membership_status === 'inactive' ? 'inactive (CourtConnect skips them)' : p.membership_status || 'active',
+        membership: p.membership_status === 'inactive' ? 'inactive (Racquets IRL skips them)' : p.membership_status || 'active',
         access: accessLabel(acct?.role),
         level: p.usta_rating ?? null,
         wtn: p.wtn ?? null,
@@ -417,17 +417,17 @@ async function whyNoEmails(input: { name?: string }, ctx: Ctx): Promise<ToolResu
   const emails = new Set<string>();
   if (p) {
     const email = p.email || (p.user_id ? await authEmail(ctx, p.user_id) : null);
-    if (!email) findings.push('No email on their PlayerVault record, so CourtConnect and club email have nowhere to send.');
+    if (!email) findings.push('No email on their PlayerVault record, so Racquets IRL and club email have nowhere to send.');
     else emails.add(normEmail(email));
-    if (p.membership_status === 'inactive') findings.push('Their PlayerVault record is marked inactive — CourtConnect leaves inactive members out.');
+    if (p.membership_status === 'inactive') findings.push('Their PlayerVault record is marked inactive — Racquets IRL leaves inactive members out.');
     const [{ data: pr }, { data: mem }] = await Promise.all([
       ctx.db.from('pf_member_prefs').select('notify_games').eq('club_id', ctx.clubId).eq('person_id', p.id),
       p.user_id ? ctx.db.from('cc_club_members').select('role').eq('club_id', ctx.clubId).eq('user_id', p.user_id) : Promise.resolve({ data: [] }),
     ]);
     if (((pr as { notify_games: boolean }[] | null) ?? [])[0]?.notify_games === false) {
-      findings.push('They turned off CourtConnect game emails themselves (the stop link). Only they can turn it back on, from the board.');
+      findings.push('They turned off Racquets IRL game emails themselves (the stop link). Only they can turn it back on, from the board.');
     }
-    if (((mem as { role: string }[] | null) ?? [])[0]?.role === 'maintenance') findings.push('Their login is maintenance crew, which CourtConnect never emails.');
+    if (((mem as { role: string }[] | null) ?? [])[0]?.role === 'maintenance') findings.push('Their login is maintenance crew, which Racquets IRL never emails.');
     if (p.usta_rating == null) findings.push('No level on PlayerVault. Games posted for a level range skip unrated members unless the poster allowed "unrated".');
 
     // The last 30 days of games: how many fit them, how many they were emailed about.
@@ -439,14 +439,14 @@ async function whyNoEmails(input: { name?: string }, ctx: Ctx): Promise<ToolResu
       const emailedIds = new Set(((lk as { game_id: string; emailed_at: string | null }[] | null) ?? []).filter((l) => l.emailed_at).map((l) => l.game_id));
       const fit = gs.filter((g) => g.posted_by !== p.user_id && levelFits({ ...g, rating_min: g.rating_min == null ? null : Number(g.rating_min), rating_max: g.rating_max == null ? null : Number(g.rating_max) }, p.usta_rating == null ? null : Number(p.usta_rating)) && genderFits(g, p.gender?.toLowerCase()));
       findings.push(
-        `CourtConnect, last 30 days: ${gs.length} game(s) posted, ${fit.length} fit their level, they were emailed about ${gs.filter((g) => emailedIds.has(g.id)).length}.`,
+        `Racquets IRL, last 30 days: ${gs.length} game(s) posted, ${fit.length} fit their level, they were emailed about ${gs.filter((g) => emailedIds.has(g.id)).length}.`,
       );
-    } else findings.push('No CourtConnect games were posted at the club in the last 30 days.');
+    } else findings.push('No Racquets IRL games were posted at the club in the last 30 days.');
 
     const sharers = email ? people.filter((o) => o.id !== p.id && normEmail(o.email) === normEmail(email)).map((o) => o.full_name) : [];
     if (sharers.length) findings.push(`Their inbox is shared with ${sharers.join(', ')} — one email per inbox; check it is the inbox they read.`);
   } else {
-    findings.push('Not on PlayerVault, so CourtConnect games and member emails never include them.');
+    findings.push('Not on PlayerVault, so Racquets IRL games and member emails never include them.');
   }
 
   for (const t of [...onTeams, ...onLeague]) for (const e of t.emails) emails.add(normEmail(e));
@@ -529,14 +529,14 @@ async function me(ctx: Ctx, roster: RosterRow[]): Promise<RosterRow | null> {
 }
 
 const NOT_ON_VAULT = (club: string) =>
-  `You have no PlayerVault row at ${club} tied to your login, so CourtConnect cannot act as you (games are posted, ` +
+  `You have no PlayerVault row at ${club} tied to your login, so Racquets IRL cannot act as you (games are posted, ` +
   'seated and cancelled by their poster). Add yourself on PlayerVault with your login email first.';
 
 async function findGame(ctx: Ctx, term: unknown): Promise<{ game: Game } | { error: string; candidates?: unknown }> {
   const t = String(term ?? '').trim();
   if (UUID.test(t)) {
     const g = await loadGame(ctx.db, t);
-    if (!g || g.club_id !== ctx.clubId) return { error: `No CourtConnect game with that id at ${ctx.clubName}.` };
+    if (!g || g.club_id !== ctx.clubId) return { error: `No Racquets IRL game with that id at ${ctx.clubName}.` };
     return { game: g };
   }
   if (!YMD.test(t)) return { error: 'Name the game by its id, or by its date (YYYY-MM-DD). list_games shows both.' };
@@ -544,7 +544,7 @@ async function findGame(ctx: Ctx, term: unknown): Promise<{ game: Game } | { err
   const to = zonedWallTimeToIso(`${addDays(t, 1)}T00:00`, ctx.timeZone)!;
   const { data } = await ctx.db.from('pf_games').select(GAME_COLS).eq('club_id', ctx.clubId).gte('starts_at', from).lt('starts_at', to);
   const gs = (data as Game[] | null) ?? [];
-  if (!gs.length) return { error: `No CourtConnect game on ${t} at ${ctx.clubName}.` };
+  if (!gs.length) return { error: `No Racquets IRL game on ${t} at ${ctx.clubName}.` };
   if (gs.length > 1) {
     return { error: `${gs.length} games on ${t}. Ask which, then pass its id.`, candidates: gs.map((g) => ({ id: g.id, game: gameTitle(g, ctx.timeZone), status: g.status })) };
   }
@@ -559,7 +559,7 @@ async function listGames(input: { days_back?: number; days_ahead?: number }, ctx
   const to = zonedWallTimeToIso(`${addDays(today, ahead + 1)}T00:00`, ctx.timeZone)!;
   const { data } = await ctx.db.from('pf_games').select(GAME_COLS).eq('club_id', ctx.clubId).gte('starts_at', from).lt('starts_at', to).order('starts_at');
   const gs = ((data as Game[] | null) ?? []).slice(0, LIST_CAP);
-  if (!gs.length) return { ok: true, games: [], note: 'No CourtConnect games in that window.' };
+  if (!gs.length) return { ok: true, games: [], note: 'No Racquets IRL games in that window.' };
   const club = await loadClub(ctx.db, ctx.clubId);
   const roster = await clubRoster(ctx.db, ctx.clubId);
   const { data: seats } = await ctx.db.from('pf_game_players').select('game_id, status').in('game_id', gs.map((g) => g.id));
@@ -642,7 +642,7 @@ async function planPost(input: any, ctx: Ctx): Promise<PostPlan> {
   if (!club) return { error: 'Club not found.' };
   const { data: mem } = await ctx.db.from('cc_club_members').select('role').eq('club_id', ctx.clubId).eq('user_id', ctx.userId);
   const myRole = ((mem as { role: string }[] | null) ?? [])[0]?.role;
-  if (!myRole || myRole === 'maintenance') return { error: `Your login is not a member of ${ctx.clubName}, so CourtConnect will not post as you.` };
+  if (!myRole || myRole === 'maintenance') return { error: `Your login is not a member of ${ctx.clubName}, so Racquets IRL will not post as you.` };
   const roster = await clubRoster(ctx.db, ctx.clubId);
   const mine = await me(ctx, roster);
   if (!mine) return { error: NOT_ON_VAULT(ctx.clubName) };
@@ -700,7 +700,7 @@ async function planPost(input: any, ctx: Ctx): Promise<PostPlan> {
     .eq('club_id', ctx.clubId)
     .eq('posted_by', ctx.userId)
     .gt('created_at', new Date(Date.now() - 864e5).toISOString());
-  if ((recent ?? 0) >= DAILY_POST_LIMIT) return { error: `You have posted ${DAILY_POST_LIMIT} games in the last 24 hours — CourtConnect's daily limit.` };
+  if ((recent ?? 0) >= DAILY_POST_LIMIT) return { error: `You have posted ${DAILY_POST_LIMIT} games in the last 24 hours — Racquets IRL's daily limit.` };
 
   // Who the invitation reaches: the same filter as pf_game_recipients, read before anything is written.
   const partnerIds = new Set(partners.map((p) => p.personId).filter(Boolean));
@@ -746,7 +746,7 @@ async function posterGame(ctx: Ctx, term: unknown): Promise<GameCtx> {
   const mine = await me(ctx, roster);
   if (!mine) return { error: NOT_ON_VAULT(ctx.clubName) };
   if (g.posted_by !== ctx.userId) {
-    return { error: `That game was posted by ${poster}. In CourtConnect only the poster can add players to or cancel their game — ask ${poster}.` };
+    return { error: `That game was posted by ${poster}. In Racquets IRL only the poster can add players to or cancel their game — ask ${poster}.` };
   }
   if (g.status === 'cancelled') return { error: 'That game is already cancelled.' };
   if (g.status === 'expired' || new Date(g.starts_at).getTime() <= Date.now()) return { error: 'That game has already started.' };
@@ -894,7 +894,7 @@ const tools: ToolDef<Ctx>[] = [
     schema: S(
       'find_person',
       'Look someone up on PlayerVault: email, phone, member or not, access level (owner/director/coach/front desk/member login or roster only), ' +
-        'level/WTN, whether they get CourtConnect game emails, and who shares their inbox. Also finds staff with a login but no PlayerVault row. ' +
+        'level/WTN, whether they get Racquets IRL game emails, and who shares their inbox. Also finds staff with a login but no PlayerVault row. ' +
         'Several matches come back as a list — ask which.',
       { name: { type: 'string', description: 'Name (any words of it) or PlayerVault id.' } },
       ['name'],
@@ -973,7 +973,7 @@ const tools: ToolDef<Ctx>[] = [
   {
     schema: S(
       'why_no_emails',
-      'Diagnose why someone is not getting club / match / game emails: no email on file, unsubscribed, turned off CourtConnect game emails, ' +
+      'Diagnose why someone is not getting club / match / game emails: no email on file, unsubscribed, turned off Racquets IRL game emails, ' +
         'inactive, unrated vs level-limited games, not on a team roster, a different email on the team roster, shared inbox. Read-only.',
       { name: { type: 'string', description: 'Name or PlayerVault id.' } },
       ['name'],
@@ -1009,7 +1009,7 @@ const tools: ToolDef<Ctx>[] = [
         already_on_playervault: p.already.length ? p.already : undefined,
         possible_duplicates_held_back: p.possibleDuplicates.length ? p.possibleDuplicates : undefined,
         invalid: p.invalid.length ? p.invalid : undefined,
-        sends: 'nothing now. Those with an email will start getting CourtConnect "game needs players" emails when a game fits their level (each carries a stop link).',
+        sends: 'nothing now. Those with an email will start getting Racquets IRL "game needs players" emails when a game fits their level (each carries a stop link).',
       };
     },
     run: async (input, ctx) => {
@@ -1038,7 +1038,7 @@ const tools: ToolDef<Ctx>[] = [
   {
     schema: S(
       'list_games',
-      'CourtConnect pickup games at the club (default: today through 2 weeks ahead): id, when, format, level, poster, how many are in, status.',
+      'Racquets IRL pickup games at the club (default: today through 2 weeks ahead): id, when, format, level, poster, how many are in, status.',
       { days_back: { type: 'number' }, days_ahead: { type: 'number' } },
     ),
     run: listGames,
@@ -1046,7 +1046,7 @@ const tools: ToolDef<Ctx>[] = [
   {
     schema: S(
       'game_answers',
-      'Who said yes / no / is on the waiting list / was emailed and has not answered, for one CourtConnect game. Read-only.',
+      'Who said yes / no / is on the waiting list / was emailed and has not answered, for one Racquets IRL game. Read-only.',
       { game: { type: 'string', description: 'Game id, or its date YYYY-MM-DD.' } },
       ['game'],
     ),
@@ -1055,7 +1055,7 @@ const tools: ToolDef<Ctx>[] = [
   {
     schema: S(
       'post_game',
-      'Post a CourtConnect game as the director ("doubles tomorrow 1pm, 4.0, invite players at my level"). Posting EMAILS every club member ' +
+      'Post a Racquets IRL game as the director ("doubles tomorrow 1pm, 4.0, invite players at my level"). Posting EMAILS every club member ' +
         'whose level fits (max 50) — the preview lists them. at_my_level uses the director\'s own PlayerVault level for min and max.',
       {
         date: { type: 'string', description: 'YYYY-MM-DD (club time).' },
@@ -1142,7 +1142,7 @@ const tools: ToolDef<Ctx>[] = [
   {
     schema: S(
       'add_player_to_game',
-      'Seat someone in a CourtConnect game the director posted, without an invitation — an outside friend (guest_name) or a club member who ' +
+      'Seat someone in a Racquets IRL game the director posted, without an invitation — an outside friend (guest_name) or a club member who ' +
         'said yes in person (member). Only the poster can do this. If it fills the game, the group gets the line-up email.',
       {
         game: { type: 'string', description: 'Game id or date YYYY-MM-DD.' },
@@ -1178,7 +1178,7 @@ const tools: ToolDef<Ctx>[] = [
   {
     schema: S(
       'cancel_game',
-      'Cancel a CourtConnect game the director posted. CourtConnect emails the cancellation ONLY to the people who said yes (are in) — not ' +
+      'Cancel a Racquets IRL game the director posted. Racquets IRL emails the cancellation ONLY to the people who said yes (are in) — not ' +
         'to those who said no, are waiting, or never answered. Only the poster can cancel.',
       { game: { type: 'string', description: 'Game id or date YYYY-MM-DD.' }, send_key: { type: 'string', description: 'From the preview.' } },
       ['game'],
@@ -1279,7 +1279,7 @@ const tools: ToolDef<Ctx>[] = [
 export const peoplePack: DomainPack<Ctx> = {
   domain: 'people',
   actionsPrompt: `
-PEOPLE — PlayerVault members, CourtConnect pickup games, LessonMode lessons.
+PEOPLE — PlayerVault members, Racquets IRL pickup games, LessonMode lessons.
 
 Reads (any staff): find_person, why_no_emails, list_games, game_answers, lessons_schedule.
 Writes (owner/director; a coach may cancel only their own lessons): update_person, remove_duplicate_person, add_members,
@@ -1290,7 +1290,7 @@ Rules:
 - Several name matches → ask which (show emails/added dates); then use the id.
 - Every write previews first. Relay the specifics — who is changed, who gets an email — and wait for a clear yes.
 - post_game / cancel_game: pass back the send_key from the preview. Read the recipient list back before posting.
-- CourtConnect: only the poster can seat or cancel. A guest gets no email; tell the director to tell them.
+- Racquets IRL: only the poster can seat or cancel. A guest gets no email; tell the director to tell them.
 
 You CANNOT, and must say so plainly: link family members (no household link exists), merge records (a duplicate with
 history cannot be removed), move a lesson (cancel and rebook), block Open Lesson Time (the coach adds an "Open Lesson

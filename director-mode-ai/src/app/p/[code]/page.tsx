@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 export async function generateMetadata({ params }: { params: { code: string } }): Promise<Metadata> {
   const e = await view(params.code);
-  if (!e) return { title: 'CourtConnect' };
+  if (!e) return { title: 'Racquets IRL' };
   const tz = 'America/Los_Angeles';
   const champ = e.status === 'done' && e.state.mixer ? awards(e.state.mixer)[0] : null;
   const desc = champ ? `🏆 ${champ.who} took it. See the recap and awards.`

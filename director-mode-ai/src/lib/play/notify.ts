@@ -17,7 +17,7 @@ const okEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.leng
 
 function shell(title: string, body: string, cta?: { href: string; label: string }) {
   return `<div style="font-family:-apple-system,Segoe UI,sans-serif;max-width:520px;margin:0 auto;color:#103c32">
-  <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#6a7b71">CourtConnect</div>
+  <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#6a7b71">Racquets IRL</div>
   <h1 style="font-size:26px;line-height:1.15;margin:8px 0 12px">${esc(title)}</h1>
   <div style="font-size:16px;line-height:1.5">${body}</div>
   ${cta ? `<p style="margin:22px 0"><a href="${cta.href}" style="background:#d4ff49;color:#103c32;text-decoration:none;font-weight:700;padding:13px 20px;border-radius:12px;display:inline-block">${esc(cta.label)}</a></p>` : ''}
@@ -42,7 +42,7 @@ export async function crownChanged(place: string, before: string | null, after: 
   for (const w of data ?? []) {
     const lost = w.name_key === before.toLowerCase();
     await sendBilledEmail(null, {
-      platformPaid: true, fromName: 'CourtConnect', to: w.email,
+      platformPaid: true, fromName: 'Racquets IRL', to: w.email,
       subject: lost ? `👑 ${after} just took your ${place} crown` : `👑 You're the King of the Court at ${place}`,
       html: lost
         ? shell(`${after} took your crown at ${place}.`, `<p>You held King of the Court at ${esc(place)}. After tonight's results, ${esc(after)} has more wins there over the last 30 days.</p><p>Get a game together there and take it back.</p>`, { href: back, label: 'Start a game at ' + place })
@@ -84,7 +84,7 @@ export async function nearbyNeedOne(code: string) {
   for (const a of due) {
     const mi = a.mi < 1 ? 'under a mile' : `${a.mi.toFixed(1)} mi`;
     await sendBilledEmail(null, {
-      platformPaid: true, fromName: 'CourtConnect', to: a.email,
+      platformPaid: true, fromName: 'Racquets IRL', to: a.email,
       subject: `${sport}: need ${open} · ${ev.title} · ${when}`.slice(0, 120),
       html: shell(`${ev.title} needs ${open} more.`,
         `<p><b>${esc(when)}</b><br>${esc(ev.location ?? '')}${ev.place_address ? `<br><span style="color:#6a7b71">${esc(ev.place_address)}</span>` : ''}<br><span style="color:#6a7b71">${esc(mi)} from you · ${esc(lvl)}</span></p><p>First to tap gets the spot. No app, no account.</p>
@@ -109,8 +109,8 @@ export async function sendRestoreCode(email: string, hostId: string): Promise<'s
   const code = String(randomInt(100000, 1000000));
   await db.from('play_pass_codes').insert({ pass_id: pass.id, host_id: hostId, code_hash: hash(code + hostId), expires_at: new Date(Date.now() + 15 * 60e3).toISOString() });
   await sendBilledEmail(null, {
-    platformPaid: true, operational: true, fromName: 'CourtConnect', to: e,
-    subject: `Your CourtConnect code: ${code}`,
+    platformPaid: true, operational: true, fromName: 'Racquets IRL', to: e,
+    subject: `Your Racquets IRL code: ${code}`,
     html: shell(`Your code is ${code}`, `<p>Enter it on the phone you want to host from to move your ${pass.kind === 'club' ? `${esc(pass.club_name ?? 'Club')} Club Pass` : 'Host Pass'} there. It works for 15 minutes.</p><p style="color:#6a7b71;font-size:14px">Didn't ask for this? Ignore it; nothing changes.</p>`),
   } as Parameters<typeof sendBilledEmail>[1]);
   return 'sent';

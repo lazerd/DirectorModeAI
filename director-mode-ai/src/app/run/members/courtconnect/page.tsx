@@ -20,7 +20,7 @@ import StaffActions from './StaffActions';
  * roles) and platform clubs, and returns nothing for a plain member.
  */
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'CourtConnect — ClubMode AI' };
+export const metadata: Metadata = { title: 'Racquets IRL — ClubMode AI' };
 
 const WINDOW_DAYS = 90;
 
@@ -394,10 +394,10 @@ export default async function CourtConnectDirectorPage() {
             <Handshake size={24} className="text-[#34d399]" />
           </span>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">CourtConnect</h1>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Racquets IRL</h1>
             <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-white/50">
               {club.name} members post games that need players; members at the right level get an email and join in
-              one tap. Members find CourtConnect in their clubhouse, on the court sheet and on your club site.
+              one tap. Members find Racquets IRL in their clubhouse, on the court sheet and on your club site.
             </p>
             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-medium">
               <Link href={`/c/${club.slug}/play`} className="inline-flex items-center gap-1.5 text-[#D3FB52]">
@@ -427,7 +427,7 @@ export default async function CourtConnectDirectorPage() {
         )}
 
         <p className="mt-8 text-[14.5px] leading-relaxed text-white/60">
-          CourtConnect can reach <strong className="text-white">{roster.length}</strong>{' '}
+          Racquets IRL can reach <strong className="text-white">{roster.length}</strong>{' '}
           {roster.length === 1 ? 'person' : 'people'} — the members with a ClubMode account at {club.name}. Everyone
           else on your roster is in PlayerVault only, and cannot be emailed about a game until you add them there
           (&ldquo;Add&rdquo; needs no email; &ldquo;Invite&rdquo; sends one).{' '}

@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
  * nothing to copy. Existing cc_players rows are kept.
  */
 const gone = () =>
-  NextResponse.json({ error: 'Import to CourtConnect has been retired. CourtConnect reads PlayerVault directly.' }, { status: 410 });
+  NextResponse.json({ error: 'Import to Racquets IRL has been retired. Racquets IRL reads PlayerVault directly.' }, { status: 410 });
 
 export const POST = gone;
 export const GET = gone;

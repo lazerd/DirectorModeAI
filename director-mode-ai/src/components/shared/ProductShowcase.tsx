@@ -73,7 +73,7 @@ const FEATURES = [
   },
   {
     id: 'connect',
-    tag: 'CourtConnect',
+    tag: 'Racquets IRL',
     tagColor: 'bg-emerald-400/10 text-emerald-400',
     title: 'Never short a fourth again',
     description: 'A member posts a game that needs players. Members at the right level get an email and join in one tap.',

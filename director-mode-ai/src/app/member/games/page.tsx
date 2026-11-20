@@ -12,7 +12,7 @@ import GamesBoard from '@/components/partnerFinder/GamesBoard';
 // requires a signed-in account here.
 
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'CourtConnect' };
+export const metadata: Metadata = { title: 'Racquets IRL' };
 
 export default async function MemberGamesPage({ searchParams }: { searchParams: { club?: string } }) {
   const supabase = await createClient();
@@ -33,7 +33,7 @@ export default async function MemberGamesPage({ searchParams }: { searchParams: 
           <Link href="/member" className="inline-flex min-h-[44px] items-center gap-2 text-lg text-emerald-50 hover:underline">
             <ArrowLeft className="h-5 w-5" /> {club.name}
           </Link>
-          <h1 className="mt-2 text-4xl font-bold">CourtConnect</h1>
+          <h1 className="mt-2 text-4xl font-bold">Racquets IRL</h1>
           <p className="mt-2 text-xl font-semibold text-white">Find a game with members at your level</p>
           <p className="mt-1 text-lg text-emerald-50">
             Need a player? Post your game and we&rsquo;ll email members at your level. Want a game? Tap &ldquo;I&rsquo;m in.&rdquo;

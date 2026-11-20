@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
  * rows are kept; nothing writes to them any more.
  */
 const gone = () =>
-  NextResponse.json({ error: 'This CourtConnect feature has been retired. Use CourtConnect at /courtconnect.' }, { status: 410 });
+  NextResponse.json({ error: 'This Racquets IRL feature has been retired. Use Racquets IRL at /courtconnect.' }, { status: 410 });
 
 export const POST = gone;
 export const GET = gone;

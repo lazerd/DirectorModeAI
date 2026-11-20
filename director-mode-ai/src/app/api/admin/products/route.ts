@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
         },
       },
       {
-        name: 'CourtConnect',
+        name: 'Racquets IRL',
         color: '#34d399',
         icon: 'Users',
         userCount: ccPosters.size,

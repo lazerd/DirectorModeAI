@@ -70,10 +70,10 @@ function headline(g: Game, tz: string): string {
 
 /** Every message says where it came from, so "CourtConnect" means something the next time. */
 function shell(club: Club, title: string, body: string, footer = ''): string {
-  const foot = footer || `Sent by CourtConnect for ${esc(club.name)}.`;
+  const foot = footer || `Sent by Racquets IRL for ${esc(club.name)}.`;
   return `
   <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px 20px;color:${INK}">
-    <p style="font-size:15px;color:${MUTED};margin:0 0 6px">${esc(club.name)} &middot; CourtConnect</p>
+    <p style="font-size:15px;color:${MUTED};margin:0 0 6px">${esc(club.name)} &middot; Racquets IRL</p>
     <h1 style="font-size:26px;line-height:1.25;margin:0 0 18px">${title}</h1>
     ${body}
     <p style="font-size:14px;line-height:1.5;color:${MUTED};margin-top:28px">${foot}</p>
@@ -165,7 +165,7 @@ export function inviteEmail(
     <p style="margin:0 0 14px">${button(`${url}?a=no`, 'No, not this time', MUTED)}</p>
     <p style="font-size:16px;color:${MUTED};margin:0">One tap either way. First to tap gets the spot, and you don't need a password.</p>`;
   const footer = opts.stopToken
-    ? `You're getting this from CourtConnect because you're a member of ${esc(club.name)}. <a href="${stopUrl(opts.stopToken)}" style="color:${MUTED}">Stop emails about games that need players</a>.`
+    ? `You're getting this from Racquets IRL because you're a member of ${esc(club.name)}. <a href="${stopUrl(opts.stopToken)}" style="color:${MUTED}">Stop emails about games that need players</a>.`
     : '';
   return {
     to: opts.to,
@@ -250,7 +250,7 @@ export function spotOpenedEmail(
 ): GameMessage {
   const title = `${opts.leaver} can't make your ${headline(g, club.timezone)}`;
   const body = `
-    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Your game is open again and ${needsLabel(opts.spotsLeft)}. It's back on CourtConnect, and anyone who taps "I'm in" on the earlier email can still take the spot.</p>
+    <p style="font-size:18px;line-height:1.5;margin:0 0 16px">Your game is open again and ${needsLabel(opts.spotsLeft)}. It's back on Racquets IRL, and anyone who taps "I'm in" on the earlier email can still take the spot.</p>
     ${details(g, club)}
     <p style="margin:20px 0 0">${button(linkUrl(opts.token), 'See your game', INK)}</p>`;
   return {
@@ -408,7 +408,7 @@ export function guestInviteEmail(
   return {
     to: opts.to,
     subject: ascii(`${opts.poster} invited you: ${when} at ${club.name}`),
-    html: shell(club, esc(title), body, `${esc(opts.poster)} sent this through CourtConnect at ${esc(club.name)}. You're getting it because they invited you.`),
+    html: shell(club, esc(title), body, `${esc(opts.poster)} sent this through Racquets IRL at ${esc(club.name)}. You're getting it because they invited you.`),
     sms: ascii(`${opts.poster} invited you: ${headline(g, tz)} at ${club.name}. ${guestUrl(opts.token)}`),
   };
 }
@@ -489,9 +489,9 @@ export function championReferralEmail(
   const url = shareUrl(opts.code);
   const title = `Thanks for getting ${opts.games} games on court`;
   const body = `
-    <p style="font-size:18px;line-height:1.5;margin:0 0 14px">Hi ${esc(firstName(opts.name))}, you've organized ${opts.games} games on CourtConnect at ${esc(club.name)} that filled up and got played. Thank you. That's what makes it work for everyone else.</p>
-    <p style="font-size:19px;line-height:1.5;margin:0 0 18px;padding:14px 18px;border-left:4px solid ${GREEN};background:#f0fdf4"><strong>Know someone at another club who organizes games?</strong> Share CourtConnect with them.</p>
-    <p style="margin:0 0 14px">${button(url, 'Share CourtConnect')}</p>
+    <p style="font-size:18px;line-height:1.5;margin:0 0 14px">Hi ${esc(firstName(opts.name))}, you've organized ${opts.games} games on Racquets IRL at ${esc(club.name)} that filled up and got played. Thank you. That's what makes it work for everyone else.</p>
+    <p style="font-size:19px;line-height:1.5;margin:0 0 18px;padding:14px 18px;border-left:4px solid ${GREEN};background:#f0fdf4"><strong>Know someone at another club who organizes games?</strong> Share Racquets IRL with them.</p>
+    <p style="margin:0 0 14px">${button(url, 'Share Racquets IRL')}</p>
     <p style="font-size:16px;line-height:1.5;color:${MUTED};margin:0 0 6px">Or send them this link, or just forward this email:</p>
     <p style="font-size:16px;line-height:1.5;margin:0 0 18px;word-break:break-all"><a href="${url}" style="color:${INK}">${esc(url)}</a></p>
     <p style="font-size:16px;line-height:1.5;color:${MUTED};margin:0">No need to reply, and this is the only time we'll ask.</p>`;
@@ -499,6 +499,6 @@ export function championReferralEmail(
     to: opts.to,
     subject: ascii(`Thanks for organizing games at ${club.name}`),
     html: shell(club, esc(title), body),
-    sms: ascii(`${club.name}: thanks for organizing ${opts.games} games on CourtConnect! Know an organizer at another club? Share it: ${url}`),
+    sms: ascii(`${club.name}: thanks for organizing ${opts.games} games on Racquets IRL! Know an organizer at another club? Share it: ${url}`),
   };
 }

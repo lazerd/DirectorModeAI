@@ -121,7 +121,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
           <Link href="/play" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Host your own game in 60 seconds</Link>
           <span className="mx-2">·</span>
           <Link href={`/play/near?sport=${e.sport}`} className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Find a game near me</Link>
-          <div className="mt-2">CourtConnect by ClubMode · no app, no account</div>
+          <div className="mt-2">Racquets IRL by ClubMode · no app, no account</div>
         </div>
       </main>
     </div>
@@ -941,7 +941,7 @@ const firstName = (n: string) => n.trim().split(/\s+/)[0].toLowerCase();
 function HostLinkButtons({ code, hostKey }: { code: string; hostKey: string }) {
   const [copied, setCopied] = useState(false);
   const url = `${location.origin}/p/${code}?host=${hostKey}`;
-  const msg = `My CourtConnect host link (don't share it): ${url}`;
+  const msg = `My Racquets IRL host link (don't share it): ${url}`;
   return (
     <div className="mt-2 grid grid-cols-2 gap-2 text-[13px] font-semibold">
       <a href={`sms:?&body=${encodeURIComponent(msg)}`} className="flex items-center justify-center gap-1.5 rounded-xl bg-white/80 py-2.5" style={{ color: C.ink }}><MessageCircle className="h-4 w-4" />Text me my host link</a>

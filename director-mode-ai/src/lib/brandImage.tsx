@@ -141,10 +141,10 @@ export function MixerShareCard() {
   return <CampaignShareCard eyebrow="Meet MixerMode by ClubMode" line1="More play." line2="Less planning." foot="Run your next club mixer free. No account needed." />;
 }
 
-export const COURTCONNECT_SHARE_CARD_ALT = 'CourtConnect by ClubMode — Need a fourth? Find one in minutes.';
+export const COURTCONNECT_SHARE_CARD_ALT = 'Racquets IRL by ClubMode — Need a fourth? Find one in minutes.';
 
 export function CourtConnectShareCard() {
-  return <CampaignShareCard eyebrow="Meet CourtConnect by ClubMode" line1="Need a fourth?" line2="Find one in minutes." foot="Post a game. Members at your level get the invite." />;
+  return <CampaignShareCard eyebrow="Meet Racquets IRL by ClubMode" line1="Need a fourth?" line2="Find one in minutes." foot="Post a game. Members at your level get the invite." />;
 }
 
 export const PULSE_SHARE_CARD_ALT = 'Director Pulse by ClubMode — What they make. What they charge.';

@@ -27,7 +27,7 @@ describe('the canonical product list', () => {
   });
 
   it('has exactly one CourtConnect, pointing at the per-club director view', () => {
-    const cc = PRODUCTS.filter((t) => t.name === 'CourtConnect');
+    const cc = PRODUCTS.filter((t) => t.name === 'Racquets IRL');
     expect(cc).toHaveLength(1);
     expect(cc[0].href).toBe('/run/members/courtconnect');
     expect(PRODUCTS.map((t) => t.name)).not.toContain('Partner Finder');

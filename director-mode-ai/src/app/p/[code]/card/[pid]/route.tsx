@@ -22,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: { code: string; p
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: ink, color: '#fff', padding: 72, fontFamily: 'sans-serif' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, fontSize: 32, color: '#bccdbb' }}>
           <div style={{ width: 48, height: 48, borderRadius: 16, background: lime, display: 'flex' }} />
-          🎙️ CourtConnect · {e.title}
+          🎙️ Racquets IRL · {e.title}
         </div>
         <div style={{ marginTop: 70, fontSize: 40, color: lime, letterSpacing: 4, textTransform: 'uppercase', display: 'flex' }}>{line.tag}</div>
         <div style={{ marginTop: 10, fontSize: 104, fontWeight: 700, letterSpacing: -4, lineHeight: 1, display: 'flex' }}>{line.name}</div>

@@ -218,7 +218,7 @@ export const SECTIONS: Section[] = [
         href: '/courtconnect/vault',
         match: '/courtconnect/vault',
         description: 'The people hub. Roster players and member accounts merged into one searchable table.',
-        pitch: 'Club roster CRM with NTRP/UTR ratings, UTR auto-lookup, and bulk CourtConnect import.',
+        pitch: 'Club roster CRM with NTRP/UTR ratings, UTR auto-lookup, and bulk Racquets IRL import.',
         icon: Database,
         color: '#2dd4bf',
         product: true,
@@ -232,7 +232,7 @@ export const SECTIONS: Section[] = [
          * Members reach it from their clubhouse, the court sheet, the club site
          * and /courtconnect.
          */
-        name: 'CourtConnect',
+        name: 'Racquets IRL',
         href: '/run/members/courtconnect',
         match: '/run/members/courtconnect',
         description: 'Members post "need 1 for doubles"; members at the right level get an email and join in one tap.',
@@ -442,7 +442,7 @@ export const FOR_PLAYERS: Tool[] = [
   },
   {
     // The member side of CourtConnect (the old shared events board is retired).
-    name: 'CourtConnect',
+    name: 'Racquets IRL',
     href: '/member/games',
     match: '/member/games',
     description: 'Games with members at your level. Join one, or post one that needs players.',

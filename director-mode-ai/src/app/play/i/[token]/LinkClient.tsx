@@ -958,7 +958,7 @@ export default function LinkClient(p: Props) {
 
         <p className="pt-2 text-center text-lg">
           <Link href={`/c/${p.clubSlug}/play`} className="text-emerald-800 underline">
-            See all {p.clubName} games on CourtConnect
+            See all {p.clubName} games on Racquets IRL
           </Link>
         </p>
       </div>

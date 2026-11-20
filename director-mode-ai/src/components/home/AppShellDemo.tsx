@@ -780,7 +780,7 @@ const VIEWS: Record<string, View> = {
   CaptainMode: { title: '4.0 Women', sub: 'Next: vs Lakeside · Sat 9/19', action: 'Send lineup', prompt: 'Who is free on 10/4 and hasn’t played in two weeks?', Body: CaptainView },
   SwimMode: { title: 'Summer swim team', sub: '42 families · 3 meets left', action: 'Add job', prompt: 'Remind families under 10 points about Saturday', Body: SwimView },
   PlayerVault: { title: 'People', sub: '412 players · 288 members', action: 'Import', prompt: 'Look up UTRs for everyone missing one', Body: VaultView },
-  CourtConnect: { title: 'Open games', sub: '6 looking for players', action: 'Post a game', prompt: 'Find a 3.5 fourth for Saturday morning doubles', Body: ConnectView },
+  'Racquets IRL': { title: 'Open games', sub: '6 looking for players', action: 'Post a game', prompt: 'Find a 3.5 fourth for Saturday morning doubles', Body: ConnectView },
   LessonMode: { title: 'Open Lesson Time', sub: 'Today · 3 instructors', action: 'Blast a cancellation', prompt: 'Ben’s 5pm cancelled — offer it to his regulars', Body: LessonView },
   CoachMode: { title: 'Lesson recaps', sub: '9 sent this week', action: 'New recap', prompt: 'Write Maya’s recap from my voice note', Body: RecapView },
   PathwayMode: { title: 'Junior Pathway', sub: '10 kids climbing', action: 'Award stripe', prompt: 'Who is one stripe away from moving up?', Body: PathwayView },

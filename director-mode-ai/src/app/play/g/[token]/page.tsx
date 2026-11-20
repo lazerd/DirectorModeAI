@@ -10,7 +10,7 @@ import GuestClient from './GuestClient';
  * game and one friend on the poster's own list. Opening it never acts.
  */
 export const dynamic = 'force-dynamic';
-export const metadata: Metadata = { title: 'CourtConnect', robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: 'Racquets IRL', robots: { index: false, follow: false } };
 
 function Shell({ title, body }: { title: string; body: string }) {
   return (

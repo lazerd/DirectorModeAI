@@ -85,13 +85,13 @@ export async function POST(req: Request) {
     const html = `
       <div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;color:#0f172a">
         <h2 style="color:#002838;margin:0 0 12px">Come play at ${club.name}</h2>
-        <p style="font-size:17px;line-height:1.5">Hi ${first}, members here are using <b>CourtConnect</b> to find players for games &mdash; doubles that needs a fourth, a hit before work, a match at your level.</p>
+        <p style="font-size:17px;line-height:1.5">Hi ${first}, members here are using <b>Racquets IRL</b> to find players for games &mdash; doubles that needs a fourth, a hit before work, a match at your level.</p>
         <p style="font-size:17px;line-height:1.5">Join and you'll get an email whenever a game fits your level. One tap says yes, one tap says no. You can post your own games that need players too.</p>
         <p style="margin:24px 0"><a href="${joinUrl}" style="display:inline-block;background:#D3FB52;color:#002838;font-weight:700;padding:14px 24px;border-radius:10px;text-decoration:none;font-size:18px">Join ${club.name}</a></p>
         <p style="color:#475569;font-size:15px">It also gets you court booking, class sign-ups and the club calendar. Already have a login? Use club code <b>${club.join_code}</b>.</p>
       </div>`;
     try {
-      await sendBilledEmail(user.id, { to: p.email, subject: `${first}, your club is finding you games on CourtConnect`, html });
+      await sendBilledEmail(user.id, { to: p.email, subject: `${first}, your club is finding you games on Racquets IRL`, html });
       sent++;
     } catch (e) {
       if (e instanceof CreditLimitError) { capped = true; break; }

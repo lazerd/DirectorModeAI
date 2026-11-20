@@ -102,7 +102,7 @@ const SOURCE_LABELS: Record<ReservationSource, string> = {
   ai: 'AI',
   lessons: 'LessonsMode',
   mixer: 'MixerMode',
-  courtconnect: 'CourtConnect',
+  courtconnect: 'Racquets IRL',
   tournaments: 'Tournaments',
   quads: 'Quads',
   jtt: 'JTT',

@@ -79,7 +79,7 @@ export default async function CourtConnectToolsLayout({
               Club Profile
             </NavItem>
             <NavItem href="/run/members/courtconnect" icon={Handshake}>
-              CourtConnect
+              Racquets IRL
             </NavItem>
           </ul>
         </nav>

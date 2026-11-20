@@ -88,7 +88,7 @@ export default function GuestHome() {
         </section>
 
         <section className={s.choices} aria-label="Choose your ClubMode tool">
-          <DoorTile door="players" role="Players / CourtConnect" title="Find your game." line="A good match. A fourth player. Your next hit." onPick={go}>
+          <DoorTile door="players" role="Players / Racquets IRL" title="Find your game." line="A good match. A fourth player. Your next hit." onPick={go}>
             <svg viewBox="0 0 190 130" fill="none">
               <ellipse cx="99" cy="112" rx="55" ry="5" fill="#183a2a" opacity=".07" />
               <path d="M46 34h98v65H46zM58 34v65m74-65v65M46 66h98M58 49h74m-74 33h74M95 49v33" stroke="#6a8461" strokeWidth="1" opacity=".6" />

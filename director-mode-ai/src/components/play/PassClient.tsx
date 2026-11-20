@@ -50,7 +50,7 @@ export default function PassClient() {
         ) : st.pass ? (
           <section className="rounded-3xl p-6 shadow-sm" style={{ background: C.lime }}>
             <Check className="h-8 w-8" />
-            <h1 className="mt-2 text-[32px] font-semibold leading-tight tracking-tight">{st.pass.kind === 'club' ? `${st.pass.club_name ?? 'Your club'} is on CourtConnect.` : 'You’re a host. Go fill some courts.'}</h1>
+            <h1 className="mt-2 text-[32px] font-semibold leading-tight tracking-tight">{st.pass.kind === 'club' ? `${st.pass.club_name ?? 'Your club'} is on Racquets IRL.` : 'You’re a host. Go fill some courts.'}</h1>
             <p className="mt-2 text-[15px]">{st.pass.kind === 'club' ? 'Send this link to your members. Anyone who opens it can host games and socials, free.' : 'Unlimited games and socials, all year, on this phone.'}</p>
             {clubLink && (
               <button onClick={async () => { await navigator.clipboard?.writeText(clubLink); setCopied(true); }} className="mt-4 flex w-full items-center justify-between gap-2 rounded-2xl bg-white px-4 py-3 text-left text-[14px]">

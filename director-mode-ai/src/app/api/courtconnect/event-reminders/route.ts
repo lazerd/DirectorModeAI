@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
  * /api/leagues/rsvp-confirmations.
  */
 const gone = () =>
-  NextResponse.json({ error: 'CourtConnect event reminders have been retired.' }, { status: 410 });
+  NextResponse.json({ error: 'Racquets IRL event reminders have been retired.' }, { status: 410 });
 
 export const GET = gone;
 export const POST = gone;
