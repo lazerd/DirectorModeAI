@@ -538,6 +538,9 @@ export default function DemoTour() {
             {t.ended && <EndCard onReplay={() => startTour(0)} />}
           </div>
         </div>
+        <footer className="pb-4 pt-1 text-center text-[11px]">
+          <Link href="/platform" style={{ color: '#9fb3a6' }} className="underline-offset-2 hover:underline">See all the tools ClubMode has to offer &rarr;</Link>
+        </footer>
       </div>
     </BrandContext.Provider>
   );

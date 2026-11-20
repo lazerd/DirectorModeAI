@@ -6,7 +6,7 @@ const description = 'Watch a Friday night run itself. Tennis, pickleball, padel.
 
 export const metadata: Metadata = {
   title, description,
-  alternates: { canonical: '/racquetsirl' },
+  alternates: { canonical: '/' },
   openGraph: { title, description, url: '/racquetsirl' },
 };
 
