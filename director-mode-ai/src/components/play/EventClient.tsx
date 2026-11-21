@@ -17,6 +17,7 @@ import { LevelChips } from './Levels';
 import { WeatherCard } from './Weather';
 import { ClubGamesLink } from './ClubGamesLink';
 import { trackEvent } from '@/lib/analytics';
+import { HostGroups } from './Groups';
 
 export type Res = { event: PlayEvent; playerKey?: string; code?: string };
 
@@ -127,6 +128,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
         {e.season && <SeasonTable e={e} />}
         {e.status !== 'done' && <PlaceMap e={e} className="mt-6" />}
         {e.isHost && <HostPanel e={e} busy={busy} act={act} hostKey={key} onMove={() => { setMoving(true); scrollTo({ top: 0, behavior: 'smooth' }); }} />}
+        {e.isHost && <HostGroups e={e} hostKey={key} />}
         {sheet && <StatusSheet e={e} busy={busy} act={act} hostKey={e.isHost ? key : null} onClose={() => setSheet(false)} />}
 
         <div className="mt-10 text-center text-[13px]" style={{ color: C.muted }}>
@@ -183,6 +185,10 @@ function JoinBox({ e, act, busy, here }: { e: PlayEvent; act: (b: Record<string,
   const [g, setG] = useState<'male' | 'female' | ''>('');
   const [team, setTeam] = useState<'A' | 'B' | ''>('');
   const [lvl, setLvl] = useState<number | null>(null);
+  // Groups: optional "email me when the host posts a game". Private to the host's server side.
+  const [email, setEmail] = useState('');
+  const [optIn, setOptIn] = useState(false);
+  useEffect(() => { try { setEmail(localStorage.getItem('cc_email') || ''); } catch { /* */ } }, []);
   useEffect(() => { setN(getName()); setLvl(getMyLevel(e.sport)); }, [e.sport]);
   const range = { min: e.level_min ?? null, max: e.level_max ?? null };
   const note = levelNote(range, lvl, e.sport);
@@ -191,7 +197,8 @@ function JoinBox({ e, act, busy, here }: { e: PlayEvent; act: (b: Record<string,
     if (!name.trim()) return;
     setName(name.trim());
     setMyLevel(e.sport, lvl);
-    await act({ action: 'join', name: name.trim(), gender: g || null, team: team || null, level_num: lvl, here: !!here });
+    if (optIn && email.trim()) { try { localStorage.setItem('cc_email', email.trim()); } catch { /* */ } }
+    await act({ action: 'join', name: name.trim(), gender: g || null, team: team || null, level_num: lvl, here: !!here, ...(optIn && email.trim() ? { email: email.trim(), email_opt_in: true } : {}) });
   };
   return (
     <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
@@ -230,6 +237,14 @@ function JoinBox({ e, act, busy, here }: { e: PlayEvent; act: (b: Record<string,
           ))}
           <span className="self-center" style={{ color: C.muted }}>for mixed pairings</span>
         </div>
+      )}
+      <label className="mt-3 flex items-start gap-2 text-[13px]">
+        <input type="checkbox" checked={optIn} onChange={(x) => setOptIn(x.target.checked)} className="mt-0.5 h-4 w-4 shrink-0 accent-[#103c32]" />
+        <span>Email me when {e.host_name || 'this host'} posts a game <span style={{ color: C.muted }}>(optional; only the host&apos;s invites, unsubscribe anytime)</span></span>
+      </label>
+      {optIn && (
+        <input type="email" value={email} onChange={(x) => setEmail(x.target.value)} placeholder="you@email.com" aria-label="Your email" autoComplete="email" maxLength={200}
+          className="mt-2 w-full rounded-xl border bg-white px-3 py-2.5 text-[16px] outline-none" style={{ borderColor: C.line }} />
       )}
     </section>
   );

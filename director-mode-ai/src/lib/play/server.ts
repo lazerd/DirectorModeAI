@@ -12,6 +12,7 @@ import { crownChanged, nearbyNeedOne, watchCrown } from './notify';
 import { LEVEL_SCALE, levelNum, type LevelSport } from './levels';
 import { standings } from '@/lib/mixer/guestMixer';
 import { normalizeDraft, type PlayDraft, type PlayEvent, type PlayRsvp, type PlayState } from './core';
+import { cleanEmail } from './groups';
 
 const ALPHA = 'abcdefghjkmnpqrstuvwxyz23456789';
 const code = (n = 6) => [...randomBytes(n)].map((b) => ALPHA[b % ALPHA.length]).join('');
@@ -209,6 +210,9 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       // Someone who left (or was removed) and comes back keeps their row, so their rounds still count.
       const back = !mine ? rs.find((r) => r.status === 'out' && r.name.toLowerCase() === name.toLowerCase()) : undefined;
       const fields = { name, gender: gender(body.gender), level: levelText, level_num, player_key: pk, status, team, ...(here ? { checked_in_at: nowIso(), checked_in_by: 'self' } : {}) };
+      // Groups: "Email me when <host> posts a game". Only stored when ticked; never sent back to other players (view() lists rsvp fields explicitly).
+      const optIn = body.email_opt_in === true ? cleanEmail(body.email) : null;
+      if (optIn) Object.assign(fields, { email: optIn, email_opt_in: true });
       const { data, error } = back
         ? await db.from('play_rsvps').update(fields).eq('id', back.id).select('id').single()
         : await db.from('play_rsvps').insert({ event_id: row.id, ...fields }).select('id').single();

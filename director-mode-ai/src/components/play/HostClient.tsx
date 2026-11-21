@@ -13,6 +13,7 @@ import EventPicker from './EventPicker';
 import { ClubGamesLink } from './ClubGamesLink';
 import { trackEvent } from '@/lib/analytics';
 import type { DrawFormat } from '@/lib/play/draw';
+import { InviteGroupPicker } from './Groups';
 
 const EXAMPLES = [
   'Doubles Friday 6pm at Heather Farm, 3.5–4.0, need 3 more',
@@ -43,6 +44,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   const [paywall, setPaywall] = useState<PaywallInfo | null>(null);
   // Tournament: which draw (round robin singles / doubles). Sent with the create; changeable on the event page until the start.
   const [drawFormat, setDrawFormat] = useState<DrawFormat>('rr-singles');
+  const [inviteGroup, setInviteGroup] = useState(''); // Groups: email the new link to this saved group
   // Kevin's scorecard: time from first intent to a created game.
   const t0 = useRef<number | null>(null);
   const drafted = useRef(false);
@@ -117,7 +119,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       if (!r.ok) throw new Error(j.error || 'Could not make it');
       setKey(j.code, j.hostKey);
       trackEvent('feature_use', 'play_created', 'courtconnect', { kind: d.kind, spots: d.spots, ms: t0.current ? Date.now() - t0.current : null, voice: usedMic.current });
-      router.push(`/p/${j.code}?new=1`);
+      router.push(`/p/${j.code}?new=1${inviteGroup ? `&group=${encodeURIComponent(inviteGroup)}` : ''}`);
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not make it'); setSaving(false); }
   }
 
@@ -272,6 +274,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
               <input type="checkbox" checked={!!draft.repeat_weekly} onChange={(e) => set({ repeat_weekly: e.target.checked })} className="h-5 w-5 bg-white accent-[#103c32]" />
               Every week (next week’s game makes itself)
             </label>
+            <InviteGroupPicker value={inviteGroup} onChange={setInviteGroup} />
             {err && <p className="text-[14px] text-[#b4432f]">{err}</p>}
             <button onClick={() => create({ ...draft, listed: listed && draft.place_lat != null })} disabled={saving} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : null} Make my link
