@@ -67,8 +67,8 @@ const FormatSelector = ({ eventId, playerCount, courtCount, onFormatSelected, on
       },
       {
         id: "round-robin",
-        name: "Team Round Robin",
-        description: "Fixed partner pairs stay together all rounds. Add players in pairs: player 1 & 2 are partners, player 3 & 4 are partners, etc.",
+        name: "Round Robin (rotating)",
+        description: "Partners change each round — casual mixer style. For fixed-team round robin with player pairs, use the Round Robin tournament format instead.",
         playersPerCourt: 4,
         icon: "🔄",
       },

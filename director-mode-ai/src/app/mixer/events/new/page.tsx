@@ -72,7 +72,7 @@ function CreateEventForm() {
       'mixed-doubles': 'Mixed Doubles Mixer',
       'maximize-courts': 'Optimize Courts (Auto Singles/Doubles)',
       'king-of-court': 'King of the Court',
-      'round-robin': 'Team Round Robin',
+      'round-robin': 'Round Robin (rotating)',
       'single-elimination': 'Single Elimination Tournament',
       'single-elimination-singles': 'Singles Tournament',
       'single-elimination-doubles': 'Doubles Tournament',
