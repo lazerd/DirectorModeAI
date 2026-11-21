@@ -51,6 +51,19 @@ describe('standings rank like MixerMode', () => {
   });
 });
 
+describe('ranks ignore players who have not played', () => {
+  it('a 0-1 player ranks right after the winners, not behind people who have not played', () => {
+    const m: GuestMixer = { ...newMixer(), format: 'singles', players: players(11),
+      rounds: [{ number: 1, sittingOut: [], matches: [
+        { court: 1, teamA: ['p1'], teamB: ['p2'], scoreA: 6, scoreB: 2 },
+        { court: 2, teamA: ['p3'], teamB: ['p4'], scoreA: 6, scoreB: 4 },
+      ] }] };
+    const st = standings(m);
+    expect(st.map((s) => s.id)).toEqual(['p1', 'p3', 'p4', 'p2']);
+    expect(st.map((s) => s.rank)).toEqual(['1', '2', '3', '4']);
+  });
+});
+
 describe('smart pairing (MixerMode policy)', () => {
   it('round 1 puts a strong and a weaker player on every doubles court when levels are known', () => {
     const lv = [5, 4.5, 4.5, 4, 3.5, 3, 3, 2.5];

@@ -298,8 +298,10 @@ export function standings(m: GuestMixer): Standing[] {
       team1_score: x.scoreA ?? 0, team2_score: x.scoreB ?? 0, winner_team: w === 'A' ? 1 : 2,
     });
   }
-  return computeIndividualStandings(m.players.map((p) => ({ id: p.id, name: p.name })), rows)
-    .filter((x) => x.played > 0)
+  // Rank only people who have played: someone who hasn't played yet must not push a 0-1 player down
+  // (and must not inflate shared ranks like "T-10").
+  const played = new Set(rows.flatMap((r) => [r.player1_id, r.player2_id, r.player3_id, r.player4_id]).filter(Boolean) as string[]);
+  return computeIndividualStandings(m.players.filter((p) => played.has(p.id)).map((p) => ({ id: p.id, name: p.name })), rows)
     .map((x) => ({ id: x.id, name: x.name, played: x.played, wins: x.wins, losses: x.losses, gamesFor: x.gamesWon, gamesAgainst: x.gamesLost, rank: x.rank }));
 }
 
