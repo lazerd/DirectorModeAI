@@ -26,11 +26,16 @@ describe('the canonical product list', () => {
     expect(PRODUCT_COUNT).toBe(18);
   });
 
-  it('has exactly one CourtConnect, pointing at the per-club director view', () => {
-    const cc = PRODUCTS.filter((t) => t.name === 'Racquets IRL');
+  it('has exactly one CourtConnect (shown as Club Games), pointing at the per-club director view', () => {
+    const cc = PRODUCTS.filter((t) => t.name === 'Club Games');
     expect(cc).toHaveLength(1);
     expect(cc[0].href).toBe('/run/members/courtconnect');
     expect(PRODUCTS.map((t) => t.name)).not.toContain('Partner Finder');
+  });
+
+  it('sends "Racquets IRL" to the public /play product and "Club Games" to the club board', () => {
+    expect(FOR_PLAYERS.find((t) => t.name === 'Racquets IRL')?.href).toBe('/play');
+    expect(FOR_PLAYERS.find((t) => t.name === 'Club Games')?.href).toBe('/member/games');
   });
 
   it('counts only entries explicitly flagged as products', () => {

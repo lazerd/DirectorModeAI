@@ -228,7 +228,7 @@ export default async function MemberHome() {
           {club.is_public && (
             <Action href={`/courtsheet/${club.slug}`} icon={LayoutGrid} label="Court sheet" tone="#0891b2" />
           )}
-          <Action href="/member/games" icon={Handshake} label="Racquets IRL" tone="#059669" />
+          <Action href="/member/games" icon={Handshake} label="Club Games" tone="#059669" />
           <Action href="/client/dashboard" icon={GraduationCap} label="My lessons" tone="#7c3aed" />
           <Action href="/find-coach" icon={User} label="Find a coach" tone="#ea580c" />
           <Action href="/client/dashboard" icon={Trophy} label="My progress" tone="#ca8a04" />
@@ -310,7 +310,7 @@ export default async function MemberHome() {
           <div className="flex items-baseline justify-between gap-3 mb-3">
             <div>
               <h2 className="text-xl font-semibold flex items-center gap-2">
-                <Handshake className="w-6 h-6 text-emerald-600" /> Racquets IRL
+                <Handshake className="w-6 h-6 text-emerald-600" /> Club Games
               </h2>
               <p className="text-base text-slate-600">Games looking for players at your club</p>
             </div>
@@ -338,7 +338,7 @@ export default async function MemberHome() {
                 href="/member/games"
                 className="inline-flex min-h-[48px] items-center rounded-xl border-2 border-emerald-700 px-4 text-lg font-semibold text-emerald-800 hover:bg-emerald-50"
               >
-                Post a game on Racquets IRL
+                Post a game on Club Games
               </Link>
             </div>
           </div>

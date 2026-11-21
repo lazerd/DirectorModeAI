@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
         },
       },
       {
-        name: 'Racquets IRL',
+        name: 'Club Games',
         color: '#34d399',
         icon: 'Users',
         userCount: ccPosters.size,

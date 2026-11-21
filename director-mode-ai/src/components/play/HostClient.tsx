@@ -10,6 +10,7 @@ import { normalizeDraft, parseSentence, perCourt, whenLine, type PlayDraft } fro
 import { C, PlayHeader, apiRaw, canListen, getClub, getHostId, getName, listen, savePending, setClub, setKey, setName, takePending } from './shared';
 import Paywall, { type PaywallInfo } from './Paywall';
 import EventPicker from './EventPicker';
+import { ClubGamesLink } from './ClubGamesLink';
 import { trackEvent } from '@/lib/analytics';
 
 const EXAMPLES = [
@@ -276,6 +277,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             {paywall ? <Paywall info={paywall} /> : <p className="text-center text-[12px]" style={{ color: C.muted }}>Your first event is free. Joining is always free.</p>}
           </section>
         )}
+        <ClubGamesLink className="mt-8 text-center text-[13px]" />
       </main>
     </div>
   );

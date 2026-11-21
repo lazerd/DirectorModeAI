@@ -375,7 +375,7 @@ function CourtConnectCard({
         <Handshake size={20} className="text-emerald-300" />
       </div>
       <div className="flex-1 min-w-0">
-        <div className="font-semibold">Need a game? Find one on Racquets IRL</div>
+        <div className="font-semibold">Need a game? Find one on Club Games</div>
         <div className="text-sm text-white/60 mt-0.5">
           {count}
           {audience === 'member'

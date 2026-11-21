@@ -386,7 +386,7 @@ describe('why_no_emails', () => {
 
   it('spots muted game emails and a missing address', async () => {
     const { pack } = setup();
-    expect(((await pack.execute('why_no_emails', { name: 'Muted Max' })) as any).findings.join(' ')).toMatch(/turned off Racquets IRL/);
+    expect(((await pack.execute('why_no_emails', { name: 'Muted Max' })) as any).findings.join(' ')).toMatch(/turned off Club Games/);
     expect(((await pack.execute('why_no_emails', { name: 'Nomail Ned' })) as any).findings.join(' ')).toMatch(/No email/);
   });
 });

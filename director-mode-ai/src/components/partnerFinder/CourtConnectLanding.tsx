@@ -22,7 +22,7 @@ const STEPS = [
   {
     icon: Mail,
     title: 'Members at your level get the invite',
-    body: 'Racquets IRL emails the players at your club who fit the game. Nobody gets spammed with games they would never play.',
+    body: 'Club Games emails the players at your club who fit the game. Nobody gets spammed with games they would never play.',
   },
   {
     icon: BellRing,
@@ -61,10 +61,10 @@ export default function CourtConnectLanding({ sharedBy }: { sharedBy?: { name: s
         <section className="mx-auto max-w-5xl px-5 pb-16 pt-10 md:pt-20">
           {sharedBy && (
             <p className="mb-6 inline-block rounded-full border border-white/15 bg-white/[0.06] px-4 py-2 text-sm text-white/80">
-              {sharedBy.name} uses Racquets IRL to organize games at {sharedBy.club} and thought you&rsquo;d want it too.
+              {sharedBy.name} uses Club Games to organize games at {sharedBy.club} and thought you&rsquo;d want it too.
             </p>
           )}
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#D3FB52]">Racquets IRL by ClubMode</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#D3FB52]">Club Games by ClubMode</p>
           <h1 className="mt-4 max-w-3xl text-5xl font-bold leading-[1.02] tracking-tight md:text-7xl">
             Need a fourth?
             <span className="block text-white/50">Find one in minutes.</span>
@@ -78,7 +78,7 @@ export default function CourtConnectLanding({ sharedBy }: { sharedBy?: { name: s
               href={START_HREF}
               className="inline-flex items-center gap-2 rounded-xl bg-[#D3FB52] px-6 py-3 text-base font-semibold text-[#002838] hover:brightness-95"
             >
-              Start Racquets IRL at your club <ArrowRight className="h-5 w-5" />
+              Start Club Games at your club <ArrowRight className="h-5 w-5" />
             </Link>
             <Link href={SIGN_IN_HREF} className="text-base font-semibold text-white/70 hover:text-white">
               My club already uses it
@@ -102,7 +102,7 @@ export default function CourtConnectLanding({ sharedBy }: { sharedBy?: { name: s
           <div className="min-w-0">
             <h2 className="text-2xl font-bold">Built by a working Director of Tennis</h2>
             <p className="mt-3 text-white/65">
-              Racquets IRL runs the partner finding at Sleepy Hollow Swim &amp; Tennis Club, where it started. It does
+              Club Games runs the partner finding at Sleepy Hollow Swim &amp; Tennis Club, where it started. It does
               the parts that eat a director&rsquo;s day:
             </p>
             <ul className="mt-5 space-y-3">
@@ -140,7 +140,7 @@ export default function CourtConnectLanding({ sharedBy }: { sharedBy?: { name: s
 
       <footer className="border-t border-white/10">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-6 text-sm text-white/45">
-          <span>Racquets IRL is part of ClubMode, free tools for racquet clubs.</span>
+          <span>Club Games is part of ClubMode, free tools for racquet clubs.</span>
           <Link href="/" className="hover:text-white">
             See all ClubMode tools
           </Link>
