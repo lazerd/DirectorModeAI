@@ -81,11 +81,11 @@ export async function sendSignInLink(rawEmail: unknown, rawNext: unknown, ip: st
   // Local testing: no auth user is made and nothing is sent.
   if (process.env.PLAY_EMAIL_DRY_RUN === '1') { console.log('[play groups] dry-run sign-in link for', email, '->', next); return 'sent'; }
   const admin = getSupabaseAdmin();
-  let { data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email });
-  if (error || !data?.properties?.hashed_token) {
-    await admin.auth.admin.createUser({ email, email_confirm: true }).catch(() => null);
-    ({ data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email }));
-  }
+  // Make sure the account exists FIRST. For an unknown email, generateLink('magiclink') quietly
+  // creates the user and returns a SIGNUP token, which then fails verifyOtp(type 'magiclink')
+  // at /auth/confirm (tested 11/21/26). createUser on an existing email just errors; ignore it.
+  await admin.auth.admin.createUser({ email, email_confirm: true }).catch(() => null);
+  const { data, error } = await admin.auth.admin.generateLink({ type: 'magiclink', email });
   const hashed = data?.properties?.hashed_token;
   if (error || !hashed) throw new PlayError('Could not make a sign-in link. Try again.', 500);
   const link = `${APP_URL}/auth/confirm?token_hash=${encodeURIComponent(hashed)}&type=magiclink&next=${encodeURIComponent(next)}`;
