@@ -9,8 +9,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { standings, teamScore, winnerOf, courtLabel, type GuestMatch, type GuestMixer } from '@/lib/mixer/guestMixer';
-import { FORMAT_NAME, awards, checkedIn, whenLine, type PlayEvent } from '@/lib/play/core';
-import { TIME_UP_TEXT, clockLeft, clockText, crossedZero, pollMs, roundAnnouncement } from '@/lib/play/tv';
+import { awards, checkedIn, formatLabel, whenLine, type PlayEvent } from '@/lib/play/core';
+import { TIME_UP_TEXT, clockLeft, clockText, crossedZero, drawBoardRows, drawCallout, pollMs, roundAnnouncement } from '@/lib/play/tv';
+import { courtName, drawProgress, entryOf, fillOrder, type Draw } from '@/lib/play/draw';
 import { speakText, cancelSpeech, isSpeechSupported } from '@/lib/browserSpeech';
 import { C, api } from './shared';
 
@@ -99,6 +100,7 @@ export default function TvBoard({ code, initial }: { code: string; initial: Play
   }, []);
 
   const m = e.state.mixer;
+  const d = e.format === 'tournament' ? e.state.draw ?? null : null;
   const round = m?.rounds[m.rounds.length - 1];
   const paused = !!e.state.pausedAt;
   const left = e.status === 'live' && round ? clockLeft(e.state.roundStartedAt, e.round_minutes, e.state.pausedAt, now) : null;
@@ -120,6 +122,17 @@ export default function TvBoard({ code, initial }: { code: string; initial: Play
     if (sig && sig !== lastSig.current && m && round && e.status === 'live') say(roundAnnouncement(m, round), 'round');
     lastSig.current = sig;
   }, [sig, m, round, e.status, say]);
+
+  // Tournament: matches going on court get called out. Not on first load.
+  const onCourtSig = d ? d.matches.filter((x) => x.status === 'on_court').map((x) => `${x.key}@${x.court}`).sort().join(';') : '';
+  const lastOnCourt = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!d) return;
+    const cur = new Set(d.matches.filter((x) => x.status === 'on_court').map((x) => x.key));
+    if (lastOnCourt.current && e.status === 'live') { const text = drawCallout(d, lastOnCourt.current); if (text) say(text, 'round'); }
+    lastOnCourt.current = cur;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onCourtSig, e.status, say]);
 
   // The clock hits zero while we're watching → "Time."
   const prevLeft = useRef<number | null>(null);
@@ -162,7 +175,7 @@ export default function TvBoard({ code, initial }: { code: string; initial: Play
           </svg>
           <div className="min-w-0">
             <div className="truncate font-semibold leading-tight" style={{ fontSize: 'clamp(18px,2vw,40px)' }}>{e.title}</div>
-            <div className="truncate" style={{ color: SOFT, fontSize: 'clamp(12px,1vw,20px)' }}>{FORMAT_NAME[e.format]}{e.location ? ` · ${e.location}` : ''}{stale ? ' · reconnecting…' : ''}</div>
+            <div className="truncate" style={{ color: SOFT, fontSize: 'clamp(12px,1vw,20px)' }}>{formatLabel(e)}{e.location ? ` · ${e.location}` : ''}{stale ? ' · reconnecting…' : ''}</div>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2 text-[clamp(12px,0.9vw,18px)] font-semibold">
@@ -186,8 +199,10 @@ export default function TvBoard({ code, initial }: { code: string; initial: Play
       {e.status === 'live' && m && (
         <Live e={e} m={m} name={name} st={st} left={left} paused={paused} />
       )}
-      {e.status === 'live' && !m && <Center text="Starting soon" />}
-      {e.status === 'done' && <Done e={e} m={m} st={st} />}
+      {e.status === 'live' && d && <DrawLive d={d} now={now} />}
+      {e.status === 'live' && !m && !d && <Center text="Starting soon" />}
+      {e.status === 'done' && d && <DrawDone d={d} />}
+      {e.status === 'done' && !d && <Done e={e} m={m} st={st} />}
     </main>
   );
 }
@@ -365,6 +380,82 @@ function Done({ e, m, st }: { e: PlayEvent; m?: GuestMixer; st: ReturnType<typeo
         <div className="grid gap-[1vw] md:grid-cols-2">
           <Board st={st.slice(0, half)} max={half} title="" />
           {st.length > half && <Board st={st.slice(half, 24)} max={24} title="" />}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ---------- tournament: court board + standings ---------- */
+function DrawLive({ d, now }: { d: Draw; now: number }) {
+  const onCourt = d.matches.filter((x) => x.status === 'on_court');
+  const courts = Array.from({ length: Math.max(d.courts, ...onCourt.map((x) => x.court ?? 0)) }, (_, i) => i + 1);
+  const busy = new Set(onCourt.flatMap((x) => [x.player1_id, x.player3_id]));
+  const queue = d.matches.filter((x) => x.status === 'ready').sort(fillOrder).slice(0, 6);
+  const pr = drawProgress(d);
+  const nm = (id: string | null) => entryOf(d, id)?.name ?? 'TBD';
+  const rows = drawBoardRows(d);
+  return (
+    <section className="grid flex-1 gap-[1.5vw] px-[2vw] pb-[2vh] lg:grid-cols-[1fr_minmax(260px,26vw)]">
+      <div className="flex min-w-0 flex-col gap-[1.5vh]">
+        <div className="rounded-[1.5vw] px-[2vw] py-[1.5vh]" style={{ background: '#ffffff12' }}>
+          <div className="font-semibold uppercase tracking-[2px]" style={{ color: SOFT, fontSize: 'clamp(12px,1vw,22px)' }}>Matches played</div>
+          <div className="font-bold leading-none tabular-nums" style={{ fontSize: 'clamp(48px,6vw,140px)' }}>{pr.done}<span style={{ color: SOFT, fontSize: '0.5em' }}> / {pr.total}</span></div>
+        </div>
+        <div className="grid gap-[1vw]" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(clamp(260px, ${courts.length > 6 ? 20 : 26}vw, 640px), 1fr))` }}>
+          {courts.map((c) => {
+            const x = onCourt.find((y) => y.court === c);
+            const min = x?.startedAt ? Math.max(0, Math.floor((now - Date.parse(x.startedAt)) / 60000)) : 0;
+            return (
+              <div key={c} className="rounded-[1.2vw] p-[1.2vw]" style={{ background: x ? C.card : '#ffffff12', color: x ? C.ink : '#fff', fontSize: 'clamp(16px,1.5vw,34px)' }}>
+                <div className="mb-[0.6vh] flex items-center justify-between">
+                  <span className="font-bold" style={{ fontSize: '1.15em' }}>Court {courtName(d, c)}</span>
+                  <span className="rounded-full px-3 py-0.5 font-semibold" style={{ fontSize: '0.6em', background: x ? C.lime : '#ffffff1a', color: x ? C.ink : SOFT }}>{x ? `Playing · ${min} min` : 'Free'}</span>
+                </div>
+                {x ? (<>
+                  <div className="font-semibold leading-tight">{nm(x.player1_id)}</div>
+                  <div className="my-[0.4vh] font-semibold uppercase" style={{ color: C.muted, fontSize: '0.55em', letterSpacing: 2 }}>vs</div>
+                  <div className="font-semibold leading-tight">{nm(x.player3_id)}</div>
+                </>) : <div style={{ color: SOFT }}>Next match soon</div>}
+              </div>
+            );
+          })}
+        </div>
+        {queue.length > 0 && (
+          <div className="rounded-[1vw] px-[1.5vw] py-[1.2vh]" style={{ background: '#ffffff12', fontSize: 'clamp(15px,1.4vw,30px)' }}>
+            <div className="font-semibold uppercase tracking-[2px]" style={{ color: SOFT, fontSize: '0.7em' }}>Up next</div>
+            {queue.map((x) => {
+              const wait = [x.player1_id, x.player3_id].filter((id) => busy.has(id)).map(nm);
+              return <div key={x.key} className="flex justify-between gap-3"><span>{nm(x.player1_id)} vs {nm(x.player3_id)}</span><span style={{ color: SOFT, fontSize: '0.8em' }}>{wait.length ? `waiting on ${wait.join(' & ')}` : 'ready'}</span></div>;
+            })}
+          </div>
+        )}
+      </div>
+      <aside className="flex flex-col gap-[1.5vh]"><Board st={rows} max={16} title="Standings" /></aside>
+    </section>
+  );
+}
+
+function DrawDone({ d }: { d: Draw }) {
+  const rows = drawBoardRows(d);
+  const champ = rows[0]?.played ? rows[0] : null;
+  const half = Math.ceil(Math.min(rows.length, 24) / 2);
+  return (
+    <section className="grid flex-1 gap-[2vw] px-[3vw] pb-[3vh] lg:grid-cols-[1fr_1.2fr]">
+      <div className="flex flex-col justify-center gap-[2vh]">
+        {champ ? (
+          <div className="rounded-[1.5vw] p-[2vw] text-center" style={{ background: C.lime, color: C.ink }}>
+            <div className="font-semibold uppercase tracking-[3px]" style={{ fontSize: 'clamp(14px,1.3vw,26px)' }}>Champion</div>
+            <div className="font-bold leading-tight tracking-tight" style={{ fontSize: 'clamp(48px,7vw,160px)' }}>🏆 {champ.name}</div>
+            <div style={{ fontSize: 'clamp(16px,1.6vw,34px)' }}>{champ.wins}–{champ.losses} · games {champ.gamesFor}–{champ.gamesAgainst}</div>
+          </div>
+        ) : <Center text="That's a wrap" />}
+      </div>
+      <div className="flex flex-col justify-center">
+        <div className="mb-[1vh] font-semibold uppercase tracking-[2px]" style={{ color: SOFT, fontSize: 'clamp(12px,1vw,22px)' }}>Final standings</div>
+        <div className="grid gap-[1vw] md:grid-cols-2">
+          <Board st={rows.slice(0, half)} max={half} title="" />
+          {rows.length > half && <Board st={rows.slice(half, 24)} max={24} title="" />}
         </div>
       </div>
     </section>

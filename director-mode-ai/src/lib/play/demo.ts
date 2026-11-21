@@ -6,7 +6,7 @@
  * This module is pure (no React, no DOM). The tour drives it with the same
  * actions the real API takes, so the real screens render it unchanged.
  */
-import { generateRound, newMixer, standings, type GuestMixer } from '@/lib/mixer/guestMixer';
+import { generateRound, newMixer, standings, type GuestFormat, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { awards, normalizeDraft, type PlayDraft, type PlayEvent, type PlayRsvp } from '@/lib/play/core';
 
 export const DEMO_BRAND = 'Racquets IRL';
@@ -123,7 +123,7 @@ export function apply(e0: PlayEvent, b: Act, seed = 7): Applied {
     }
     case 'courts': e.courts = Math.min(24, Math.max(1, Number(b.courts))); if (m) m.courts = e.courts; break;
     case 'start': {
-      const mx: GuestMixer = { ...newMixer(), name: e.title, courts: e.courts, format: e.format, players: ins().map((r) => ({ id: r.id, name: r.name })), rounds: [] };
+      const mx: GuestMixer = { ...newMixer(), name: e.title, courts: e.courts, format: e.format as GuestFormat, players: ins().map((r) => ({ id: r.id, name: r.name })), rounds: [] };
       mx.rounds = [generateRound(mx, { seed })];
       e.status = 'live'; e.state = { ...e.state, mixer: mx, roundStartedAt: new Date().toISOString() };
       break;

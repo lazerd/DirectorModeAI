@@ -12,6 +12,7 @@ import Paywall, { type PaywallInfo } from './Paywall';
 import EventPicker from './EventPicker';
 import { ClubGamesLink } from './ClubGamesLink';
 import { trackEvent } from '@/lib/analytics';
+import type { DrawFormat } from '@/lib/play/draw';
 
 const EXAMPLES = [
   'Doubles Friday 6pm at Heather Farm, 3.5–4.0, need 3 more',
@@ -40,6 +41,8 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   const [err, setErr] = useState('');
   const started = useRef(false);
   const [paywall, setPaywall] = useState<PaywallInfo | null>(null);
+  // Tournament: which draw (round robin singles / doubles). Sent with the create; changeable on the event page until the start.
+  const [drawFormat, setDrawFormat] = useState<DrawFormat>('rr-singles');
   // Kevin's scorecard: time from first intent to a created game.
   const t0 = useRef<number | null>(null);
   const drafted = useRef(false);
@@ -51,8 +54,8 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     trackEvent('feature_use', 'play_host_open', 'courtconnect', {});
     if (club && /^[a-z0-9]{4,20}$/.test(club)) setClub(club);
     if (resume && !started.current) {
-      const p = takePending<{ draft: PlayDraft; host: string; playing: boolean; text: string }>();
-      if (p) { started.current = true; setDraft(p.draft); setHost(p.host); setPlaying(p.playing); setText(p.text); create(p.draft, p.host, p.playing, p.text); return; }
+      const p = takePending<{ draft: PlayDraft; host: string; playing: boolean; text: string; drawFormat?: DrawFormat }>();
+      if (p) { started.current = true; setDraft(p.draft); setHost(p.host); setPlaying(p.playing); setText(p.text); if (p.drawFormat) setDrawFormat(p.drawFormat); create(p.draft, p.host, p.playing, p.text, p.drawFormat); return; }
     }
     if (initial && !started.current) { started.current = true; build(initial); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -97,16 +100,16 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     if (stop) setMic(() => stop);
   }
 
-  async function create(d = draft, h = host, pl = playing, src = text) {
+  async function create(d = draft, h = host, pl = playing, src = text, df = drawFormat) {
     if (!d) return;
     if (!h.trim()) { setErr('Add your name so people know who is hosting.'); return; }
     setSaving(true); setErr('');
     try {
       setName(h.trim());
-      const r = await apiRaw('/api/p', { draft: d, host: { name: h.trim(), playing: pl }, source: src, hostId: getHostId(), clubCode: getClub() || undefined });
+      const r = await apiRaw('/api/p', { draft: d, host: { name: h.trim(), playing: pl }, source: src, hostId: getHostId(), clubCode: getClub() || undefined, ...(d.format === 'tournament' ? { drawFormat: df } : {}) });
       const j = await r.json().catch(() => ({}));
       if (r.status === 402) {
-        savePending({ draft: d, host: h.trim(), playing: pl, text: src });
+        savePending({ draft: d, host: h.trim(), playing: pl, text: src, drawFormat: df });
         setPaywall(j.paywall as PaywallInfo); setSaving(false);
         trackEvent('feature_use', 'play_paywall', 'courtconnect', {});
         return;
@@ -212,7 +215,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
         {draft && (
           <section className="mt-5 rounded-3xl p-5 text-white shadow-lg" style={{ background: C.ink }}>
             <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: '#bccdbb' }}>
-              <span>{draft.sport} · {draft.kind === 'game' ? 'a game' : 'rotating partners'}</span>
+              <span>{draft.sport} · {draft.format === 'tournament' ? 'tournament' : draft.kind === 'game' ? 'a game' : 'rotating partners'}</span>
               {thinking ? <span className="inline-flex items-center gap-1"><Sparkles className="h-3.5 w-3.5" /> tidying up…</span> : null}
             </div>
             <input value={draft.title} onChange={(e) => set({ title: e.target.value })} aria-label="Title"
@@ -245,12 +248,12 @@ export default function HostClient({ initial, club, resume }: { initial?: string
                     style={draft.level === x ? { background: C.lime, color: C.ink } : { background: '#ffffff14', color: '#fff' }}>{x}</button>
                 ))}
               </div>
-              {draft.kind === 'social' && <Stepper label="Min / round" value={draft.round_minutes} min={5} max={120} step={5} onChange={(v) => set({ round_minutes: v })} />}
+ {draft.kind === 'social' && draft.format !== 'tournament' && <Stepper label="Min / round" value={draft.round_minutes} min={5} max={120} step={5} onChange={(v) => set({ round_minutes: v })} />}
             </div>
           </section>
         )}
 
-        {draft && <EventPicker value={draft.format} spots={draft.spots} courts={draft.courts} onChange={(f) => set({ format: f, kind: draft.spots == null || draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' || f === 'team-battle' ? 'social' : draft.kind })} />}
+        {draft && <EventPicker value={draft.format} drawFormat={drawFormat} spots={draft.spots} courts={draft.courts} onChange={(f, df) => { if (df) setDrawFormat(df); set({ format: f, kind: draft.spots == null || draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' || f === 'team-battle' || f === 'tournament' ? 'social' : draft.kind }); }} />}
         {draft && draft.spots == null && <p className="mt-2 px-1 text-[12px]" style={{ color: C.muted }}>No player cap: anyone can tap in, and on the day you check in whoever shows up. Only checked-in players get put on courts.</p>}
 
         {draft && (

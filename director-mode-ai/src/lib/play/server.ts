@@ -5,7 +5,9 @@ import { generateRound, newMixer, roundComplete, cannotGenerate, type GuestMixer
 import { crownFor } from './crown';
 import { hostingAllowed, passCheckoutUrl } from './passes';
 import { callTheGame, hypeJoin, hypePreview, softenLine, type Spice } from './recap';
-import { FORMAT_NAME, whenLine } from './core';
+import { formatLabel, whenLine } from './core';
+import { DrawError, buildDraw, fillCourts, isDrawFormat, moveMatch, type Draw, type DrawFormat, type DrawHow } from './draw';
+import { cleanPairs, scoreDraw, scoreOnly } from './drawScore';
 import { crownChanged, nearbyNeedOne, watchCrown } from './notify';
 import { LEVEL_SCALE, levelNum, type LevelSport } from './levels';
 import { standings } from '@/lib/mixer/guestMixer';
@@ -62,15 +64,17 @@ export async function view(c: string, key?: string | null): Promise<PlayEvent | 
   };
 }
 
-export async function createEvent(d: Partial<PlayDraft>, host: { name?: string | null; playing?: boolean; gender?: 'male' | 'female' | null }, opts: { source?: string; parentId?: string; hostId?: string | null; clubCode?: string | null } = {}) {
+export async function createEvent(d: Partial<PlayDraft>, host: { name?: string | null; playing?: boolean; gender?: 'male' | 'female' | null }, opts: { source?: string; parentId?: string; hostId?: string | null; clubCode?: string | null; drawFormat?: DrawFormat | null } = {}) {
   const db = getSupabaseAdmin();
   const draft = normalizeDraft(d);
+  // A tournament remembers its draw type until the start (round robin singles unless picked).
+  const state: PlayState = draft.format === 'tournament' ? { drawFormat: isDrawFormat(opts.drawFormat) ? opts.drawFormat : 'rr-singles' } : {};
   const hostKey = newKey();
   for (let i = 0; i < 5; i++) {
     const c = code();
     const { data, error } = await db.from('play_events').insert({
       ...draft, code: c, host_key: hostKey, host_name: host.name?.trim().slice(0, 40) || null,
-      source_text: opts.source?.slice(0, 500) ?? null, parent_id: opts.parentId ?? null, state: {},
+      source_text: opts.source?.slice(0, 500) ?? null, parent_id: opts.parentId ?? null, state,
       host_id: opts.hostId?.slice(0, 64) ?? null, club_code: opts.clubCode?.slice(0, 20) ?? null,
     }).select('id, code').single();
     if (error?.code === '23505') continue;
@@ -102,7 +106,21 @@ async function mutate(row: Row, fn: (r: Row) => Partial<Row> | null) {
   throw new PlayError('Busy, try again.', 409);
 }
 
-const mixerOf = (r: Row): GuestMixer => r.state?.mixer ?? { ...newMixer(), name: r.title, courts: r.courts, format: r.format };
+const mixerOf = (r: Row): GuestMixer => {
+  if (r.format === 'tournament') throw new PlayError('A tournament runs on its draw, not rounds.');
+  return r.state?.mixer ?? { ...newMixer(), name: r.title, courts: r.courts, format: r.format };
+};
+
+/** Draw rules speak DrawError; the page gets a plain 400 with the same words. */
+function onDraw<T>(f: () => T): T {
+  try { return f(); } catch (x) { if (x instanceof DrawError) throw new PlayError(x.message); throw x; }
+}
+const drawOf = (r: Row): Draw => {
+  if (r.format !== 'tournament') throw new PlayError('This event isn’t a tournament.');
+  if (!r.state?.draw) throw new PlayError('Start the tournament first.');
+  return r.state.draw;
+};
+const side = (v: unknown): 'a' | 'b' | null => (v === 'a' || v === 'b' ? v : null);
 
 async function promoteWaitlist(row: Row) {
   const db = getSupabaseAdmin();
@@ -273,8 +291,11 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     case 'edit': {
       hostOnly();
       const d = normalizeDraft({ ...row, ...(body.draft as Partial<PlayDraft>) });
+      // Mixer <-> tournament is a different event once it's running.
+      if (row.status !== 'open' && (d.format === 'tournament') !== (row.format === 'tournament')) throw new PlayError('A tournament and a social can’t switch once it has started.');
       // A live night can switch format (people didn't show: doubles -> Optimize Courts); it applies from the next round.
-      await mutate(row, (r) => ({ ...d, state: r.state?.mixer ? { ...r.state, mixer: { ...r.state.mixer, courts: d.courts, format: d.format, name: d.title } } : r.state }));
+      await mutate(row, (r) => ({ ...d, state: r.state?.mixer && d.format !== 'tournament' ? { ...r.state, mixer: { ...r.state.mixer, courts: d.courts, format: d.format, name: d.title } }
+        : d.format === 'tournament' && !r.state?.drawFormat ? { ...r.state, drawFormat: 'rr-singles' } : r.state }));
       if (row.status === 'open') await promoteWaitlist({ ...row, spots: d.spots });
       return {};
     }
@@ -332,8 +353,21 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
           r.team = t; await db.from('play_rsvps').update({ team: t }).eq('id', r.id);
         }
       }
+      if (row.format === 'tournament') {
+        // The draw: checked-in players in signup order, seeded by level, pairs from the host (doubles).
+        const ps = here.map((r) => ({ id: r.id, name: r.name, level: lvl(r.level_num) }));
+        await mutate(row, (r) => {
+          if (r.status !== 'open') throw new PlayError('Already started.');
+          const fmt = isDrawFormat(body.format) ? body.format : r.state?.drawFormat ?? 'rr-singles';
+          const now = nowIso();
+          const draw = onDraw(() => fillCourts(buildDraw(fmt, ps, r.courts, { pairs: r.state?.drawPairs ?? null, courtLabels: r.state?.courtLabels ?? null }), now));
+          return { status: 'live', state: { ...r.state, drawFormat: fmt, draw } };
+        });
+        return {};
+      }
       const players = here.map((r) => ({ id: r.id, name: r.name, ...(r.gender ? { gender: r.gender } : {}), ...(r.team ? { team: r.team } : {}), ...(lvl(r.level_num) != null ? { level: lvl(r.level_num) } : {}) }));
       await mutate(row, (r) => {
+        if (r.format === 'tournament') throw new PlayError('A tournament runs on its draw, not rounds.');
         const m: GuestMixer = { ...newMixer(), name: r.title, courts: r.courts, format: r.format, players, rounds: [],
           pairing: body.pairing === 'random' || r.state?.pairingPref === 'random' ? 'random' : 'smart',
           courtLabels: r.state?.courtLabels ?? null, teamSplit: r.state?.teamSplit ?? null };
@@ -361,7 +395,9 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     case 'courts': {
       hostOnly();
       const n = Math.min(24, Math.max(1, Math.round(Number(body.courts))));
-      await mutate(row, (r) => ({ courts: n, state: r.state?.mixer ? { ...r.state, mixer: { ...r.state.mixer, courts: n } } : r.state }));
+      await mutate(row, (r) => ({ courts: n, state: r.state?.mixer ? { ...r.state, mixer: { ...r.state.mixer, courts: n } }
+        // A tournament: matches already on a court past the new count finish where they are; new ones use 1..n.
+        : r.state?.draw ? { ...r.state, draw: r.status === 'live' ? fillCourts({ ...r.state.draw, courts: n }) : { ...r.state.draw, courts: n } } : r.state }));
       return {};
     }
     case 'score': {
@@ -423,7 +459,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     case 'labels': { // host: the club's court numbers ("5-8", "5,6,7,8", "Center, 2, 3")
       hostOnly();
       const labels = parseLabels(body.labels);
-      await mutate(row, (r) => ({ state: { ...r.state, courtLabels: labels, ...(r.state?.mixer ? { mixer: { ...r.state.mixer, courtLabels: labels } } : {}) } }));
+      await mutate(row, (r) => ({ state: { ...r.state, courtLabels: labels, ...(r.state?.mixer ? { mixer: { ...r.state.mixer, courtLabels: labels } } : {}), ...(r.state?.draw ? { draw: { ...r.state.draw, courtLabels: labels } } : {}) } }));
       return {};
     }
     case 'pairing': { // host: smart (balanced by level, then by standings) or random shuffle
@@ -474,7 +510,63 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     }
     case 'reopen': {
       hostOnly();
-      await mutate(row, (r) => ({ status: r.state?.mixer ? 'live' : 'open' }));
+      await mutate(row, (r) => ({ status: r.state?.mixer || r.state?.draw ? 'live' : 'open' }));
+      return {};
+    }
+    /* ---------------- tournaments (state.draw) ---------------- */
+    case 'draw_format': { // host, before the start: which draw (singles / doubles round robin now)
+      hostOnly();
+      if (row.format !== 'tournament') throw new PlayError('This event isn’t a tournament.');
+      if (row.status !== 'open') throw new PlayError('The draw is already made.');
+      if (!isDrawFormat(body.format)) throw new PlayError('That tournament format isn’t ready yet.');
+      const f = body.format;
+      await mutate(row, (r) => ({ state: { ...r.state, drawFormat: f } }));
+      return {};
+    }
+    case 'draw_pairs': { // host, before the start: doubles pairs (rsvp ids). Anyone unpaired is auto-paired at the start.
+      hostOnly();
+      if (row.format !== 'tournament') throw new PlayError('This event isn’t a tournament.');
+      if (row.status !== 'open') throw new PlayError('The draw is already made.');
+      const pairs = onDraw(() => cleanPairs(body.pairs, new Set(rs.filter((r) => r.status !== 'out').map((r) => r.id))));
+      await mutate(row, (r) => ({ state: { ...r.state, drawPairs: pairs.length ? pairs : null } }));
+      return {};
+    }
+    case 'draw_score':
+    case 'draw_walkover': { // a player in the match (or the host) enters the score; W/O, RET and DEF are the host's
+      if (action === 'draw_walkover') hostOnly();
+      if (!isHost && !mine) throw new PlayError('Join first, then you can enter scores.', 403);
+      const k = s(body.key, 40);
+      const w = side(body.winner);
+      if (!w) throw new PlayError('Pick who won.');
+      const how: DrawHow | null = action === 'draw_walkover' ? (body.how === 'RET' || body.how === 'DEF' ? body.how : 'W/O') : null;
+      const raw = typeof body.score === 'string' ? body.score.slice(0, 60) : null;
+      await mutate(row, (r) => {
+        const d = drawOf(r);
+        const m = d.matches.find((x) => x.key === k);
+        if (!m) throw new PlayError('That match isn’t in the draw.');
+        if (!isHost) {
+          if (r.status !== 'live') throw new PlayError('Scores are locked. Ask the host to fix it.', 403);
+          const inIt = [m.player1_id, m.player3_id].some((id) => d.entries.find((e) => e.id === id)?.rsvpIds.includes(mine!.id));
+          if (!inIt) throw new PlayError('Only the players in that match (or the host) can score it.', 403);
+          if (m.status === 'done') throw new PlayError('That one is already scored. Ask the host to fix it.', 403);
+        }
+        const now = nowIso();
+        // Live: the freed court takes the next match. Ended: a fix changes the result only.
+        const next = onDraw(() => (r.status === 'live' ? scoreDraw(d, k, w, raw, how, now) : scoreOnly(d, k, w, raw, how, now)));
+        return { state: { ...r.state, draw: next } };
+      });
+      return {};
+    }
+    case 'draw_court': { // host: put a match on a court, take it off (it waits), or 'auto' (back in line)
+      hostOnly();
+      const k = s(body.key, 40);
+      const c: number | null | 'auto' = body.court === 'auto' ? 'auto' : body.court == null || body.court === '' ? null : Number(body.court);
+      await mutate(row, (r) => {
+        const d = drawOf(r);
+        if (r.status !== 'live') throw new PlayError('The tournament isn’t running.');
+        const now = nowIso();
+        return { state: { ...r.state, draw: onDraw(() => fillCourts(moveMatch(d, k, c, now), now)) } };
+      });
       return {};
     }
     case 'runback': {
@@ -541,7 +633,7 @@ async function hype(c: string, joined: { id: string; name: string } | null) {
   const row = await loadRow(c);
   if (!row || row.status !== 'open') return;
   const rs = (await loadRsvps(row.id)).filter((r) => r.status === 'in');
-  const ev = { title: row.title, when: whenLine(row, 'America/Los_Angeles'), location: row.location, level: row.level, spots: row.spots ?? 0, sport: row.sport, format: FORMAT_NAME[row.format as keyof typeof FORMAT_NAME] ?? row.format };
+  const ev = { title: row.title, when: whenLine(row, 'America/Los_Angeles'), location: row.location, level: row.level, spots: row.spots ?? 0, sport: row.sport, format: formatLabel(row) };
   const cur = row.state?.preview;
   if (joined && cur) {
     const line = await hypeJoin(ev, joined.name, rs.filter((r) => r.id !== joined.id).map((r) => r.name));
