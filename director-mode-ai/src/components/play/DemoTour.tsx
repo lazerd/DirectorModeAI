@@ -311,7 +311,7 @@ export default function DemoTour() {
       chapter(4);
       beat('Friday, 6:02pm, at the courts. Jordan taps Start.', 'host');
       await wait(1200);
-      await tap('host', "text:We're here. Start");
+      await tap('host', '[data-demo="start"]');
       run({ action: 'start' }); set({ banner: false });
       await sleep(40); P('host').scroller?.scrollTo({ top: 0 }); P('maya').scroller?.scrollTo({ top: 0 });
       roundAlert(1);
@@ -585,13 +585,15 @@ function EventScreen({ e, act, busy, tab, setTab, sheet, setSheet, banner }: {
         {banner && e.isHost && e.status === 'open' && (
           <div className="mb-3 rounded-2xl p-4 text-[14px]" style={{ background: C.lime }}><b>Your link is ready.</b> Send it to your group chat. Everything else happens on this page.</div>
         )}
-        <EventCard e={e} onStatus={() => setSheet(true)} />
+        <EventCard e={e} onStatus={() => setSheet(true)} compact={e.status !== 'open'} />
         <div data-demo="tape-anchor" />
+        {/* Same order as the real page (EventClient): the host's panel sits up top, live controls under the clock. */}
+        {e.status === 'open' && e.isHost && <HostPanel e={e} busy={busy} act={act} hostKey={null} />}
         {e.status === 'open' && <OpenView e={e} meName={meR?.name} busy={busy} act={act} code="demo" />}
-        {e.status === 'live' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code="demo" />}
+        {e.status === 'live' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code="demo" hostSlot={e.isHost ? <HostPanel e={e} busy={busy} act={act} hostKey={null} /> : null} />}
         {e.status === 'done' && <DoneView e={e} busy={busy} act={act} code="demo" myName={meR?.name} />}
-        {e.status === 'open' && <PlaceMap e={e} className="mt-6" />}
-        {e.isHost && <HostPanel e={e} busy={busy} act={act} hostKey={null} />}
+        {e.status === 'open' && <PlaceMap e={e} className="mt-4" />}
+        {e.isHost && e.status === 'done' && <HostPanel e={e} busy={busy} act={act} hostKey={null} />}
         {sheet && <StatusSheet e={e} busy={busy} act={act} hostKey={e.isHost ? 'demo-host-link' : null} onClose={() => setSheet(false)} />}
       </main>
     </div>

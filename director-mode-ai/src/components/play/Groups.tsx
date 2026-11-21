@@ -149,9 +149,9 @@ export function HostGroups({ e, hostKey }: { e: PlayEvent; hostKey: string | nul
   };
 
   return (
-    <section id="host-groups" className={`mt-6 rounded-3xl p-4 ${e.status === 'done' ? 'border-2' : 'border border-dashed'}`} style={{ borderColor: e.status === 'done' ? C.ink : '#b9c4b5' }}>
+    <section id="host-groups" className="rounded-2xl p-3" style={{ background: '#eef1e8' }}>
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[12px] font-semibold uppercase tracking-[1.5px]"><Users className="h-4 w-4" />Your groups</div>
+        <div className="flex items-center gap-2 text-[13px] font-semibold"><Users className="h-4 w-4" />Your groups</div>
         {signedIn && <Link href="/play/groups" className="text-[13px] font-semibold underline">Manage</Link>}
       </div>
 
@@ -165,7 +165,7 @@ export function HostGroups({ e, hostKey }: { e: PlayEvent; hostKey: string | nul
         </div>
       )}
       {e.status !== 'done' && !signedIn && want !== 'email' && (
-        <button onClick={() => setWant('email')} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[15px] font-semibold" style={{ background: '#eef1e8' }}>
+        <button onClick={() => setWant('email')} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-white py-3 text-[14px] font-semibold">
           <Mail className="h-4 w-4" />Email the link to a saved group
         </button>
       )}
@@ -173,11 +173,11 @@ export function HostGroups({ e, hostKey }: { e: PlayEvent; hostKey: string | nul
 
       {players > 0 && want !== 'save' && !saved && (
         <button onClick={() => setWant('save')} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[15px] font-semibold"
-          style={e.status === 'done' ? { background: C.lime, color: C.ink } : { background: '#eef1e8' }}>
+          style={{ background: '#fff', color: C.ink }}>
           <Users className="h-4 w-4" />Save these {players} players as a group
         </button>
       )}
-      {saved && <p className="mt-3 rounded-2xl p-3 text-[14px]" style={{ background: '#eef1e8' }}>{saved} Next time, pick the group when you make a game and email everyone the link.</p>}
+      {saved && <p className="mt-3 rounded-2xl bg-white p-3 text-[14px]">{saved} Next time, pick the group when you make a game and email everyone the link.</p>}
       {want === 'save' && !signedIn && <div className="mt-3"><SignInBox next={`/p/${e.code}?savegroup=1`} why="Sign in to save this group for next time." onCancel={() => setWant(null)} /></div>}
       {want === 'save' && signedIn && (
         <div className="mt-3 grid gap-2 rounded-2xl bg-white p-4 shadow-sm">
