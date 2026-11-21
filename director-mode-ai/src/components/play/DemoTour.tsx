@@ -110,9 +110,10 @@ export default function DemoTour() {
       live();
       if (ff()) return;
       let left = ms;
-      // Darrin 11/21/26: the tour ran too long; the base pace is twice the original (1x = old 2x).
+      // Darrin 11/21/26: whole tour should take 45-60s. Base pace is 2.8x the original,
+      // plus trimmed long beats (typing, join loops, score rounds).
       while (left > 0) {
-        const k = ctl.current.speed * 2;
+        const k = ctl.current.speed * 2.8;
         const step = ctl.current.paused ? 80 : Math.max(8, Math.min(80, left / k)); // short waits (typing) speed up too
         await sleep(step); live(); if (!ctl.current.paused) left -= step * k;
       }
@@ -280,7 +281,7 @@ export default function DemoTour() {
       for (const [name, says] of rest) {
         joinAs(name); hype();
         if (says) post({ from: first(name), text: says });
-        await wait(900);
+        await wait(600);
       }
       beat('Every name that taps in gets a line. The invite is the entertainment.');
       await wait(2400);
@@ -340,13 +341,13 @@ export default function DemoTour() {
       await wait(2600);
       set({ notif: null });
       clock(3);
-      await scoreRound({ gap: 900 });
+      await scoreRound({ gap: 500 });
       await tap('host', 'text:Next round');
       run({ action: 'next' }); roundAlert(3);
       { const me = standings(S.current.e.state.mixer!).find((x) => x.id === S.current.mayaId); beat(`Round 3. Last one. Maya is ${me?.wins ?? 0}–${me?.losses ?? 0}.`, 'maya'); }
       await wait(2000); set({ notif: null });
       clock(1);
-      await scoreRound({ gap: 700 });
+      await scoreRound({ gap: 400 });
       set({ mayaTab: 'table' });
       { const rank = standings(S.current.e.state.mixer!).findIndex((x) => x.id === S.current.mayaId) + 1; beat(rank === 1 ? 'Maya checks the table. Top of it.' : `Maya checks the table: number ${rank}, live.`, 'maya'); }
       await scrollTo('maya', 'table', 'start');
@@ -395,7 +396,7 @@ export default function DemoTour() {
       for (const [nm, says] of [['Priya', 'in'], ['Maya', 'obviously'], ['Dev', 'in'], ['Marcus', 'in'], ['Chris', null], ['Elena', 'in!'], ['Aisha', null], ['Tom', 'bringing balls again'], ['Sofia', null]] as [string, string | null][]) {
         set((t) => ({ next: (t.next ?? 0) + 1 }));
         if (says) post({ from: nm, text: says });
-        await wait(650);
+        await wait(450);
       }
       beat('Next Friday: 10 of 12 in, and nobody had to organize anything.');
       await wait(2400);
