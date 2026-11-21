@@ -110,7 +110,12 @@ export default function DemoTour() {
       live();
       if (ff()) return;
       let left = ms;
-      while (left > 0) { await sleep(80); live(); if (!ctl.current.paused) left -= 80 * ctl.current.speed; }
+      // Darrin 11/21/26: the tour ran too long; the base pace is twice the original (1x = old 2x).
+      while (left > 0) {
+        const k = ctl.current.speed * 2;
+        const step = ctl.current.paused ? 80 : Math.max(8, Math.min(80, left / k)); // short waits (typing) speed up too
+        await sleep(step); live(); if (!ctl.current.paused) left -= step * k;
+      }
     };
     const P = (p: PhoneId) => phones.current[p];
     const find = (p: PhoneId, q: string): HTMLElement | null => {
@@ -441,14 +446,17 @@ export default function DemoTour() {
       const sEq = Math.max(0.3, Math.min(0.86, (stageW - 48) / (3 * 414), avail / 640));
       return { scales: { host: sEq, chat: sEq, maya: sEq } as Record<PhoneId, number>, ph: Math.round(Math.min(868, Math.max(560, avail / sEq))) };
     }
-    // Phones and tablets (mobile first, Darrin 11/21/26): three EQUAL phones side by side,
-    // all running at once, even if they're small. The one with the action gets the lime ring.
-    const gap = 6;
-    const sEq = (W - 12 - 2 * gap) / (3 * 414);
-    const avail = H - 54 - 150 - 24; // header, narrator, labels
-    const h = Math.round(Math.min(1100, Math.max(640, avail / sEq))); // small phones can be a bit taller to use the screen
-    const s1 = Math.min(sEq, avail / h);
-    return { scales: { host: s1, chat: s1, maya: s1 } as Record<PhoneId, number>, ph: h };
+    // Phones and tablets: the phone with the action big on the left, the other two
+    // stacked on the right at half size (same total height), so all three stay on screen.
+    const gap = 8;
+    const avail = H - 54 - 150 - 24; // header, narrator, label
+    let sBig = (W - 16 - gap) / (414 * 1.5);
+    const h = Math.round(Math.min(868, Math.max(560, avail / sBig)));
+    sBig = Math.min(sBig, avail / h);
+    const sSmall = (sBig * h - gap - 18) / 2 / h; // two small phones + their labels = one big phone
+    const sc3 = { host: sSmall, chat: sSmall, maya: sSmall } as Record<PhoneId, number>;
+    sc3[shown] = sBig;
+    return { scales: sc3, ph: h };
   })();
   useLayoutEffect(() => { setWide(dims.W >= 1024); scale.current = scales; });
   const grab = (x: React.PointerEvent) => { if (x.isTrusted && !t.ended && !paused) { setPaused(true); setDriving(true); } };
@@ -464,7 +472,7 @@ export default function DemoTour() {
 
   const phone = (id: PhoneId, label: string, sub: string, body: React.ReactNode, overlay?: React.ReactNode) => {
     const sc = scales[id];
-    const small = false; // all three phones are full, live phones at every size
+    const small = !wide && shown !== id;
     return (
     <div key={id} className="flex flex-col items-center">
       {wide ? (
@@ -473,13 +481,15 @@ export default function DemoTour() {
           <div className="text-[11px]" style={{ color: '#9fb3a6' }}>{sub}</div>
         </div>
       ) : (
-        <div className="mb-1 max-w-full truncate px-1 text-[11px] font-semibold" style={{ color: t.focus === id ? C.lime : '#cfdccb' }}>{label.split(' · ')[0]}</div>
+        <button type="button" onClick={() => setPicked(id)} className="mb-1 max-w-full truncate px-1 text-[11px] font-semibold" style={{ color: t.focus === id ? C.lime : '#cfdccb' }}>
+          {label.split(' · ')[0]}{t.focus === id && shown !== id ? ' •' : ''}
+        </button>
       )}
-      <div style={{ width: 414 * sc, height: ph * sc, transition: 'width 450ms ease, height 450ms ease' }} className="relative"
+      <div style={{ width: 414 * sc, height: ph * sc, transition: 'width 300ms ease, height 300ms ease' }} className="relative"
         onPointerDownCapture={small ? undefined : grab} onClickCapture={small ? (x) => { x.preventDefault(); x.stopPropagation(); setPicked(id); } : stopLinks(id)}>
         {small && <button type="button" aria-label={`Show ${label}`} onClick={() => setPicked(id)} className="absolute inset-0 z-[60] rounded-[18px]" />}
         <div className="absolute left-0 top-0 origin-top-left rounded-[58px] p-3"
-          style={{ width: 414, height: ph, transform: `scale(${sc})`, transition: 'transform 450ms ease, box-shadow 500ms', background: '#0b0d0c', boxShadow: t.focus === id ? `0 0 0 ${wide ? 3 : 9}px ${C.lime}, 0 30px 80px #000a` : '0 0 0 1px #2a2f2c, 0 30px 80px #0008' }}>
+          style={{ width: 414, height: ph, transform: `scale(${sc})`, transition: 'transform 300ms ease, box-shadow 400ms', background: '#0b0d0c', boxShadow: t.focus === id ? `0 0 0 ${wide ? 3 : 6}px ${C.lime}, 0 30px 80px #000a` : '0 0 0 1px #2a2f2c, 0 30px 80px #0008' }}>
           <div ref={(el) => { phones.current[id].screen = el; }} className="relative h-full w-full overflow-hidden rounded-[46px]" style={{ transform: 'translateZ(0)', background: C.paper }}>
             <div className="absolute inset-x-0 top-0 z-30 flex h-11 items-center justify-between px-8 text-[14px] font-semibold"
               style={id === 'chat' ? { color: '#fff', background: '#0b6b5a' } : id === 'maya' && t.maya === 'lock' ? { color: '#fff' } : { color: C.ink, background: C.paper }}>
@@ -533,8 +543,22 @@ export default function DemoTour() {
           <Narrator t={t} wide={wide} paused={paused} driving={driving} speed={speed} pills={!wide && <SportPills sport={sport} onPick={pickSport} small />}
             onToggle={() => { setPaused((v) => !v); setDriving(false); }} onRestart={() => startTour(0)} onSpeed={() => setSpeed((v) => (v === 1 ? 2 : 1))} onJump={(i) => startTour(i)} />
           <div ref={stage} className="relative">
-            <div className={`flex items-start justify-center ${wide ? 'gap-6' : 'gap-1.5'}`}>{[all.host, all.chat, all.maya]}</div>
-
+            {wide ? (
+              <div className="flex items-start justify-center gap-6">{[all.host, all.chat, all.maya]}</div>
+            ) : (
+              // One grid, fixed DOM order: only the grid placement changes as focus moves,
+              // so no phone remounts (scroll positions and typing stay put).
+              <div className="grid justify-center gap-x-2 gap-y-1" style={{ gridTemplateColumns: 'auto auto', gridTemplateRows: 'auto auto' }}>
+                {(['host', 'chat', 'maya'] as PhoneId[]).map((id) => {
+                  const others = (['host', 'chat', 'maya'] as PhoneId[]).filter((x) => x !== shown);
+                  const style = id === shown ? { gridColumn: 1, gridRow: '1 / span 2' } : { gridColumn: 2, gridRow: others.indexOf(id) + 1 };
+                  return <div key={id} style={style}>{all[id]}</div>;
+                })}
+              </div>
+            )}
+            {!wide && picked && picked !== t.focus && (
+              <button type="button" onClick={() => setPicked(null)} className="mx-auto mt-2 block rounded-full px-3 py-1 text-[12px] font-semibold" style={{ background: '#ffffff1a' }}>Follow the action</button>
+            )}
             {t.ended && <EndCard onReplay={() => startTour(0)} />}
           </div>
         </div>
