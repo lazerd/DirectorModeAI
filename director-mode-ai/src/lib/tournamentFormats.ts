@@ -410,114 +410,84 @@ function wireLoserFeed(
 }
 
 /**
+ * A consolation feeder: the LOSER of a main-bracket match, or the WINNER of an
+ * earlier consolation match. null = an empty position (bye on that side).
+ */
+type ConsRef = null | { k: 'L'; round: number; slot: number } | { k: 'W'; round: number; slot: number };
+
+/** Wire a feeder into consolation match (round, slot) on side a/b. */
+function placeConsRef(main: GeneratedMatch[], cons: GeneratedMatch[], ref: ConsRef, round: number, slot: number, side: 'a' | 'b') {
+  if (!ref) return;
+  if (ref.k === 'L') { wireLoserFeed(main, 'main', ref.round, ref.slot, 'consolation', round, slot, side); return; }
+  const src = cons.find((m) => m.bracket === 'consolation' && m.round === ref.round && m.slot === ref.slot);
+  if (src) src.winner_feeds_to = `consolation:${round}:${slot}:${side}`;
+}
+
+function consMatch(round: number, slot: number): GeneratedMatch {
+  return {
+    bracket: 'consolation', round, slot, match_type: 'singles',
+    player1_id: null, player2_id: null, player3_id: null, player4_id: null,
+    winner_feeds_to: null, loser_feeds_to: null,
+  };
+}
+
+/**
+ * The main bracket's round-1 positions in draw order: the R1 match slot at
+ * each position, or null where a seed had a bye (no R1 match there). Mirrors
+ * generateSingleElimBracket exactly so positions line up with round 2.
+ */
+function mainR1Positions(entryIds: string[]): Array<number | null> {
+  const size = nextPow2(entryIds.length);
+  const seeds = seedPairings(size);
+  const real = (seed: number) => entryIds[seed - 1] != null;
+  const out: Array<number | null> = [];
+  let slot = 1;
+  for (let i = 0; i < seeds.length; i += 2) {
+    if (real(seeds[i]) && real(seeds[i + 1])) out.push(slot++);
+    else out.push(null);
+  }
+  return out;
+}
+
+/**
  * First-Match Loser Consolation: single elim main bracket + a second
  * single-elim bracket made up of FIRST-ROUND losers only. R2+ losers
  * are eliminated. The consolation bracket itself runs as single elim
  * to declare a "consolation champion."
+ *
+ * Round-1 losers are paired in order of their R1 slot (loser of slot 1 vs
+ * loser of slot 2, ...). When the count isn't a power of two, the last
+ * losers get byes and are wired straight into the later consolation round
+ * (11/21/26 fix: an odd number of R1 matches used to drop a loser, and 13
+ * entrants crashed). Known limit: a seed with a main-draw bye whose first
+ * real match is in R2 does not enter consolation (needs a runtime rule).
  */
 export function generateFMLCBracket(entryIds: string[]): GeneratedMatch[] {
   const main = generateSingleElimBracket(entryIds);
+  const losers: ConsRef[] = main
+    .filter((m) => m.bracket === 'main' && m.round === 1)
+    .sort((a, b) => a.slot - b.slot)
+    .map((m) => ({ k: 'L' as const, round: 1, slot: m.slot }));
+  if (losers.length < 2) return main;
 
-  // First-round losers feed into a consolation bracket. With M first-round
-  // matches, we have M consolation entries. Bracket size = nextPow2(M).
-  const r1Matches = main.filter((m) => m.bracket === 'main' && m.round === 1);
-  const numLosers = r1Matches.length;
-  if (numLosers < 2) return main;
-
-  const consolationSize = nextPow2(numLosers);
-  const consolationRounds = Math.log2(consolationSize);
-  const consolationMatches: GeneratedMatch[] = [];
-
-  // Consolation R1: pair losers using same seedPairings — losers from
-  // higher-seed-meeting-lower-seed positions get paired predictably.
-  // For simplicity and predictability we pair losers in order of their
-  // R1 slot: loser of R1 slot 1 vs loser of R1 slot 2, etc. (Real
-  // tournaments often use the seedPairings approach; we use sequential
-  // for clarity.)
-  let cursor: Array<string | null> = [];
-  let slot = 1;
-  for (let i = 0; i < r1Matches.length; i += 2) {
-    const srcA = r1Matches[i];
-    const srcB = r1Matches[i + 1];
-    if (!srcB) {
-      // Odd number of R1 matches — last loser gets a bye in consolation R1.
-      cursor.push(`consolation_loser_of:main:1:${srcA.slot}`);
-      continue;
-    }
-    consolationMatches.push({
-      bracket: 'consolation',
-      round: 1,
-      slot,
-      match_type: 'singles',
-      player1_id: null, // filled by feed
-      player2_id: null,
-      player3_id: null,
-      player4_id: null,
-      winner_feeds_to: null,
-      loser_feeds_to: null,
-    });
-    // Wire R1 main losers → consolation R1
-    wireLoserFeed(main, 'main', 1, srcA.slot, 'consolation', 1, slot, 'a');
-    wireLoserFeed(main, 'main', 1, srcB.slot, 'consolation', 1, slot, 'b');
-    cursor.push(`consolation:1:${slot}:winner`);
-    slot++;
-  }
-
-  // Consolation later rounds — same logic as single-elim
-  for (let r = 2; r <= consolationRounds; r++) {
-    const nextCursor: Array<string | null> = [];
-    let s = 1;
+  const cons: GeneratedMatch[] = [];
+  let cursor: ConsRef[] = [...losers];
+  while (cursor.length < nextPow2(losers.length)) cursor.push(null); // byes at the end
+  for (let r = 1; cursor.length > 1; r++) {
+    const next: ConsRef[] = [];
+    let slot = 1;
     for (let i = 0; i < cursor.length; i += 2) {
-      const aRef = cursor[i];
-      const bRef = cursor[i + 1];
-      if (aRef === null && bRef === null) {
-        nextCursor.push(null);
-        continue;
-      }
-      if (aRef === null || bRef === null) {
-        nextCursor.push(aRef ?? bRef);
-        continue;
-      }
-      consolationMatches.push({
-        bracket: 'consolation',
-        round: r,
-        slot: s,
-        match_type: 'singles',
-        player1_id: null,
-        player2_id: null,
-        player3_id: null,
-        player4_id: null,
-        winner_feeds_to: null,
-        loser_feeds_to: null,
-      });
-      // Wire winner refs from previous consolation round
-      if (aRef.startsWith('consolation:')) {
-        const [, rs, ss] = aRef.split(':');
-        const sm = consolationMatches.find(
-          (m) =>
-            m.bracket === 'consolation' &&
-            m.round === parseInt(rs, 10) &&
-            m.slot === parseInt(ss, 10)
-        );
-        if (sm) sm.winner_feeds_to = `consolation:${r}:${s}:a`;
-      }
-      if (bRef.startsWith('consolation:')) {
-        const [, rs, ss] = bRef.split(':');
-        const sm = consolationMatches.find(
-          (m) =>
-            m.bracket === 'consolation' &&
-            m.round === parseInt(rs, 10) &&
-            m.slot === parseInt(ss, 10)
-        );
-        if (sm) sm.winner_feeds_to = `consolation:${r}:${s}:b`;
-      }
-      nextCursor.push(`consolation:${r}:${s}:winner`);
-      s++;
+      const a = cursor[i], b = cursor[i + 1];
+      if (!a || !b) { next.push(a ?? b ?? null); continue; } // bye: the feeder skips ahead
+      cons.push(consMatch(r, slot));
+      placeConsRef(main, cons, a, r, slot, 'a');
+      placeConsRef(main, cons, b, r, slot, 'b');
+      next.push({ k: 'W', round: r, slot });
+      slot++;
     }
-    cursor = nextCursor;
+    cursor = next;
   }
-
-  return [...main, ...consolationMatches];
+  return [...main, ...cons];
 }
 
 /**
@@ -534,115 +504,72 @@ export function generateFMLCBracket(entryIds: string[]): GeneratedMatch[] {
  *   - Consolation bracket: N-1 rounds. Loser of main R1 plays in consolation R1.
  *     Winner of consolation R1 plays loser of main R2 in consolation R2. And
  *     so on — each consolation round absorbs the previous main round's losers.
+ *
+ * Positions follow the main draw (byes included), so consolation feeders always
+ * line up with the main round they absorb. Where a side is empty (a main-draw
+ * bye), the other feeder skips ahead to the next consolation round (11/21/26
+ * fix: odd R1 counts used to drop a loser or leave an unfed slot).
  */
 export function generateFFICBracket(entryIds: string[]): GeneratedMatch[] {
   const main = generateSingleElimBracket(entryIds);
   if (main.length < 2) return main;
-
   const totalMainRounds = Math.max(...main.map((m) => m.round));
   if (totalMainRounds < 2) return main;
 
-  const consolationMatches: GeneratedMatch[] = [];
+  const cons: GeneratedMatch[] = [];
+  const positions = mainR1Positions(entryIds);
 
-  // Consolation R1: pair losers of main R1 (sequential slot pairing).
-  const r1MainMatches = main
-    .filter((m) => m.bracket === 'main' && m.round === 1)
-    .sort((a, b) => a.slot - b.slot);
-  let prevRoundCursor: Array<string | null> = []; // consolation match refs from previous round, in slot order
-
+  // Consolation R1: losers of main R1, paired by draw position (empty position = bye).
+  let cursor: ConsRef[] = [];
   let slot = 1;
-  for (let i = 0; i < r1MainMatches.length; i += 2) {
-    const srcA = r1MainMatches[i];
-    const srcB = r1MainMatches[i + 1];
-    if (!srcB) {
-      // Odd: last loser carried forward as a "bye" winner of consolation R1
-      prevRoundCursor.push(`__bye_of_main_R1_slot_${srcA.slot}__`);
-      // We still need to wire that loser to advance into consolation R2 directly.
-      // Encode as a "ghost" reference; consolation R2 absorbs it.
-      continue;
-    }
-    consolationMatches.push({
-      bracket: 'consolation',
-      round: 1,
-      slot,
-      match_type: 'singles',
-      player1_id: null,
-      player2_id: null,
-      player3_id: null,
-      player4_id: null,
-      winner_feeds_to: null,
-      loser_feeds_to: null,
-    });
-    wireLoserFeed(main, 'main', 1, srcA.slot, 'consolation', 1, slot, 'a');
-    wireLoserFeed(main, 'main', 1, srcB.slot, 'consolation', 1, slot, 'b');
-    prevRoundCursor.push(`consolation:1:${slot}:winner`);
+  for (let i = 0; i < positions.length; i += 2) {
+    const a: ConsRef = positions[i] != null ? { k: 'L', round: 1, slot: positions[i]! } : null;
+    const b: ConsRef = positions[i + 1] != null ? { k: 'L', round: 1, slot: positions[i + 1]! } : null;
+    if (!a || !b) { cursor.push(a ?? b ?? null); continue; }
+    cons.push(consMatch(1, slot));
+    placeConsRef(main, cons, a, 1, slot, 'a');
+    placeConsRef(main, cons, b, 1, slot, 'b');
+    cursor.push({ k: 'W', round: 1, slot });
     slot++;
   }
 
-  // Subsequent consolation rounds: each round combines the previous-round
-  // consolation winners with the current-main-round losers.
+  // Each later consolation round absorbs that main round's losers.
   for (let r = 2; r <= totalMainRounds - 1; r++) {
-    const mainRoundMatches = main
-      .filter((m) => m.bracket === 'main' && m.round === r)
-      .sort((a, b) => a.slot - b.slot);
-
-    const nextCursor: Array<string | null> = [];
+    const mainRound = main.filter((m) => m.bracket === 'main' && m.round === r).sort((x, y) => x.slot - y.slot);
+    const next: ConsRef[] = [];
     let s = 1;
-    // Pair consolation winners with main-round losers sequentially.
-    const pairCount = Math.max(prevRoundCursor.length, mainRoundMatches.length);
+    const pairCount = Math.max(cursor.length, mainRound.length);
     for (let i = 0; i < pairCount; i++) {
-      const consWinnerRef = prevRoundCursor[i] ?? null;
-      const mainLoser = mainRoundMatches[i] ?? null;
-
-      if (!consWinnerRef && !mainLoser) {
-        nextCursor.push(null);
-        continue;
-      }
-      if (!consWinnerRef && mainLoser) {
-        // No consolation feeder; loser of main carries through (rare).
-        nextCursor.push(`__main_loser_of:${r}:${mainLoser.slot}__`);
-        continue;
-      }
-      if (consWinnerRef && !mainLoser) {
-        // No main loser to pair with; consolation winner advances on bye.
-        nextCursor.push(consWinnerRef);
-        continue;
-      }
-
-      consolationMatches.push({
-        bracket: 'consolation',
-        round: r,
-        slot: s,
-        match_type: 'singles',
-        player1_id: null,
-        player2_id: null,
-        player3_id: null,
-        player4_id: null,
-        winner_feeds_to: null,
-        loser_feeds_to: null,
-      });
-      // Wire previous consolation winner → side a
-      if (consWinnerRef && consWinnerRef.startsWith('consolation:')) {
-        const [, rs, ss] = consWinnerRef.split(':');
-        const sm = consolationMatches.find(
-          (m) =>
-            m.bracket === 'consolation' &&
-            m.round === parseInt(rs, 10) &&
-            m.slot === parseInt(ss, 10)
-        );
-        if (sm) sm.winner_feeds_to = `consolation:${r}:${s}:a`;
-      }
-      // Wire main loser of this round → side b
-      if (mainLoser) {
-        wireLoserFeed(main, 'main', r, mainLoser.slot, 'consolation', r, s, 'b');
-      }
-      nextCursor.push(`consolation:${r}:${s}:winner`);
+      const a = cursor[i] ?? null;
+      const b: ConsRef = mainRound[i] ? { k: 'L', round: r, slot: mainRound[i].slot } : null;
+      if (!a || !b) { next.push(a ?? b ?? null); continue; }
+      cons.push(consMatch(r, s));
+      placeConsRef(main, cons, a, r, s, 'a');
+      placeConsRef(main, cons, b, r, s, 'b');
+      next.push({ k: 'W', round: r, slot: s });
       s++;
     }
-    prevRoundCursor = nextCursor;
+    cursor = next;
   }
-
-  return [...main, ...consolationMatches];
+  // With main-draw byes, a loser can reach the end of the tree on a bye without a
+  // consolation match. Keep playing extra consolation rounds until every loser has
+  // had one (full-size draws never get here, so they're unchanged).
+  let refs = cursor.filter((x): x is NonNullable<ConsRef> => !!x);
+  for (let r = totalMainRounds; refs.length > 1 && refs.some((x) => x.k === 'L'); r++) {
+    const next: NonNullable<ConsRef>[] = [];
+    let s = 1;
+    for (let i = 0; i < refs.length; i += 2) {
+      const a = refs[i], b = refs[i + 1];
+      if (!b) { next.push(a); continue; }
+      cons.push(consMatch(r, s));
+      placeConsRef(main, cons, a, r, s, 'a');
+      placeConsRef(main, cons, b, r, s, 'b');
+      next.push({ k: 'W', round: r, slot: s });
+      s++;
+    }
+    refs = next;
+  }
+  return [...main, ...cons];
 }
 
 // =============================================================================
