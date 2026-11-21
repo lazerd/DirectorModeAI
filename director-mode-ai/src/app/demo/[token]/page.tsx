@@ -139,7 +139,7 @@ export default async function DemoTourPage({ params, searchParams }: Props) {
 
   const steps: { text: string; href: string }[] = [];
   if (hasMember) {
-    steps.push({ text: `Post a game in Racquets IRL as ${member}.`, href: enter('member', '/member/games') });
+    steps.push({ text: `Post a game in Club Games as ${member}.`, href: enter('member', '/member/games') });
   }
   if (signs.court) {
     steps.push({ text: `Scan the ${signs.court.name} sign below with your phone.`, href: `/q/${signs.court.token}` });
@@ -261,7 +261,7 @@ export default async function DemoTourPage({ params, searchParams }: Props) {
 
           {hasMember && (
             <Card
-              title="Racquets IRL"
+              title="Club Games"
               replaces="Find a game with members at your level. Replaces showing up and hoping: post “Doubles Tuesday at 9, need two,” and the right players hear about it."
               theme={theme}
             >

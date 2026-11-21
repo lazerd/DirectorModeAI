@@ -630,12 +630,13 @@ export default function PlatformHome({ fallbackToGuest = false }: { fallbackToGu
                 Book lessons, check stringing orders, find matches, join leagues, and view events — all in one place.
               </p>
             </div>
-            <div className="relative grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="relative grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
               {[
                 { href: "/client/dashboard", icon: Calendar, name: "My Lessons", sub: "Book & manage", color: "text-blue-400", bg: "bg-blue-400/10 hover:bg-blue-400/20" },
                 { href: "/client/dashboard?tab=stringing", icon: Wrench, name: "My Stringing", sub: "Order status", color: "text-pink-400", bg: "bg-pink-400/10 hover:bg-pink-400/20" },
                 { href: "/client/dashboard?tab=events", icon: Trophy, name: "Events", sub: "Mixers & leagues", color: "text-orange-400", bg: "bg-orange-400/10 hover:bg-orange-400/20" },
-                { href: "/courtconnect", icon: Users, name: "Racquets IRL", sub: "Games at your level", color: "text-emerald-400", bg: "bg-emerald-400/10 hover:bg-emerald-400/20" },
+                { href: "/play", icon: Users, name: "Racquets IRL", sub: "Start a game, one link", color: "text-lime-300", bg: "bg-lime-300/10 hover:bg-lime-300/20" },
+                { href: "/courtconnect", icon: Users, name: "Club Games", sub: "Games at your level", color: "text-emerald-400", bg: "bg-emerald-400/10 hover:bg-emerald-400/20" },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
@@ -672,7 +673,8 @@ export default function PlatformHome({ fallbackToGuest = false }: { fallbackToGu
                 { href: "/mixer/home", icon: Shuffle, name: "MixerMode", color: "bg-orange-500 hover:bg-orange-600" },
                 { onClick: goToLessons, icon: Clock, name: "Lessons", color: "bg-blue-500 hover:bg-blue-600" },
                 { href: "/stringing/jobs", icon: Wrench, name: "Stringing", color: "bg-pink-500 hover:bg-pink-600" },
-                { href: "/run/members/courtconnect", icon: Users, name: "Racquets IRL", color: "bg-emerald-500 hover:bg-emerald-600" },
+                { href: "/run/members/courtconnect", icon: Users, name: "Club Games", color: "bg-emerald-500 hover:bg-emerald-600" },
+                { href: "/play", icon: Users, name: "Racquets IRL", color: "bg-lime-600 hover:bg-lime-700" },
                 { href: "/courtconnect/vault", icon: Database, name: "PlayerVault", color: "bg-teal-500 hover:bg-teal-600" },
                 { href: "/swim", icon: Waves, name: "SwimMode", color: "bg-sky-500 hover:bg-sky-600" },
                 { href: "/lessons/recap", icon: GraduationCap, name: "Coach Mode", color: "bg-violet-500 hover:bg-violet-600" },

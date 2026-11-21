@@ -7,7 +7,7 @@ import { NextResponse } from 'next/server';
  * is kept so they can still be cancelled by source if ever needed.
  */
 const gone = () =>
-  NextResponse.json({ error: 'This Racquets IRL feature has been retired.' }, { status: 410 });
+  NextResponse.json({ error: 'This Club Games feature has been retired.' }, { status: 410 });
 
 export const POST = gone;
 export const GET = gone;

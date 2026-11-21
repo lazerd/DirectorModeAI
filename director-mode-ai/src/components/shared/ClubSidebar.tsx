@@ -37,7 +37,7 @@ import {
 } from '@/config/nav';
 import {
   Zap, Home, LayoutGrid, Calendar, GraduationCap,
-  ChevronLeft, ChevronRight, Menu, X, HardHat, Eye, ClipboardList, Handshake, Target,
+  ChevronLeft, ChevronRight, Menu, X, HardHat, Eye, ClipboardList, Handshake, Target, Users,
 } from 'lucide-react';
 
 type Item = {
@@ -352,7 +352,9 @@ export default function ClubSidebar() {
               ...(slug ? [{ name: 'Court Sheet', href: `/courtsheet/${slug}`, matches: ['/courtsheet'], icon: LayoutGrid, color: '#22d3ee' } as Item] : []),
               // CourtConnect: pairing members for games is the member-side reason
               // to open the app. Always shown, court reservations or not.
-              { name: 'Racquets IRL', href: '/member/games', matches: ['/member/games'], icon: Handshake, color: '#34d399' },
+              { name: 'Club Games', href: '/member/games', matches: ['/member/games'], icon: Handshake, color: '#34d399' },
+              // Racquets IRL: the public one-link pickup games at /play.
+              { name: 'Racquets IRL', href: '/play', matches: ['/play'], icon: Users, color: '#D3FB52' },
               { name: 'My Account', href: '/client/dashboard', matches: ['/client/dashboard'], icon: Calendar, color: '#60a5fa' },
               { name: 'Find a Coach', href: '/find-coach', matches: ['/find-coach'], icon: GraduationCap, color: '#a78bfa' },
             ],
