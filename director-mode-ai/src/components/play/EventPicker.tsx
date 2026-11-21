@@ -1,7 +1,8 @@
 'use client';
 
 import type { GuestFormat } from '@/lib/mixer/guestMixer';
-import { courtPlan } from '@/lib/play/core';
+import { courtPlan, type PlayFormat } from '@/lib/play/core';
+import { DRAW_FORMAT_BLURB, type DrawFormat } from '@/lib/play/draw';
 import s from './EventPicker.module.css';
 
 /**
@@ -59,7 +60,25 @@ const SMALL: { f: GuestFormat; title: string; blurb: string; art: React.ReactNod
   { f: 'singles', title: 'Singles', blurb: 'One-on-one, new opponent each round.', art: <><Court dots={S} /><Court dots={S} dim /></> },
 ];
 
-export default function EventPicker({ value, spots, courts, onChange }: { value: GuestFormat; spots: number | null; courts: number; onChange: (f: GuestFormat) => void }) {
+/** "8 players: 28 matches, 7 each" for a round robin of n entries. */
+function rrLine(df: DrawFormat, spots: number | null, courts: number) {
+  const doubles = df === 'rr-doubles';
+  if (spots == null) return `${courts} court${courts === 1 ? '' : 's'} · everyone plays everyone once`;
+  const n = doubles ? Math.floor(spots / 2) : spots;
+  if (n < 2) return doubles ? 'Needs at least 4 players' : 'Needs at least 2 players';
+  return `${n} ${doubles ? 'pairs' : 'players'}: ${(n * (n - 1)) / 2} matches, ${n - 1} each`;
+}
+
+/*
+ * Tournament tiles. Round robin is live; the MixerMode brackets (single elimination,
+ * FMLC, FFIC, Compass, Quads) get tiles here when each one's UI ships. Not shown yet.
+ */
+const TOURNEY: { df: DrawFormat; title: string; art: React.ReactNode }[] = [
+  { df: 'rr-singles', title: 'Round Robin · Singles', art: <><Court dots={S} /><Court dots={S} dim /></> },
+  { df: 'rr-doubles', title: 'Round Robin · Doubles', art: <><Court dots={D} /><Court dots={D} dim /></> },
+];
+
+export default function EventPicker({ value, drawFormat, spots, courts, onChange }: { value: PlayFormat; drawFormat?: DrawFormat | null; spots: number | null; courts: number; onChange: (f: PlayFormat, df?: DrawFormat) => void }) {
   const hero = planLine('maximize-courts', spots, courts);
   const heroPlan = courtPlan('maximize-courts', spots ?? courts * 4, courts);
   const heroCourts = heroPlan.doubles + heroPlan.singles
@@ -95,6 +114,22 @@ export default function EventPicker({ value, spots, courts, onChange }: { value:
               <div className={s.smallTitle} style={{ position: 'relative', zIndex: 1 }}>{t.title}</div>
               <div className={s.smallBlurb} style={{ position: 'relative', zIndex: 1 }}>{t.blurb}</div>
               <div className={`${s.math} ${m.warn ? s.warn : ''}`} style={{ fontSize: 11 }}><i />{m.text.replace(/^\d+ players on \d+ courts?: /, '').replace(/^\d+ courts?: /, '')}</div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className={s.eyebrow} style={{ marginTop: 18 }}><b>Tournament</b><span>A real draw · courts fill themselves</span></div>
+      <div className={s.grid} role="radiogroup" aria-label="Tournament formats">
+        {TOURNEY.map((t) => {
+          const on = value === 'tournament' && (drawFormat ?? 'rr-singles') === t.df;
+          return (
+            <button key={t.df} type="button" role="radio" aria-checked={on} onClick={() => onChange('tournament', t.df)} className={`${s.tile} ${s.small} ${on ? s.on : ''}`}>
+              <span className={s.check}>✓</span>
+              <div className={s.art}>{t.art}</div>
+              <div className={s.smallTitle} style={{ position: 'relative', zIndex: 1 }}>{t.title}</div>
+              <div className={s.smallBlurb} style={{ position: 'relative', zIndex: 1 }}>{DRAW_FORMAT_BLURB[t.df]}</div>
+              <div className={s.math} style={{ fontSize: 11 }}><i />{rrLine(t.df, spots, courts)}</div>
             </button>
           );
         })}

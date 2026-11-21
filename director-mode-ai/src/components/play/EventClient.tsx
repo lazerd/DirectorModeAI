@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import { standings, teamScore, winnerOf, isScored, courtLabel, type GuestMatch, type GuestFormat } from '@/lib/mixer/guestMixer';
 import { Directions, PlaceMap, PlacePicker, type Place } from './PlacePicker';
-import { FORMAT_NAME, directionsUrl, awards, perCourt, spotsLine, whenLine, checkedIn, type PlayEvent } from '@/lib/play/core';
+import { FORMAT_NAME, directionsUrl, awards, perCourt, spotsLine, whenLine, checkedIn, formatLabel, type PlayEvent } from '@/lib/play/core';
+import { DrawDone, DrawHostControls, DrawLive } from './DrawViews';
 import { BrandContext, C, PlayHeader, api, getKey, getName, setKey, setName } from './shared';
 import { getMyLevel, levelLabel, levelNote, levelNum, setMyLevel } from '@/lib/play/levels';
 import { LevelChips } from './Levels';
@@ -118,8 +119,10 @@ export default function EventClient({ code, initial }: { code: string; initial: 
         {err && <p className="mt-3 rounded-xl bg-[#fbe9e5] px-4 py-3 text-[14px] text-[#9c3a25]">{err}</p>}
 
         {e.status === 'open' && <OpenView e={e} meName={meR?.name} busy={busy} act={act} code={code} hereLink={hereLink} />}
-        {e.status === 'live' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code={code} hereLink={hereLink} />}
-        {e.status === 'done' && <DoneView e={e} busy={busy} act={act} code={code} myName={meR?.name} />}
+        {e.status === 'live' && e.format === 'tournament' && <DrawLive e={e} busy={busy} act={act} />}
+        {e.status === 'live' && e.format !== 'tournament' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code={code} hereLink={hereLink} />}
+        {e.status === 'done' && e.format === 'tournament' && <DrawDone e={e} busy={busy} act={act} />}
+        {e.status === 'done' && e.format !== 'tournament' && <DoneView e={e} busy={busy} act={act} code={code} myName={meR?.name} />}
 
         {e.season && <SeasonTable e={e} />}
         {e.status !== 'done' && <PlaceMap e={e} className="mt-6" />}
@@ -145,7 +148,7 @@ export function EventCard({ e, onStatus }: { e: PlayEvent; onStatus: () => void 
   return (
     <section className="rounded-3xl p-5 text-white shadow-lg" style={{ background: C.ink }}>
       <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: '#bccdbb' }}>
-        <span>{e.sport} · {FORMAT_NAME[e.format]}{e.level_min != null || e.level_max != null ? ` · ${levelLabel({ min: e.level_min ?? null, max: e.level_max ?? null }, e.sport)}` : e.level ? ` · ${e.level}` : ''}</span>
+        <span>{e.sport} · {formatLabel(e)}{e.level_min != null || e.level_max != null ? ` · ${levelLabel({ min: e.level_min ?? null, max: e.level_max ?? null }, e.sport)}` : e.level ? ` · ${e.level}` : ''}</span>
         <button type="button" onClick={onStatus} aria-label="Game status" className="flex items-center gap-1 rounded-full px-2.5 py-1 uppercase" style={e.status === 'live' ? { background: C.lime, color: C.ink } : { background: '#ffffff24', color: '#fff' }}>
           {e.status === 'open' ? 'Open' : e.status === 'live' ? '● Live' : 'Final'} <span aria-hidden>›</span>
         </button>
@@ -238,7 +241,7 @@ function groupText(e: PlayEvent, url: string) {
   return [
     `🎾 ${e.title}`,
     [when, e.location, e.level].filter(Boolean).join(' · '),
-    `${FORMAT_NAME[e.format]} · ${spotsLine(e)}`,
+    `${formatLabel(e)} · ${spotsLine(e)}`,
     `Tap to join: ${url}`,
   ].filter(Boolean).join('\n');
 }
@@ -711,7 +714,7 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
     <section className="mt-6 rounded-3xl border border-dashed p-4" style={{ borderColor: '#b9c4b5' }}>
       <div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Host</div>
       <button className="mt-2 text-[14px] underline" onClick={() => act({ action: 'reopen' })}>Reopen this event</button>
-      <ResultLinks code={e.code} />
+      {e.format !== 'tournament' && <ResultLinks code={e.code} />}
     </section>
   );
   return (
@@ -738,14 +741,15 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
           <a href="/play/pass" className="rounded-2xl p-3 text-[14px] font-semibold" style={{ background: C.lime }}>Next week’s game is waiting on a Host Pass. Get one and it’s made right away ›</a>
         )}
         {e.state.nextCode && <Link href={`/p/${e.state.nextCode}`} className="rounded-2xl p-3 text-center text-[14px] font-semibold" style={{ background: '#eef1e8' }}>Next week’s game is up ›</Link>}
-        {e.status === 'open' && <CheckInList e={e} busy={busy} act={act} />}
-        {e.status === 'open' && (
+        {e.format === 'tournament' && <DrawHostControls e={e} busy={busy} act={act} checkIn={e.status === 'open' ? <CheckInList e={e} busy={busy} act={act} /> : null} />}
+        {e.format !== 'tournament' && e.status === 'open' && <CheckInList e={e} busy={busy} act={act} />}
+        {e.format !== 'tournament' && e.status === 'open' && (
           <Btn primary onClick={() => act({ action: 'start' })} disabled={here.length < need}>
             {busy === 'start' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
             {here.length < need ? (here.length ? `${here.length} checked in · need ${need - here.length} more` : 'Check people in to start') : `Start with ${here.length} checked in`}
           </Btn>
         )}
-        {e.status === 'live' && (
+        {e.status === 'live' && e.format !== 'tournament' && (
           <>
             <Btn primary onClick={() => { if (unscored && !confirm(`${unscored} court${unscored > 1 ? 's have' : ' has'} no score yet. Start the next round anyway?`)) return; act({ action: 'next' }); }}>
               {busy === 'next' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}Next round
@@ -762,9 +766,9 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
             <FormatSwitch e={e} busy={busy} act={act} />
           </>
         )}
-        <Toggle on={pairing === 'smart'} disabled={!!busy} onChange={(v) => act({ action: 'pairing', mode: v ? 'smart' : 'random' }, 'pairing')}
+        {e.format !== 'tournament' && <Toggle on={pairing === 'smart'} disabled={!!busy} onChange={(v) => act({ action: 'pairing', mode: v ? 'smart' : 'random' }, 'pairing')}
           title="Balance courts by level"
-          sub={pairing === 'smart' ? 'Round 1 puts strong and newer players on every court (by the levels people picked). Then courts are grouped by how people are doing. Partners still rotate.' : 'Random shuffle each round (still no repeat partners and fair sit-outs).'} />
+          sub={pairing === 'smart' ? 'Round 1 puts strong and newer players on every court (by the levels people picked). Then courts are grouped by how people are doing. Partners still rotate.' : 'Random shuffle each round (still no repeat partners and fair sit-outs).'} />}
         <CourtNumbers e={e} busy={busy} act={act} />
         {e.format === 'team-battle' && <TeamNames e={e} act={act} />}
         {e.format === 'team-battle' && <TeamSplit e={e} busy={busy} act={act} />}
@@ -797,7 +801,7 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
           </div>
         )}
       </div>
-      <ResultLinks code={e.code} />
+      {e.format !== 'tournament' && <ResultLinks code={e.code} />}
       <p className="mt-3 text-[12px]" style={{ color: C.muted }}>Run it from another phone too: send yourself the host link. Don&apos;t post that one in the group.</p>
       {hostKey && <HostLinkButtons code={e.code} hostKey={hostKey} />}
     </section>

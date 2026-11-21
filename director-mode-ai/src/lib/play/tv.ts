@@ -2,7 +2,8 @@
  * The TV / projector board at /p/<code>/tv: pure helpers (no React, no DOM) so
  * what the board says out loud is testable.
  */
-import { courtLabel, type GuestMixer, type GuestRound } from '@/lib/mixer/guestMixer';
+import { courtLabel, type GuestMixer, type GuestRound, type Standing } from '@/lib/mixer/guestMixer';
+import { courtName, standingsFor, type Draw } from './draw';
 
 export const TIME_UP_TEXT = 'Time. Finish your point and enter your scores.';
 
@@ -51,3 +52,18 @@ export function crossedZero(prevLeft: number | null, left: number | null, paused
 
 /** Poll every 5s while live, 15s otherwise. The board never stops polling. */
 export const pollMs = (status: string) => (status === 'live' ? 5000 : 15000);
+
+/**
+ * Tournament board: what to call out when matches go on court since the last look.
+ * "Court 5: Ann versus Bo. Court 6: Cy and Di versus Ed and Flo." Empty when nothing new.
+ */
+export function drawCallout(d: Draw, prevOnCourt: Set<string>): string {
+  const fresh = d.matches.filter((m) => m.status === 'on_court' && !prevOnCourt.has(m.key)).sort((a, b) => (a.court ?? 0) - (b.court ?? 0));
+  const side = (id: string | null) => joinNames(d.entries.find((e) => e.id === id)?.players ?? ['someone']);
+  return fresh.map((m) => `Court ${courtName(d, m.court ?? 0)}: ${side(m.player1_id)} versus ${side(m.player3_id)}.`).join(' ');
+}
+
+/** The board's leaderboard rows for a draw (same shape as the mixer's standings). */
+export function drawBoardRows(d: Draw): Standing[] {
+  return standingsFor(d).map((s) => ({ id: s.id, name: s.name, played: s.played, wins: s.wins, losses: s.losses, gamesFor: s.gamesWon, gamesAgainst: s.gamesLost, rank: s.played ? String(s.rank) : '–' }));
+}
