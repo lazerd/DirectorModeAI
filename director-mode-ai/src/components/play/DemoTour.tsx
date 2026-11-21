@@ -110,10 +110,10 @@ export default function DemoTour() {
       live();
       if (ff()) return;
       let left = ms;
-      // Darrin 11/21/26: whole tour should take 45-60s. Base pace is 2.8x the original,
+      // Darrin 11/21/26: whole tour should take 45-60s. Base pace is 2.2x the original (2.8x felt too fast),
       // plus trimmed long beats (typing, join loops, score rounds).
       while (left > 0) {
-        const k = ctl.current.speed * 2.8;
+        const k = ctl.current.speed * 2.2;
         const step = ctl.current.paused ? 80 : Math.max(8, Math.min(80, left / k)); // short waits (typing) speed up too
         await sleep(step); live(); if (!ctl.current.paused) left -= step * k;
       }
