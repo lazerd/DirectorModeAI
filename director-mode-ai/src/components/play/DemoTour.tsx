@@ -75,7 +75,7 @@ export default function DemoTour() {
   const ctl = useRef({ run: 0, ff: -1, paused: false, speed: 1 });
   ctl.current.paused = paused; ctl.current.speed = speed;
   const phones = useRef<Record<PhoneId, { screen: HTMLDivElement | null; scroller: HTMLDivElement | null }>>({ host: { screen: null, scroller: null }, chat: { screen: null, scroller: null }, maya: { screen: null, scroller: null } });
-  const scale = useRef(0.7);
+  const scale = useRef<Record<PhoneId, number>>({ host: 0.7, chat: 0.7, maya: 0.7 });
   const msgId = useRef(0);
 
   /* ---------- the engine, as each phone sees it ---------- */
@@ -131,7 +131,7 @@ export default function DemoTour() {
       const sc = P(p).scroller; if (!sc) return;
       if (q === 'top' || q === 'bottom') { sc.scrollTo({ top: q === 'top' ? 0 : sc.scrollHeight, behavior: 'smooth' }); await wait(500); return; }
       const el = find(p, q); if (!el) return;
-      const s = scale.current, a = el.getBoundingClientRect(), b = sc.getBoundingClientRect();
+      const s = scale.current[p], a = el.getBoundingClientRect(), b = sc.getBoundingClientRect();
       const d = where === 'start' ? (a.top - b.top) / s - 70 : (a.top - b.top) / s - (b.height / s) / 2 + (a.height / s) / 2;
       sc.scrollTo({ top: sc.scrollTop + d, behavior: 'smooth' });
       await wait(650);
@@ -139,7 +139,7 @@ export default function DemoTour() {
     const tap = async (p: PhoneId, q: string) => {
       if (ff()) return;
       let el = find(p, q); if (!el) return;
-      const sc = P(p).scroller, s = scale.current;
+      const sc = P(p).scroller, s = scale.current[p];
       if (sc) { const a = el.getBoundingClientRect(), b = sc.getBoundingClientRect(); if (a.top < b.top + 40 || a.bottom > b.bottom - 40) { await scrollTo(p, q); el = find(p, q) ?? el; } }
       const scr = P(p).screen!.getBoundingClientRect(), r = el.getBoundingClientRect();
       set({ tap: { phone: p, x: (r.left - scr.left + r.width / 2) / s, y: (r.top - scr.top + r.height / 2) / s, k: Date.now() } });
@@ -194,7 +194,7 @@ export default function DemoTour() {
       }
     };
     const tapEl = async (p: PhoneId, el: HTMLElement, hold = 1) => {
-      const s = scale.current, scr = P(p).screen!.getBoundingClientRect(), rr = el.getBoundingClientRect();
+      const s = scale.current[p], scr = P(p).screen!.getBoundingClientRect(), rr = el.getBoundingClientRect();
       set({ tap: { phone: p, x: (rr.left - scr.left + rr.width / 2) / s, y: (rr.top - scr.top + rr.height / 2) / s, k: Date.now() + Math.random() } });
       await wait(420 * hold);
     };
@@ -413,41 +413,47 @@ export default function DemoTour() {
   };
 
   /*
-   * ---------- layout: fit the window, never cut a phone off ----------
-   * wide:  narrator column on the left (window >= 1024px).
-   * three: all three phones side by side, only if they stay readable;
-   *        otherwise one big phone that follows the action, with tabs.
-   * ph:    the phone's (unscaled) height. A short window gets a shorter
-   *        phone rather than a phone that runs off the bottom.
+   * ---------- layout: all three phones, always (Darrin 11/21/26) ----------
+   * The point is seeing the host, the group chat and a player react at the same
+   * moment, so the three phones are always on screen together.
+   * wide (>= 1024px): narrator column on the left, three equal phones.
+   * narrower: narrator on top, three phones in a row; the phone where the action
+   *           is (or the one the visitor tapped) is bigger, the other two stay
+   *           visible beside it and shrink, with a smooth resize as focus moves.
+   * ph: the phone's unscaled height; a short window gets a shorter phone rather
+   *     than one that runs off the bottom.
    */
   const stage = useRef<HTMLDivElement>(null);
   const [wide, setWide] = useState(true);
-  const [three, setThree] = useState(true);
-  const [sc, setSc] = useState(0.7);
-  const [ph, setPh] = useState(868);
+  const [dims, setDims] = useState<{ W: number; H: number }>({ W: 1440, H: 900 });
   useLayoutEffect(() => {
-    const fit = () => {
-      const W = window.innerWidth, H = window.innerHeight;
-      const isWide = W >= 1024;
-      const stageW = isWide ? Math.min(W, 1500) - 32 - 340 - 24 : W - 16;
-      let s: number, h: number, tri = false;
-      if (isWide) {
-        const avail = H - 74 - 44 - 20; // header, phone labels, breathing room
-        const s3 = Math.min(0.86, (stageW - 48) / (3 * 414));
-        if (s3 >= 0.56 && avail / s3 >= 620) { tri = true; s = s3; h = Math.min(868, avail / s3); }
-        else { const a1 = avail - 52; s = Math.min(0.92, stageW / 414, a1 / 640); h = Math.min(868, Math.max(640, a1 / s)); }
-      } else {
-        const avail = H - 54 - 128 - 50 - 22; // header, narrator, tabs, bottom gap
-        s = Math.min(1, (stageW - 8) / 414); h = Math.min(868, Math.max(440, avail / s));
-      }
-      setWide(isWide); setThree(tri); setPh(Math.round(h));
-      scale.current = s; setSc(s);
-    };
+    const fit = () => setDims({ W: window.innerWidth, H: window.innerHeight });
     fit(); window.addEventListener('resize', fit); return () => window.removeEventListener('resize', fit);
   }, []);
-
   const t = S.current;
   const shown: PhoneId = picked ?? t.focus;
+  const { scales, ph } = (() => {
+    const { W, H } = dims;
+    const isWide = W >= 1024;
+    if (isWide) {
+      const stageW = Math.min(W, 1500) - 32 - 340 - 24;
+      const avail = H - 74 - 44 - 20; // header, phone labels, breathing room
+      const sEq = Math.max(0.3, Math.min(0.86, (stageW - 48) / (3 * 414), avail / 640));
+      return { scales: { host: sEq, chat: sEq, maya: sEq } as Record<PhoneId, number>, ph: Math.round(Math.min(868, Math.max(560, avail / sEq))) };
+    }
+    // Phones and tablets: the phone with the action big on the left, the other two
+    // stacked on the right at half size (same total height), so all three stay on screen.
+    const gap = 8;
+    const avail = H - 54 - 150 - 24; // header, narrator, label
+    let sBig = (W - 16 - gap) / (414 * 1.5);
+    const h = Math.round(Math.min(868, Math.max(560, avail / sBig)));
+    sBig = Math.min(sBig, avail / h);
+    const sSmall = (sBig * h - gap - 18) / 2 / h; // two small phones + their labels = one big phone
+    const sc3 = { host: sSmall, chat: sSmall, maya: sSmall } as Record<PhoneId, number>;
+    sc3[shown] = sBig;
+    return { scales: sc3, ph: h };
+  })();
+  useLayoutEffect(() => { setWide(dims.W >= 1024); scale.current = scales; });
   const grab = (x: React.PointerEvent) => { if (x.isTrusted && !t.ended && !paused) { setPaused(true); setDriving(true); } };
   const stopLinks = (p: PhoneId) => (x: React.MouseEvent) => {
     const a = (x.target as HTMLElement).closest('a');
@@ -459,17 +465,26 @@ export default function DemoTour() {
   };
   const progress = t.chapter < 0 ? 0 : t.ended ? 100 : ((t.chapter + 0.5) / CHAPTERS.length) * 100;
 
-  const phone = (id: PhoneId, label: string, sub: string, body: React.ReactNode, overlay?: React.ReactNode) => (
+  const phone = (id: PhoneId, label: string, sub: string, body: React.ReactNode, overlay?: React.ReactNode) => {
+    const sc = scales[id];
+    const small = !wide && shown !== id;
+    return (
     <div key={id} className="flex flex-col items-center">
-      {wide && (
+      {wide ? (
         <div className="mb-2 text-center">
           <div className="text-[13px] font-semibold" style={{ color: t.focus === id ? C.lime : '#e9efe6' }}>{label}</div>
           <div className="text-[11px]" style={{ color: '#9fb3a6' }}>{sub}</div>
         </div>
+      ) : (
+        <button type="button" onClick={() => setPicked(id)} className="mb-1 max-w-full truncate px-1 text-[11px] font-semibold" style={{ color: t.focus === id ? C.lime : '#cfdccb' }}>
+          {label.split(' · ')[0]}{t.focus === id && shown !== id ? ' •' : ''}
+        </button>
       )}
-      <div style={{ width: 414 * sc, height: ph * sc }} className="relative" onPointerDownCapture={grab} onClickCapture={stopLinks(id)}>
-        <div className="absolute left-0 top-0 origin-top-left rounded-[58px] p-3 transition-shadow duration-500"
-          style={{ width: 414, height: ph, transform: `scale(${sc})`, background: '#0b0d0c', boxShadow: t.focus === id && three ? `0 0 0 3px ${C.lime}, 0 30px 80px #000a` : '0 0 0 1px #2a2f2c, 0 30px 80px #0008' }}>
+      <div style={{ width: 414 * sc, height: ph * sc, transition: 'width 450ms ease, height 450ms ease' }} className="relative"
+        onPointerDownCapture={small ? undefined : grab} onClickCapture={small ? (x) => { x.preventDefault(); x.stopPropagation(); setPicked(id); } : stopLinks(id)}>
+        {small && <button type="button" aria-label={`Show ${label}`} onClick={() => setPicked(id)} className="absolute inset-0 z-[60] rounded-[18px]" />}
+        <div className="absolute left-0 top-0 origin-top-left rounded-[58px] p-3"
+          style={{ width: 414, height: ph, transform: `scale(${sc})`, transition: 'transform 450ms ease, box-shadow 500ms', background: '#0b0d0c', boxShadow: t.focus === id ? `0 0 0 ${wide ? 3 : 6}px ${C.lime}, 0 30px 80px #000a` : '0 0 0 1px #2a2f2c, 0 30px 80px #0008' }}>
           <div ref={(el) => { phones.current[id].screen = el; }} className="relative h-full w-full overflow-hidden rounded-[46px]" style={{ transform: 'translateZ(0)', background: C.paper }}>
             <div className="absolute inset-x-0 top-0 z-30 flex h-11 items-center justify-between px-8 text-[14px] font-semibold"
               style={id === 'chat' ? { color: '#fff', background: '#0b6b5a' } : id === 'maya' && t.maya === 'lock' ? { color: '#fff' } : { color: C.ink, background: C.paper }}>
@@ -489,7 +504,8 @@ export default function DemoTour() {
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   const hostBody = t.host === 'compose'
     ? <Compose t={t} />
@@ -522,19 +538,22 @@ export default function DemoTour() {
           <Narrator t={t} wide={wide} paused={paused} driving={driving} speed={speed} pills={!wide && <SportPills sport={sport} onPick={pickSport} small />}
             onToggle={() => { setPaused((v) => !v); setDriving(false); }} onRestart={() => startTour(0)} onSpeed={() => setSpeed((v) => (v === 1 ? 2 : 1))} onJump={(i) => startTour(i)} />
           <div ref={stage} className="relative">
-            {!three && (
-              <div className={`mb-2 flex justify-center gap-1 rounded-full bg-white/10 p-1 text-[13px] font-semibold ${wide ? 'mx-auto max-w-md' : ''}`}>
-                {(['host', 'chat', 'maya'] as PhoneId[]).map((p) => (
-                  <button key={p} onClick={() => setPicked(p)} className="relative flex-1 rounded-full py-2" style={shown === p ? { background: C.lime, color: C.ink } : {}}>
-                    {p === 'host' ? 'Host' : p === 'chat' ? 'Group chat' : 'Player'}
-                    {t.focus === p && shown !== p && <span className="absolute right-3 top-2 h-2 w-2 animate-pulse rounded-full" style={{ background: C.lime }} />}
-                  </button>
-                ))}
+            {wide ? (
+              <div className="flex items-start justify-center gap-6">{[all.host, all.chat, all.maya]}</div>
+            ) : (
+              // One grid, fixed DOM order: only the grid placement changes as focus moves,
+              // so no phone remounts (scroll positions and typing stay put).
+              <div className="grid justify-center gap-x-2 gap-y-1" style={{ gridTemplateColumns: 'auto auto', gridTemplateRows: 'auto auto' }}>
+                {(['host', 'chat', 'maya'] as PhoneId[]).map((id) => {
+                  const others = (['host', 'chat', 'maya'] as PhoneId[]).filter((x) => x !== shown);
+                  const style = id === shown ? { gridColumn: 1, gridRow: '1 / span 2' } : { gridColumn: 2, gridRow: others.indexOf(id) + 1 };
+                  return <div key={id} style={style}>{all[id]}</div>;
+                })}
               </div>
             )}
-            <div className={three ? 'flex items-start justify-center gap-6' : 'flex justify-center'}>
-              {three ? [all.host, all.chat, all.maya] : all[shown]}
-            </div>
+            {!wide && picked && picked !== t.focus && (
+              <button type="button" onClick={() => setPicked(null)} className="mx-auto mt-2 block rounded-full px-3 py-1 text-[12px] font-semibold" style={{ background: '#ffffff1a' }}>Follow the action</button>
+            )}
             {t.ended && <EndCard onReplay={() => startTour(0)} />}
           </div>
         </div>
