@@ -253,7 +253,64 @@ export function awards(m: GuestMixer): Award[] {
   const duo = [...duos.values()].sort((a, b) => b.w - a.w || b.diff - a.diff)[0];
   if (duo) out.push({ emoji: '🤝', title: 'Best duo', who: duo.ids.map(name).join(' & '), why: duo.w > 1 ? `won all ${duo.w} rounds together` : `won by ${duo.diff} together` });
   if (clutch) out.push({ emoji: '😮‍💨', title: 'Nail-biter', who: clutch.ids.map(name).join(' & '), why: `won ${clutch.a}–${clutch.b}` });
+  const slayer = giantSlayer(m);
+  if (slayer) out.push({ emoji: '🗡️', title: 'Giant Slayer', who: slayer.ids.map(name).join(' & '), why: `beat a side rated ${fmtLvl(slayer.gap)} higher, ${slayer.a}–${slayer.b}` });
+  const steady = mostConsistent(m);
+  if (steady) out.push({ emoji: '🎯', title: 'Most Consistent', who: name(steady.id), why: `game diff ${sgn(steady.min)} to ${sgn(steady.max)} over ${steady.n} matches` });
   return out;
+}
+
+const fmtLvl = (n: number) => String(+n.toFixed(2));
+const sgn = (n: number) => (n > 0 ? `+${n}` : String(n));
+
+/** A level gap this big (half a step on NTRP / DUPR / Playtomic) is a real upset, not noise. */
+export const GIANT_GAP = 0.5;
+
+/**
+ * MixerMode's Giant Slayer: the biggest win over a side whose average level is
+ * clearly higher. Only matches where every player on both sides has a level count.
+ */
+export function giantSlayer(m: GuestMixer): { ids: string[]; gap: number; a: number; b: number } | null {
+  const lvl = new Map(m.players.map((p) => [p.id, p.level]));
+  const avg = (ids: string[]) => {
+    const v = ids.map((id) => lvl.get(id));
+    return v.length && v.every((x) => x != null && Number.isFinite(x)) ? (v as number[]).reduce((s, x) => s + x, 0) / v.length : null;
+  };
+  let best: { ids: string[]; gap: number; a: number; b: number } | null = null;
+  for (const r of m.rounds) for (const x of r.matches) {
+    const wn = winnerOf(x);
+    if (!wn || x.scoreA == null || x.scoreB == null) continue;
+    const [win, lose, sw, sl] = wn === 'A' ? [x.teamA, x.teamB, x.scoreA, x.scoreB] : [x.teamB, x.teamA, x.scoreB, x.scoreA];
+    const wa = avg(win), la = avg(lose);
+    if (wa == null || la == null) continue;
+    const gap = la - wa;
+    if (gap < GIANT_GAP - 1e-9) continue;
+    if (!best || gap > best.gap + 1e-9 || (Math.abs(gap - best.gap) < 1e-9 && sw - sl > best.a - best.b)) best = { ids: win, gap, a: sw, b: sl };
+  }
+  return best;
+}
+
+/**
+ * MixerMode's Most Consistent: the player whose game differential moved the least
+ * from match to match (smallest standard deviation), over 3+ scored matches.
+ * Ties go to the better average differential.
+ */
+export function mostConsistent(m: GuestMixer): { id: string; n: number; sd: number; mean: number; min: number; max: number } | null {
+  const diffs = new Map<string, number[]>();
+  for (const r of m.rounds) for (const x of r.matches) {
+    if (!winnerOf(x) || x.scoreA == null || x.scoreB == null) continue;
+    for (const id of x.teamA) diffs.set(id, [...(diffs.get(id) ?? []), x.scoreA - x.scoreB]);
+    for (const id of x.teamB) diffs.set(id, [...(diffs.get(id) ?? []), x.scoreB - x.scoreA]);
+  }
+  let best: { id: string; n: number; sd: number; mean: number; min: number; max: number } | null = null;
+  for (const [id, d] of diffs) {
+    if (d.length < 3) continue;
+    const mean = d.reduce((s, x) => s + x, 0) / d.length;
+    const sd = Math.sqrt(d.reduce((s, x) => s + (x - mean) ** 2, 0) / d.length);
+    const row = { id, n: d.length, sd, mean, min: Math.min(...d), max: Math.max(...d) };
+    if (!best || sd < best.sd - 1e-9 || (Math.abs(sd - best.sd) < 1e-9 && mean > best.mean)) best = row;
+  }
+  return best;
 }
 
 export function spotsLine(e: Pick<PlayEvent, 'rsvps' | 'spots'>): string {

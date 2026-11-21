@@ -587,6 +587,7 @@ export function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: s
           <table className="w-full text-[15px]"><tbody>{st.map((s) => <tr key={s.id} className="border-t" style={{ borderColor: '#eef1e8', fontWeight: s.id === e.me ? 700 : 400 }}><td className="py-2 pl-1">{s.rank}</td><td>{s.name}</td><td className="text-right">{s.wins}–{s.losses}</td><td className="pr-1 text-right" style={{ color: C.muted }}>{s.gamesFor}–{s.gamesAgainst}</td></tr>)}</tbody></table>
         </section>
       )}
+      {m && <ResultLinks code={code} />}
       {!m && <p className="mt-4 text-center text-[15px]" style={{ color: C.muted }}>This one is over.</p>}
     </>
   );
@@ -709,6 +710,7 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
     <section className="mt-6 rounded-3xl border border-dashed p-4" style={{ borderColor: '#b9c4b5' }}>
       <div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Host</div>
       <button className="mt-2 text-[14px] underline" onClick={() => act({ action: 'reopen' })}>Reopen this event</button>
+      <ResultLinks code={e.code} />
     </section>
   );
   return (
@@ -793,6 +795,7 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
           </div>
         )}
       </div>
+      <ResultLinks code={e.code} />
       <p className="mt-3 text-[12px]" style={{ color: C.muted }}>Run it from another phone too: send yourself the host link. Don&apos;t post that one in the group.</p>
       {hostKey && <HostLinkButtons code={e.code} hostKey={hostKey} />}
     </section>
@@ -1216,6 +1219,17 @@ export function StatusSheet({ e, busy, act, hostKey, onClose }: { e: PlayEvent; 
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Paper and exports, like MixerMode's print sheets and results export. */
+function ResultLinks({ code }: { code: string }) {
+  return (
+    <div className="mt-3 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[13px] font-semibold" style={{ color: C.muted }}>
+      <a className="underline underline-offset-4" href={`/p/${code}/print`} target="_blank" rel="noopener">Print sheets</a>
+      <a className="underline underline-offset-4" href={`/p/${code}/results.png`} target="_blank" rel="noopener">Results image</a>
+      <a className="underline underline-offset-4" href={`/p/${code}/results.csv`} download>Download CSV</a>
     </div>
   );
 }
