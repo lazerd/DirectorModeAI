@@ -15,12 +15,19 @@ import { trackEvent } from '@/lib/analytics';
 import type { DrawFormat } from '@/lib/play/draw';
 import { InviteGroupPicker } from './Groups';
 
-// Three short starters (Darrin 11/21/26: the page felt cluttered). Each one shows a different kind of night.
-const EXAMPLES: [string, string][] = [
-  ['Doubles Sat 9am', 'Doubles Saturday 9am, need 3 more'],
-  ['Pickleball mixer Fri 6pm', 'Pickleball mixer Friday 6pm, 3 courts'],
-  ['Round robin Sun 10am', 'Tennis round robin tournament Sunday 10am, 2 courts'],
+// Start screen (Darrin 11/21/26: sample sentences were a waste). Instead: pick the kind of game
+// (one tap = a ready draft, which also shows what the app can run), and for returning hosts,
+// "Run it back" on the games they made before.
+const KINDS: { label: string; sub: string; draft: Partial<PlayDraft> }[] = [
+  { label: 'Doubles', sub: '4 players, 1 court', draft: { kind: 'game', format: 'doubles', spots: 4, courts: 1 } },
+  { label: 'Social mixer', sub: 'Rotating partners, any headcount', draft: { kind: 'social', format: 'maximize-courts', spots: null, courts: 3 } },
+  { label: 'King of the Court', sub: 'Winners move up a court', draft: { title: 'King of the Court', kind: 'social', format: 'king-of-court', spots: null, courts: 3 } },
+  { label: 'Tournament', sub: 'Round robin or brackets', draft: { kind: 'social', format: 'tournament', spots: null, courts: 2 } },
 ];
+type Recent = { title: string; text: string; draft: PlayDraft };
+const RECENT = 'rirl_recent_games';
+const readRecent = (): Recent[] => { try { const v = JSON.parse(localStorage.getItem(RECENT) || '[]'); return Array.isArray(v) ? v.slice(0, 3) : []; } catch { return []; } };
+const saveRecent = (r: Recent) => { try { localStorage.setItem(RECENT, JSON.stringify([r, ...readRecent().filter((x) => x.title !== r.title)].slice(0, 3))); } catch { /* private mode */ } };
 
 function localNow() {
   const d = new Date();
@@ -43,6 +50,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   const [paywall, setPaywall] = useState<PaywallInfo | null>(null);
   // Tournament: which draw (round robin singles / doubles). Sent with the create; changeable on the event page until the start.
   const [drawFormat, setDrawFormat] = useState<DrawFormat>('rr-singles');
+  const [recent, setRecent] = useState<Recent[]>([]);
   const [inviteGroup, setInviteGroup] = useState(''); // Groups: email the new link to this saved group
   // Kevin's scorecard: time from first intent to a created game.
   const t0 = useRef<number | null>(null);
@@ -52,6 +60,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   useEffect(() => {
     setMicOk(canListen());
     setHost(getName());
+    setRecent(readRecent());
     trackEvent('feature_use', 'play_host_open', 'courtconnect', {});
     if (club && /^[a-z0-9]{4,20}$/.test(club)) setClub(club);
     if (resume && !started.current) {
@@ -94,6 +103,15 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     setThinking(false);
   }
 
+  // A kind-of-game tile or a past game: straight to an editable draft.
+  function start(d: Partial<PlayDraft>, src = '') {
+    mark();
+    if (!drafted.current) { drafted.current = true; trackEvent('feature_use', 'play_draft', 'courtconnect', {}); }
+    if (src) { setText(src); build(src); return; } // re-read "Saturday 9am" as the coming Saturday
+    touched.current = new Set(); setErr('');
+    setDraft(normalizeDraft({ ...d, starts_at: null, when_text: null }));
+  }
+
   const usedMic = useRef(false);
   function talk() {
     mark(); usedMic.current = true;
@@ -118,6 +136,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       }
       if (!r.ok) throw new Error(j.error || 'Could not make it');
       setKey(j.code, j.hostKey);
+      saveRecent({ title: d.title, text: src.trim(), draft: d });
       trackEvent('feature_use', 'play_created', 'courtconnect', { kind: d.kind, spots: d.spots, ms: t0.current ? Date.now() - t0.current : null, voice: usedMic.current });
       router.push(`/p/${j.code}?new=1${inviteGroup ? `&group=${encodeURIComponent(inviteGroup)}` : ''}`);
     } catch (e) { setErr(e instanceof Error ? e.message : 'Could not make it'); setSaving(false); }
@@ -171,14 +190,34 @@ export default function HostClient({ initial, club, resume }: { initial?: string
           {mic && <p className="mt-2 text-center text-sm" style={{ color: C.muted }}>Listening… say when, where, how many</p>}
         </form>
 
+        {!draft && recent.length > 0 && (
+          <section className="mt-6">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Run it back</div>
+            <div className="grid gap-2">
+              {recent.map((r) => (
+                <button key={r.title} onClick={() => start(r.draft, r.text)} className="flex items-center justify-between rounded-2xl border bg-white px-4 py-3 text-left" style={{ borderColor: C.line }}>
+                  <span className="min-w-0">
+                    <span className="block truncate text-[15px] font-semibold">{r.title}</span>
+                    <span className="block truncate text-[12px]" style={{ color: C.muted }}>{[r.draft.location, r.draft.courts ? `${r.draft.courts} court${r.draft.courts > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ') || 'Same setup as last time'}</span>
+                  </span>
+                  <ArrowRight className="h-4 w-4 shrink-0" />
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
         {!draft && (
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
-            {EXAMPLES.map(([label, full]) => (
-              <button key={label} onClick={() => { setText(full); build(full); }} className="rounded-full border bg-white px-3.5 py-1.5 text-[13px] font-medium" style={{ borderColor: C.line, color: C.ink }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <section className="mt-6">
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>{recent.length ? 'Or start something new' : 'Or pick the kind of game'}</div>
+            <div className="grid grid-cols-2 gap-2">
+              {KINDS.map((k) => (
+                <button key={k.label} onClick={() => start(k.draft)} className="rounded-2xl border bg-white px-3.5 py-3 text-left" style={{ borderColor: C.line }}>
+                  <span className="block text-[15px] font-semibold">{k.label}</span>
+                  <span className="mt-0.5 block text-[12px] leading-snug" style={{ color: C.muted }}>{k.sub}</span>
+                </button>
+              ))}
+            </div>
+          </section>
         )}
         {!draft && (
           <p className="mt-8 text-center text-[13px]" style={{ color: C.muted }}>
