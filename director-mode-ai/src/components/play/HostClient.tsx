@@ -136,8 +136,8 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       <main className="mx-auto w-full max-w-xl px-5">
         {!draft && (
           <section className="pt-6 text-center">
-            <div className="text-[10px] font-semibold uppercase tracking-[2px]" style={{ color: C.muted }}>One link runs the whole thing</div>
-            <h1 className="mt-4 text-[44px] font-medium leading-[1.02] tracking-[-2.5px] sm:text-[56px]">Get a game<br />together.</h1>
+            <div className="text-[10px] font-semibold uppercase tracking-[2px]" style={{ color: C.muted }}>Racquet Sports. Together. In Real Life.</div>
+            <h1 className="mt-4 text-[44px] font-medium leading-[1.02] tracking-[-2.5px] sm:text-[56px]">Racquets IRL</h1>
             <p className="mx-auto mt-4 max-w-sm text-[15px] leading-relaxed" style={{ color: C.muted }}>
               Set up your next tennis, pickleball or padel mixer in under 60 seconds. Free. No signup. Just play.
             </p>

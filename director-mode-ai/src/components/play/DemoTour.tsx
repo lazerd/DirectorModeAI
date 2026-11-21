@@ -582,9 +582,9 @@ function Compose({ t }: { t: Tour }) {
       <main className="px-5">
         {!d && (
           <section className="pt-6 text-center">
-            <div className="text-[10px] font-semibold uppercase tracking-[2px]" style={{ color: C.muted }}>One link runs the whole thing</div>
-            <h1 className="mt-4 text-[44px] font-medium leading-[1.02] tracking-[-2.5px]">Get a game<br />together.</h1>
-            <p className="mx-auto mt-4 max-w-sm text-[15px] leading-relaxed" style={{ color: C.muted }}>Say what you want. You get one link for the group chat.</p>
+            <div className="text-[10px] font-semibold uppercase tracking-[2px]" style={{ color: C.muted }}>Racquet Sports. Together. In Real Life.</div>
+            <h1 className="mt-4 text-[44px] font-medium leading-[1.02] tracking-[-2.5px]">Racquets IRL</h1>
+            <p className="mx-auto mt-4 max-w-sm text-[15px] leading-relaxed" style={{ color: C.muted }}>Free to use. No login needed.</p>
           </section>
         )}
         <div className="mt-7 flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
