@@ -3,7 +3,7 @@
  * and results image share. Pure (no DB), so it is testable and safe anywhere.
  */
 import { courtLabel, standings, winnerOf, type GuestMixer } from '@/lib/mixer/guestMixer';
-import { courtName, entryOf, isBracket, roundLabel, scoreWinnerFirst, standingsFor, type Draw, type DrawMatch } from './draw';
+import { courtName, isBracket, roundLabel, scoreWinnerFirst, sideName, stageOrder, standingsFor, type Draw } from './draw';
 
 const cell = (v: unknown) => {
   const s = v == null ? '' : String(v);
@@ -48,14 +48,12 @@ export function drawResultsCsv(d: Draw): string {
   for (const s of standingsFor(d)) out.push(line([bracket ? s.place : s.rank, ...(bracket ? [s.label] : []), s.seed, s.name, s.played, s.wins, s.losses, s.gamesWon, s.gamesLost]));
   out.push('');
   out.push(line(['Stage', 'Match', 'Court', 'Side A', 'Side B', 'Winner', 'Score (winner first)', 'Finish', 'Status']));
-  const name = (id: string | null) => (id ? entryOf(d, id)?.name ?? '' : 'TBD');
-  const order = (m: DrawMatch) => (bracket && m.bracket === 'consolation' ? 1000 : 0) + m.round;
-  for (const m of d.matches.filter((x) => !x.bye).sort((a, b) => order(a) - order(b) || a.slot - b.slot)) {
+  for (const m of d.matches.filter((x) => !x.bye).sort((a, b) => stageOrder(d, a) - stageOrder(d, b) || a.slot - b.slot)) {
     const done = m.status === 'done';
     const how = m.how === 'W/O' ? 'Walkover' : m.how === 'DEF' ? 'Default' : m.how === 'RET' ? 'Retired' : '';
     out.push(line([
-      roundLabel(d, m), m.slot, m.court ? courtName(d, m.court) : '', name(m.player1_id), name(m.player3_id),
-      done ? name(m.winner === 'b' ? m.player3_id : m.player1_id) : '',
+      roundLabel(d, m), m.slot, m.court ? courtName(d, m.court) : '', sideName(d, m, 'a'), sideName(d, m, 'b'),
+      done ? sideName(d, m, m.winner === 'b' ? 'b' : 'a') : '',
       done && m.how !== 'W/O' && m.how !== 'DEF' ? scoreWinnerFirst(m) : '', how,
       done ? 'Played' : m.status === 'on_court' ? 'On court' : m.status === 'ready' ? 'Ready' : 'Waiting',
     ]));

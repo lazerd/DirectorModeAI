@@ -2,7 +2,7 @@ import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { standings, teamScore, winnerOf, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { awards, drawAwards } from './core';
-import { DRAW_FORMAT_NAME, entryOf, resultOf, roundLabel, scoreWinnerFirst, standingsFor, type Draw } from './draw';
+import { DRAW_FORMAT_NAME, entryOf, resultOf, roundLabel, scoreWinnerFirst, sideName, standingsFor, type Draw } from './draw';
 
 /**
  * "Call the game": an AI sportscaster recap built ONLY from facts we recorded
@@ -37,6 +37,8 @@ function drawFacts(d: Draw, title: string, crown: CrownChange | null) {
     .sort((a, b) => Date.parse(a.finishedAt ?? '0') - Date.parse(b.finishedAt ?? '0'))
     .map((m) => {
       const r = resultOf(m)!;
+      // A quads doubles has two players a side: name both, no seeds (they're two seeds each).
+      if (m.player2_id || m.player4_id) return { stage: roundLabel(d, m), winner: sideName(d, m, m.winner === 'b' ? 'b' : 'a'), winner_seed: null, loser: sideName(d, m, m.winner === 'b' ? 'a' : 'b'), loser_seed: null, score: scoreWinnerFirst(m) || null };
       return { stage: roundLabel(d, m), winner: name(r.winner), winner_seed: entryOf(d, r.winner)?.seed ?? null, loser: name(r.loser), loser_seed: entryOf(d, r.loser)?.seed ?? null, score: m.how === 'W/O' || m.how === 'DEF' ? m.how : scoreWinnerFirst(m) || null };
     });
   return {

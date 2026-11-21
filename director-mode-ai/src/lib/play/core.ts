@@ -9,6 +9,7 @@ import { parseLevelRange } from './levels';
  */
 import { standings, winnerOf, type GuestFormat, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { DRAW_FORMAT_NAME, consolationChampion, drawKind, entryOf, resultOf, scoreWinnerFirst, standingsFor, type Draw, type DrawFormat } from './draw';
+import { groupTables } from './drawGroups';
 
 export type Sport = 'tennis' | 'pickleball' | 'padel';
 export type PlayKind = 'game' | 'social';
@@ -82,6 +83,10 @@ export interface PlayState {
   drawPairs?: string[][] | null;
   /** Tournament: the host's seed order (rsvp ids, best first) set before the start. Anyone not listed follows by level. */
   drawSeeds?: string[] | null;
+  /** Tournament, pools + playoffs: how many pools the host picked (null = by field size). */
+  drawPools?: number | null;
+  /** Tournament, quads: the scoring format (lib/quads QUAD_SCORING_FORMATS id). */
+  drawScoring?: string | null;
   /** Tournament: the live draw (entries, matches, courts). */
   draw?: Draw | null;
   preview?: { headline: string; lines: { id: string; name: string; line: string }[]; at: string } | null;
@@ -123,7 +128,7 @@ export const FORMAT_NAME: Record<PlayFormat, string> = {
   'maximize-courts': 'Optimize Courts', 'king-of-court': 'King of the Court', 'team-battle': 'Team Battle', doubles: 'Doubles', 'mixed-doubles': 'Mixed doubles', singles: 'Singles',
 };
 export const FORMAT_BLURB: Record<PlayFormat, string> = {
-  tournament: 'A real draw: round robin, elimination, consolation or compass. Courts fill themselves as matches finish.',
+  tournament: 'A real draw: round robin, elimination, consolation, compass, quads or pools. Courts fill themselves as matches finish.',
   'maximize-courts': 'Every court full: doubles where it fits, singles with the rest, fewest sit-outs.',
   'king-of-court': 'Winners move up a court, losers move down. Court 1 is the King court.',
   'team-battle': 'Two teams, lines matched by strength like team tennis. Every court counts toward the team score.',
@@ -290,6 +295,7 @@ export function drawAwards(d: Draw): Award[] {
   const out: Award[] = [];
   const rr = drawKind(d.format) === 'rr';
   const rec = (s: (typeof st)[0]) => `${s.wins}–${s.losses}, ${s.gamesWon} games won`;
+  if (drawKind(d.format) === 'quads') return quadsAwards(d, st, real, out, rec);
   const champ = rr ? (st[0].played ? st[0] : null) : st.find((s) => s.label === 'Champion' || (s.place === 1 && s.label === '1st'));
   if (champ) out.push({ emoji: '🏆', title: 'Champion', who: champ.name, why: rr ? rec(champ) : `${rec(champ)}${champ.seed ? ` · No. ${champ.seed} seed` : ''}` });
   const second = rr ? (champ && st[1]?.played ? st[1] : null) : st.find((s) => s.label === 'Finalist' || (s.place === 2 && s.label === '2nd'));
@@ -300,6 +306,35 @@ export function drawAwards(d: Draw): Award[] {
   let upset: { w: string; l: string; gap: number; score: string } | null = null;
   for (const m of real) {
     if (m.how === 'W/O' || m.how === 'DEF') continue;
+    const r = resultOf(m);
+    const w = r && entryOf(d, r.winner), l = r && entryOf(d, r.loser);
+    if (!w || !l) continue;
+    const gap = w.seed - l.seed;
+    if (gap >= 2 && (!upset || gap > upset.gap)) upset = { w: w.id, l: l.id, gap, score: scoreWinnerFirst(m) };
+  }
+  if (upset) {
+    const w = entryOf(d, upset.w)!, l = entryOf(d, upset.l)!;
+    out.push({ emoji: '🗡️', title: 'Biggest upset', who: w.name, why: `No. ${w.seed} seed beat No. ${l.seed} ${l.name}${upset.score ? `, ${upset.score}` : ''}` });
+  }
+  const most = [...st].sort((a, b) => b.gamesWon - a.gamesWon || a.rank - b.rank)[0];
+  if (most && most.gamesWon > 0) out.push({ emoji: '🔥', title: 'Most games won', who: most.name, why: `${most.gamesWon} games in ${most.played} match${most.played === 1 ? '' : 'es'}` });
+  return out;
+}
+
+/**
+ * Quads: every flight crowns its own winner (MixerMode: most games over all four rounds).
+ * The top flight's is the Champion; the rest are "Flight B champion", ... Then the biggest
+ * singles upset by seed and the most games won.
+ */
+function quadsAwards(d: Draw, st: ReturnType<typeof standingsFor>, real: Draw['matches'], out: Award[], rec: (s: ReturnType<typeof standingsFor>[0]) => string): Award[] {
+  for (const [i, t] of groupTables(d, String).entries()) {
+    const top = t.rows[0]?.label === 'Champion' ? st.find((s) => s.id === t.rows[0].id) : null;
+    if (!top) continue;
+    out.push({ emoji: i === 0 ? '🏆' : '🏅', title: i === 0 ? 'Champion' : `${t.group.name} champion`, who: top.name, why: `${i === 0 ? `won ${t.group.name} · ` : ''}${rec(top)}` });
+  }
+  let upset: { w: string; l: string; gap: number; score: string } | null = null;
+  for (const m of real) {
+    if (m.match_type !== 'singles' || m.how === 'W/O' || m.how === 'DEF') continue;
     const r = resultOf(m);
     const w = r && entryOf(d, r.winner), l = r && entryOf(d, r.loser);
     if (!w || !l) continue;

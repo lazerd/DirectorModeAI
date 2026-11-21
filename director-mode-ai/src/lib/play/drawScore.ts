@@ -8,6 +8,7 @@
  */
 import { canonicalScore } from '@/lib/tournamentScoring';
 import { DrawError, applyResult, fillCourts, parseSets, setsText, winnerOfScore, type Draw, type DrawHow } from './draw';
+import { isQuadsFormat, quadsScoreProblem } from './drawGroups';
 
 export function drawScoreText(raw: string | null | undefined, winner: 'a' | 'b', how: DrawHow | null = null): string {
   if (winner !== 'a' && winner !== 'b') throw new DrawError('Pick who won.');
@@ -26,14 +27,24 @@ export function drawScoreText(raw: string | null | undefined, winner: 'a' | 'b',
   return p1;
 }
 
+/** The stored score for this draw: quads scores also have to fit the host's scoring format. */
+function scoreFor(d: Draw, raw: string | null | undefined, winner: 'a' | 'b', how: DrawHow | null): string {
+  const text = drawScoreText(raw, winner, how);
+  if (isQuadsFormat(d.format) && !how) {
+    const problem = quadsScoreProblem(d.scoring, text);
+    if (problem) throw new DrawError(problem);
+  }
+  return text;
+}
+
 /** Score a match and refill the courts: what the 'draw_score' / 'draw_walkover' actions do. */
 export function scoreDraw(d: Draw, key: string, winner: 'a' | 'b', raw: string | null | undefined, how: DrawHow | null, now: string): Draw {
-  return fillCourts(applyResult(d, key, winner, drawScoreText(raw, winner, how), { how, now }), now);
+  return fillCourts(applyResult(d, key, winner, scoreFor(d, raw, winner, how), { how, now }), now);
 }
 
 /** A fix after the event ended: the result changes, nothing goes on a court. */
 export function scoreOnly(d: Draw, key: string, winner: 'a' | 'b', raw: string | null | undefined, how: DrawHow | null, now: string): Draw {
-  return applyResult(d, key, winner, drawScoreText(raw, winner, how), { how, now });
+  return applyResult(d, key, winner, scoreFor(d, raw, winner, how), { how, now });
 }
 
 /** The host's doubles pairs as sent by the page: two different players each, nobody twice, all on this event. */

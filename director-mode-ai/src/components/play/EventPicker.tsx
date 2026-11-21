@@ -63,10 +63,13 @@ const SMALL: { f: GuestFormat; title: string; blurb: string; art: React.ReactNod
 /** "8 players: 28 matches, 7 each" for this draw with the host's numbers. */
 function drawLine(df: DrawFormat, spots: number | null, courts: number) {
   const doubles = drawIsDoubles(df);
-  if (spots == null) return `${courts} court${courts === 1 ? '' : 's'} · ${drawKind(df) === 'rr' ? 'everyone plays everyone once' : 'courts fill as matches are set'}`;
+  const k = drawKind(df);
+  if (spots == null) return `${courts} court${courts === 1 ? '' : 's'} · ${k === 'rr' ? 'everyone plays everyone once' : k === 'quads' ? 'each flight on its own two courts' : k === 'rr-pools' ? 'pools, then playoffs for every place' : 'courts fill as matches are set'}`;
   const n = doubles ? Math.floor(spots / 2) : spots;
   const plan = drawPlan(df, n);
   if ('problem' in plan) return plan.problem.replace(/ \(.*\)\.?/, '.').replace(/\.$/, '');
+  if (k === 'quads') return `${n} players: ${plan.groups} flight${plan.groups === 1 ? '' : 's'}, 4 matches each${plan.alternates ? `, ${plan.alternates} alternate${plan.alternates === 1 ? '' : 's'}` : ''}`;
+  if (k === 'rr-pools') return `${n} ${doubles ? 'pairs' : 'players'}: ${plan.groups} pools + playoffs, ${plan.minEach === plan.maxEach ? plan.minEach : `${plan.minEach}–${plan.maxEach}`} matches each`;
   return `${n} ${doubles ? 'pairs' : 'players'}: ${plan.matches} matches, ${plan.minEach === plan.maxEach ? plan.minEach : `${plan.minEach}–${plan.maxEach}`} each`;
 }
 
@@ -92,6 +95,30 @@ function Sheet({ compass, back }: { compass?: boolean; back?: boolean }) {
   );
 }
 
+/** Quads: four little flights of four. Pools: two groups feeding a playoff line. */
+function Groups({ pools }: { pools?: boolean }) {
+  const line = '#ffffffb0';
+  return (
+    <svg viewBox="0 0 92 68" className={s.court} style={{ width: 92 }} aria-hidden="true">
+      {pools ? (
+        <g fill="none" strokeWidth="1.4">
+          <rect x="4" y="6" width="34" height="24" rx="4" stroke={line} /><rect x="4" y="38" width="34" height="24" rx="4" stroke={line} />
+          <path d="M38 18h16M38 50h16M54 18v32M54 34h30" stroke="#d4ff49" />
+        </g>
+      ) : (
+        <g>
+          {[[6, 6], [50, 6], [6, 38], [50, 38]].map(([x, y], i) => (
+            <g key={i}>
+              <rect x={x} y={y} width="36" height="24" rx="4" fill="none" stroke={i === 0 ? '#d4ff49' : line} strokeWidth="1.4" />
+              {[0, 1, 2, 3].map((j) => <circle key={j} cx={x + 7 + j * 7.3} cy={y + 12} r="2.6" fill={i === 0 ? '#d4ff49' : line} />)}
+            </g>
+          ))}
+        </g>
+      )}
+    </svg>
+  );
+}
+
 /* Tournament tiles: one per draw kind; singles or doubles is a switch above them. */
 const TOURNEY: { k: DrawKind; art: React.ReactNode }[] = [
   { k: 'rr', art: <><Court dots={S} /><Court dots={S} dim /></> },
@@ -99,6 +126,8 @@ const TOURNEY: { k: DrawKind; art: React.ReactNode }[] = [
   { k: 'fmlc', art: <Sheet back /> },
   { k: 'ffic', art: <Sheet back /> },
   { k: 'compass', art: <Sheet compass /> },
+  { k: 'quads', art: <Groups /> },
+  { k: 'rr-pools', art: <Groups pools /> },
 ];
 
 export default function EventPicker({ value, drawFormat, spots, courts, onChange }: { value: PlayFormat; drawFormat?: DrawFormat | null; spots: number | null; courts: number; onChange: (f: PlayFormat, df?: DrawFormat) => void }) {
@@ -146,7 +175,8 @@ export default function EventPicker({ value, drawFormat, spots, courts, onChange
       <div className={s.eyebrow} style={{ marginTop: 18 }}><b>Tournament</b><span>A real draw · courts fill themselves</span></div>
       <div role="radiogroup" aria-label="Singles or doubles" style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 10, background: '#103c32' }}>
         {[false, true].map((dbl) => {
-          const on = drawIsDoubles(df) === dbl;
+          // Quads is singles + doubles by design: the switch only remembers the choice for the others.
+          const on = drawIsDoubles(df) === dbl && drawKind(df) !== 'quads';
           return (
             <button key={String(dbl)} type="button" role="radio" aria-checked={on} onClick={() => onChange('tournament', drawFormatFor(drawKind(df), dbl))}
               style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, background: on ? '#d4ff49' : 'transparent', color: on ? '#103c32' : '#e3ecdf' }}>

@@ -3,7 +3,7 @@
  * what the board says out loud is testable.
  */
 import { courtLabel, type GuestMixer, type GuestRound, type Standing } from '@/lib/mixer/guestMixer';
-import { courtName, standingsFor, type Draw } from './draw';
+import { courtName, sidePlayers, standingsFor, type Draw } from './draw';
 
 export const TIME_UP_TEXT = 'Time. Finish your point and enter your scores.';
 
@@ -59,8 +59,8 @@ export const pollMs = (status: string) => (status === 'live' ? 5000 : 15000);
  */
 export function drawCallout(d: Draw, prevOnCourt: Set<string>): string {
   const fresh = d.matches.filter((m) => m.status === 'on_court' && !prevOnCourt.has(m.key)).sort((a, b) => (a.court ?? 0) - (b.court ?? 0));
-  const side = (id: string | null) => joinNames(d.entries.find((e) => e.id === id)?.players ?? ['someone']);
-  return fresh.map((m) => `Court ${courtName(d, m.court ?? 0)}: ${side(m.player1_id)} versus ${side(m.player3_id)}.`).join(' ');
+  const side = (m: (typeof fresh)[0], s: 'a' | 'b') => { const ps = sidePlayers(d, m, s); return joinNames(ps.length ? ps : ['someone']); };
+  return fresh.map((m) => `Court ${courtName(d, m.court ?? 0)}: ${side(m, 'a')} versus ${side(m, 'b')}.`).join(' ');
 }
 
 /** The board's leaderboard rows for a draw (same shape as the mixer's standings). A bracket shows its places. */

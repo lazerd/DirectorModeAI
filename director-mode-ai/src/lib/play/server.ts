@@ -6,7 +6,8 @@ import { crownFor } from './crown';
 import { hostingAllowed, passCheckoutUrl } from './passes';
 import { callTheGame, hypeJoin, hypePreview, softenLine, type Spice } from './recap';
 import { formatLabel, whenLine } from './core';
-import { DrawError, addLateEntry, buildDraw, fillCourts, isDrawFormat, moveMatch, type Draw, type DrawFormat, type DrawHow } from './draw';
+import { DrawError, addLateEntry, buildDraw, fillCourts, isDrawFormat, matchEntries, moveMatch, type Draw, type DrawFormat, type DrawHow } from './draw';
+import { MAX_POOLS, isQuadsScoring } from './drawGroups';
 import { cleanPairs, scoreDraw, scoreOnly } from './drawScore';
 import { crownChanged, nearbyNeedOne, watchCrown } from './notify';
 import { LEVEL_SCALE, levelNum, type LevelSport } from './levels';
@@ -364,7 +365,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
           if (r.status !== 'open') throw new PlayError('Already started.');
           const fmt = isDrawFormat(body.format) ? body.format : r.state?.drawFormat ?? 'rr-singles';
           const now = nowIso();
-          const draw = onDraw(() => fillCourts(buildDraw(fmt, ps, r.courts, { pairs: r.state?.drawPairs ?? null, seeds: r.state?.drawSeeds ?? null, courtLabels: r.state?.courtLabels ?? null, now }), now));
+          const draw = onDraw(() => fillCourts(buildDraw(fmt, ps, r.courts, { pairs: r.state?.drawPairs ?? null, seeds: r.state?.drawSeeds ?? null, courtLabels: r.state?.courtLabels ?? null, pools: r.state?.drawPools ?? null, scoring: r.state?.drawScoring ?? null, now }), now));
           return { status: 'live', state: { ...r.state, drawFormat: fmt, draw } };
         });
         return {};
@@ -537,6 +538,23 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       await mutate(row, (r) => ({ state: { ...r.state, drawPairs: pairs.length ? pairs : null } }));
       return {};
     }
+    case 'draw_options': { // host, before the start: pools (2-4, or auto) and the quads scoring format
+      hostOnly();
+      if (row.format !== 'tournament') throw new PlayError('This event isn’t a tournament.');
+      if (row.status !== 'open') throw new PlayError('The draw is already made.');
+      const patch: Partial<PlayState> = {};
+      if ('pools' in body) {
+        const n = body.pools == null || body.pools === 'auto' ? null : Math.round(Number(body.pools));
+        if (n != null && !(n >= 2 && n <= MAX_POOLS)) throw new PlayError(`Pick 2 to ${MAX_POOLS} pools.`);
+        patch.drawPools = n;
+      }
+      if ('scoring' in body) {
+        if (!isQuadsScoring(body.scoring)) throw new PlayError('Pick one of the scoring formats.');
+        patch.drawScoring = body.scoring;
+      }
+      await mutate(row, (r) => ({ state: { ...r.state, ...patch } }));
+      return {};
+    }
     case 'draw_seeds': { // host, before the start: seed order (rsvp ids, best first). Anyone not listed follows by level.
       hostOnly();
       if (row.format !== 'tournament') throw new PlayError('This event isn’t a tournament.');
@@ -577,7 +595,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
         if (!m) throw new PlayError('That match isn’t in the draw.');
         if (!isHost) {
           if (r.status !== 'live') throw new PlayError('Scores are locked. Ask the host to fix it.', 403);
-          const inIt = [m.player1_id, m.player3_id].some((id) => d.entries.find((e) => e.id === id)?.rsvpIds.includes(mine!.id));
+          const inIt = matchEntries(m).some((id) => d.entries.find((e) => e.id === id)?.rsvpIds.includes(mine!.id));
           if (!inIt) throw new PlayError('Only the players in that match (or the host) can score it.', 403);
           if (m.status === 'done') throw new PlayError('That one is already scored. Ask the host to fix it.', 403);
         }

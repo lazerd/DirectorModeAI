@@ -18,22 +18,31 @@ import {
 } from '@/lib/tournamentFormats';
 import { buildRoundRobinGrid, type RRGrid } from '@/lib/roundRobinGrid';
 import { buildCompassGroups } from '@/lib/compassLayout';
+import { DrawError } from './drawError';
+import {
+  DEFAULT_QUADS_SCORING, allowedCourts, betweenStages, buildPools, buildQuads, groupKeys, groupRoundLabel, isGroupedFormat, isQuadsScoring,
+  matchesToCome, syncGroups,
+} from './drawGroups';
 
 /**
  * Draw formats Racquets IRL runs: the MixerMode tournament formats, singles or doubles.
  * The value is the MixerMode TournamentFormat itself ('compass-doubles', ...), so the
- * desk's DrawView / BracketDrawSvg / CompassDrawSvg read it as is. Later: 'quads'.
+ * desk's DrawView / BracketDrawSvg / CompassDrawSvg read it as is. Plus the grouped
+ * draws (drawGroups.ts): 'quads' (MixerMode Quads: always singles + one doubles round)
+ * and 'rr-pools-*' (round robin pools, then placement playoffs).
  */
-export type DrawFormat = TournamentFormat;
-export type DrawKind = 'rr' | 'single-elim' | 'fmlc' | 'ffic' | 'compass';
-export const DRAW_KINDS: DrawKind[] = ['rr', 'single-elim', 'fmlc', 'ffic', 'compass'];
-export const DRAW_FORMATS: DrawFormat[] = DRAW_KINDS.flatMap((k) => [`${k}-singles`, `${k}-doubles`] as DrawFormat[]);
+export type DrawFormat = TournamentFormat | 'quads' | 'rr-pools-singles' | 'rr-pools-doubles';
+export type DrawKind = 'rr' | 'single-elim' | 'fmlc' | 'ffic' | 'compass' | 'quads' | 'rr-pools';
+export const DRAW_KINDS: DrawKind[] = ['rr', 'single-elim', 'fmlc', 'ffic', 'compass', 'quads', 'rr-pools'];
+export const DRAW_FORMATS: DrawFormat[] = DRAW_KINDS.flatMap((k) => (k === 'quads' ? ['quads'] : [`${k}-singles`, `${k}-doubles`]) as DrawFormat[]);
 export const DRAW_KIND_NAME: Record<DrawKind, string> = {
   rr: 'Round Robin',
   'single-elim': 'Single Elimination',
   fmlc: 'First-Match Consolation',
   ffic: 'Feed-In Consolation',
   compass: 'Compass',
+  quads: 'Quads',
+  'rr-pools': 'Pools + Playoffs',
 };
 export const DRAW_KIND_BLURB: Record<DrawKind, string> = {
   rr: 'Everyone plays everyone once. Courts fill themselves as matches finish.',
@@ -41,10 +50,13 @@ export const DRAW_KIND_BLURB: Record<DrawKind, string> = {
   fmlc: 'First-match loser consolation: lose your first match, play in the back draw.',
   ffic: 'Feed-in consolation: every loser drops into the back draw (2+ matches each).',
   compass: 'Compass: 8 or 16 players, everyone plays 3–4 matches, all places decided.',
+  quads: 'Quads: groups of 4 by level, 3 singles + 1 doubles each.',
+  'rr-pools': 'Pools + playoffs: round robin groups, then 1st vs 1st, 2nd vs 2nd...',
 };
 export const drawKind = (f: DrawFormat): DrawKind => f.replace(/-(singles|doubles)$/, '') as DrawKind;
-export const drawFormatFor = (k: DrawKind, doubles: boolean): DrawFormat => `${k}-${doubles ? 'doubles' : 'singles'}` as DrawFormat;
-export const DRAW_FORMAT_NAME = Object.fromEntries(DRAW_FORMATS.map((f) => [f, `${DRAW_KIND_NAME[drawKind(f)]} · ${drawIsDoubles(f) ? 'Doubles' : 'Singles'}`])) as Record<DrawFormat, string>;
+/** Quads has no singles / doubles switch: it is both, by design. */
+export const drawFormatFor = (k: DrawKind, doubles: boolean): DrawFormat => (k === 'quads' ? 'quads' : `${k}-${doubles ? 'doubles' : 'singles'}` as DrawFormat);
+export const DRAW_FORMAT_NAME = Object.fromEntries(DRAW_FORMATS.map((f) => [f, f === 'quads' ? 'Quads' : `${DRAW_KIND_NAME[drawKind(f)]} · ${drawIsDoubles(f) ? 'Doubles' : 'Singles'}`])) as Record<DrawFormat, string>;
 export const DRAW_FORMAT_BLURB = Object.fromEntries(DRAW_FORMATS.map((f) => [f,
   f === 'rr-doubles' ? 'Fixed pairs, every pair plays every pair once. You set the pairs or we balance them.'
     : `${DRAW_KIND_BLURB[drawKind(f)]}${drawIsDoubles(f) ? ' Fixed pairs.' : ''}`])) as Record<DrawFormat, string>;
@@ -52,6 +64,8 @@ export const isDrawFormat = (v: unknown): v is DrawFormat => DRAW_FORMATS.includ
 export function drawIsDoubles(f: DrawFormat) { return f.endsWith('-doubles'); }
 /** A bracket (anything but the round robin): no late entries, placements instead of a table. */
 export const isBracket = (f: DrawFormat) => drawKind(f) !== 'rr';
+/** Quads or pools: flights / pools of their own (drawGroups.ts). */
+export const isGrouped = (f: DrawFormat) => isGroupedFormat(f);
 
 /** Round robins past this get long (16 → 120 matches). Bigger fields want flights (later). */
 export const MAX_RR_ENTRIES = 16;
@@ -62,6 +76,8 @@ export const DRAW_LIMITS: Record<DrawKind, { min: number; max: number }> = {
   fmlc: { min: 4, max: 32 },
   ffic: { min: 4, max: 32 },
   compass: { min: 5, max: 16 },
+  quads: { min: 4, max: 40 },
+  'rr-pools': { min: 6, max: 32 },
 };
 
 /** Why this many entries can't make this draw (null = fine). */
@@ -76,6 +92,16 @@ export function drawSizeProblem(format: DrawFormat, entries: number): string | n
     return null;
   }
   const here = `${entries} ${entries === 1 ? unit.slice(0, -1) : unit} here${doubles ? `, ${entries * 2} players` : ''}`;
+  if (k === 'quads') {
+    if (entries < min) return `Quads needs at least 4 players checked in (${entries} here).`;
+    if (entries > max) return `Quads tops out at ${max} players, ${max / 4} flights (${entries} here).`;
+    return null;
+  }
+  if (k === 'rr-pools') {
+    if (entries < min) return `Pools + playoffs needs at least ${min} ${unit} (${here}): two pools of three.`;
+    if (entries > max) return `Pools + playoffs tops out at ${max} ${unit} (${here}).`;
+    return null;
+  }
   if (k === 'compass' && (entries < min || entries > max)) return `A compass draw needs ${min}–${max} ${unit} (${here}). It runs as an 8 or a 16.`;
   if (entries < min) return `${DRAW_KIND_NAME[k]} needs at least ${min} ${unit} (${here}).`;
   if (entries > max) return `${DRAW_KIND_NAME[k]} tops out at ${max} ${unit} (${here}).`;
@@ -99,6 +125,15 @@ export interface DrawEntry {
   bye?: boolean;
 }
 
+/** A quads flight or a pool: its letter id, its name ("Flight B", "Pool A"), its entries in seed order. */
+export interface DrawGroup {
+  id: string;
+  name: string;
+  entryIds: string[];
+  /** Quads: MixerMode's tier label ("Top tier", "Tier 2"). */
+  tier?: string | null;
+}
+
 export type DrawMatch = GeneratedMatch & {
   /** `${bracket}:${round}:${slot}`: the same address feeds_to refs use. */
   key: string;
@@ -114,6 +149,12 @@ export type DrawMatch = GeneratedMatch & {
   held?: boolean;
   /** Settled by itself because a side is a BYE (compass padding). Not a real match. */
   bye?: boolean;
+  /** Quads / pools: the flight or pool this match belongs to (null for a placement playoff). */
+  group?: string | null;
+  /** Pools: the placement playoff tier (1 = the pool winners). */
+  tier?: number | null;
+  /** Pools playoff: the place the winner / loser takes (null = they play on). */
+  places?: [number | null, number | null] | null;
 };
 
 export interface Draw {
@@ -123,9 +164,15 @@ export interface Draw {
   matches: DrawMatch[];
   courts: number;
   courtLabels?: string[] | null;
+  /** Quads / pools: the flights or pools, in order. */
+  groups?: DrawGroup[] | null;
+  /** Quads: the field wasn't a multiple of 4, so these (lowest seeds) wait, as MixerMode waitlists them. */
+  alternates?: DrawEntry[] | null;
+  /** Quads: the scoring format the host picked (lib/quads QUAD_SCORING_FORMATS id). */
+  scoring?: string | null;
 }
 
-export class DrawError extends Error {}
+export { DrawError };
 
 export type DrawPlayer = { id: string; name: string; level?: number | null };
 
@@ -186,7 +233,7 @@ export function buildDraw(
   format: DrawFormat,
   players: DrawPlayer[],
   courts: number,
-  opts: { pairs?: string[][] | null; courtLabels?: string[] | null; seeds?: string[] | null; now?: string } = {},
+  opts: { pairs?: string[][] | null; courtLabels?: string[] | null; seeds?: string[] | null; now?: string; pools?: number | null; scoring?: string | null } = {},
 ): Draw {
   if (!isDrawFormat(format)) throw new DrawError('That tournament format isn’t ready yet.');
   const seen = new Set<string>();
@@ -217,6 +264,20 @@ export function buildDraw(
     level: x.level,
   }));
   const kind = drawKind(format);
+  if (isGroupedFormat(format)) {
+    const g = kind === 'quads' ? buildQuads(entries) : buildPools(entries, doubles ? 'doubles' : 'singles', opts.pools);
+    return {
+      format,
+      matchType: doubles ? 'doubles' : 'singles',
+      entries: g.entries,
+      matches: g.matches.map((m) => ({ ...m, key: matchKey(m), winner: null, score: null, court: null, status: 'ready', startedAt: null, finishedAt: null })),
+      courts: Math.max(1, Math.min(24, Math.round(courts) || 1)),
+      courtLabels: opts.courtLabels ?? null,
+      groups: g.groups,
+      alternates: g.alternates.length ? g.alternates : null,
+      ...(kind === 'quads' ? { scoring: isQuadsScoring(opts.scoring) ? opts.scoring : DEFAULT_QUADS_SCORING } : {}),
+    };
+  }
   // A compass runs as an 8 or a 16: the short field is padded with BYEs seeded last.
   if (kind === 'compass') {
     const size = entries.length <= 8 ? 8 : 16;
@@ -225,7 +286,7 @@ export function buildDraw(
   const ids = entries.map((e) => e.id);
   const generated = kind === 'compass' && ids.length === 8
     ? generateCompass8(ids, doubles ? 'doubles' : 'singles')
-    : generateTournamentMatches(format, ids);
+    : generateTournamentMatches(format as TournamentFormat, ids);
   const matches: DrawMatch[] = generated.map((m) => ({
     ...m,
     key: matchKey(m),
@@ -296,7 +357,20 @@ export function generateCompass8(ids: string[], matchType: 'singles' | 'doubles'
 export const sideOf = (m: Pick<GeneratedMatch, 'player1_id' | 'player3_id'>, side: 'a' | 'b') => (side === 'a' ? m.player1_id : m.player3_id);
 export const entryOf = (d: Draw, id: string | null | undefined) => (id ? d.entries.find((e) => e.id === id) : undefined);
 export const courtName = (d: Pick<Draw, 'courtLabels'>, n: number) => d.courtLabels?.[n - 1]?.trim() || String(n);
-const entriesIn = (m: DrawMatch) => [m.player1_id, m.player3_id].filter((x): x is string => !!x);
+/** Every entry on a match: both sides, both slots (a quads doubles has four single-player entries). */
+const entriesIn = (m: Pick<DrawMatch, 'player1_id' | 'player2_id' | 'player3_id' | 'player4_id'>) => [m.player1_id, m.player2_id, m.player3_id, m.player4_id].filter((x): x is string => !!x);
+export const matchEntries = entriesIn;
+/** The entry ids on one side (one, or two in a quads doubles). */
+export const sideIds = (m: Pick<DrawMatch, 'player1_id' | 'player2_id' | 'player3_id' | 'player4_id'>, side: 'a' | 'b') =>
+  (side === 'a' ? [m.player1_id, m.player2_id] : [m.player3_id, m.player4_id]).filter((x): x is string => !!x);
+/** "Ann", "Ann / Bo" (a pair, or a quads doubles side), or "TBD". */
+export function sideName(d: Draw, m: Pick<DrawMatch, 'player1_id' | 'player2_id' | 'player3_id' | 'player4_id'>, side: 'a' | 'b'): string {
+  const ids = sideIds(m, side);
+  return ids.length ? ids.map((id) => entryOf(d, id)?.name ?? 'TBD').join(' / ') : 'TBD';
+}
+/** Every person's name on one side (a pair's two players each). */
+export const sidePlayers = (d: Draw, m: Pick<DrawMatch, 'player1_id' | 'player2_id' | 'player3_id' | 'player4_id'>, side: 'a' | 'b') =>
+  sideIds(m, side).flatMap((id) => entryOf(d, id)?.players ?? []);
 
 /** Fill order: round, then main before consolation, then slot. */
 export function fillOrder(a: DrawMatch, b: DrawMatch) {
@@ -326,7 +400,7 @@ const settle = (m: DrawMatch) => {
  * Tiebreak points in brackets are dropped. Throws a message the player can act on.
  */
 export function parseSets(raw: string, opts: { allowTiedLast?: boolean } = {}): [number, number][] {
-  const t = String(raw ?? '').trim().replace(/[–—:]/g, '-').replace(/\(\d+\)/g, '').replace(/\s*-\s*/g, '-');
+  const t = String(raw ?? '').trim().replace(/[–—:]/g, '-').replace(/\(\s*\d+(?:\s*-\s*\d+)?\s*\)/g, '').replace(/\s*-\s*/g, '-');
   if (!t) throw new DrawError('Enter the score, like 6-4 6-3.');
   const parts = t.split(/[,;\s]+/).filter(Boolean);
   if (parts.length > 5) throw new DrawError('That’s more than five sets.');
@@ -390,6 +464,8 @@ export function applyResult(
   m.status = 'done';
   m.held = false;
   m.finishedAt = now;
+  // Quads: a flight's doubles once its singles are in. Pools: the playoffs once the pools are.
+  syncGroups(d);
   resolveByes(d, now);
   return d;
 }
@@ -472,8 +548,12 @@ export function fillCourts(draw: Draw, now: string = new Date().toISOString()): 
     if (!free.length) break;
     const ids = entriesIn(m);
     if (ids.some((id) => busy.has(id))) continue;
+    // Quads: a flight only ever plays on its own court pair.
+    const allowed = allowedCourts(d, m);
+    const at = allowed ? free.findIndex((c) => allowed.includes(c)) : 0;
+    if (at < 0) continue;
     m.status = 'on_court';
-    m.court = free.shift()!;
+    m.court = free.splice(at, 1)[0];
     m.startedAt = now;
     ids.forEach((id) => busy.add(id));
   }
@@ -513,7 +593,7 @@ export function moveMatch(draw: Draw, key: string, court: number | null | 'auto'
 
 /** "Ann vs Bo" (or "Ann vs TBD"). */
 export function matchLabel(d: Draw, m: DrawMatch): string {
-  return `${entryOf(d, m.player1_id)?.name ?? 'TBD'} vs ${entryOf(d, m.player3_id)?.name ?? 'TBD'}`;
+  return `${sideName(d, m, 'a')} vs ${sideName(d, m, 'b')}`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -522,44 +602,65 @@ export function matchLabel(d: Draw, m: DrawMatch): string {
 
 export type NextFor =
   | { kind: 'not_in' }
+  /** Quads: the field wasn't a multiple of 4 and this player is waitlisted (MixerMode's waitlist). */
+  | { kind: 'alternate'; entry: DrawEntry; position: number; of: number }
   | { kind: 'done'; entry: DrawEntry; wins: number; losses: number }
-  | { kind: 'on_court'; entry: DrawEntry; match: DrawMatch; side: 'a' | 'b'; court: number; courtName: string; opponent: string }
-  | { kind: 'up_next'; entry: DrawEntry; match: DrawMatch; side: 'a' | 'b'; opponent: string; ahead: number }
-  | { kind: 'waiting'; entry: DrawEntry; match: DrawMatch; side: 'a' | 'b'; opponent: string; waitingOn: string };
+  | { kind: 'on_court'; entry: DrawEntry; match: DrawMatch; side: 'a' | 'b'; court: number; courtName: string; opponent: string; partner: string | null }
+  | { kind: 'up_next'; entry: DrawEntry; match: DrawMatch; side: 'a' | 'b'; opponent: string; ahead: number; partner: string | null; courts: string | null }
+  | { kind: 'waiting'; entry: DrawEntry; match: DrawMatch; side: 'a' | 'b'; opponent: string; waitingOn: string; partner: string | null }
+  /** Quads / pools: nothing on the draw for them right now, but more to come (the doubles, the playoffs). */
+  | { kind: 'between'; entry: DrawEntry; stage: string; waitingOn: string; wins: number; losses: number };
 
 /** A player's card: on a court now, up next, or waiting on someone (and who). */
 export function nextFor(draw: Draw, rsvpId: string | null | undefined): NextFor {
   const entry = rsvpId ? draw.entries.find((e) => e.rsvpIds.includes(rsvpId)) : undefined;
-  if (!entry) return { kind: 'not_in' };
-  const mine = (m: DrawMatch) => m.player1_id === entry.id || m.player3_id === entry.id;
-  const sideFor = (m: DrawMatch): 'a' | 'b' => (m.player1_id === entry.id ? 'a' : 'b');
-  const oppName = (m: DrawMatch) => entryOf(draw, sideOf(m, sideFor(m) === 'a' ? 'b' : 'a'))?.name ?? 'TBD';
-
-  const now = draw.matches.find((m) => m.status === 'on_court' && mine(m));
-  if (now) return { kind: 'on_court', entry, match: now, side: sideFor(now), court: now.court ?? 0, courtName: courtName(draw, now.court ?? 0), opponent: oppName(now) };
-
-  const left = draw.matches.filter((m) => m.status !== 'done' && mine(m)).sort(fillOrder);
-  if (!left.length) {
+  if (!entry) {
+    const alt = rsvpId ? (draw.alternates ?? []).findIndex((e) => e.rsvpIds.includes(rsvpId)) : -1;
+    return alt >= 0 ? { kind: 'alternate', entry: draw.alternates![alt], position: alt + 1, of: draw.alternates!.length } : { kind: 'not_in' };
+  }
+  const mine = (m: DrawMatch) => entriesIn(m).includes(entry.id);
+  const sideFor = (m: DrawMatch): 'a' | 'b' => (sideIds(m, 'a').includes(entry.id) ? 'a' : 'b');
+  const oppName = (m: DrawMatch) => sideName(draw, m, sideFor(m) === 'a' ? 'b' : 'a');
+  const partnerOf = (m: DrawMatch) => {
+    const p = sideIds(m, sideFor(m)).find((id) => id !== entry.id);
+    return p ? entryOf(draw, p)?.name ?? null : null;
+  };
+  const record = () => {
     let wins = 0, losses = 0;
     for (const m of draw.matches) {
       if (m.status !== 'done' || !mine(m) || m.bye) continue;
       if (m.winner === sideFor(m)) wins++; else losses++;
     }
-    return { kind: 'done', entry, wins, losses };
+    return { wins, losses };
+  };
+
+  const now = draw.matches.find((m) => m.status === 'on_court' && mine(m));
+  if (now) return { kind: 'on_court', entry, match: now, side: sideFor(now), court: now.court ?? 0, courtName: courtName(draw, now.court ?? 0), opponent: oppName(now), partner: partnerOf(now) };
+
+  const left = draw.matches.filter((m) => m.status !== 'done' && mine(m)).sort(fillOrder);
+  if (!left.length) {
+    const more = betweenStages(draw, entry.id);
+    if (more) return { kind: 'between', entry, ...more, ...record() };
+    return { kind: 'done', entry, ...record() };
   }
 
   const busy = busyEntries(draw);
   const startable = (m: DrawMatch) => m.status === 'ready' && !m.held && !entriesIn(m).some((id) => busy.has(id));
   const go = left.find(startable);
   if (go) {
-    // Matches the court fill would start before this one.
-    const queue = draw.matches.filter(startable).sort(fillOrder);
+    // Matches the court fill would start before this one (quads: on the same court pair).
+    const pair = allowedCourts(draw, go);
+    const shares = (m: DrawMatch) => { if (!pair) return true; const c = allowedCourts(draw, m); return !c || c.some((x) => pair.includes(x)); };
+    const queue = draw.matches.filter((m) => startable(m) && shares(m)).sort(fillOrder);
     const ahead = queue.indexOf(go);
-    return { kind: 'up_next', entry, match: go, side: sideFor(go), opponent: oppName(go), ahead: Math.max(0, ahead) };
+    const courts = pair ? `Court${pair.length > 1 ? 's' : ''} ${pair.map((c) => courtName(draw, c)).join(' & ')}` : null;
+    return { kind: 'up_next', entry, match: go, side: sideFor(go), opponent: oppName(go), ahead: Math.max(0, ahead), partner: partnerOf(go), courts };
   }
   const m = left[0];
   const side = sideFor(m);
+  const others = entriesIn(m).filter((id) => id !== entry.id);
   const oppId = sideOf(m, side === 'a' ? 'b' : 'a');
+  const busyId = others.find((id) => busy.has(id));
   let waitingOn: string;
   if (!oppId) {
     const feeder = draw.matches.find((x) => {
@@ -568,13 +669,13 @@ export function nextFor(draw: Draw, rsvpId: string | null | undefined): NextFor 
       return (w?.key === m.key && w.side === want) || (l?.key === m.key && l.side === want);
     });
     waitingOn = feeder ? `${parseRef(feeder.loser_feeds_to)?.key === m.key ? 'the loser' : 'the winner'} of ${matchLabel(draw, feeder)}` : 'an opponent';
-  } else if (busy.has(oppId)) {
-    const at = draw.matches.find((x) => x.status === 'on_court' && entriesIn(x).includes(oppId));
-    waitingOn = `${entryOf(draw, oppId)?.name ?? 'your opponent'}${at?.court ? ` (on Court ${courtName(draw, at.court)})` : ''}`;
+  } else if (busyId) {
+    const at = draw.matches.find((x) => x.status === 'on_court' && entriesIn(x).includes(busyId));
+    waitingOn = `${entryOf(draw, busyId)?.name ?? 'your opponent'}${at?.court ? ` (on Court ${courtName(draw, at.court)})` : ''}`;
   } else {
     waitingOn = 'the host to put it on a court';
   }
-  return { kind: 'waiting', entry, match: m, side, opponent: oppName(m), waitingOn };
+  return { kind: 'waiting', entry, match: m, side, opponent: oppName(m), waitingOn, partner: partnerOf(m) };
 }
 
 /* ------------------------------------------------------------------ */
@@ -619,11 +720,12 @@ function tallies(d: Draw) {
   const t = new Map(d.entries.filter((e) => !e.bye).map((e) => [e.id, { wins: 0, losses: 0, gamesWon: 0, gamesLost: 0, played: 0 }]));
   for (const m of d.matches) {
     if (m.status !== 'done' || m.bye || !m.player1_id || !m.player3_id) continue;
-    const a = t.get(m.player1_id), b = t.get(m.player3_id);
-    if (!a || !b) continue;
+    // Every player on a side (a quads doubles has two entries a side): games count in full for each.
+    const as = sideIds(m, 'a').map((id) => t.get(id)), bs = sideIds(m, 'b').map((id) => t.get(id));
+    if (as.some((x) => !x) || bs.some((x) => !x)) continue;
     const [ga, gb] = gamesOf(m.score);
-    a.played++; b.played++; a.gamesWon += ga; a.gamesLost += gb; b.gamesWon += gb; b.gamesLost += ga;
-    if (m.winner === 'a') { a.wins++; b.losses++; } else { b.wins++; a.losses++; }
+    for (const a of as) { a!.played++; a!.gamesWon += ga; a!.gamesLost += gb; if (m.winner === 'a') a!.wins++; else a!.losses++; }
+    for (const b of bs) { b!.played++; b!.gamesWon += gb; b!.gamesLost += ga; if (m.winner === 'a') b!.losses++; else b!.wins++; }
   }
   return t;
 }
@@ -643,7 +745,8 @@ export function standingsFor(draw: Draw): DrawStanding[] {
   }
   const t = tallies(draw);
   const compass = drawKind(draw.format) === 'compass';
-  const keyed = draw.entries.filter((e) => !e.bye).map((e) => ({ e, ...(compass ? compassKey(draw, e.id) : bracketKey(draw, e.id)), t: t.get(e.id)! }));
+  const grouped = isGroupedFormat(draw.format) ? groupKeys(draw) : null;
+  const keyed = draw.entries.filter((e) => !e.bye).map((e) => ({ e, ...(grouped ? grouped.get(e.id) ?? { key: [-999], label: null } : compass ? compassKey(draw, e.id) : bracketKey(draw, e.id)), t: t.get(e.id)! }));
   // Bigger key = better finish.
   const cmp = (x: number[], y: number[]) => { for (let i = 0; i < Math.max(x.length, y.length); i++) { const v = (y[i] ?? 0) - (x[i] ?? 0); if (v) return v; } return 0; };
   keyed.sort((x, y) => cmp(x.key, y.key) || y.t.wins - x.t.wins || (y.t.gamesWon - y.t.gamesLost) - (x.t.gamesWon - x.t.gamesLost) || x.e.seed - y.e.seed);
@@ -659,9 +762,10 @@ export function standingsFor(draw: Draw): DrawStanding[] {
 const mainRounds = (d: Draw) => Math.max(0, ...d.matches.filter((m) => m.bracket === 'main').map((m) => m.round));
 
 /** "Final", "Semifinals", "Quarterfinals", "Round of 16"; the back draw's and the compass's own names. */
-export function roundLabel(d: Draw, m: Pick<DrawMatch, 'bracket' | 'round'>): string {
+export function roundLabel(d: Draw, m: Pick<DrawMatch, 'bracket' | 'round'> & Partial<Pick<DrawMatch, 'group' | 'match_type' | 'tier' | 'places' | 'winner_feeds_to'>>): string {
   const k = drawKind(d.format);
   if (k === 'rr') return `Round ${m.round}`;
+  if (isGroupedFormat(d.format)) return groupRoundLabel(d, { group: m.group ?? null, round: m.round, match_type: m.match_type ?? d.matchType, tier: m.tier ?? null, places: m.places ?? null, winner_feeds_to: m.winner_feeds_to ?? null });
   if (k === 'compass') {
     for (const g of buildCompassGroups(d.matches) ?? []) for (const st of g.stages) if (st.bracket === m.bracket && st.round === m.round) {
       if (g.id === 'r1') return 'Round 1';
@@ -774,7 +878,19 @@ export function rrGridFor(draw: Draw): RRGrid {
 export function drawProgress(d: Draw) {
   const real = d.matches.filter((m) => !m.bye);
   const n = (s: DrawStatus) => real.filter((m) => m.status === s).length;
-  return { total: real.length, done: n('done'), onCourt: n('on_court'), ready: n('ready'), pending: n('pending'), complete: d.matches.length > 0 && d.matches.every((m) => m.status === 'done') };
+  // Quads doubles / pool playoffs not added yet still count: they're coming.
+  const toCome = matchesToCome(d);
+  return { total: real.length + toCome, done: n('done'), onCourt: n('on_court'), ready: n('ready'), pending: n('pending') + toCome, complete: d.matches.length > 0 && !toCome && d.matches.every((m) => m.status === 'done') };
+}
+
+/** Matches grouped for a list: "Flight A · Round 1", ..., then the playoffs; a bracket's main draw before its back draw. */
+export const stageKey = (m: DrawMatch) => `${m.group ?? ''}|${m.tier != null ? 'p' : m.bracket}:${m.round}`;
+export function stageOrder(d: Draw, m: DrawMatch): number {
+  if (isGroupedFormat(d.format)) {
+    const gi = m.group ? (d.groups ?? []).findIndex((g) => g.id === m.group) : -1;
+    return (gi >= 0 ? gi * 100 : 9000) + m.round;
+  }
+  return (isBracket(d.format) && m.bracket === 'consolation' ? 1000 : 0) + m.round;
 }
 
 /* ------------------------------------------------------------------ */
@@ -790,6 +906,8 @@ const pairOf = (m: Pick<DrawMatch, 'player1_id' | 'player3_id'>) => [m.player1_i
  * never take late entries: the lines are set when the draw is made.
  */
 export function addLateEntry(draw: Draw, group: DrawPlayer[], now: string = new Date().toISOString()): Draw {
+  if (drawKind(draw.format) === 'quads') throw new DrawError('The flights are set once the quads draw is made, so nobody new can join. They can play the next one.');
+  if (drawKind(draw.format) === 'rr-pools') throw new DrawError('The pools are set once the draw is made, so nobody new can join. They can play the next one.');
   if (drawKind(draw.format) !== 'rr') throw new DrawError('A bracket can’t take late entries once the draw is made: the lines are set. They can play the next one.');
   if (draw.matches.some((m) => m.status === 'done')) throw new DrawError('The draw is already under way (a match is finished), so nobody new can join it. If someone in the draw has to leave, give their opponents a walkover.');
   const doubles = draw.matchType === 'doubles';
@@ -803,7 +921,7 @@ export function addLateEntry(draw: Draw, group: DrawPlayer[], now: string = new 
   const entry: DrawEntry = { id: `e${n}`, rsvpIds: group.map((p) => p.id), name: group.map((p) => p.name).join(' / '), players: group.map((p) => p.name), seed: draw.entries.length + 1, level: avgLevel(group) };
   const entries = [...draw.entries.map((e) => ({ ...e })), entry];
   const keep = new Map(draw.matches.filter((m) => m.status === 'on_court' || m.held).map((m) => [pairOf(m), m]));
-  const matches: DrawMatch[] = generateTournamentMatches(draw.format, entries.map((e) => e.id)).map((m) => {
+  const matches: DrawMatch[] = generateTournamentMatches(draw.format as TournamentFormat, entries.map((e) => e.id)).map((m) => {
     const o = keep.get(pairOf(m));
     return {
       ...m, key: matchKey(m), winner: null, score: null, how: null,
@@ -818,20 +936,21 @@ export function addLateEntry(draw: Draw, group: DrawPlayer[], now: string = new 
 }
 
 /** What a draw of this many entries looks like: real matches in all, and per entry (from a played-out copy). */
-export function drawPlan(format: DrawFormat, entries: number): { problem: string } | { matches: number; minEach: number; maxEach: number } {
+export function drawPlan(format: DrawFormat, entries: number, opts: { pools?: number | null } = {}): { problem: string } | { matches: number; minEach: number; maxEach: number; groups?: number; alternates?: number } {
   const problem = drawSizeProblem(format, entries);
   if (problem) return { problem };
   const doubles = drawIsDoubles(format);
   const ps: DrawPlayer[] = Array.from({ length: entries * (doubles ? 2 : 1) }, (_, i) => ({ id: `p${i}`, name: `P${i}` }));
   const t0 = '2000-01-01T00:00:00.000Z';
-  let d = buildDraw(format, ps, 1, { now: t0 });
+  let d = buildDraw(format, ps, 1, { now: t0, pools: opts.pools ?? null });
+  const groups = d.groups?.length ?? 0, alternates = d.alternates?.length ?? 0;
   for (let guard = 0; guard < 2000; guard++) {
     const m = d.matches.find((x) => x.status === 'ready');
     if (!m) break;
     d = applyResult(d, m.key, 'a', '6-0', { now: t0 });
   }
-  const counts = d.entries.filter((e) => !e.bye).map((e) => d.matches.filter((m) => !m.bye && (m.player1_id === e.id || m.player3_id === e.id)).length);
-  return { matches: d.matches.filter((m) => !m.bye).length, minEach: Math.min(...counts), maxEach: Math.max(...counts) };
+  const counts = d.entries.filter((e) => !e.bye).map((e) => d.matches.filter((m) => !m.bye && entriesIn(m).includes(e.id)).length);
+  return { matches: d.matches.filter((m) => !m.bye).length, minEach: Math.min(...counts), maxEach: Math.max(...counts), ...(isGroupedFormat(format) ? { groups, alternates } : {}) };
 }
 
 /** Stored player1-first; read out winner-first ("6-4, 3-6, 10-7"), markers as they are. */
@@ -850,7 +969,7 @@ export function resultOf(m: DrawMatch): { winner: string; loser: string } | null
 /** The back draw's (or compass West's) champion entry id, once that final is played. */
 export function consolationChampion(d: Draw): string | null {
   const k = drawKind(d.format);
-  if (k === 'rr' || k === 'single-elim') return null;
+  if (k === 'rr' || k === 'single-elim' || isGroupedFormat(d.format)) return null;
   if (k === 'compass') {
     const m = d.matches.find((x) => x.key === (d.entries.length === 8 ? 'consolation:2:1' : 'consolation:3:1'));
     const r = m ? resultOf(m) : null;

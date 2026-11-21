@@ -11,7 +11,8 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { courtLabel, standings, teamScore, type GuestMatch, type GuestMixer, type GuestRound } from '@/lib/mixer/guestMixer';
 import { FORMAT_NAME, SPORT_LABEL, formatLabel, whenLine } from '@/lib/play/core';
-import { courtName, entryOf, isBracket, roundLabel, scoreWinnerFirst, standingsFor, type Draw, type DrawMatch } from '@/lib/play/draw';
+import { courtName, drawKind, isBracket, isGrouped, matchLabel, roundLabel, scoreWinnerFirst, sideName, stageKey, stageOrder, standingsFor, type Draw } from '@/lib/play/draw';
+import { groupTables, playoffMatches, quadsScoringName } from '@/lib/play/drawGroups';
 import { drawSheet } from '@/lib/play/drawSheet';
 import DrawView from '@/components/tournament/DrawView';
 import { loadResults, type ResultsEvent } from '@/lib/play/resultsData';
@@ -165,20 +166,62 @@ function TournamentSheets({ e, sheet }: { e: ResultsEvent; sheet: Sheet }) {
 }
 
 function DrawSheetFor({ d }: { d: Draw }) {
+  if (isGrouped(d.format)) return <GroupSheets d={d} />;
   const sh = drawSheet(d);
   return <DrawView format={sh.format} entries={sh.entries} matches={sh.matches} revealAllSeeds />;
 }
 
+/** Quads flights / pools on paper: each group's table and crosstab, a flight's doubles, the pools' playoffs. */
+function GroupSheets({ d }: { d: Draw }) {
+  const quads = drawKind(d.format) === 'quads';
+  const po = playoffMatches(d);
+  return (
+    <>
+      {groupTables(d, (n) => courtName(d, n)).map((t) => (
+        <div key={t.group.id} className="wc-round">
+          <h2>{t.group.name}{t.group.tier ? ` · ${t.group.tier}` : ''}{t.courts ? ` · ${t.courts}` : ''}</h2>
+          <table className="wc-table wc-standings">
+            <thead><tr><th>#</th><th className="wc-left">{d.matchType === 'doubles' ? 'Pair' : 'Player'}</th>{t.grid?.players.map((p, i) => <th key={p.id}>{i + 1}</th>)}<th>W–L</th><th>Games</th></tr></thead>
+            <tbody>
+              {(t.grid?.rows ?? []).map((r, i) => {
+                const row = t.rows.find((x) => x.id === r.id);
+                return (
+                  <tr key={r.id}>
+                    <td>{i + 1}</td>
+                    <td className="wc-left wc-name">{r.name}</td>
+                    {r.cells.map((c, j) => <td key={j} style={c.kind === 'self' ? { background: '#ddd' } : undefined}>{c.kind === 'result' ? c.text : ''}</td>)}
+                    <td className="wc-strong">{row ? `${row.wins}–${row.losses}` : ''}</td>
+                    <td>{row ? `${row.gamesWon}–${row.gamesLost}` : ''}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {quads && <p className="wc-note">Round 4 doubles: {t.doubles ? (t.doubles.status === 'done' ? `${sideName(d, t.doubles, t.doubles.winner === 'b' ? 'b' : 'a')} d. ${sideName(d, t.doubles, t.doubles.winner === 'b' ? 'a' : 'b')}, ${scoreWinnerFirst(t.doubles)}` : matchLabel(d, t.doubles)) : '1st + 4th vs 2nd + 3rd once the six singles are in'}. Places: {t.rows.map((r) => `${r.rank}. ${r.name}`).join(' · ')}</p>}
+        </div>
+      ))}
+      {drawKind(d.format) === 'rr-pools' && (
+        <div className="wc-round">
+          <h2>Placement playoffs</h2>
+          {po.length ? (
+            <table className="wc-courts"><tbody>
+              {po.map((m) => <tr key={m.key}><td className="wc-team">{roundLabel(d, m)}</td><td className="wc-team">{m.status === 'done' ? `${sideName(d, m, m.winner === 'b' ? 'b' : 'a')} d. ${sideName(d, m, m.winner === 'b' ? 'a' : 'b')}, ${scoreWinnerFirst(m)}` : matchLabel(d, m)}</td></tr>)}
+            </tbody></table>
+          ) : <p className="wc-note">Set when every pool match is done: pool winners play for 1st, runners-up for the next places, and so on down.</p>}
+        </div>
+      )}
+      {quads && <p className="wc-note">Scoring: {quadsScoringName(d.scoring)}. Each flight places 1st–4th on games won over all four rounds; Flight A is places 1–4, Flight B 5–8, and so on.{d.alternates?.length ? ` Alternates: ${d.alternates.map((x) => x.name).join(', ')}.` : ''}</p>}
+    </>
+  );
+}
+
 function DrawMatches({ d }: { d: Draw }) {
-  const name = (id: string | null) => (id ? entryOf(d, id)?.name ?? '?' : 'TBD');
-  const bracket = isBracket(d.format);
-  const order = (m: DrawMatch) => (bracket && m.bracket === 'consolation' ? 1000 : 0) + m.round;
-  const real = d.matches.filter((m) => !m.bye).sort((a, b) => order(a) - order(b) || a.slot - b.slot);
-  const stages = [...new Set(real.map((m) => `${m.bracket}:${m.round}`))];
+  const real = d.matches.filter((m) => !m.bye).sort((a, b) => stageOrder(d, a) - stageOrder(d, b) || a.slot - b.slot);
+  const stages = [...new Set(real.map(stageKey))];
   return (
     <>
       {stages.map((st) => {
-        const ms = real.filter((m) => `${m.bracket}:${m.round}` === st);
+        const ms = real.filter((m) => stageKey(m) === st);
         return (
           <div key={st} className="wc-round">
             <h2>{roundLabel(d, ms[0])}</h2>
@@ -187,13 +230,13 @@ function DrawMatches({ d }: { d: Draw }) {
               <tbody>
                 {ms.map((m) => {
                   const done = m.status === 'done';
-                  const w = done ? (m.winner === 'b' ? m.player3_id : m.player1_id) : null;
+                  const w = done ? (m.winner === 'b' ? 'b' : 'a') : null;
                   return (
                     <tr key={m.key}>
                       <td className="wc-court">{m.status === 'on_court' && m.court ? courtName(d, m.court) : ''}</td>
-                      <td className="wc-team">{done && w === m.player1_id ? <b>{name(m.player1_id)}</b> : name(m.player1_id)}</td>
+                      <td className="wc-team">{w === 'a' ? <b>{sideName(d, m, 'a')}</b> : sideName(d, m, 'a')}</td>
                       <td className="wc-vs">vs</td>
-                      <td className="wc-team">{done && w === m.player3_id ? <b>{name(m.player3_id)}</b> : name(m.player3_id)}</td>
+                      <td className="wc-team">{w === 'b' ? <b>{sideName(d, m, 'b')}</b> : sideName(d, m, 'b')}</td>
                       <td className="wc-score">
                         {done ? (m.how === 'W/O' || m.how === 'DEF' ? m.how : scoreWinnerFirst(m))
                           : m.player1_id && m.player3_id ? <span className="wc-boxes"><span className="wc-sbox" /> – <span className="wc-sbox" /></span>
@@ -235,7 +278,7 @@ function DrawPlaces({ d }: { d: Draw }) {
           ))}
         </tbody>
       </table>
-      <p className="wc-note">{bracket ? 'Placed by how far each got in the draw. A walkover counts as a win with no games.' : 'Ranked by wins, then game difference, then fewest games lost.'}</p>
+      <p className="wc-note">{drawKind(d.format) === 'quads' ? 'Each flight places 1st–4th on games won over all four rounds (doubles games count for both partners), then match wins, head-to-head, games lost. A walkover counts as a win with no games.' : drawKind(d.format) === 'rr-pools' ? 'Pool places first; the placement playoffs (1st vs 1st, 2nd vs 2nd ...) decide the final places. A walkover counts as a win with no games.' : bracket ? 'Placed by how far each got in the draw. A walkover counts as a win with no games.' : 'Ranked by wins, then game difference, then fewest games lost.'}</p>
     </>
   );
 }

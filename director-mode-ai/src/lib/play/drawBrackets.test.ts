@@ -70,14 +70,14 @@ function playOut(d0: Draw, rule: Rule): Draw {
   return d;
 }
 
-const SIZES: Record<Exclude<DrawKind, 'rr'>, number[]> = {
+const SIZES: Record<Exclude<DrawKind, 'rr' | 'quads' | 'rr-pools'>, number[]> = {
   'single-elim': [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
   fmlc: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
   ffic: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
   compass: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
 };
 
-for (const [kind, sizes] of Object.entries(SIZES) as [Exclude<DrawKind, 'rr'>, number[]][]) {
+for (const [kind, sizes] of Object.entries(SIZES) as [Exclude<DrawKind, 'rr' | 'quads' | 'rr-pools'>, number[]][]) {
   describe(`${kind}`, () => {
     for (const doubles of [false, true]) {
       for (const n of sizes) {

@@ -11,7 +11,7 @@ import QRCode from 'qrcode';
 import { standings, teamScore, winnerOf, courtLabel, type GuestMatch, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { awards, checkedIn, drawAwards, formatLabel, whenLine, type PlayEvent } from '@/lib/play/core';
 import { TIME_UP_TEXT, clockLeft, clockText, crossedZero, drawBoardRows, drawCallout, pollMs, roundAnnouncement } from '@/lib/play/tv';
-import { courtName, drawProgress, entryOf, fillOrder, isBracket, roundLabel, scoreWinnerFirst, type Draw } from '@/lib/play/draw';
+import { courtName, drawProgress, entryOf, fillOrder, isBracket, matchEntries, roundLabel, scoreWinnerFirst, sideName, type Draw } from '@/lib/play/draw';
 import { BracketBoard } from './DrawViews';
 import { speakText, cancelSpeech, isSpeechSupported } from '@/lib/browserSpeech';
 import { C, api } from './shared';
@@ -428,7 +428,7 @@ function BracketDone({ d, rows }: { d: Draw; rows: ReturnType<typeof drawBoardRo
 function DrawLive({ d, now }: { d: Draw; now: number }) {
   const onCourt = d.matches.filter((x) => x.status === 'on_court');
   const courts = Array.from({ length: Math.max(d.courts, ...onCourt.map((x) => x.court ?? 0)) }, (_, i) => i + 1);
-  const busy = new Set(onCourt.flatMap((x) => [x.player1_id, x.player3_id]));
+  const busy = new Set(onCourt.flatMap(matchEntries));
   const queue = d.matches.filter((x) => x.status === 'ready').sort(fillOrder).slice(0, 6);
   const pr = drawProgress(d);
   const nm = (id: string | null) => entryOf(d, id)?.name ?? 'TBD';
@@ -454,9 +454,9 @@ function DrawLive({ d, now }: { d: Draw; now: number }) {
                 </div>
                 {x ? (<>
                   {bracket && <div className="mb-[0.4vh] font-semibold uppercase" style={{ color: C.muted, fontSize: '0.5em', letterSpacing: 1.5 }}>{roundLabel(d, x)}</div>}
-                  <div className="font-semibold leading-tight">{nm(x.player1_id)}</div>
+                  <div className="font-semibold leading-tight">{sideName(d, x, 'a')}</div>
                   <div className="my-[0.4vh] font-semibold uppercase" style={{ color: C.muted, fontSize: '0.55em', letterSpacing: 2 }}>vs</div>
-                  <div className="font-semibold leading-tight">{nm(x.player3_id)}</div>
+                  <div className="font-semibold leading-tight">{sideName(d, x, 'b')}</div>
                 </>) : <div style={{ color: SOFT }}>Next match soon</div>}
               </div>
             );
@@ -466,8 +466,8 @@ function DrawLive({ d, now }: { d: Draw; now: number }) {
           <div className="rounded-[1vw] px-[1.5vw] py-[1.2vh]" style={{ background: '#ffffff12', fontSize: 'clamp(15px,1.4vw,30px)' }}>
             <div className="font-semibold uppercase tracking-[2px]" style={{ color: SOFT, fontSize: '0.7em' }}>Up next</div>
             {queue.map((x) => {
-              const wait = [x.player1_id, x.player3_id].filter((id) => busy.has(id)).map(nm);
-              return <div key={x.key} className="flex justify-between gap-3"><span>{nm(x.player1_id)} vs {nm(x.player3_id)}</span><span style={{ color: SOFT, fontSize: '0.8em' }}>{wait.length ? `waiting on ${wait.join(' & ')}` : 'ready'}</span></div>;
+              const wait = matchEntries(x).filter((id) => busy.has(id)).map(nm);
+              return <div key={x.key} className="flex justify-between gap-3"><span>{sideName(d, x, 'a')} vs {sideName(d, x, 'b')}</span><span style={{ color: SOFT, fontSize: '0.8em' }}>{wait.length ? `waiting on ${wait.join(' & ')}` : 'ready'}</span></div>;
             })}
           </div>
         )}
@@ -477,11 +477,11 @@ function DrawLive({ d, now }: { d: Draw; now: number }) {
           <div className="flex-1 rounded-[1.2vw] p-[1.2vw]" style={{ background: '#ffffff12', fontSize: 'clamp(14px,1.25vw,28px)' }}>
             <div className="mb-[0.8vh] font-semibold uppercase tracking-[2px]" style={{ color: SOFT, fontSize: '0.7em' }}>Results</div>
             {recent.length ? recent.map((x) => {
-              const w = x.winner === 'b' ? x.player3_id : x.player1_id, l = x.winner === 'b' ? x.player1_id : x.player3_id;
+              const w = x.winner === 'b' ? 'b' : 'a';
               return (
                 <div key={x.key} className="border-t py-[0.4vh]" style={{ borderColor: '#ffffff14' }}>
                   <div style={{ color: SOFT, fontSize: '0.65em' }}>{roundLabel(d, x)}</div>
-                  <div><b>{nm(w)}</b> <span style={{ color: SOFT }}>d.</span> {nm(l)} <span className="tabular-nums" style={{ color: SOFT, fontSize: '0.8em' }}>{scoreWinnerFirst(x)}</span></div>
+                  <div><b>{sideName(d, x, w)}</b> <span style={{ color: SOFT }}>d.</span> {sideName(d, x, w === 'a' ? 'b' : 'a')} <span className="tabular-nums" style={{ color: SOFT, fontSize: '0.8em' }}>{scoreWinnerFirst(x)}</span></div>
                 </div>
               );
             }) : <div style={{ color: SOFT }}>Results show up as courts finish.</div>}
