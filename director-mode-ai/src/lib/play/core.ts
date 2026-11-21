@@ -265,9 +265,9 @@ export function spotsLine(e: Pick<PlayEvent, 'rsvps' | 'spots'>): string {
   return n >= e.spots ? `Full · ${n} in${w ? ` · ${w} waiting` : ''}${hereTxt}` : `${n} of ${e.spots} in · ${e.spots - n} spot${e.spots - n === 1 ? '' : 's'} left${hereTxt}`;
 }
 
-/** Players who are actually here (checked in) and still in the event. */
+/** Players who are actually here (checked in) and still in the event. The playing host counts: they press Start at the courts. */
 export function checkedIn(e: Pick<PlayEvent, 'rsvps'>): PlayRsvp[] {
-  return e.rsvps.filter((r) => r.status !== 'out' && !!r.checked_in_at);
+  return e.rsvps.filter((r) => r.status !== 'out' && (!!r.checked_in_at || (r.is_host && r.status === 'in')));
 }
 
 export function whenLine(e: Pick<PlayDraft, 'when_text' | 'starts_at'>, tz?: string): string | null {

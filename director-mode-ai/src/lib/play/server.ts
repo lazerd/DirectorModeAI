@@ -320,6 +320,8 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       hostOnly();
       if (row.status !== 'open') throw new PlayError('Already started.');
       // Only people who are actually here play (MixerMode's check-in). Signed up but not here = sits until checked in.
+      // The host pressing Start is at the courts: their own spot (if they're playing) counts as checked in.
+      for (const r of rs.filter((x) => x.is_host && x.status === 'in' && !x.checked_in_at)) { r.checked_in_at = nowIso(); await db.from('play_rsvps').update({ checked_in_at: r.checked_in_at, checked_in_by: 'host' }).eq('id', r.id); }
       const here = rs.filter((r) => r.status !== 'out' && r.checked_in_at);
       if (!here.length) throw new PlayError('Nobody is checked in yet. Check people in as they arrive, or tap “Check in everyone”.');
       for (const r of here.filter((x) => x.status === 'wait')) { r.status = 'in'; await db.from('play_rsvps').update({ status: 'in' }).eq('id', r.id); }
