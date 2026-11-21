@@ -25,7 +25,7 @@ export default async function CourtCrownPage({ params }: { params: { slug: strin
   return (
     <main className="min-h-screen pb-20" style={{ background: '#f4f5ef', color: ink }}>
       <div className="mx-auto max-w-xl px-5 pt-8">
-        <Link href="/play" className="text-[14px] font-semibold">Racquets IRL</Link>
+        <Link href="/play/new" className="text-[14px] font-semibold">Racquets IRL</Link>
         <section className="mt-6 rounded-3xl p-6 text-center text-white shadow-lg" style={{ background: ink }}>
           <div className="text-[54px] leading-none">👑</div>
           <div className="mt-2 text-[12px] font-semibold uppercase tracking-[2px]" style={{ color: '#bccdbb' }}>King of the Court</div>
@@ -54,7 +54,7 @@ export default async function CourtCrownPage({ params }: { params: { slug: strin
             </tbody></table>
           </section>
         )}
-        <Link href={`/play?q=${encodeURIComponent(`Doubles at ${place ?? ''}`)}`} className="mt-5 flex h-14 items-center justify-center rounded-2xl text-[17px] font-semibold" style={{ background: lime, color: ink }}>
+        <Link href={`/play/new?q=${encodeURIComponent(`Doubles at ${place ?? ''}`)}`} className="mt-5 flex h-14 items-center justify-center rounded-2xl text-[17px] font-semibold" style={{ background: lime, color: ink }}>
           Start a game here and go for the crown
         </Link>
         <p className="mt-3 text-center text-[13px]" style={{ color: '#6a7b71' }}>Every Racquets IRL game played here counts. Most wins in the last {CROWN_DAYS} days holds the crown.</p>

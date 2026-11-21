@@ -1,15 +1,13 @@
-import type { Metadata } from 'next';
-import HostClient from '@/components/play/HostClient';
+import { redirect } from 'next/navigation';
 
-export const metadata: Metadata = {
-  title: 'Pickleball mixer, tennis round robin & padel social organizer, free | Racquets IRL',
-  description: 'Set up a pickleball mixer, tennis round robin or padel social in under 60 seconds. One link for the group chat fills it, assigns courts, rotates partners and posts a recap. Free, no signup, no app.',
-  keywords: ['pickleball mixer', 'tennis round robin', 'round robin generator', 'pickleball round robin', 'padel social', 'tennis mixer', 'doubles rotation', 'court assignments'],
-  alternates: { canonical: '/play' },
-};
-
-export default function PlayPage({ searchParams }: { searchParams: { q?: string; club?: string; resume?: string } }) {
-  const q = typeof searchParams.q === 'string' ? searchParams.q.slice(0, 300) : undefined;
-  const club = typeof searchParams.club === 'string' ? searchParams.club.toLowerCase().slice(0, 20) : undefined;
-  return <HostClient initial={q} club={club} resume={searchParams.resume === '1'} />;
+/**
+ * clubmode.ai/play lands on the Racquets IRL page (Darrin, 11/21/26).
+ * The "host a game" screen lives at /play/new; old links that carry a game
+ * (/play?q=…, ?club=…, ?resume=1) still go straight to it.
+ */
+export default function PlayPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(searchParams)) if (typeof v === 'string') q.set(k, v);
+  if (q.has('q') || q.has('club') || q.has('resume')) redirect(`/play/new?${q.toString()}`);
+  redirect('/racquetsirl');
 }

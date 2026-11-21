@@ -38,7 +38,7 @@ export async function crownChanged(place: string, before: string | null, after: 
   const slug = placeSlug(place);
   const db = getSupabaseAdmin();
   const { data } = await db.from('play_crown_watch').select('name_key, email').eq('place_slug', slug).in('name_key', [before.toLowerCase(), after.toLowerCase()]);
-  const back = `${APP}/play?q=${encodeURIComponent(`Doubles at ${place}`)}`;
+  const back = `${APP}/play/new?q=${encodeURIComponent(`Doubles at ${place}`)}`;
   for (const w of data ?? []) {
     const lost = w.name_key === before.toLowerCase();
     await sendBilledEmail(null, {

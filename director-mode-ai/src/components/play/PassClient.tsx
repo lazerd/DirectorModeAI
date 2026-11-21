@@ -57,7 +57,7 @@ export default function PassClient() {
                 <span className="truncate">{clubLink.replace(/^https?:\/\//, '')}</span>{copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </button>
             )}
-            <Link href={pending ? '/play?resume=1' : '/play'} className="mt-4 flex h-14 items-center justify-center rounded-2xl text-[17px] font-semibold text-white" style={{ background: C.ink }}>
+            <Link href={pending ? '/play/new?resume=1' : '/play/new'} className="mt-4 flex h-14 items-center justify-center rounded-2xl text-[17px] font-semibold text-white" style={{ background: C.ink }}>
               {pending ? 'Post my game now' : 'Host a game'}
             </Link>
           </section>

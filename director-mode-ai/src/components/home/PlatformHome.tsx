@@ -635,7 +635,7 @@ export default function PlatformHome({ fallbackToGuest = false }: { fallbackToGu
                 { href: "/client/dashboard", icon: Calendar, name: "My Lessons", sub: "Book & manage", color: "text-blue-400", bg: "bg-blue-400/10 hover:bg-blue-400/20" },
                 { href: "/client/dashboard?tab=stringing", icon: Wrench, name: "My Stringing", sub: "Order status", color: "text-pink-400", bg: "bg-pink-400/10 hover:bg-pink-400/20" },
                 { href: "/client/dashboard?tab=events", icon: Trophy, name: "Events", sub: "Mixers & leagues", color: "text-orange-400", bg: "bg-orange-400/10 hover:bg-orange-400/20" },
-                { href: "/play", icon: Users, name: "Racquets IRL", sub: "Start a game, one link", color: "text-lime-300", bg: "bg-lime-300/10 hover:bg-lime-300/20" },
+                { href: "/play/new", icon: Users, name: "Racquets IRL", sub: "Start a game, one link", color: "text-lime-300", bg: "bg-lime-300/10 hover:bg-lime-300/20" },
                 { href: "/courtconnect", icon: Users, name: "Club Games", sub: "Games at your level", color: "text-emerald-400", bg: "bg-emerald-400/10 hover:bg-emerald-400/20" },
               ].map((item) => {
                 const Icon = item.icon;

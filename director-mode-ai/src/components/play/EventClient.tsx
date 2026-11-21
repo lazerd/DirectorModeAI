@@ -127,7 +127,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
         {sheet && <StatusSheet e={e} busy={busy} act={act} hostKey={e.isHost ? key : null} onClose={() => setSheet(false)} />}
 
         <div className="mt-10 text-center text-[13px]" style={{ color: C.muted }}>
-          <Link href="/play" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Host your own game in 60 seconds</Link>
+          <Link href="/play/new" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Host your own game in 60 seconds</Link>
           <span className="mx-2">·</span>
           <Link href={`/play/near?sport=${e.sport}`} className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Find a game near me</Link>
           <div className="mt-2">Racquets IRL by ClubMode · no app, no account</div>
@@ -577,7 +577,7 @@ export function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: s
             {joinedNext ? <><Check className="h-4 w-4" />In for next week</> : <>I&apos;m in next week</>}
           </button>
         ) : (
-          <Link href="/play" className="flex items-center justify-center rounded-2xl py-3.5 text-[15px] font-semibold" style={{ background: C.lime }}>Host your own</Link>
+          <Link href="/play/new" className="flex items-center justify-center rounded-2xl py-3.5 text-[15px] font-semibold" style={{ background: C.lime }}>Host your own</Link>
         )}
       </div>
       <div className="mt-2"><GroupChatButtons text={() => `🏆 ${e.title}: ${aw[0] ? `${aw[0].who} took it (${aw[0].why}).` : 'final results are in.'}${e.state.recap ? '\n🎙️ ' + e.state.recap.headline : ''}\nFull recap: ${url}`} /></div>
@@ -1061,7 +1061,7 @@ function YourGroup() {
     <section className="mt-4 rounded-3xl p-5 text-white shadow-sm" style={{ background: C.ink }}>
       <div className="text-[20px] font-semibold leading-tight">Your group deserves a sportscaster.</div>
       <p className="mt-1 text-[14px]" style={{ color: '#bccdbb' }}>Say when and where you play. You get the link, the hype, and the write-up. Your first one is free.</p>
-      <form className="mt-3 flex gap-2" onSubmit={(x) => { x.preventDefault(); location.href = `/play?q=${encodeURIComponent(q.trim() || 'Doubles this weekend')}`; }}>
+      <form className="mt-3 flex gap-2" onSubmit={(x) => { x.preventDefault(); location.href = `/play/new?q=${encodeURIComponent(q.trim() || 'Doubles this weekend')}`; }}>
         <input value={q} onChange={(x) => setQ(x.target.value)} placeholder="Doubles Sat 8am at Orinda CC" aria-label="Your game" className="min-w-0 flex-1 rounded-xl bg-white px-3 py-3 text-[16px] outline-none" style={{ color: C.ink }} />
         <button className="rounded-xl px-4 font-semibold" style={{ background: C.lime, color: C.ink }}>Go</button>
       </form>

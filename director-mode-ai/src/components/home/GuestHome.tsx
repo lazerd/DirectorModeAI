@@ -22,7 +22,7 @@ import s from './GuestHome.module.css';
 type Door = 'players' | 'captains' | 'directors';
 
 const DOORS: Record<Door, { href: string; event: LandingEvent }> = {
-  players: { href: '/play', event: 'pick_players' },
+  players: { href: '/play/new', event: 'pick_players' },
   captains: { href: '/captainmode', event: 'pick_captains' },
   directors: { href: '/try', event: 'pick_directors' },
 };
@@ -57,7 +57,7 @@ export default function GuestHome() {
     const door = routeRequest(value);
     if (door === 'captains') { go(door); return; }
     // Anything else is a game or a mixer: hand the sentence to CourtConnect, which builds it.
-    router.push(`/play?q=${encodeURIComponent(value.trim())}`);
+    router.push(`/play/new?q=${encodeURIComponent(value.trim())}`);
   };
 
   return (
