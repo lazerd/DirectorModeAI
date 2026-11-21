@@ -1,5 +1,7 @@
 'use client';
 
+import { useState as useStateCompat } from 'react';
+
 import type { GuestFormat } from '@/lib/mixer/guestMixer';
 import { courtPlan, type PlayFormat } from '@/lib/play/core';
 import { DRAW_KIND_BLURB, DRAW_KIND_NAME, drawFormatFor, drawIsDoubles, drawKind, drawPlan, type DrawFormat, type DrawKind } from '@/lib/play/draw';
@@ -200,6 +202,80 @@ export default function EventPicker({ value, drawFormat, spots, courts, onChange
           );
         })}
       </div>
+    </section>
+  );
+}
+
+/* ---------- compact chooser for /play/new (Darrin 11/21/26: "it needs cleaning up") ----------
+ * One line shows the chosen format and its court math; "Change" opens a tidy list with
+ * Social / Tournament tabs. Same choices and math as the big picker, none of the clutter.
+ */
+const SOCIAL_ROWS: { f: GuestFormat; title: string; blurb: string }[] = [
+  { f: 'maximize-courts', title: 'Optimize Courts', blurb: 'Every court full: doubles where four fit, singles with the rest.' },
+  ...SMALL.map((t) => ({ f: t.f, title: t.title, blurb: t.blurb })),
+];
+
+export function FormatChooser({ value, drawFormat, spots, courts, onChange }: { value: PlayFormat; drawFormat?: DrawFormat | null; spots: number | null; courts: number; onChange: (f: PlayFormat, df?: DrawFormat) => void }) {
+  const df: DrawFormat = drawFormat ?? 'rr-singles';
+  const isT = value === 'tournament';
+  const [open, setOpen] = useStateCompat(false);
+  const [tab, setTab] = useStateCompat<'social' | 'tournament'>(isT ? 'tournament' : 'social');
+  const name = isT ? `${DRAW_KIND_NAME[drawKind(df)]}${drawKind(df) === 'quads' ? '' : drawIsDoubles(df) ? ' · Doubles' : ' · Singles'}` : SOCIAL_ROWS.find((r) => r.f === value)?.title ?? 'Optimize Courts';
+  const math = isT ? drawLine(df, spots, courts) : planLine(value as GuestFormat, spots, courts).text;
+  const ink = '#103c32', lime = '#d4ff49', muted = '#5f7268', line = '#dfe5da';
+  const row = (on: boolean) => ({ borderColor: on ? ink : line, background: on ? '#f4ffd9' : '#fff' });
+  return (
+    <section aria-label="Format" className="mt-4">
+      <div className="flex items-center gap-3 rounded-2xl border bg-white p-4" style={{ borderColor: line }}>
+        <div className="min-w-0 flex-1">
+          <div className="text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: muted }}>{isT ? 'Tournament' : 'Format'}</div>
+          <div className="text-[17px] font-semibold leading-tight" style={{ color: ink }}>{name}</div>
+          <div className="mt-0.5 text-[13px]" style={{ color: muted }}>{math.replace(/^\d+ players on \d+ courts?: /, '')}</div>
+        </div>
+        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="shrink-0 rounded-xl px-3.5 py-2 text-[14px] font-semibold" style={{ background: open ? ink : '#eef1e8', color: open ? '#fff' : ink }}>
+          {open ? 'Done' : 'Change'}
+        </button>
+      </div>
+      {open && (
+        <div className="mt-2 rounded-2xl border bg-white p-2" style={{ borderColor: line }}>
+          <div role="tablist" className="mb-2 grid grid-cols-2 gap-1 rounded-xl p-1" style={{ background: '#eef1e8' }}>
+            {(['social', 'tournament'] as const).map((k) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className="rounded-lg py-2 text-[14px] font-semibold"
+                style={tab === k ? { background: ink, color: '#fff' } : { color: ink }}>{k === 'social' ? 'Social' : 'Tournament'}</button>
+            ))}
+          </div>
+          {tab === 'tournament' && (
+            <div className="mb-2 flex items-center gap-2 px-1 text-[13px]" style={{ color: muted }}>
+              {[false, true].map((dbl) => {
+                const on = drawIsDoubles(df) === dbl;
+                return <button key={String(dbl)} type="button" onClick={() => onChange('tournament', drawFormatFor(drawKind(df), dbl))} className="rounded-lg px-3 py-1 font-semibold" style={on ? { background: lime, color: ink } : { background: '#eef1e8', color: ink }}>{dbl ? 'Doubles' : 'Singles'}</button>;
+              })}
+            </div>
+          )}
+          <div className="grid gap-1.5" role="radiogroup" aria-label={tab === 'social' ? 'Social formats' : 'Tournament formats'}>
+            {tab === 'social' ? SOCIAL_ROWS.map((r) => {
+              const on = value === r.f;
+              return (
+                <button key={r.f} type="button" role="radio" aria-checked={on} onClick={() => { onChange(r.f); setOpen(false); }} className="rounded-xl border px-3 py-2.5 text-left" style={row(on)}>
+                  <div className="flex items-center justify-between gap-2"><b className="text-[15px]" style={{ color: ink }}>{r.title}</b>{on && <span className="text-[12px] font-bold" style={{ color: ink }}>✓</span>}</div>
+                  <div className="text-[13px]" style={{ color: muted }}>{r.blurb}</div>
+                  <div className="mt-0.5 text-[12px] font-semibold" style={{ color: '#2f7a4f' }}>{planLine(r.f, spots, courts).text.replace(/^\d+ players on \d+ courts?: /, '').replace(/^\d+ courts?: /, '')}</div>
+                </button>
+              );
+            }) : TOURNEY.map((t) => {
+              const f = drawFormatFor(t.k, drawIsDoubles(df));
+              const on = isT && drawKind(df) === t.k;
+              return (
+                <button key={t.k} type="button" role="radio" aria-checked={on} onClick={() => { onChange('tournament', f); setOpen(false); }} className="rounded-xl border px-3 py-2.5 text-left" style={row(on)}>
+                  <div className="flex items-center justify-between gap-2"><b className="text-[15px]" style={{ color: ink }}>{DRAW_KIND_NAME[t.k]}</b>{on && <span className="text-[12px] font-bold" style={{ color: ink }}>✓</span>}</div>
+                  <div className="text-[13px]" style={{ color: muted }}>{t.k === 'rr' && drawIsDoubles(f) ? 'Fixed pairs, every pair plays every pair once.' : DRAW_KIND_BLURB[t.k]}</div>
+                  <div className="mt-0.5 text-[12px] font-semibold" style={{ color: '#2f7a4f' }}>{drawLine(f, spots, courts)}</div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </section>
   );
 }

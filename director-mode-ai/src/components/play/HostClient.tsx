@@ -2,25 +2,24 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, Users, Trophy, LayoutGrid } from 'lucide-react';
+import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, ChevronDown } from 'lucide-react';
 import { PlacePicker } from './PlacePicker';
 import { levelLabel } from '@/lib/play/levels';
 import { levelPresets } from './Levels';
 import { normalizeDraft, parseSentence, perCourt, whenLine, type PlayDraft } from '@/lib/play/core';
 import { C, PlayHeader, apiRaw, canListen, getClub, getHostId, getName, listen, savePending, setClub, setKey, setName, takePending } from './shared';
 import Paywall, { type PaywallInfo } from './Paywall';
-import EventPicker from './EventPicker';
+import { FormatChooser } from './EventPicker';
 import { ClubGamesLink } from './ClubGamesLink';
 import { trackEvent } from '@/lib/analytics';
 import type { DrawFormat } from '@/lib/play/draw';
 import { InviteGroupPicker } from './Groups';
 
-const EXAMPLES = [
-  'Doubles Friday 6pm at Heather Farm, 3.5–4.0, need 3 more',
-  'Social Friday 6pm, 14 players, 4 courts, optimize courts',
-  'Pickleball mixer Saturday 9am, 12 players, 3 courts',
-  'Mixed doubles social Sunday 4pm, 16 people, 4 courts',
-  'Singles hit tomorrow 7am at Rossmoor',
+// Three short starters (Darrin 11/21/26: the page felt cluttered). Each one shows a different kind of night.
+const EXAMPLES: [string, string][] = [
+  ['Doubles Sat 9am', 'Doubles Saturday 9am, need 3 more'],
+  ['Pickleball mixer Fri 6pm', 'Pickleball mixer Friday 6pm, 3 courts'],
+  ['Round robin Sun 10am', 'Tennis round robin tournament Sunday 10am, 2 courts'],
 ];
 
 function localNow() {
@@ -65,6 +64,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
 
   const touched = useRef<Set<string>>(new Set());
   const [listed, setListed] = useState(true);
+  const [more, setMore] = useState(false); // "More options": player cap, round length, weekly, nearby
   async function build(t = text) {
     if (!t.trim()) return;
     mark();
@@ -140,12 +140,9 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Tennis · Pickleball · Padel</span>} />
       <main className="mx-auto w-full max-w-xl px-5">
         {!draft && (
-          <section className="pt-6 text-center">
-            <div className="text-[10px] font-semibold uppercase tracking-[2px]" style={{ color: C.muted }}>Racquet Sports. Together. In Real Life.</div>
-            <h1 className="mt-4 text-[44px] font-medium leading-[1.02] tracking-[-2.5px] sm:text-[56px]">Racquets IRL</h1>
-            <p className="mx-auto mt-4 max-w-sm text-[15px] leading-relaxed" style={{ color: C.muted }}>
-              Set up your next tennis, pickleball or padel mixer in under 60 seconds. Free. No signup. Just play.
-            </p>
+          <section className="pt-8 text-center">
+            <h1 className="text-[40px] font-medium leading-[1.04] tracking-[-2px] sm:text-[52px]">Start a game</h1>
+            <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed" style={{ color: C.muted }}>Type it like you&apos;d text your group. Free. No login needed.</p>
           </section>
         )}
 
@@ -174,44 +171,21 @@ export default function HostClient({ initial, club, resume }: { initial?: string
           {mic && <p className="mt-2 text-center text-sm" style={{ color: C.muted }}>Listening… say when, where, how many</p>}
         </form>
 
-        {!draft && <p className="mt-4 text-center text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Or tap one to start</p>}
         {!draft && (
-          <div className="mt-2 flex flex-wrap justify-center gap-2">
-            {EXAMPLES.map((x) => (
-              <button key={x} onClick={() => { setText(x); build(x); }} className="rounded-full border bg-white/60 px-3 py-1.5 text-[12px]" style={{ borderColor: C.line, color: C.muted }}>
-                {x}
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {EXAMPLES.map(([label, full]) => (
+              <button key={label} onClick={() => { setText(full); build(full); }} className="rounded-full border bg-white px-3.5 py-1.5 text-[13px] font-medium" style={{ borderColor: C.line, color: C.ink }}>
+                {label}
               </button>
             ))}
           </div>
         )}
-
         {!draft && (
-          <a href="/play/demo" className="mx-auto mt-5 flex w-fit items-center gap-2 rounded-full px-4 py-2 text-[14px] font-semibold" style={{ background: C.ink, color: '#fff' }}>
-            <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: C.lime }} />Watch a Friday night run itself
-          </a>
-        )}
-        {!draft && (
-          <a href="/play/near" className="mx-auto mt-3 flex w-fit items-center gap-2 rounded-full px-4 py-2 text-[14px] font-semibold" style={{ background: C.lime, color: C.ink }}>
-            <MapPin className="h-4 w-4" />Looking for a game? Find one near me
-          </a>
-        )}
-
-        {!draft && (
-          <section className="mt-12 grid gap-3">
-            {[
-              [Users, 'Fill it', 'Drop the link in the group chat. People tap “I’m in”. No app, no account. Full? They go on the waitlist and move up on their own.'],
-              [LayoutGrid, 'Run it', 'At the courts, tap Start. Optimize Courts fills every court (doubles where it fits, singles with the rest) and every phone shows “Court 2: you & Sam vs Jo & Lee”, with a round clock.'],
-              [Trophy, 'Remember it', 'Scores in, and the night ends with a recap and awards everyone wants to share. One tap runs it back next week.'],
-            ].map(([Icon, h, p]) => {
-              const I = Icon as typeof Users;
-              return (
-                <div key={h as string} className="flex gap-4 rounded-2xl p-5" style={{ background: '#e6ebdf' }}>
-                  <I className="mt-0.5 h-5 w-5 shrink-0" />
-                  <div><div className="font-semibold">{h as string}</div><p className="mt-1 text-[14px] leading-relaxed" style={{ color: '#4f6358' }}>{p as string}</p></div>
-                </div>
-              );
-            })}
-          </section>
+          <p className="mt-8 text-center text-[13px]" style={{ color: C.muted }}>
+            <a href="/play/demo" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Watch a demo</a>
+            <span className="mx-2">·</span>
+            <a href="/play/near" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Find a game near me</a>
+          </p>
         )}
 
         {draft && (
@@ -235,28 +209,42 @@ export default function HostClient({ initial, club, resume }: { initial?: string
               </label>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">
-              <Stepper label="Player cap" value={draft.spots} min={2} max={96} nullable={{ def: Math.max(perCourt(draft.format), draft.courts * perCourt(draft.format)), off: 'None' }}
-                onChange={(v) => set(v == null ? { spots: null, kind: 'social' } : { spots: v, kind: v > perCourt(draft.format) ? 'social' : 'game', courts: Math.max(1, Math.min(draft.courts, Math.ceil(v / perCourt(draft.format)))) })} />
+              <Pick label="Sport" value={draft.sport} options={[['tennis', 'Tennis'], ['pickleball', 'Pickleball'], ['padel', 'Padel']]} onChange={(v) => set({ sport: v as PlayDraft['sport'] })} wide />
               <Stepper label="Courts" value={draft.courts} min={1} max={24} onChange={(v) => set({ courts: v })} />
-              <Pick label="Sport" value={draft.sport} options={[['tennis', 'Tennis'], ['pickleball', 'Pickleball'], ['padel', 'Padel']]} onChange={(v) => set({ sport: v as PlayDraft['sport'] })} />
-              <label className="col-span-2 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
+              <label className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
                 <span style={{ color: '#bccdbb' }}>Level</span>
-                <input value={draft.level ?? ''} onChange={(e) => set({ level: e.target.value })} placeholder={draft.sport === 'pickleball' ? 'any (e.g. 3.5–4.0 DUPR)' : draft.sport === 'padel' ? 'any (e.g. 2.5–3.5, intermediate)' : 'any (e.g. 3.5–4.0 NTRP)'} className="w-full bg-transparent text-white outline-none placeholder:text-[#9fb3a6]" />
+                <input value={draft.level ?? ''} onChange={(e) => set({ level: e.target.value })} placeholder="any" aria-label="Level" className="w-full min-w-0 bg-transparent text-white outline-none placeholder:text-[#9fb3a6]" />
                 {draft.level?.trim() && <span className="shrink-0 text-[11px] font-semibold" style={{ color: draft.level_min != null || draft.level_max != null ? C.lime : '#ffb4a2' }}>{draft.level_min != null || draft.level_max != null ? levelLabel({ min: draft.level_min ?? null, max: draft.level_max ?? null }, draft.sport) : '?'}</span>}
               </label>
-              <div className="col-span-2 flex flex-wrap gap-1.5">
-                {levelPresets(draft.sport).map((x) => (
-                  <button key={x} type="button" onClick={() => set({ level: draft.level === x ? '' : x })} className="rounded-lg px-2.5 py-1 text-[12px] font-semibold"
-                    style={draft.level === x ? { background: C.lime, color: C.ink } : { background: '#ffffff14', color: '#fff' }}>{x}</button>
-                ))}
-              </div>
- {draft.kind === 'social' && draft.format !== 'tournament' && <Stepper label="Min / round" value={draft.round_minutes} min={5} max={120} step={5} onChange={(v) => set({ round_minutes: v })} />}
             </div>
+            <button type="button" onClick={() => setMore((v) => !v)} aria-expanded={more} className="mt-3 flex items-center gap-1 text-[13px] font-semibold" style={{ color: '#bccdbb' }}>
+              More options <ChevronDown className={`h-4 w-4 transition-transform ${more ? 'rotate-180' : ''}`} />
+            </button>
+            {more && (
+              <div className="mt-2 grid gap-2 text-[13px] text-white">
+                <div className="flex flex-wrap gap-1.5">
+                  {levelPresets(draft.sport).map((x) => (
+                    <button key={x} type="button" onClick={() => set({ level: draft.level === x ? '' : x })} className="rounded-lg px-2.5 py-1 text-[12px] font-semibold"
+                      style={draft.level === x ? { background: C.lime, color: C.ink } : { background: '#ffffff14', color: '#fff' }}>{x}</button>
+                  ))}
+                </div>
+                <Stepper label="Player cap" value={draft.spots} min={2} max={96} nullable={{ def: Math.max(perCourt(draft.format), draft.courts * perCourt(draft.format)), off: 'None' }}
+                  onChange={(v) => set(v == null ? { spots: null, kind: 'social' } : { spots: v, kind: v > perCourt(draft.format) ? 'social' : 'game', courts: Math.max(1, Math.min(draft.courts, Math.ceil(v / perCourt(draft.format)))) })} />
+                {draft.kind === 'social' && draft.format !== 'tournament' && <Stepper label="Min / round" value={draft.round_minutes} min={5} max={120} step={5} onChange={(v) => set({ round_minutes: v })} />}
+                <label className="flex items-center gap-2 rounded-xl px-3 py-2 text-white" style={{ background: '#ffffff14' }}>
+                  <input type="checkbox" checked={!!draft.repeat_weekly} onChange={(e) => set({ repeat_weekly: e.target.checked })} className="h-4 w-4 accent-[#d4ff49]" />
+                  <span>Every week <span style={{ color: '#bccdbb' }}>(next week’s game makes itself)</span></span>
+                </label>
+                <label className="flex items-start gap-2 rounded-xl px-3 py-2 text-white" style={{ background: '#ffffff14', opacity: draft.place_lat == null ? 0.6 : 1 }}>
+                  <input type="checkbox" checked={listed && draft.place_lat != null} disabled={draft.place_lat == null} onChange={(e) => setListed(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#d4ff49]" />
+                  <span>Let nearby players find it<span className="block text-[12px]" style={{ color: '#bccdbb' }}>{draft.place_lat == null ? 'Pick the place from the map suggestions to turn this on.' : 'Shows on “Games near me” while it needs players.'}</span></span>
+                </label>
+              </div>
+            )}
           </section>
         )}
 
-        {draft && <EventPicker value={draft.format} drawFormat={drawFormat} spots={draft.spots} courts={draft.courts} onChange={(f, df) => { if (df) setDrawFormat(df); set({ format: f, kind: draft.spots == null || draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' || f === 'team-battle' || f === 'tournament' ? 'social' : draft.kind }); }} />}
-        {draft && draft.spots == null && <p className="mt-2 px-1 text-[12px]" style={{ color: C.muted }}>No player cap: anyone can tap in, and on the day you check in whoever shows up. Only checked-in players get put on courts.</p>}
+        {draft && <FormatChooser value={draft.format} drawFormat={drawFormat} spots={draft.spots} courts={draft.courts} onChange={(f, df) => { if (df) setDrawFormat(df); set({ format: f, kind: draft.spots == null || draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' || f === 'team-battle' || f === 'tournament' ? 'social' : draft.kind }); }} />}
 
         {draft && (
           <section className="mt-4 grid gap-3">
@@ -265,22 +253,12 @@ export default function HostClient({ initial, club, resume }: { initial?: string
               <input type="checkbox" checked={playing} onChange={(e) => setPlaying(e.target.checked)} className="h-5 w-5 bg-white accent-[#103c32]" />
               I&apos;m playing too{draft.spots != null ? ` (counts as 1 of the ${draft.spots})` : ''}
             </label>
-            <label className="flex items-start gap-2 text-[14px]">
-              <input type="checkbox" checked={listed && draft.place_lat != null} disabled={draft.place_lat == null} onChange={(e) => setListed(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 bg-white accent-[#103c32]" />
-              <span>Let nearby players find it{draft.level_min != null || draft.level_max != null ? ` (${levelLabel({ min: draft.level_min ?? null, max: draft.level_max ?? null }, draft.sport)})` : ''}
-                <span className="block text-[12px]" style={{ color: C.muted }}>{draft.place_lat == null ? 'Pin the place above to turn this on.' : 'Shows on “Games near me” while it needs players.'}</span></span>
-            </label>
-            <label className="flex items-center gap-2 text-[14px]">
-              <input type="checkbox" checked={!!draft.repeat_weekly} onChange={(e) => set({ repeat_weekly: e.target.checked })} className="h-5 w-5 bg-white accent-[#103c32]" />
-              Every week (next week’s game makes itself)
-            </label>
             <InviteGroupPicker value={inviteGroup} onChange={setInviteGroup} />
             {err && <p className="text-[14px] text-[#b4432f]">{err}</p>}
             <button onClick={() => create({ ...draft, listed: listed && draft.place_lat != null })} disabled={saving} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
               {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : null} Make my link
             </button>
-            <p className="text-center text-[12px]" style={{ color: C.muted }}>{whenLine(draft) ?? 'No time yet'} · {draft.location?.trim() || 'no place yet'} · No account needed</p>
-            {paywall ? <Paywall info={paywall} /> : <p className="text-center text-[12px]" style={{ color: C.muted }}>Your first event is free. Joining is always free.</p>}
+            {paywall ? <Paywall info={paywall} /> : <p className="text-center text-[12px]" style={{ color: C.muted }}>Free to host your first game. Joining is always free.</p>}
           </section>
         )}
         <ClubGamesLink className="mt-8 text-center text-[13px]" />
@@ -309,9 +287,9 @@ function Stepper<N extends number | null = number>({ label, value, min, max, ste
     </div>
   );
 }
-function Pick({ label, value, options, onChange }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void }) {
+function Pick({ label, value, options, onChange, wide }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void; wide?: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
+    <div className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 ${wide ? 'col-span-2' : ''}`} style={{ background: '#ffffff14' }}>
       <span style={{ color: '#bccdbb' }}>{label}</span>
       <span className="flex gap-1">
         {options.map(([v, l]) => (
