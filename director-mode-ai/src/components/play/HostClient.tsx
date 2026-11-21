@@ -229,7 +229,8 @@ export default function HostClient({ initial, club, resume }: { initial?: string
               </label>
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">
-              <Stepper label="Players" value={draft.spots} min={2} max={96} onChange={(v) => set({ spots: v, kind: v > perCourt(draft.format) ? 'social' : 'game', courts: Math.max(1, Math.min(draft.courts, Math.ceil(v / perCourt(draft.format)))) })} />
+              <Stepper label="Player cap" value={draft.spots} min={2} max={96} nullable={{ def: Math.max(perCourt(draft.format), draft.courts * perCourt(draft.format)), off: 'None' }}
+                onChange={(v) => set(v == null ? { spots: null, kind: 'social' } : { spots: v, kind: v > perCourt(draft.format) ? 'social' : 'game', courts: Math.max(1, Math.min(draft.courts, Math.ceil(v / perCourt(draft.format)))) })} />
               <Stepper label="Courts" value={draft.courts} min={1} max={24} onChange={(v) => set({ courts: v })} />
               <Pick label="Sport" value={draft.sport} options={[['tennis', 'Tennis'], ['pickleball', 'Pickleball'], ['padel', 'Padel']]} onChange={(v) => set({ sport: v as PlayDraft['sport'] })} />
               <label className="col-span-2 flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
@@ -248,14 +249,15 @@ export default function HostClient({ initial, club, resume }: { initial?: string
           </section>
         )}
 
-        {draft && <EventPicker value={draft.format} spots={draft.spots} courts={draft.courts} onChange={(f) => set({ format: f, kind: draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' || f === 'team-battle' ? 'social' : draft.kind })} />}
+        {draft && <EventPicker value={draft.format} spots={draft.spots} courts={draft.courts} onChange={(f) => set({ format: f, kind: draft.spots == null || draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' || f === 'team-battle' ? 'social' : draft.kind })} />}
+        {draft && draft.spots == null && <p className="mt-2 px-1 text-[12px]" style={{ color: C.muted }}>No player cap: anyone can tap in, and on the day you check in whoever shows up. Only checked-in players get put on courts.</p>}
 
         {draft && (
           <section className="mt-4 grid gap-3">
             <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="Your first name" aria-label="Your name" className={field} style={{ borderColor: C.line }} />
             <label className="flex items-center gap-2 text-[14px]">
               <input type="checkbox" checked={playing} onChange={(e) => setPlaying(e.target.checked)} className="h-5 w-5 bg-white accent-[#103c32]" />
-              I&apos;m playing too (counts as 1 of the {draft.spots})
+              I&apos;m playing too{draft.spots != null ? ` (counts as 1 of the ${draft.spots})` : ''}
             </label>
             <label className="flex items-start gap-2 text-[14px]">
               <input type="checkbox" checked={listed && draft.place_lat != null} disabled={draft.place_lat == null} onChange={(e) => setListed(e.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 bg-white accent-[#103c32]" />
@@ -284,14 +286,17 @@ function toLocalInput(iso: string) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-function Stepper({ label, value, min, max, step = 1, onChange }: { label: string; value: number; min: number; max: number; step?: number; onChange: (v: number) => void }) {
+function Stepper<N extends number | null = number>({ label, value, min, max, step = 1, onChange, nullable }: { label: string; value: N; min: number; max: number; step?: number; onChange: (v: N) => void; nullable?: { def: number; off: string } }) {
+  // nullable: stepping below the minimum turns it off (value null); + from off starts at `def`.
+  const down = () => (value == null ? undefined : value - step < min ? (nullable ? onChange(null as N) : onChange(min as N)) : onChange((value - step) as N));
+  const up = () => onChange((value == null ? Math.min(max, Math.max(min, nullable?.def ?? min)) : Math.min(max, value + step)) as N);
   return (
     <div className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
       <span style={{ color: '#bccdbb' }}>{label}</span>
       <span className="flex items-center gap-2">
-        <button type="button" aria-label={`Fewer ${label}`} onClick={() => onChange(Math.max(min, value - step))} className="grid h-7 w-7 place-items-center rounded-lg bg-white/10">−</button>
-        <b className="w-6 text-center text-[16px]">{value}</b>
-        <button type="button" aria-label={`More ${label}`} onClick={() => onChange(Math.min(max, value + step))} className="grid h-7 w-7 place-items-center rounded-lg bg-white/10">+</button>
+        <button type="button" aria-label={`Fewer ${label}`} onClick={down} disabled={value == null} className="grid h-7 w-7 place-items-center rounded-lg bg-white/10 disabled:opacity-40">−</button>
+        <b className="min-w-6 text-center text-[16px]">{value ?? nullable?.off ?? ''}</b>
+        <button type="button" aria-label={`More ${label}`} onClick={up} className="grid h-7 w-7 place-items-center rounded-lg bg-white/10">+</button>
       </span>
     </div>
   );

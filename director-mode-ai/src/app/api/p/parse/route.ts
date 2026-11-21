@@ -26,12 +26,12 @@ const TOOL = {
       when_text: { type: 'string', description: 'How to say it, e.g. "Fri 6pm". Omit if no time.' },
       location: { type: 'string', description: 'Courts / park / club as said. Omit if none.' },
       level: { type: 'string', description: 'Level as said: "3.5–4.0", "4.0+", "DUPR 3.5", "beginners". Omit if none.' },
-      spots: { type: 'integer', description: 'Total players INCLUDING the person posting. "Need a fourth" = 4. "Need 2 more for doubles" = 4.' },
+      spots: { type: 'integer', description: 'ONLY if they gave a number of players, or it is a single fixed game: total INCLUDING the person posting. "Need a fourth" = 4. "Need 2 more for doubles" = 4. Omit for a mixer/social/round robin with no number: the host checks in whoever shows up.' },
       courts: { type: 'integer' },
       round_minutes: { type: 'integer', description: 'Minutes per round for a social, if said.' },
       notes: { type: 'string', description: 'Anything else worth telling players (bring balls, cost, etc). Omit if none.' },
     },
-    required: ['title', 'sport', 'kind', 'format', 'spots'],
+    required: ['title', 'sport', 'kind', 'format'],
   },
 };
 

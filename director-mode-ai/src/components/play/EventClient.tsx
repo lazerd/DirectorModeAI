@@ -4,12 +4,12 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'r
 import Link from 'next/link';
 import QRCode from 'qrcode';
 import {
-  Calendar, Check, Clock, Copy, Loader2, MapPin, MessageCircle, Minus, Play, Plus, QrCode, RefreshCw,
-  Share2, Shuffle, Square, Trophy, UserPlus, X,
+  ArrowLeftRight, Calendar, Check, Clock, Copy, Loader2, MapPin, MessageCircle, Minus, Pause, Play, Plus, QrCode, RefreshCw,
+  Share2, Shuffle, Square, Trophy, Undo2, UserPlus, X,
 } from 'lucide-react';
-import { standings, teamScore, type GuestMatch } from '@/lib/mixer/guestMixer';
+import { standings, teamScore, winnerOf, isScored, courtLabel, type GuestMatch, type GuestFormat } from '@/lib/mixer/guestMixer';
 import { Directions, PlaceMap, PlacePicker, type Place } from './PlacePicker';
-import { FORMAT_NAME, directionsUrl, awards, perCourt, spotsLine, whenLine, type PlayEvent } from '@/lib/play/core';
+import { FORMAT_NAME, directionsUrl, awards, perCourt, spotsLine, whenLine, checkedIn, type PlayEvent } from '@/lib/play/core';
 import { BrandContext, C, PlayHeader, api, getKey, getName, setKey, setName } from './shared';
 import { getMyLevel, levelLabel, levelNote, levelNum, setMyLevel } from '@/lib/play/levels';
 import { LevelChips } from './Levels';
@@ -27,7 +27,9 @@ export default function EventClient({ code, initial }: { code: string; initial: 
   const [isNew, setIsNew] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [hereLink, setHereLink] = useState(false);
   const lastRound = useRef<number>(0);
+  const autoHere = useRef(false);
 
   const refresh = useCallback(async (k = key) => {
     try { setE(await api<PlayEvent>(`/api/p/${code}`, undefined, k)); } catch { /* keep last */ }
@@ -40,6 +42,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
     const k = getKey(code);
     setK(k);
     setIsNew(new URLSearchParams(location.search).has('new'));
+    setHereLink(new URLSearchParams(location.search).get('here') === '1');
     refresh(k);
     // A fresh invite open: this phone has no host/player key for the game yet. Count once per phone.
     try {
@@ -88,6 +91,11 @@ export default function EventClient({ code, initial }: { code: string; initial: 
   }
 
   const meR = e.rsvps.find((r) => r.id === e.me);
+  // Scanned the court QR (?here=1) and already on the list: that's a check-in.
+  useEffect(() => {
+    if (hereLink && meR && !meR.checked_in_at && e.status !== 'done' && !autoHere.current) { autoHere.current = true; act({ action: 'checkin' }, 'checkin'); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hereLink, meR?.id, meR?.checked_in_at, e.status]);
   // Times and the share link depend on this phone's clock and address: render after mount only.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
@@ -108,8 +116,8 @@ export default function EventClient({ code, initial }: { code: string; initial: 
         {moving && e.isHost && e.status === 'open' && <MoveGame e={e} busy={busy} act={act} onDone={() => setMoving(false)} />}
         {err && <p className="mt-3 rounded-xl bg-[#fbe9e5] px-4 py-3 text-[14px] text-[#9c3a25]">{err}</p>}
 
-        {e.status === 'open' && <OpenView e={e} meName={meR?.name} busy={busy} act={act} code={code} />}
-        {e.status === 'live' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code={code} />}
+        {e.status === 'open' && <OpenView e={e} meName={meR?.name} busy={busy} act={act} code={code} hereLink={hereLink} />}
+        {e.status === 'live' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code={code} hereLink={hereLink} />}
         {e.status === 'done' && <DoneView e={e} busy={busy} act={act} code={code} myName={meR?.name} />}
 
         {e.season && <SeasonTable e={e} />}
@@ -155,7 +163,7 @@ export function EventCard({ e, onStatus }: { e: PlayEvent; onStatus: () => void 
       </div>
       {e.status === 'open' && (
         <button type="button" onClick={onStatus} className="block w-full text-left">
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full" style={{ width: `${Math.min(100, (n / e.spots) * 100)}%`, background: C.lime }} /></div>
+          {e.spots != null && <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/15"><div className="h-full rounded-full" style={{ width: `${Math.min(100, (n / e.spots) * 100)}%`, background: C.lime }} /></div>}
           <div className="mt-2 flex justify-between text-[13px]" style={{ color: '#dfe8dc' }}><span>{spotsLine(e)}</span><span className="font-semibold" style={{ color: C.lime }}>Status ›</span></div>
         </button>
       )}
@@ -165,7 +173,7 @@ export function EventCard({ e, onStatus }: { e: PlayEvent; onStatus: () => void 
 }
 
 /* ------------------------------------------------------------------ */
-function JoinBox({ e, act, busy }: { e: PlayEvent; act: (b: Record<string, unknown>) => Promise<Res | undefined>; busy: string }) {
+function JoinBox({ e, act, busy, here }: { e: PlayEvent; act: (b: Record<string, unknown>) => Promise<Res | undefined>; busy: string; here?: boolean }) {
   const [name, setN] = useState('');
   const [g, setG] = useState<'male' | 'female' | ''>('');
   const [team, setTeam] = useState<'A' | 'B' | ''>('');
@@ -173,24 +181,24 @@ function JoinBox({ e, act, busy }: { e: PlayEvent; act: (b: Record<string, unkno
   useEffect(() => { setN(getName()); setLvl(getMyLevel(e.sport)); }, [e.sport]);
   const range = { min: e.level_min ?? null, max: e.level_max ?? null };
   const note = levelNote(range, lvl, e.sport);
-  const full = e.rsvps.filter((r) => r.status === 'in').length >= e.spots && e.status === 'open';
+  const full = e.spots != null && e.rsvps.filter((r) => r.status === 'in').length >= e.spots && e.status === 'open';
   const go = async () => {
     if (!name.trim()) return;
     setName(name.trim());
     setMyLevel(e.sport, lvl);
-    await act({ action: 'join', name: name.trim(), gender: g || null, team: team || null, level_num: lvl });
+    await act({ action: 'join', name: name.trim(), gender: g || null, team: team || null, level_num: lvl, here: !!here });
   };
   return (
     <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
-      <div className="text-[18px] font-semibold">{e.status === 'live' ? 'Just got here?' : full ? 'It’s full. Get on the waitlist' : 'You in?'}</div>
+      <div className="text-[18px] font-semibold">{e.status === 'live' || here ? 'Just got here? Check in' : full ? 'It’s full. Get on the waitlist' : 'You in?'}</div>
       <p className="mt-1 text-[14px]" style={{ color: C.muted }}>
-        {e.status === 'live' ? 'Add your name and you’re in the next round.' : full ? 'If someone drops, you move up automatically.' : 'Just your first name. No app, no account.'}
+        {e.status === 'live' ? 'Add your name and you’re in the next round.' : here ? 'Add your name and you’re checked in for tonight.' : full ? 'If someone drops, you move up automatically.' : 'Just your first name. No app, no account.'}
       </p>
       <form className="mt-3 flex gap-2" onSubmit={(x) => { x.preventDefault(); go(); }}>
         <input value={name} onChange={(x) => setN(x.target.value)} placeholder="First name + last initial" aria-label="Your name" maxLength={40}
           className="min-w-0 flex-1 rounded-xl border bg-white px-3 py-3 text-[16px] outline-none" style={{ borderColor: C.line }} />
         <button disabled={!!busy || !name.trim()} className="rounded-xl px-5 text-[16px] font-semibold disabled:opacity-50" style={{ background: C.lime, color: C.ink }}>
-          {busy === 'join' ? <Loader2 className="h-5 w-5 animate-spin" /> : full ? 'Waitlist' : 'I’m in'}
+          {busy === 'join' ? <Loader2 className="h-5 w-5 animate-spin" /> : here || e.status === 'live' ? 'I’m here' : full ? 'Waitlist' : 'I’m in'}
         </button>
       </form>
       <div className="mt-3">
@@ -299,7 +307,7 @@ function icsHref(e: PlayEvent, code: string) {
   return `data:text/calendar;charset=utf-8,${encodeURIComponent(body)}`;
 }
 
-export function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?: string; busy: string; act: (b: Record<string, unknown>) => Promise<Res | undefined>; code: string }) {
+export function OpenView({ e, meName, busy, act, code, hereLink }: { e: PlayEvent; meName?: string; busy: string; act: (b: Record<string, unknown>) => Promise<Res | undefined>; code: string; hereLink?: boolean }) {
   const ins = e.rsvps.filter((r) => r.status === 'in'), waits = e.rsvps.filter((r) => r.status === 'wait');
   const me = e.rsvps.find((r) => r.id === e.me);
   const ics = icsHref(e, code);
@@ -308,19 +316,23 @@ export function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?
       {me ? (
         <section className="mt-4 rounded-3xl p-5 shadow-sm" style={{ background: C.lime }}>
           <div className="flex items-center gap-2 text-[18px] font-semibold"><Check className="h-5 w-5" />{me.status === 'wait' ? `You're on the waitlist, ${meName}` : `You're in, ${meName}!`}</div>
-          <p className="mt-1 text-[14px]">{me.status === 'wait' ? 'If a spot opens you move up automatically. Check back here.' : 'Come back to this link at the courts. It will show your court and partner.'}</p>
-          <div className="mt-3 flex gap-2 text-[13px] font-semibold">
+          <p className="mt-1 text-[14px]">{me.checked_in_at ? 'You’re checked in. You’ll see your court and partner here when it starts.' : me.status === 'wait' ? 'If a spot opens you move up automatically. Check back here.' : 'At the courts, open this link and tap “I’m here”. It will show your court and partner.'}</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-[13px] font-semibold">
+            {me.checked_in_at
+              ? <button onClick={() => act({ action: 'checkout' })} className="flex items-center gap-1 rounded-xl bg-white px-3 py-2"><Check className="h-4 w-4" />Checked in</button>
+              : <button disabled={!!busy} onClick={() => act({ action: 'checkin' })} className="flex items-center gap-1 rounded-xl px-3 py-2 text-white" style={{ background: C.ink }}>{busy === 'checkin' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}I’m here</button>}
             {ics && <a href={ics} download={`${code}.ics`} className="flex items-center gap-1 rounded-xl bg-white/70 px-3 py-2"><Calendar className="h-4 w-4" />Add to calendar</a>}
             {!me.is_host && <button onClick={() => act({ action: 'leave' })} className="rounded-xl bg-white/40 px-3 py-2">Can&apos;t make it</button>}
           </div>
           <CrownAlert e={e} act={act} />
         </section>
       ) : (
-        <JoinBox e={e} act={act} busy={busy} />
+        <JoinBox e={e} act={act} busy={busy} here={hereLink} />
       )}
       <TaleOfTheTape e={e} act={act} busy={busy} />
       <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">
-        <div className="text-[16px] font-semibold">Who&apos;s in ({ins.length}/{e.spots})</div>
+        <div className="flex items-baseline justify-between"><div className="text-[16px] font-semibold">Who&apos;s in ({e.spots != null ? `${ins.length}/${e.spots}` : ins.length})</div>
+          {checkedIn(e).length > 0 && <div className="text-[13px] font-semibold" style={{ color: '#2f7a4f' }}>✓ {checkedIn(e).length} here</div>}</div>
         {e.format === 'team-battle' && (
           <div className="mt-3 grid grid-cols-2 gap-2">
             {(['A', 'B'] as const).map((t) => (
@@ -332,8 +344,8 @@ export function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?
           </div>
         )}
         <div className="mt-3 flex flex-wrap gap-2">
-          {ins.map((r) => <span key={r.id} className="rounded-full px-3 py-1.5 text-[14px]" style={{ background: r.id === e.me ? C.lime : '#eef1e8' }}>{r.name}{r.level_num != null && <span className="ml-1 text-[12px] font-semibold tabular-nums" style={{ color: C.muted }}>{levelNum(r.level_num)}</span>}{r.is_host ? ' · host' : ''}</span>)}
-          {Array.from({ length: Math.max(0, e.spots - ins.length) }).slice(0, 12).map((_, i) => <span key={i} className="rounded-full border border-dashed px-3 py-1.5 text-[14px]" style={{ borderColor: '#b9c4b5', color: '#9aa79c' }}>open</span>)}
+          {ins.map((r) => <span key={r.id} className="rounded-full px-3 py-1.5 text-[14px]" style={{ background: r.id === e.me ? C.lime : '#eef1e8' }}>{r.checked_in_at && <span className="mr-1 font-bold" style={{ color: '#2f7a4f' }} title="Here">✓</span>}{r.name}{r.level_num != null && <span className="ml-1 text-[12px] font-semibold tabular-nums" style={{ color: C.muted }}>{levelNum(r.level_num)}</span>}{r.is_host ? ' · host' : ''}</span>)}
+          {Array.from({ length: e.spots == null ? 0 : Math.max(0, e.spots - ins.length) }).slice(0, 12).map((_, i) => <span key={i} className="rounded-full border border-dashed px-3 py-1.5 text-[14px]" style={{ borderColor: '#b9c4b5', color: '#9aa79c' }}>open</span>)}
         </div>
         {waits.length > 0 && <p className="mt-3 text-[13px]" style={{ color: C.muted }}>Waitlist: {waits.map((w) => w.name).join(', ')}</p>}
       </section>
@@ -343,38 +355,56 @@ export function OpenView({ e, meName, busy, act, code }: { e: PlayEvent; meName?
 }
 
 /* ------------------------------------------------------------------ */
-function useClock(startIso: string | null | undefined, minutes: number) {
+function useClock(startIso: string | null | undefined, minutes: number, pausedIso?: string | null) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
   if (!startIso) return null;
-  const left = Date.parse(startIso) + minutes * 60e3 - now;
-  return left;
+  const at = pausedIso ? Date.parse(pausedIso) : now; // a paused clock stands still
+  return Date.parse(startIso) + minutes * 60e3 - at;
 }
 
-export function LiveView({ e, tab, setTab, busy, act, canScore, code }: { e: PlayEvent; tab: 'courts' | 'table'; setTab: (t: 'courts' | 'table') => void; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; canScore: boolean; code: string }) {
+export function LiveView({ e, tab, setTab, busy, act, canScore, code, hereLink }: { e: PlayEvent; tab: 'courts' | 'table'; setTab: (t: 'courts' | 'table') => void; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; canScore: boolean; code: string; hereLink?: boolean }) {
   const m = e.state.mixer!;
   const round = m.rounds[m.rounds.length - 1];
   const name = (id: string) => m.players.find((p) => p.id === id)?.name ?? '?';
-  const left = useClock(e.state.roundStartedAt, e.round_minutes);
+  const left = useClock(e.state.roundStartedAt, e.round_minutes, e.state.pausedAt);
+  const [pick, setPick] = useState<string | null>(null); // host swap: first player tapped
+  const [swapping, setSwapping] = useState(false);
+  const tap = e.isHost && swapping ? (id: string) => {
+    if (!pick) { setPick(id); return; }
+    if (pick !== id) act({ action: 'swap', a: pick, b: id }, 'swap');
+    setPick(null);
+  } : undefined;
+  const inRotation = !!e.me && m.players.some((p) => p.id === e.me && !p.out);
   const mine = round?.matches.find((x) => [...x.teamA, ...x.teamB].includes(e.me ?? '-'));
   const sitting = round?.sittingOut.includes(e.me ?? '-');
   const st = standings(m);
   const mm = left == null ? '' : left <= 0 ? 'Time!' : `${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, '0')}`;
+  const paused = !!e.state.pausedAt;
   return (
     <>
       <section className="mt-4 flex items-center justify-between rounded-3xl bg-white p-5 shadow-sm">
         <div><div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Round</div><div className="text-[40px] font-semibold leading-none">{round?.number ?? '–'}</div></div>
-        <div className="text-right"><div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>{e.round_minutes} min rounds</div>
+        <div className="text-right"><div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: paused ? '#b4432f' : C.muted }}>{paused ? 'Clock paused' : `${e.round_minutes} min rounds`}</div>
           <div className={`text-[40px] font-semibold leading-none tabular-nums ${left != null && left <= 0 ? 'text-[#b4432f]' : ''}`}>{mm}</div></div>
       </section>
 
       {e.format === 'team-battle' && <TeamBoard e={e} />}
-      {e.me && round && (
+      {e.me && !inRotation && (
+        <section className="mt-3 rounded-3xl p-5 shadow-sm" style={{ background: C.lime }}>
+          <div className="text-[18px] font-semibold">You&apos;re signed up. Here now?</div>
+          <p className="mt-1 text-[14px]">Check in and you&apos;re in the next round.</p>
+          <button disabled={!!busy} onClick={() => act({ action: 'checkin' }, 'checkin')} className="mt-3 flex items-center gap-2 rounded-xl px-4 py-2.5 text-[15px] font-semibold text-white" style={{ background: C.ink }}>
+            {busy === 'checkin' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}I&apos;m here
+          </button>
+        </section>
+      )}
+      {e.me && inRotation && round && (
         <section className="mt-3 rounded-3xl p-5 shadow-sm" style={{ background: sitting ? '#e9eae3' : C.lime }}>
           {mine ? (
             <>
               <div className="text-[12px] font-semibold uppercase tracking-[1.5px]">You&apos;re on</div>
-              <div className="text-[44px] font-semibold leading-none">Court {mine.court}</div>
+              <div className="text-[44px] font-semibold leading-none">Court {courtLabel(m, mine.court)}</div>
               <div className="mt-2 text-[17px]">
                 {mine.teamA.includes(e.me) ? <><b>{mine.teamA.map((i) => i === e.me ? 'You' : name(i)).join(' & ')}</b> vs {mine.teamB.map(name).join(' & ')}</>
                   : <><b>{mine.teamB.map((i) => i === e.me ? 'You' : name(i)).join(' & ')}</b> vs {mine.teamA.map(name).join(' & ')}</>}
@@ -383,7 +413,8 @@ export function LiveView({ e, tab, setTab, busy, act, canScore, code }: { e: Pla
           ) : <div className="text-[18px] font-semibold">You sit this round. You&apos;re in the next one.</div>}
         </section>
       )}
-      {!e.me && !e.isHost && <JoinBox e={e} act={act} busy={busy} />}
+      {!e.me && !e.isHost && <JoinBox e={e} act={act} busy={busy} here={hereLink} />}
+      {!round && <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-[15px] shadow-sm">Rounds were reset. {e.isHost ? 'Tap “Next round” to make round 1.' : 'The host is making the next round.'}</p>}
 
       <div className="mt-4 flex gap-2 rounded-2xl bg-white p-1 text-[14px] font-semibold">
         {(['courts', 'table'] as const).map((t) => (
@@ -391,17 +422,32 @@ export function LiveView({ e, tab, setTab, busy, act, canScore, code }: { e: Pla
         ))}
       </div>
 
+      {tab === 'courts' && round && e.isHost && (
+        <div className="mt-3 flex items-center gap-2">
+          <button onClick={() => { setSwapping((v) => !v); setPick(null); }} className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-semibold" style={swapping ? { background: C.ink, color: '#fff' } : { background: '#fff' }}>
+            <ArrowLeftRight className="h-4 w-4" />{swapping ? 'Done swapping' : 'Swap players'}
+          </button>
+          {swapping && <span className="text-[13px]" style={{ color: C.muted }}>{pick ? `Now tap who ${name(pick)} trades places with` : 'Tap a player, then who they trade places with (sit-outs too).'}</span>}
+        </div>
+      )}
       {tab === 'courts' && round && (
         <section className="mt-3 grid gap-3">
-          {round.matches.map((x) => <CourtCard key={x.court} x={x} name={name} me={e.me} canScore={canScore} save={(a, b) => act({ action: 'score', round: round.number, court: x.court, a, b }, `score${x.court}`)} saving={busy === `score${x.court}`} />)}
-          {round.sittingOut.length > 0 && <p className="px-2 text-[14px]" style={{ color: C.muted }}>Sitting out: {round.sittingOut.map(name).join(', ')}</p>}
+          {round.matches.map((x) => <CourtCard key={x.court} x={x} label={courtLabel(m, x.court)} name={name} me={e.me} canScore={canScore} onTap={tap} picked={pick}
+            save={(a, b, tiebreak) => act({ action: 'score', round: round.number, court: x.court, a, b, tiebreak }, `score${x.court}`)} saving={busy === `score${x.court}`} />)}
+          {round.sittingOut.length > 0 && (
+            <p className="px-2 text-[14px]" style={{ color: C.muted }}>Sitting out:{' '}
+              {round.sittingOut.map((id, i) => tap
+                ? <button key={id} onClick={() => tap(id)} className="mr-1 rounded-lg px-2 py-0.5 font-semibold" style={{ background: pick === id ? C.lime : '#fff', color: C.ink }}>{name(id)}</button>
+                : <span key={id}>{i ? ', ' : ''}{name(id)}</span>)}
+            </p>
+          )}
         </section>
       )}
       {tab === 'table' && (
         <section className="mt-3 rounded-3xl bg-white p-4 shadow-sm">
           {st.length === 0 ? <p className="p-2 text-[14px]" style={{ color: C.muted }}>Scores show up here as courts finish.</p> : (
             <table className="w-full text-[15px]"><thead><tr className="text-left text-[12px] uppercase" style={{ color: C.muted }}><th className="py-1">#</th><th>Player</th><th className="text-right">W–L</th><th className="text-right">Games</th></tr></thead>
-              <tbody>{st.map((s, i) => <tr key={s.id} className="border-t" style={{ borderColor: '#eef1e8', fontWeight: s.id === e.me ? 700 : 400 }}><td className="py-2">{i + 1}</td><td>{s.name}</td><td className="text-right">{s.wins}–{s.losses}</td><td className="text-right">{s.gamesFor}–{s.gamesAgainst}</td></tr>)}</tbody></table>
+              <tbody>{st.map((s) => <tr key={s.id} className="border-t" style={{ borderColor: '#eef1e8', fontWeight: s.id === e.me ? 700 : 400 }}><td className="py-2">{s.rank}</td><td>{s.name}</td><td className="text-right">{s.wins}–{s.losses}</td><td className="text-right">{s.gamesFor}–{s.gamesAgainst}</td></tr>)}</tbody></table>
           )}
         </section>
       )}
@@ -410,16 +456,22 @@ export function LiveView({ e, tab, setTab, busy, act, canScore, code }: { e: Pla
   );
 }
 
-function CourtCard({ x, name, me, canScore, save, saving }: { x: GuestMatch; name: (id: string) => string; me: string | null; canScore: boolean; save: (a: number | null, b: number | null) => void; saving: boolean }) {
+function CourtCard({ x, label, name, me, canScore, save, saving, onTap, picked }: { x: GuestMatch; label: string; name: (id: string) => string; me: string | null; canScore: boolean; save: (a: number | null, b: number | null, tiebreak: 'A' | 'B' | null) => void; saving: boolean; onTap?: (id: string) => void; picked?: string | null }) {
   const [a, setA] = useState<number | null>(x.scoreA ?? null);
   const [b, setB] = useState<number | null>(x.scoreB ?? null);
+  const [tb, setTb] = useState<'A' | 'B' | null>(x.tiebreak ?? null);
   const [editing, setEditing] = useState(false);
-  useEffect(() => { if (!editing) { setA(x.scoreA ?? null); setB(x.scoreB ?? null); } }, [x.scoreA, x.scoreB, editing]);
+  useEffect(() => { if (!editing) { setA(x.scoreA ?? null); setB(x.scoreB ?? null); setTb(x.tiebreak ?? null); } }, [x.scoreA, x.scoreB, x.tiebreak, editing]);
   const mineHere = !!me && [...x.teamA, ...x.teamB].includes(me);
-  const done = x.scoreA != null && x.scoreB != null;
+  const done = isScored(x);
+  const w = winnerOf(x);
+  const tied = a != null && b != null && a === b && a > 0;
+  const who = (ids: string[]) => ids.map((i) => (i === me ? 'You' : name(i))).join(' & ');
   const Side = ({ ids, v, setV, won }: { ids: string[]; v: number | null; setV: (n: number | null) => void; won: boolean }) => (
     <div className="flex items-center justify-between gap-2 py-1.5">
-      <div className={`text-[16px] ${won ? 'font-bold' : ''}`}>{ids.map((i) => (i === me ? 'You' : name(i))).join(' & ')}</div>
+      <div className={`text-[16px] ${won ? 'font-bold' : ''}`}>{onTap
+        ? ids.map((i, k) => <button key={i} onClick={() => onTap(i)} className="mr-1 rounded-lg px-1.5 py-0.5" style={{ background: picked === i ? C.lime : '#eef1e8' }}>{k ? '& ' : ''}{name(i)}</button>)
+        : who(ids)}{won && x.scoreA === x.scoreB ? <span className="ml-1 text-[11px] font-semibold" style={{ color: C.muted }}>(tiebreak)</span> : null}</div>
       {editing ? (
         <div className="flex items-center gap-1.5">
           <button aria-label="minus" onClick={() => setV(Math.max(0, (v ?? 0) - 1))} className="grid h-9 w-9 place-items-center rounded-lg" style={{ background: '#eef1e8' }}><Minus className="h-4 w-4" /></button>
@@ -432,14 +484,24 @@ function CourtCard({ x, name, me, canScore, save, saving }: { x: GuestMatch; nam
   return (
     <div className="rounded-3xl bg-white p-4 shadow-sm" style={mineHere ? { outline: `3px solid ${C.lime}` } : {}}>
       <div className="mb-1 flex items-center justify-between text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>
-        <span>Court {x.court}</span>{done && !editing ? <span className="text-[#2f7a4f]">✓ in</span> : null}
+        <span>Court {label}</span>{done && !editing ? <span className="text-[#2f7a4f]">✓ in</span> : null}
       </div>
-      <Side ids={x.teamA} v={a} setV={setA} won={done && (x.scoreA ?? 0) > (x.scoreB ?? 0)} />
+      <Side ids={x.teamA} v={a} setV={setA} won={!editing && w === 'A'} />
       <div className="border-t" style={{ borderColor: '#eef1e8' }} />
-      <Side ids={x.teamB} v={b} setV={setB} won={done && (x.scoreB ?? 0) > (x.scoreA ?? 0)} />
+      <Side ids={x.teamB} v={b} setV={setB} won={!editing && w === 'B'} />
+      {canScore && editing && tied && (
+        <div className="mt-2 rounded-xl p-2 text-[13px]" style={{ background: '#fff7d6' }}>
+          <div className="mb-1.5 font-semibold">Tied {a}–{b}. Who won the tiebreak?</div>
+          <div className="grid grid-cols-2 gap-2">
+            {(['A', 'B'] as const).map((t) => (
+              <button key={t} onClick={() => setTb(t)} className="truncate rounded-lg px-2 py-2 font-semibold" style={tb === t ? { background: C.ink, color: '#fff' } : { background: '#fff' }}>{who(t === 'A' ? x.teamA : x.teamB)}</button>
+            ))}
+          </div>
+        </div>
+      )}
       {canScore && (editing ? (
         <div className="mt-2 flex gap-2">
-          <button onClick={() => { save(a ?? 0, b ?? 0); setEditing(false); }} className="flex-1 rounded-xl py-2.5 text-[15px] font-semibold" style={{ background: C.ink, color: '#fff' }}>Save score</button>
+          <button disabled={(a ?? 0) === 0 && (b ?? 0) === 0 || (tied && !tb)} onClick={() => { save(a ?? 0, b ?? 0, tied ? tb : null); setEditing(false); }} className="flex-1 rounded-xl py-2.5 text-[15px] font-semibold disabled:opacity-40" style={{ background: C.ink, color: '#fff' }}>Save score</button>
           <button onClick={() => setEditing(false)} className="rounded-xl px-4 text-[14px]" style={{ background: '#eef1e8' }}>Cancel</button>
         </div>
       ) : (
@@ -520,7 +582,7 @@ export function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: s
       {st.length > 0 && (
         <section className="mt-4 rounded-3xl bg-white p-4 shadow-sm">
           <div className="mb-2 px-1 text-[16px] font-semibold">Final standings</div>
-          <table className="w-full text-[15px]"><tbody>{st.map((s, i) => <tr key={s.id} className="border-t" style={{ borderColor: '#eef1e8', fontWeight: s.id === e.me ? 700 : 400 }}><td className="py-2 pl-1">{i + 1}</td><td>{s.name}</td><td className="text-right">{s.wins}–{s.losses}</td><td className="pr-1 text-right" style={{ color: C.muted }}>{s.gamesFor}–{s.gamesAgainst}</td></tr>)}</tbody></table>
+          <table className="w-full text-[15px]"><tbody>{st.map((s) => <tr key={s.id} className="border-t" style={{ borderColor: '#eef1e8', fontWeight: s.id === e.me ? 700 : 400 }}><td className="py-2 pl-1">{s.rank}</td><td>{s.name}</td><td className="text-right">{s.wins}–{s.losses}</td><td className="pr-1 text-right" style={{ color: C.muted }}>{s.gamesFor}–{s.gamesAgainst}</td></tr>)}</tbody></table>
         </section>
       )}
       {!m && <p className="mt-4 text-center text-[15px]" style={{ color: C.muted }}>This one is over.</p>}
@@ -627,11 +689,16 @@ function ChangePlace({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Re
 export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined>; hostKey: string | null; onMove?: () => void }) {
   const [names, setNames] = useState('');
   const [open, setOpen] = useState(false);
+  const [addHere, setAddHere] = useState(e.status === 'live');
   const m = e.state.mixer;
   const ins = e.rsvps.filter((r) => r.status === 'in');
+  const here = checkedIn(e);
   const need = perCourt(e.format);
   const round = m?.rounds[m.rounds.length - 1];
-  const unscored = round ? round.matches.filter((x) => x.scoreA == null || x.scoreB == null).length : 0;
+  const unscored = round ? round.matches.filter((x) => !isScored(x)).length : 0;
+  const inMixer = new Set((m?.players ?? []).filter((p) => !p.out).map((p) => p.id));
+  const isHere = (id: string) => (e.status === 'live' ? inMixer.has(id) : !!e.rsvps.find((r) => r.id === id)?.checked_in_at);
+  const pairing = m?.pairing ?? e.state.pairingPref ?? 'smart';
   const Btn = ({ onClick, children, primary, disabled }: { onClick: () => void; children: React.ReactNode; primary?: boolean; disabled?: boolean }) => (
     <button onClick={onClick} disabled={!!busy || disabled} className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold disabled:opacity-50"
       style={primary ? { background: C.ink, color: '#fff' } : { background: '#eef1e8' }}>{children}</button>
@@ -665,10 +732,11 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
           <a href="/play/pass" className="rounded-2xl p-3 text-[14px] font-semibold" style={{ background: C.lime }}>Next week’s game is waiting on a Host Pass. Get one and it’s made right away ›</a>
         )}
         {e.state.nextCode && <Link href={`/p/${e.state.nextCode}`} className="rounded-2xl p-3 text-center text-[14px] font-semibold" style={{ background: '#eef1e8' }}>Next week’s game is up ›</Link>}
+        {e.status === 'open' && <CheckInList e={e} busy={busy} act={act} />}
         {e.status === 'open' && (
-          <Btn primary onClick={() => act({ action: 'start' })} disabled={ins.length < need}>
+          <Btn primary onClick={() => act({ action: 'start' })} disabled={here.length < need}>
             {busy === 'start' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
-            {ins.length < need ? `Need ${need - ins.length} more to start` : `We're here. Start (${ins.length} players)`}
+            {here.length < need ? (here.length ? `${here.length} checked in · need ${need - here.length} more` : 'Check people in to start') : `Start with ${here.length} checked in`}
           </Btn>
         )}
         {e.status === 'live' && (
@@ -677,21 +745,38 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
               {busy === 'next' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}Next round
             </Btn>
             <div className="grid grid-cols-2 gap-2">
-              <Btn onClick={() => act({ action: 'reshuffle' })}><Shuffle className="h-4 w-4" />Reshuffle</Btn>
+              <Btn onClick={() => { if (round && round.matches.some(isScored) && !confirm('Reshuffle this round? Its scores are cleared.')) return; act({ action: 'reshuffle' }); }}><Shuffle className="h-4 w-4" />Reshuffle</Btn>
               <Btn onClick={() => { if (confirm('End the night and show the recap?')) act({ action: 'end' }); }}><Square className="h-4 w-4" />End + recap</Btn>
             </div>
+            <ClockControls e={e} busy={busy} act={act} />
+            <div className="grid grid-cols-2 gap-2">
+              <Btn onClick={() => { if (confirm(`Take back round ${round?.number ?? ''}? Its pairings and scores are removed.`)) act({ action: 'undo_round' }); }} disabled={!round}><Undo2 className="h-4 w-4" />Undo last round</Btn>
+              <Btn onClick={() => { if (confirm('Start the rounds over from round 1? Every round and score so far is removed; players stay checked in.')) act({ action: 'reset_rounds' }); }} disabled={!m?.rounds.length}><RefreshCw className="h-4 w-4" />Start rounds over</Btn>
+            </div>
+            <FormatSwitch e={e} busy={busy} act={act} />
           </>
         )}
+        <Toggle on={pairing === 'smart'} disabled={!!busy} onChange={(v) => act({ action: 'pairing', mode: v ? 'smart' : 'random' }, 'pairing')}
+          title="Balance courts by level"
+          sub={pairing === 'smart' ? 'Round 1 puts strong and newer players on every court (by the levels people picked). Then courts are grouped by how people are doing. Partners still rotate.' : 'Random shuffle each round (still no repeat partners and fair sit-outs).'} />
+        <CourtNumbers e={e} busy={busy} act={act} />
         {e.format === 'team-battle' && <TeamNames e={e} act={act} />}
+        {e.format === 'team-battle' && <TeamSplit e={e} busy={busy} act={act} />}
         <button onClick={() => setOpen((v) => !v)} className="mt-1 flex items-center justify-center gap-2 text-[14px] font-semibold"><UserPlus className="h-4 w-4" />Add players or manage the list</button>
         {open && (
           <div className="grid gap-2">
             <textarea value={names} onChange={(x) => setNames(x.target.value)} rows={3} placeholder="Walk-ups or a pasted list: one name per line or commas"
               className="rounded-xl border bg-white p-3 text-[16px] outline-none" style={{ borderColor: C.line }} />
-            <Btn onClick={async () => { await act({ action: 'add', names }); setNames(''); }} disabled={!names.trim()}>Add</Btn>
+            <label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={addHere} onChange={(x) => setAddHere(x.target.checked)} className="h-4 w-4 accent-[#103c32]" />They&apos;re here now (check them in)</label>
+            <Btn onClick={async () => { await act({ action: 'add', names, checkin: addHere }); setNames(''); }} disabled={!names.trim()}>Add</Btn>
             <div className="flex flex-wrap gap-2 pt-1">
               {e.rsvps.filter((r) => r.status !== 'out').map((r) => (
-                <span key={r.id} className="inline-flex items-center gap-1 rounded-full py-1 pl-3 pr-1 text-[13px]" style={{ background: '#eef1e8' }}>
+                <span key={r.id} className="inline-flex items-center gap-1 rounded-full py-1 pl-1 pr-1 text-[13px]" style={{ background: '#eef1e8' }}>
+                  <button aria-label={isHere(r.id) ? `Check ${r.name} out` : `Check ${r.name} in`} title={isHere(r.id) ? 'Here (tap to check out)' : 'Not here (tap to check in)'}
+                    onClick={() => act({ action: isHere(r.id) ? 'checkout' : 'checkin', id: r.id })}
+                    className="grid h-6 w-6 place-items-center rounded-full border" style={isHere(r.id) ? { background: C.ink, color: '#fff', borderColor: C.ink } : { background: '#fff', borderColor: '#b9c4b5' }}>
+                    {isHere(r.id) ? <Check className="h-3.5 w-3.5" /> : null}
+                  </button>
                   {r.name}{r.status === 'wait' ? ' (waitlist)' : ''}
                   {e.format === 'team-battle' && (
                     <button onClick={() => act({ action: 'team', id: r.id, team: r.team === 'A' ? 'B' : 'A' })} className="rounded-full px-1.5 text-[11px] font-bold" style={{ background: r.team === 'B' ? '#ff9fc4' : r.team === 'A' ? C.lime : '#fff' }}>{r.team ? teamName(e, r.team).slice(0, 10) : 'Team?'}</button>
@@ -712,8 +797,115 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
   );
 }
 
+/* ---------- Check-in (MixerMode's "who's here"): only checked-in players go on courts ---------- */
+function CheckInList({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
+  const list = e.rsvps.filter((r) => r.status !== 'out');
+  const here = list.filter((r) => r.checked_in_at).length;
+  const [qr, setQr] = useState('');
+  const [showQr, setShowQr] = useState(false);
+  const url = `${location.origin}/p/${e.code}?here=1`;
+  useEffect(() => { if (showQr && !qr) QRCode.toDataURL(url, { margin: 1, width: 520, color: { dark: '#103c32', light: '#ffffff' } }).then(setQr).catch(() => {}); }, [showQr, qr, url]);
+  return (
+    <div className="rounded-2xl p-3" style={{ background: '#eef1e8' }}>
+      <div className="flex items-center justify-between">
+        <div className="text-[14px] font-semibold">Check-in · {here} of {list.length} here</div>
+        <div className="flex gap-1.5 text-[12px] font-semibold">
+          <button disabled={!!busy || !list.length} onClick={() => act({ action: 'checkin_all' }, 'checkin_all')} className="rounded-lg bg-white px-2.5 py-1.5">Check in everyone</button>
+          {here > 0 && <button disabled={!!busy} onClick={() => { if (confirm('Clear every check-in?')) act({ action: 'checkin_clear' }, 'checkin_clear'); }} className="rounded-lg bg-white/60 px-2.5 py-1.5">Clear</button>}
+        </div>
+      </div>
+      <p className="mt-1 text-[12px]" style={{ color: C.muted }}>Tap names as people arrive, or let them check themselves in: they tap “I’m here” on the link, or scan the court QR. Only checked-in players get courts; anyone else sits until they check in.</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        {list.map((r) => (
+          <button key={r.id} disabled={!!busy} onClick={() => act({ action: r.checked_in_at ? 'checkout' : 'checkin', id: r.id }, 'ci' + r.id)}
+            className="inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-[14px]" style={r.checked_in_at ? { background: C.ink, color: '#fff' } : { background: '#fff' }}>
+            {r.checked_in_at ? <Check className="h-3.5 w-3.5" /> : null}{r.name}{r.status === 'wait' ? ' (wait)' : ''}
+          </button>
+        ))}
+        {!list.length && <span className="text-[13px]" style={{ color: C.muted }}>Nobody has tapped in yet.</span>}
+      </div>
+      <button onClick={() => setShowQr((v) => !v)} className="mt-2 flex items-center gap-1.5 text-[13px] font-semibold underline underline-offset-4"><QrCode className="h-4 w-4" />{showQr ? 'Hide' : 'Show'} the check-in QR for the courts</button>
+      {showQr && qr && (
+        <div className="mt-2 text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={qr} alt="Scan to check in" className="mx-auto w-64 rounded-xl" />
+          <p className="mt-1 text-[12px]" style={{ color: C.muted }}>Players scan this at the courts: it signs them up if needed and checks them in.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* Round clock: pause / resume / add time / restart (MixerMode's RoundTimer controls). */
+function ClockControls({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
+  const paused = !!e.state.pausedAt;
+  const b = 'flex items-center justify-center gap-1 rounded-xl py-2.5 text-[13px] font-semibold disabled:opacity-50';
+  return (
+    <div className="grid grid-cols-4 gap-1.5">
+      <button disabled={!!busy} onClick={() => act({ action: 'timer', op: paused ? 'resume' : 'pause' }, 'timer')} className={b} style={{ background: paused ? C.lime : '#eef1e8' }}>{paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}{paused ? 'Resume' : 'Pause'}</button>
+      <button disabled={!!busy} onClick={() => act({ action: 'timer', op: 'extend', min: 2 }, 'timer')} className={b} style={{ background: '#eef1e8' }}>+2 min</button>
+      <button disabled={!!busy} onClick={() => act({ action: 'timer', op: 'extend', min: 5 }, 'timer')} className={b} style={{ background: '#eef1e8' }}>+5 min</button>
+      <button disabled={!!busy} onClick={() => act({ action: 'timer', op: 'restart' }, 'timer')} className={b} style={{ background: '#eef1e8' }}><RefreshCw className="h-3.5 w-3.5" />Restart</button>
+    </div>
+  );
+}
+
+/* People didn't show (or more did): switch the format mid-night; it applies from the next round. */
+function FormatSwitch({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
+  const opts: GuestFormat[] = ['maximize-courts', 'doubles', 'mixed-doubles', 'singles', 'king-of-court', 'team-battle'];
+  return (
+    <label className="flex items-center justify-between gap-2 rounded-2xl px-3 py-2.5 text-[14px]" style={{ background: '#eef1e8' }}>
+      <span className="font-semibold">Format <span className="font-normal" style={{ color: C.muted }}>(from the next round)</span></span>
+      <select value={e.format} disabled={!!busy} onChange={(x) => act({ action: 'edit', draft: { format: x.target.value } }, 'edit')} className="rounded-lg bg-white px-2 py-1.5 text-[14px]">
+        {opts.map((f) => <option key={f} value={f}>{FORMAT_NAME[f]}</option>)}
+      </select>
+    </label>
+  );
+}
+
+/* The club's own court numbers (MixerMode's court names): "5-8" or "5, 6, Center". */
+function CourtNumbers({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
+  const cur = (e.state.mixer?.courtLabels ?? e.state.courtLabels ?? []).join(', ');
+  const [v, setV] = useState(cur);
+  useEffect(() => setV(cur), [cur]);
+  return (
+    <form className="flex items-center gap-2 rounded-2xl px-3 py-2" style={{ background: '#eef1e8' }} onSubmit={(x) => { x.preventDefault(); act({ action: 'labels', labels: v }, 'labels'); }}>
+      <span className="shrink-0 text-[14px] font-semibold">Court numbers</span>
+      <input value={v} onChange={(x) => setV(x.target.value)} placeholder={`1–${e.courts} (e.g. 5-8)`} aria-label="Court numbers" className="min-w-0 flex-1 rounded-lg bg-white px-2 py-1.5 text-[15px] outline-none" />
+      <button disabled={!!busy || v === cur} className="rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white disabled:opacity-40" style={{ background: C.ink }}>Save</button>
+    </form>
+  );
+}
+
+/* Team Battle: how many singles vs doubles courts (MixerMode's TeamBattleTab setting). */
+function TeamSplit({ e, busy, act }: { e: PlayEvent; busy: string; act: (b: Record<string, unknown>, l?: string) => Promise<Res | undefined> }) {
+  const cur = e.state.mixer?.teamSplit ?? e.state.teamSplit ?? null;
+  const [d, setD] = useState(cur?.doubles ?? Math.max(1, e.courts - 1));
+  const [sg, setSg] = useState(cur?.singles ?? (e.courts > 1 ? 1 : 0));
+  const step = (v: number, set: (n: number) => void, delta: number) => set(Math.max(0, Math.min(e.courts, v + delta)));
+  return (
+    <div className="rounded-2xl p-3 text-[14px]" style={{ background: '#eef1e8' }}>
+      <div className="flex items-center justify-between">
+        <span className="font-semibold">Court split</span>
+        <span style={{ color: C.muted }}>{cur ? `${cur.doubles} doubles + ${cur.singles} singles` : 'Auto (as many doubles as fit)'}</span>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {([['Doubles', d, setD], ['Singles', sg, setSg]] as const).map(([lab, v, set]) => (
+          <span key={lab} className="inline-flex items-center gap-1 rounded-lg bg-white px-2 py-1">{lab}
+            <button type="button" aria-label={`Fewer ${lab}`} onClick={() => step(v, set, -1)} className="px-1">−</button><b>{v}</b>
+            <button type="button" aria-label={`More ${lab}`} onClick={() => step(v, set, 1)} className="px-1">+</button></span>
+        ))}
+        <button disabled={!!busy || d + sg < 1} onClick={() => act({ action: 'teamsplit', doubles: d, singles: sg }, 'split')} className="rounded-lg px-3 py-1.5 text-[13px] font-semibold text-white disabled:opacity-40" style={{ background: C.ink }}>Use this split</button>
+        {cur && <button disabled={!!busy} onClick={() => act({ action: 'teamsplit', auto: true }, 'split')} className="text-[13px] underline">Auto</button>}
+      </div>
+      <p className="mt-1 text-[12px]" style={{ color: C.muted }}>Lines line up by level, strongest on court 1, like team tennis.</p>
+    </div>
+  );
+}
+
 /* "Your game always happens": one tap drafts the urgent ask for open spots. */
 function SubButton({ e }: { e: PlayEvent }) {
+  if (e.spots == null) return null; // no cap: nothing to fill
   const open = e.spots - e.rsvps.filter((r) => r.status === 'in').length;
   if (open <= 0) return null;
   const url = `${location.origin}/p/${e.code}`;
@@ -848,7 +1040,7 @@ function TaleOfTheTape({ e, act, busy }: { e: PlayEvent; act: (b: Record<string,
             <span className="text-[14px]" style={{ color: '#d6d6cf' }}> · {l.line}</span>
           </div>
         ))}
-        {e.spots - ins.size > 0 && <div className="px-5 py-2.5 text-[14px]" style={{ background: '#1d1d1b', color: '#9b9b93' }}>{e.spots - ins.size} spot{e.spots - ins.size === 1 ? '' : 's'} open. Your line is waiting.</div>}
+        {e.spots != null && e.spots - ins.size > 0 && <div className="px-5 py-2.5 text-[14px]" style={{ background: '#1d1d1b', color: '#9b9b93' }}>{e.spots - ins.size} spot{e.spots - ins.size === 1 ? '' : 's'} open. Your line is waiting.</div>}
       </div>
       {e.isHost && <button disabled={!!busy} onClick={() => act({ action: 'hype' }, 'hype')} className="w-full py-2.5 text-[13px] font-semibold" style={{ color: C.lime }}>{busy === 'hype' ? 'Re-hyping…' : '↻ Re-hype with everyone who’s in'}</button>}
     </section>
@@ -956,7 +1148,8 @@ export function StatusSheet({ e, busy, act, hostKey, onClose }: { e: PlayEvent; 
   const wait = e.rsvps.filter((r) => r.status === 'wait');
   const have = new Set(e.rsvps.map((r) => firstName(r.name)));
   const missing = expectedNames(e.notes).filter((n) => !have.has(firstName(n)));
-  const open = Math.max(0, e.spots - ins.length);
+  const open = e.spots == null ? 0 : Math.max(0, e.spots - ins.length);
+  const here = checkedIn(e).length;
   const need = perCourt(e.format);
   const when = whenLine(e);
   const ms = e.starts_at ? Date.parse(e.starts_at) - Date.now() : NaN;
@@ -969,7 +1162,7 @@ export function StatusSheet({ e, busy, act, hostKey, onClose }: { e: PlayEvent; 
     `Tap "I'm in" (5 seconds, no app): ${url}`,
   ].join('\n');
   const isHost = !!hostKey;
-  const plan = ins.length >= need ? `${ins.length} could start now` : `need ${need - ins.length} more to start`;
+  const plan = here >= need ? `${here} checked in, ready to start` : here ? `${here} checked in, need ${need - here} more to start` : `${ins.length} signed up · check people in as they arrive`;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45" onClick={onClose}>
       <div role="dialog" aria-label="Game status" className="max-h-[88vh] w-full max-w-xl overflow-y-auto rounded-t-3xl p-5 pb-8 shadow-2xl" style={{ background: C.paper, color: C.ink }} onClick={(x) => x.stopPropagation()}>
@@ -977,12 +1170,12 @@ export function StatusSheet({ e, busy, act, hostKey, onClose }: { e: PlayEvent; 
           <div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Game status</div>
           <button aria-label="Close" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full" style={{ background: '#eef1e8' }}><X className="h-4 w-4" /></button>
         </div>
-        <div className="mt-2 text-[30px] font-semibold leading-tight tracking-tight">{e.status === 'open' ? `${ins.length} of ${e.spots} in` : e.status === 'live' ? 'Playing now' : 'Final'}</div>
+        <div className="mt-2 text-[30px] font-semibold leading-tight tracking-tight">{e.status === 'open' ? (e.spots != null ? `${ins.length} of ${e.spots} in` : `${ins.length} in`) : e.status === 'live' ? 'Playing now' : 'Final'}</div>
         <div className="text-[14px]" style={{ color: C.muted }}>{[when, until, e.status === 'open' ? plan : ''].filter(Boolean).join(' · ')}</div>
 
         <div className="mt-4 rounded-2xl bg-white p-4">
-          <div className="text-[13px] font-semibold">✅ In ({ins.length})</div>
-          <div className="mt-1 text-[15px]">{ins.map((r) => r.name).join(', ') || '—'}</div>
+          <div className="text-[13px] font-semibold">✅ In ({ins.length}){here ? ` · ${here} here` : ''}</div>
+          <div className="mt-1 text-[15px]">{ins.map((r) => (r.checked_in_at ? '✓' : '') + r.name).join(', ') || '—'}</div>
           {wait.length > 0 && <><div className="mt-3 text-[13px] font-semibold">⏳ Waitlist ({wait.length})</div><div className="mt-1 text-[15px]">{wait.map((r) => r.name).join(', ')}</div></>}
           {missing.length > 0 && (
             <>
@@ -996,15 +1189,15 @@ export function StatusSheet({ e, busy, act, hostKey, onClose }: { e: PlayEvent; 
         {e.status === 'open' && (
           <div className="mt-4 grid gap-2">
             {isHost && missing.length > 0 && (
-              <button disabled={!!busy} onClick={() => act({ action: 'add', names: missing.join(', ') }, 'add')} className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold disabled:opacity-60" style={{ background: C.lime }}>
+              <button disabled={!!busy} onClick={() => act({ action: 'add', names: missing.join(', '), checkin: false }, 'add')} className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold disabled:opacity-60" style={{ background: C.lime }}>
                 {busy === 'add' ? <Loader2 className="h-5 w-5 animate-spin" /> : <UserPlus className="h-5 w-5" />}They&apos;re coming. Add all {missing.length}
               </button>
             )}
             <div className="mt-1 text-[13px] font-semibold">{missing.length ? 'Nudge the group' : open ? `Fill the last ${open}` : 'Tell the group'}</div>
             <GroupChatButtons text={nudge} />
             {isHost && (
-              <button disabled={!!busy || ins.length < need} onClick={async () => { const r = await act({ action: 'start' }, 'start'); if (r) onClose(); }} className="mt-1 flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-50" style={{ background: C.ink }}>
-                {busy === 'start' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}{ins.length < need ? `Need ${need - ins.length} more to start` : `Start with who's here (${ins.length})`}
+              <button disabled={!!busy || here < need} onClick={async () => { const r = await act({ action: 'start' }, 'start'); if (r) onClose(); }} className="mt-1 flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-50" style={{ background: C.ink }}>
+                {busy === 'start' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}{here < need ? (here ? `${here} checked in · need ${need - here} more` : 'Check people in to start') : `Start with ${here} checked in`}
               </button>
             )}
           </div>

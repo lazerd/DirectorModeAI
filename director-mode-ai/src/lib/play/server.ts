@@ -1,7 +1,7 @@
 import 'server-only';
 import { randomBytes } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { generateRound, newMixer, roundComplete, type GuestMixer } from '@/lib/mixer/guestMixer';
+import { generateRound, newMixer, roundComplete, cannotGenerate, type GuestMixer, type GuestRound } from '@/lib/mixer/guestMixer';
 import { crownFor } from './crown';
 import { hostingAllowed, passCheckoutUrl } from './passes';
 import { callTheGame, hypeJoin, hypePreview, softenLine, type Spice } from './recap';
@@ -52,7 +52,7 @@ export async function view(c: string, key?: string | null): Promise<PlayEvent | 
   return {
     ...(pub as Omit<Row, 'host_key' | 'id' | 'parent_id'>),
     crown: cr ? { slug: cr.slug, place: cr.place, king: slim(cr.king), queen: slim(cr.queen) } : null,
-    rsvps: rs.filter((r) => r.status !== 'out').map(({ id, name, gender, level, level_num, status, is_host, created_at, team }) => ({ id, name, gender, level, level_num: level_num == null ? null : Number(level_num), status, is_host, created_at, team: team ?? null })),
+    rsvps: rs.filter((r) => r.status !== 'out').map(({ id, name, gender, level, level_num, status, is_host, created_at, team, checked_in_at }) => ({ id, name, gender, level, level_num: level_num == null ? null : Number(level_num), status, is_host, created_at, team: team ?? null, checked_in_at: checked_in_at ?? null })),
     level_min: row.level_min == null ? null : Number(row.level_min),
     level_max: row.level_max == null ? null : Number(row.level_max),
     season: await seasonFor(row).catch(() => null),
@@ -109,19 +109,19 @@ async function promoteWaitlist(row: Row) {
   const rs = await loadRsvps(row.id);
   const inN = rs.filter((r) => r.status === 'in').length;
   const waiting = rs.filter((r) => r.status === 'wait');
-  const open = Math.max(0, row.spots - inN);
+  const open = row.spots == null ? waiting.length : Math.max(0, row.spots - inN);
   for (const w of waiting.slice(0, open)) await db.from('play_rsvps').update({ status: 'in' }).eq('id', w.id);
 }
 
 /** A newcomer during a live event joins the rotation from the next round. */
-async function addToMixer(row: Row, p: { id: string; name: string; gender: 'male' | 'female' | null; team?: 'A' | 'B' | null }) {
+async function addToMixer(row: Row, p: { id: string; name: string; gender: 'male' | 'female' | null; team?: 'A' | 'B' | null; level?: number | null }) {
   await mutate(row, (r) => {
     if (r.status !== 'live' || !r.state?.mixer) return null;
     const m = r.state.mixer;
     if (m.players.some((x) => x.id === p.id && !x.out)) return null;
     const players = m.players.some((x) => x.id === p.id)
       ? m.players.map((x) => (x.id === p.id ? { ...x, out: false } : x))
-      : [...m.players, { id: p.id, name: p.name, ...(p.gender ? { gender: p.gender } : {}), ...(p.team ? { team: p.team } : {}) }];
+      : [...m.players, { id: p.id, name: p.name, ...(p.gender ? { gender: p.gender } : {}), ...(p.team ? { team: p.team } : {}), ...(p.level != null ? { level: p.level } : {}) }];
     return { state: { ...r.state, mixer: { ...m, players } } };
   });
 }
@@ -129,6 +129,32 @@ async function addToMixer(row: Row, p: { id: string; name: string; gender: 'male
 type Body = Record<string, unknown>;
 const s = (v: unknown, n = 40) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
 const gender = (v: unknown) => (v === 'male' || v === 'female' ? v : null);
+const lvl = (v: unknown) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+const nowIso = () => new Date().toISOString();
+/** Mark one player out of the live rotation (left, removed or checked out). */
+const outOfMixer = (id: string) => (r: Row) => r.state?.mixer ? { state: { ...r.state, mixer: { ...r.state.mixer, players: r.state.mixer.players.map((p) => p.id === id ? { ...p, out: true } : p) } } } : null;
+/** A court list typed by the host: "5,6,7,8" or "5-8" or "Center, 2, 3". */
+function parseLabels(v: unknown): string[] | null {
+  const raw = String(v ?? '').trim();
+  if (!raw) return null;
+  const range = raw.match(/^(\d{1,3})\s*[-–]\s*(\d{1,3})$/);
+  if (range) { const a = +range[1], b = +range[2]; if (b >= a && b - a < 24) return Array.from({ length: b - a + 1 }, (_, i) => String(a + i)); }
+  const parts = raw.split(/[,;\n]+|\s+(?=\d)/).map((x) => x.trim().slice(0, 12)).filter(Boolean).slice(0, 24);
+  return parts.length ? parts : null;
+}
+/** Swap two players' places in a round (on a court or sitting out). Scores on touched courts are cleared. */
+function swapIn(r: GuestRound, a: string, b: string): GuestRound {
+  if (a === b) return r;
+  const put = (id: string) => (id === a ? b : id === b ? a : id);
+  const touched = new Set<number>();
+  const matches = r.matches.map((x) => {
+    const has = [...x.teamA, ...x.teamB].some((id) => id === a || id === b);
+    if (!has) return x;
+    touched.add(x.court);
+    return { ...x, teamA: x.teamA.map(put), teamB: x.teamB.map(put), scoreA: null, scoreB: null, tiebreak: null };
+  });
+  return { ...r, matches, sittingOut: r.sittingOut.map(put) };
+}
 
 export async function act(c: string, key: string | null, body: Body): Promise<{ playerKey?: string; code?: string }> {
   const db = getSupabaseAdmin();
@@ -149,7 +175,9 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       const dupe = rs.find((r) => r.status !== 'out' && r.name.toLowerCase() === name.toLowerCase());
       if (dupe) throw new PlayError(`${name} is already in. Add a last initial so we can tell you apart.`);
       const inN = rs.filter((r) => r.status === 'in').length;
-      const status = row.status === 'live' || inN < row.spots ? 'in' : 'wait';
+      const status = row.status === 'live' || row.spots == null || inN < row.spots ? 'in' : 'wait';
+      // Joining at the courts (live, or the court QR's ?here) also checks you in.
+      const here = row.status === 'live' || body.here === true;
       const pk = mine?.player_key ?? newKey();
       let team: 'A' | 'B' | null = body.team === 'A' || body.team === 'B' ? body.team : null;
       if (row.format === 'team-battle' && !team) {
@@ -160,29 +188,40 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       const ln = Number(body.level_num);
       const level_num = body.level_num != null && body.level_num !== '' && Number.isFinite(ln) && ln >= sc.min && ln <= sc.max ? Math.round(ln * 100) / 100 : null;
       const levelText = level_num != null ? `${levelNum(level_num)} ${sc.short}` : s(body.level, 20) || null;
-      const { data, error } = await db.from('play_rsvps').insert({ event_id: row.id, name, gender: gender(body.gender), level: levelText, level_num, player_key: pk, status, team }).select('id').single();
+      // Someone who left (or was removed) and comes back keeps their row, so their rounds still count.
+      const back = !mine ? rs.find((r) => r.status === 'out' && r.name.toLowerCase() === name.toLowerCase()) : undefined;
+      const fields = { name, gender: gender(body.gender), level: levelText, level_num, player_key: pk, status, team, ...(here ? { checked_in_at: nowIso(), checked_in_by: 'self' } : {}) };
+      const { data, error } = back
+        ? await db.from('play_rsvps').update(fields).eq('id', back.id).select('id').single()
+        : await db.from('play_rsvps').insert({ event_id: row.id, ...fields }).select('id').single();
       if (error) throw new PlayError(error.message, 500);
-      if (row.status === 'live') await addToMixer(row, { id: data.id, name, gender: gender(body.gender), team });
+      if (row.status === 'live') await addToMixer(row, { id: data.id, name, gender: gender(body.gender), team, level: level_num });
       if (row.status === 'open' && status === 'in') await hype(c, { id: data.id, name }).catch(() => {});
       return { playerKey: pk };
     }
     case 'leave': {
       if (!mine) throw new PlayError('You are not on this one.');
-      await db.from('play_rsvps').update({ status: 'out' }).eq('id', mine.id);
+      await db.from('play_rsvps').update({ status: 'out', checked_in_at: null, checked_in_by: null }).eq('id', mine.id);
       if (row.status === 'open') { await promoteWaitlist(row); await nearbyNeedOne(row.code).catch(() => {}); }
-      if (row.status === 'live') await mutate(row, (r) => r.state?.mixer ? { state: { ...r.state, mixer: { ...r.state.mixer, players: r.state.mixer.players.map((p) => p.id === mine.id ? { ...p, out: true } : p) } } } : null);
+      if (row.status === 'live') await mutate(row, outOfMixer(mine.id));
       return {};
     }
     case 'add': { // walk-ups, pasted lists: host only
       hostOnly();
       const names = String(body.names ?? '').split(/[\n,;]+/).map((x) => x.replace(/^\s*\d+[.)]\s*/, '').trim().slice(0, 40)).filter(Boolean).slice(0, 60);
       const have = new Set(rs.filter((r) => r.status !== 'out').map((r) => r.name.toLowerCase()));
+      // The host typing names = these people are at the courts: they're checked in.
+      const checkin = body.checkin !== false;
       for (const name of names) {
         if (have.has(name.toLowerCase())) continue; have.add(name.toLowerCase());
-        const { data } = await db.from('play_rsvps').insert({ event_id: row.id, name, player_key: newKey(), status: 'in' }).select('id').single();
-        if (data && row.status === 'live') await addToMixer((await loadRow(c))!, { id: data.id, name, gender: null });
+        const back = rs.find((r) => r.status === 'out' && r.name.toLowerCase() === name.toLowerCase());
+        const fields = { name, status: 'in', ...(checkin ? { checked_in_at: nowIso(), checked_in_by: 'host' } : {}) };
+        const { data } = back
+          ? await db.from('play_rsvps').update(fields).eq('id', back.id).select('id, gender, level_num, team').single()
+          : await db.from('play_rsvps').insert({ event_id: row.id, player_key: newKey(), ...fields }).select('id, gender, level_num, team').single();
+        if (data && row.status === 'live' && checkin) await addToMixer((await loadRow(c))!, { id: data.id, name, gender: gender(data.gender), team: data.team ?? null, level: lvl(data.level_num) });
       }
-      if (row.status === 'open') {
+      if (row.status === 'open' && row.spots != null) {
         const n = (await loadRsvps(row.id)).filter((r) => r.status === 'in').length;
         if (n > row.spots) await mutate(row, () => ({ spots: Math.min(96, n) }));
       }
@@ -191,10 +230,36 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     case 'remove': {
       hostOnly();
       const id = s(body.id, 60);
-      await db.from('play_rsvps').update({ status: 'out' }).eq('id', id).eq('event_id', row.id);
+      await db.from('play_rsvps').update({ status: 'out', checked_in_at: null, checked_in_by: null }).eq('id', id).eq('event_id', row.id);
       if (row.status === 'open') await nearbyNeedOne(row.code).catch(() => {});
-      if (row.status === 'live') await mutate(row, (r) => r.state?.mixer ? { state: { ...r.state, mixer: { ...r.state.mixer, players: r.state.mixer.players.map((p) => p.id === id ? { ...p, out: true } : p) } } } : null);
+      if (row.status === 'live') await mutate(row, outOfMixer(id));
       else await promoteWaitlist(row);
+      return {};
+    }
+    case 'checkin':
+    case 'checkout': { // the host checks anyone in/out; a player only themselves ("I'm here")
+      const id = s(body.id, 60) || mine?.id || '';
+      if (!id) throw new PlayError('Join first, then check in.', 403);
+      if (!isHost && mine?.id !== id) throw new PlayError('Only the host can check someone else in.', 403);
+      const r0 = rs.find((r) => r.id === id && r.status !== 'out');
+      if (!r0) throw new PlayError('That player isn’t on this one.');
+      if (row.status === 'done') throw new PlayError('This one is over.');
+      if (action === 'checkin') {
+        // Waitlisted but here: they play. A cap is a sign-up limit, not a reason to bench someone who showed.
+        await db.from('play_rsvps').update({ checked_in_at: r0.checked_in_at ?? nowIso(), checked_in_by: isHost ? 'host' : 'self', status: 'in' }).eq('id', id);
+        if (row.status === 'live') await addToMixer(row, { id, name: r0.name, gender: gender(r0.gender), team: r0.team ?? null, level: lvl(r0.level_num) });
+      } else {
+        await db.from('play_rsvps').update({ checked_in_at: null, checked_in_by: null }).eq('id', id);
+        if (row.status === 'live') await mutate(row, outOfMixer(id));
+      }
+      return {};
+    }
+    case 'checkin_all':
+    case 'checkin_clear': {
+      hostOnly();
+      if (row.status !== 'open') throw new PlayError('Check people in or out one at a time once you’ve started.');
+      const ids = rs.filter((r) => r.status === 'in').map((r) => r.id);
+      if (ids.length) await db.from('play_rsvps').update(action === 'checkin_all' ? { checked_in_at: nowIso(), checked_in_by: 'host' } : { checked_in_at: null, checked_in_by: null }).in('id', ids).eq('event_id', row.id);
       return {};
     }
     case 'gender': { // mixed doubles needs M/W: the player or the host sets it
@@ -208,7 +273,8 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     case 'edit': {
       hostOnly();
       const d = normalizeDraft({ ...row, ...(body.draft as Partial<PlayDraft>) });
-      await mutate(row, (r) => ({ ...d, state: r.state?.mixer ? { ...r.state, mixer: { ...r.state.mixer, courts: d.courts, format: r.status === 'live' ? r.state.mixer.format : d.format, name: d.title } } : r.state }));
+      // A live night can switch format (people didn't show: doubles -> Optimize Courts); it applies from the next round.
+      await mutate(row, (r) => ({ ...d, state: r.state?.mixer ? { ...r.state, mixer: { ...r.state.mixer, courts: d.courts, format: d.format, name: d.title } } : r.state }));
       if (row.status === 'open') await promoteWaitlist({ ...row, spots: d.spots });
       return {};
     }
@@ -252,18 +318,27 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     }
     case 'start': {
       hostOnly();
+      if (row.status !== 'open') throw new PlayError('Already started.');
+      // Only people who are actually here play (MixerMode's check-in). Signed up but not here = sits until checked in.
+      const here = rs.filter((r) => r.status !== 'out' && r.checked_in_at);
+      if (!here.length) throw new PlayError('Nobody is checked in yet. Check people in as they arrive, or tap “Check in everyone”.');
+      for (const r of here.filter((x) => x.status === 'wait')) { r.status = 'in'; await db.from('play_rsvps').update({ status: 'in' }).eq('id', r.id); }
       if (row.format === 'team-battle') { // anyone without a side goes to the smaller team
-        const ins = rs.filter((r) => r.status === 'in');
+        const ins = here;
         for (const r of ins.filter((x) => !x.team)) {
           const t = ins.filter((x) => x.team === 'A').length <= ins.filter((x) => x.team === 'B').length ? 'A' : 'B';
           r.team = t; await db.from('play_rsvps').update({ team: t }).eq('id', r.id);
         }
       }
-      const players = rs.filter((r) => r.status === 'in').map((r) => ({ id: r.id, name: r.name, ...(r.gender ? { gender: r.gender } : {}), ...(r.team ? { team: r.team } : {}) }));
+      const players = here.map((r) => ({ id: r.id, name: r.name, ...(r.gender ? { gender: r.gender } : {}), ...(r.team ? { team: r.team } : {}), ...(lvl(r.level_num) != null ? { level: lvl(r.level_num) } : {}) }));
       await mutate(row, (r) => {
-        const m: GuestMixer = { ...newMixer(), name: r.title, courts: r.courts, format: r.format, players, rounds: [] };
+        const m: GuestMixer = { ...newMixer(), name: r.title, courts: r.courts, format: r.format, players, rounds: [],
+          pairing: body.pairing === 'random' || r.state?.pairingPref === 'random' ? 'random' : 'smart',
+          courtLabels: r.state?.courtLabels ?? null, teamSplit: r.state?.teamSplit ?? null };
+        const why = cannotGenerate(m);
+        if (why) throw new PlayError(why);
         m.rounds = [generateRound(m)];
-        return { status: 'live', state: { ...r.state, mixer: m, roundStartedAt: new Date().toISOString() } };
+        return { status: 'live', state: { ...r.state, mixer: m, roundStartedAt: nowIso(), pausedAt: null } };
       });
       return {};
     }
@@ -273,9 +348,11 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       await mutate(row, (r) => {
         const m = mixerOf(r);
         const replace = action === 'reshuffle' && m.rounds.length > 0;
+        const why = cannotGenerate(replace ? { ...m, rounds: m.rounds.slice(0, -1) } : m);
+        if (why) throw new PlayError(why);
         const round = generateRound(m, { replaceLast: replace });
         const rounds = replace ? [...m.rounds.slice(0, -1), round] : [...m.rounds, round];
-        return { state: { ...r.state, mixer: { ...m, rounds }, roundStartedAt: new Date().toISOString() } };
+        return { state: { ...r.state, mixer: { ...m, rounds }, roundStartedAt: nowIso(), pausedAt: null } };
       });
       return {};
     }
@@ -288,13 +365,77 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
     case 'score': {
       if (!isHost && !mine) throw new PlayError('Join first, then you can enter scores.', 403);
       const rn = Number(body.round), ct = Number(body.court);
-      const num = (v: unknown) => (v === null || v === '' || v === undefined ? null : Math.min(99, Math.max(0, Math.round(Number(v)))));
+      const num = (v: unknown) => (v === null || v === '' || v === undefined || !Number.isFinite(Number(v)) ? null : Math.min(99, Math.max(0, Math.round(Number(v)))));
       const a = num(body.a), b = num(body.b);
+      if ((a == null) !== (b == null)) throw new PlayError('Enter both scores.');
+      if (a != null && a === 0 && b === 0) throw new PlayError('0–0 isn’t a score. Enter the games each side won.');
+      const tb: 'A' | 'B' | null = body.tiebreak === 'A' || body.tiebreak === 'B' ? body.tiebreak : null;
+      if (a != null && a === b && !tb) throw new PlayError(`Tied ${a}–${b}. Who won the tiebreak?`);
       await mutate(row, (r) => {
         const m = r.state?.mixer; if (!m) throw new PlayError('Not started yet.');
-        const rounds = m.rounds.map((x) => x.number !== rn ? x : { ...x, matches: x.matches.map((y) => y.court !== ct ? y : { ...y, scoreA: a, scoreB: b }) });
+        // Players score the current round while it's live; past rounds and finished nights are the host's to fix.
+        if (!isHost && (r.status !== 'live' || rn !== m.rounds[m.rounds.length - 1]?.number)) throw new PlayError('Scores for that round are locked. Ask the host to fix it.', 403);
+        if (!m.rounds.some((x) => x.number === rn && x.matches.some((y) => y.court === ct))) throw new PlayError('That court isn’t in this round.');
+        const rounds = m.rounds.map((x) => x.number !== rn ? x : { ...x, matches: x.matches.map((y) => y.court !== ct ? y : { ...y, scoreA: a, scoreB: b, tiebreak: a != null && a === b ? tb : null }) });
         return { state: { ...r.state, mixer: { ...m, rounds } } };
       });
+      return {};
+    }
+    case 'swap': { // host: swap two players in the current round (or pull a sit-out onto a court)
+      hostOnly();
+      const a = s(body.a, 60), b = s(body.b, 60);
+      await mutate(row, (r) => {
+        const m = r.state?.mixer; if (!m?.rounds.length) throw new PlayError('Start first.');
+        const last = m.rounds[m.rounds.length - 1];
+        const inRound = (id: string) => last.sittingOut.includes(id) || last.matches.some((x) => [...x.teamA, ...x.teamB].includes(id));
+        if (!inRound(a) || !inRound(b)) throw new PlayError('Both players need to be in this round.');
+        return { state: { ...r.state, mixer: { ...m, rounds: [...m.rounds.slice(0, -1), swapIn(last, a, b)] } } };
+      });
+      return {};
+    }
+    case 'undo_round':
+    case 'reset_rounds': { // host: take back the last round, or start the rounds over (players stay)
+      hostOnly();
+      await mutate(row, (r) => {
+        const m = r.state?.mixer; if (!m) throw new PlayError('Start first.');
+        const rounds = action === 'reset_rounds' ? [] : m.rounds.slice(0, -1);
+        return { state: { ...r.state, mixer: { ...m, rounds }, roundStartedAt: rounds.length ? r.state.roundStartedAt : null, pausedAt: null } };
+      });
+      return {};
+    }
+    case 'timer': { // host: pause / resume / +N minutes / restart the round clock
+      hostOnly();
+      const op = s(body.op, 10);
+      await mutate(row, (r) => {
+        const st = r.state ?? {};
+        const start = st.roundStartedAt ? Date.parse(st.roundStartedAt) : null;
+        if (op === 'restart') return { state: { ...st, roundStartedAt: nowIso(), pausedAt: null } };
+        if (start == null) throw new PlayError('No round clock running.');
+        if (op === 'pause') return st.pausedAt ? null : { state: { ...st, pausedAt: nowIso() } };
+        if (op === 'resume') return st.pausedAt ? { state: { ...st, roundStartedAt: new Date(start + (Date.now() - Date.parse(st.pausedAt))).toISOString(), pausedAt: null } } : null;
+        if (op === 'extend') { const min = Math.min(30, Math.max(1, Math.round(Number(body.min) || 5))); return { state: { ...st, roundStartedAt: new Date(start + min * 60e3).toISOString() } }; }
+        throw new PlayError('Unknown timer action');
+      });
+      return {};
+    }
+    case 'labels': { // host: the club's court numbers ("5-8", "5,6,7,8", "Center, 2, 3")
+      hostOnly();
+      const labels = parseLabels(body.labels);
+      await mutate(row, (r) => ({ state: { ...r.state, courtLabels: labels, ...(r.state?.mixer ? { mixer: { ...r.state.mixer, courtLabels: labels } } : {}) } }));
+      return {};
+    }
+    case 'pairing': { // host: smart (balanced by level, then by standings) or random shuffle
+      hostOnly();
+      const mode = body.mode === 'random' ? 'random' : 'smart';
+      await mutate(row, (r) => r.state?.mixer ? { state: { ...r.state, mixer: { ...r.state.mixer, pairing: mode } } } : { state: { ...r.state, pairingPref: mode } });
+      return {};
+    }
+    case 'teamsplit': { // host: Team Battle court split (how many singles vs doubles courts)
+      hostOnly();
+      const auto = body.auto === true;
+      const split = auto ? null : { singles: Math.max(0, Math.min(24, Math.round(Number(body.singles) || 0))), doubles: Math.max(0, Math.min(24, Math.round(Number(body.doubles) || 0))) };
+      if (split && split.singles + split.doubles < 1) throw new PlayError('Use at least one court.');
+      await mutate(row, (r) => r.state?.mixer ? { state: { ...r.state, mixer: { ...r.state.mixer, teamSplit: split } } } : { state: { ...r.state, teamSplit: split } });
       return {};
     }
     case 'end':
@@ -398,7 +539,7 @@ async function hype(c: string, joined: { id: string; name: string } | null) {
   const row = await loadRow(c);
   if (!row || row.status !== 'open') return;
   const rs = (await loadRsvps(row.id)).filter((r) => r.status === 'in');
-  const ev = { title: row.title, when: whenLine(row, 'America/Los_Angeles'), location: row.location, level: row.level, spots: row.spots, sport: row.sport, format: FORMAT_NAME[row.format as keyof typeof FORMAT_NAME] ?? row.format };
+  const ev = { title: row.title, when: whenLine(row, 'America/Los_Angeles'), location: row.location, level: row.level, spots: row.spots ?? 0, sport: row.sport, format: FORMAT_NAME[row.format as keyof typeof FORMAT_NAME] ?? row.format };
   const cur = row.state?.preview;
   if (joined && cur) {
     const line = await hypeJoin(ev, joined.name, rs.filter((r) => r.id !== joined.id).map((r) => r.name));

@@ -29,7 +29,12 @@ const D: Dot[] = [{ x: 17, y: 31, c: 'a' }, { x: 37, y: 31, c: 'a' }, { x: 17, y
 const S: Dot[] = [{ x: 27, y: 31, c: 's' }, { x: 27, y: 61, c: 's' }];
 const M: Dot[] = [{ x: 17, y: 31, c: 'a' }, { x: 37, y: 31, c: 'w' }, { x: 17, y: 61, c: 'a' }, { x: 37, y: 61, c: 'w' }];
 
-function planLine(f: GuestFormat, spots: number, courts: number) {
+function planLine(f: GuestFormat, spots: number | null, courts: number) {
+  if (spots == null) { // no cap: say what a round holds; everyone who checks in rotates through
+    const cap = courtPlan(f, courts * 4, courts);
+    const hold = f === 'singles' ? courts * 2 : f === 'team-battle' ? cap.doubles * 4 + cap.singles * 2 : courts * 4;
+    return { text: `${courts} court${courts === 1 ? '' : 's'}: up to ${hold} play each round · anyone extra rotates in`, warn: false };
+  }
   const p = courtPlan(f, spots, courts);
   const parts = [p.doubles && `${p.doubles} doubles`, p.singles && `${p.singles} singles`].filter(Boolean).join(' + ') || 'not enough players yet';
   const used = p.doubles + p.singles;
@@ -54,9 +59,9 @@ const SMALL: { f: GuestFormat; title: string; blurb: string; art: React.ReactNod
   { f: 'singles', title: 'Singles', blurb: 'One-on-one, new opponent each round.', art: <><Court dots={S} /><Court dots={S} dim /></> },
 ];
 
-export default function EventPicker({ value, spots, courts, onChange }: { value: GuestFormat; spots: number; courts: number; onChange: (f: GuestFormat) => void }) {
+export default function EventPicker({ value, spots, courts, onChange }: { value: GuestFormat; spots: number | null; courts: number; onChange: (f: GuestFormat) => void }) {
   const hero = planLine('maximize-courts', spots, courts);
-  const heroPlan = courtPlan('maximize-courts', spots, courts);
+  const heroPlan = courtPlan('maximize-courts', spots ?? courts * 4, courts);
   const heroCourts = heroPlan.doubles + heroPlan.singles
     ? [...Array(heroPlan.doubles).fill('d'), ...Array(heroPlan.singles).fill('s')].slice(0, 4)
     : ['d', 'd', 's'];
@@ -89,7 +94,7 @@ export default function EventPicker({ value, spots, courts, onChange }: { value:
               <div className={s.art}>{t.art}</div>
               <div className={s.smallTitle} style={{ position: 'relative', zIndex: 1 }}>{t.title}</div>
               <div className={s.smallBlurb} style={{ position: 'relative', zIndex: 1 }}>{t.blurb}</div>
-              <div className={`${s.math} ${m.warn ? s.warn : ''}`} style={{ fontSize: 11 }}><i />{m.text.replace(/^\d+ players on \d+ courts?: /, '')}</div>
+              <div className={`${s.math} ${m.warn ? s.warn : ''}`} style={{ fontSize: 11 }}><i />{m.text.replace(/^\d+ players on \d+ courts?: /, '').replace(/^\d+ courts?: /, '')}</div>
             </button>
           );
         })}

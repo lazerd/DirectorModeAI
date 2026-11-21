@@ -23,7 +23,8 @@ export interface NearGame {
   code: string; title: string; sport: Sport; format: string; starts_at: string | null; when_text: string | null;
   location: string | null; place_address: string | null; lat: number; lng: number; miles: number;
   level: string | null; level_min: number | null; level_max: number | null; fits: boolean;
-  spots: number; in: number; open: number; host: string | null; status: string;
+  /** null = no cap (all welcome). */
+  spots: number | null; in: number; open: number; host: string | null; status: string;
 }
 
 export async function nearGames(o: { lat: number; lng: number; radius: number; sport?: Sport | null; level?: number | null; days?: number }): Promise<NearGame[]> {
@@ -45,7 +46,7 @@ export async function nearGames(o: { lat: number; lng: number; radius: number; s
   for (const r of rs ?? []) count.set(r.event_id, (count.get(r.event_id) ?? 0) + 1);
   return rows.map((r): NearGame => {
     const lat = Number(r.place_lat), lng = Number(r.place_lng);
-    const n = count.get(r.id as string) ?? 0, spots = Number(r.spots);
+    const n = count.get(r.id as string) ?? 0, spots = r.spots == null ? null : Number(r.spots);
     const range = { min: r.level_min == null ? null : Number(r.level_min), max: r.level_max == null ? null : Number(r.level_max) };
     return {
       code: r.code as string, title: r.title as string, sport: r.sport as Sport, format: r.format as string,
@@ -54,7 +55,7 @@ export async function nearGames(o: { lat: number; lng: number; radius: number; s
       miles: Math.round(miles(o, { lat, lng }) * 10) / 10,
       level: r.level as string | null, level_min: range.min, level_max: range.max,
       fits: levelFits(range, o.level ?? null, r.sport as string),
-      spots, in: n, open: Math.max(0, spots - n), host: r.host_name as string | null, status: r.status as string,
+      spots, in: n, open: spots == null ? 99 : Math.max(0, spots - n), host: r.host_name as string | null, status: r.status as string,
     };
   }).filter((g) => g.miles <= radius && g.open > 0);
 }

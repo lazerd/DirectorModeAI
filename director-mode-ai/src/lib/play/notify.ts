@@ -64,7 +64,7 @@ export async function nearbyNeedOne(code: string) {
   const start = Date.parse(ev.starts_at);
   if (start < Date.now() + 30 * 60e3 || start > Date.now() + 10 * 864e5) return;
   const { count } = await db.from('play_rsvps').select('id', { count: 'exact', head: true }).eq('event_id', ev.id).eq('status', 'in');
-  const open = Math.max(0, ev.spots - (count ?? 0));
+  const open = ev.spots == null ? 1 : Math.max(0, ev.spots - (count ?? 0)); // no cap: always room for one more
   if (!open) return;
   const here = { lat: Number(ev.place_lat), lng: Number(ev.place_lng) };
   const d = 50 / 69;

@@ -17,7 +17,7 @@ import { C, PlayHeader } from './shared';
 
 type Game = {
   code: string; title: string; sport: Sport; starts_at: string | null; when_text: string | null; location: string | null; place_address: string | null;
-  lat: number; lng: number; miles: number; level: string | null; level_min: number | null; level_max: number | null; fits: boolean; spots: number; in: number; open: number; host: string | null;
+  lat: number; lng: number; miles: number; level: string | null; level_min: number | null; level_max: number | null; fits: boolean; spots: number | null; in: number; open: number; host: string | null;
 };
 type Origin = { lat: number; lng: number; source: 'device' | 'ip'; label: string | null };
 const SPORTS: Sport[] = ['tennis', 'pickleball', 'padel'];
@@ -140,15 +140,15 @@ function GameRow({ g, level }: { g: Game; level: number | null }) {
           <div className="mt-0.5 truncate text-[14px]" style={{ color: C.muted }}>{g.location} · {g.miles < 1 ? '<1' : g.miles.toFixed(1)} mi</div>
         </div>
         <div className="shrink-0 rounded-2xl px-3 py-2 text-center" style={{ background: C.lime }}>
-          <div className="text-[20px] font-bold leading-none">{g.open}</div>
-          <div className="text-[10px] font-semibold uppercase">{g.open === 1 ? 'spot' : 'spots'}</div>
+          <div className="text-[20px] font-bold leading-none">{g.spots == null ? 'All' : g.open}</div>
+          <div className="text-[10px] font-semibold uppercase">{g.spots == null ? 'welcome' : g.open === 1 ? 'spot' : 'spots'}</div>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px] font-semibold">
         <span className="rounded-full px-2.5 py-1" style={level != null && g.fits ? { background: C.ink, color: C.lime } : { background: '#eef1e8' }}>
           {level != null && g.fits && <Check className="mr-1 inline h-3 w-3" />}{levelLabel(range, g.sport)}
         </span>
-        <span className="flex items-center gap-1 rounded-full px-2.5 py-1" style={{ background: '#eef1e8' }}><Users className="h-3 w-3" />{g.in} of {g.spots} in</span>
+        <span className="flex items-center gap-1 rounded-full px-2.5 py-1" style={{ background: '#eef1e8' }}><Users className="h-3 w-3" />{g.spots == null ? `${g.in} in` : `${g.in} of ${g.spots} in`}</span>
         {g.host && <span style={{ color: C.muted }}>Hosted by {g.host.split(' ')[0]}</span>}
       </div>
     </Link>

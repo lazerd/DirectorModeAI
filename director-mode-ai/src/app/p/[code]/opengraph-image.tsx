@@ -28,13 +28,15 @@ export default async function Image({ params }: { params: { code: string } }) {
   if (e?.status === 'done' && m) {
     const w = new Map<string, number>();
     for (const r of m.rounds) for (const x of r.matches) {
-      if (x.scoreA == null || x.scoreB == null || x.scoreA === x.scoreB) continue;
-      for (const id of x.scoreA > x.scoreB ? x.teamA : x.teamB) w.set(id, (w.get(id) ?? 0) + 1);
+      if (x.scoreA == null || x.scoreB == null) continue;
+      const won = x.scoreA > x.scoreB ? 'A' : x.scoreB > x.scoreA ? 'B' : x.tiebreak ?? null; // ties count once a tiebreak winner is set
+      if (!won) continue;
+      for (const id of won === 'A' ? x.teamA : x.teamB) w.set(id, (w.get(id) ?? 0) + 1);
     }
     const top = [...w.entries()].sort((a, b) => b[1] - a[1])[0];
     if (top) champ = m.players.find((p: { id: string; name: string }) => p.id === top[0])?.name ?? '';
   }
-  const left = e ? Math.max(0, e.spots - inN) : 0;
+  const left = !e ? 0 : e.spots == null ? Infinity : Math.max(0, e.spots - inN);
   const ink = '#103c32', lime = '#d4ff49';
   return new ImageResponse(
     (
@@ -52,7 +54,7 @@ export default async function Image({ params }: { params: { code: string } }) {
             <div style={{ background: lime, color: ink, borderRadius: 999, padding: '18px 36px', fontSize: 44, fontWeight: 700, display: 'flex' }}>● Live now</div>
           ) : (
             <>
-              <div style={{ background: lime, color: ink, borderRadius: 999, padding: '18px 36px', fontSize: 44, fontWeight: 700, display: 'flex' }}>{left > 0 ? `${left} spot${left === 1 ? '' : 's'} left · tap to join` : 'Full · join the waitlist'}</div>
+              <div style={{ background: lime, color: ink, borderRadius: 999, padding: '18px 36px', fontSize: 44, fontWeight: 700, display: 'flex' }}>{left === Infinity ? 'All welcome · tap to join' : left > 0 ? `${left} spot${left === 1 ? '' : 's'} left · tap to join` : 'Full · join the waitlist'}</div>
               <div style={{ fontSize: 36, color: '#bccdbb', display: 'flex' }}>{inN} in</div>
             </>
           )}

@@ -7,7 +7,7 @@ import { parseLevelRange } from './levels';
  *
  * Pairing is the same RoundGenerator MixerMode uses (via guestMixer).
  */
-import { standings, type GuestFormat, type GuestMixer } from '@/lib/mixer/guestMixer';
+import { standings, winnerOf, type GuestFormat, type GuestMixer } from '@/lib/mixer/guestMixer';
 
 export type Sport = 'tennis' | 'pickleball' | 'padel';
 export type PlayKind = 'game' | 'social';
@@ -34,7 +34,8 @@ export interface PlayDraft {
   listed?: boolean;
   /** A weekly series: next week's game is made when this one is played. */
   repeat_weekly?: boolean;
-  spots: number;
+  /** Player cap. null = no cap: people sign up and the host checks in whoever shows (MixerMode style). */
+  spots: number | null;
   courts: number;
   round_minutes: number;
   notes: string | null;
@@ -50,11 +51,20 @@ export interface PlayRsvp {
   status: 'in' | 'wait' | 'out';
   is_host: boolean;
   created_at: string;
+  /** Actually here (checked in by the host or by the player on arrival). Only checked-in players get rounds. */
+  checked_in_at?: string | null;
 }
 
 export interface PlayState {
   mixer?: GuestMixer;
   roundStartedAt?: string | null;
+  /** Round clock paused at this moment (resume shifts roundStartedAt by the pause). */
+  pausedAt?: string | null;
+  /** The club's court numbers before the night starts (copied into the mixer at start). */
+  courtLabels?: string[] | null;
+  /** Chosen before the start, copied into the mixer when it starts. */
+  pairingPref?: 'smart' | 'random';
+  teamSplit?: { singles: number; doubles: number } | null;
   nextCode?: string | null;
   /** A weekly series couldn't make next week's game: the host needs a pass. */
   weeklyPaywall?: boolean;
@@ -109,11 +119,14 @@ export const FORMAT_BLURB: Record<GuestFormat, string> = {
 export function normalizeDraft(d: Partial<PlayDraft>): PlayDraft {
   const sport: Sport = d.sport === 'pickleball' || d.sport === 'padel' ? d.sport : 'tennis';
   let format: GuestFormat = d.format === 'singles' || d.format === 'mixed-doubles' || d.format === 'maximize-courts' || d.format === 'king-of-court' || d.format === 'team-battle' ? d.format : 'doubles';
-  const spots = clampInt(d.spots, 2, 96, format === 'singles' ? 2 : 4);
-  const kind: PlayKind = d.kind === 'game' || d.kind === 'social' ? d.kind : spots <= perCourt(format) ? 'game' : 'social';
+  // No player count = no cap (a social where the host checks in whoever shows up).
+  let spots = d.spots == null || (d.spots as unknown) === '' ? null : clampInt(d.spots, 2, 96, format === 'singles' ? 2 : 4);
+  const kind: PlayKind = d.kind === 'game' || d.kind === 'social' ? d.kind : spots != null && spots <= perCourt(format) ? 'game' : 'social';
+  // A one-court game (a doubles 4some, a singles hit) has a natural size; a social has none.
+  if (spots == null && kind === 'game') spots = perCourt(format);
   // A social with plain doubles becomes Optimize Courts unless the host chose otherwise (d.format set explicitly).
   if (kind === 'social' && d.format == null) format = 'maximize-courts';
-  const courts = clampInt(d.courts, 1, 24, Math.max(1, Math.floor(spots / perCourt(format))));
+  const courts = clampInt(d.courts, 1, 24, spots != null ? Math.max(1, Math.floor(spots / perCourt(format))) : kind === 'game' ? 1 : 2);
   const dflt = kind === 'game' ? 'Doubles' : 'Mixer';
   void dflt;
   const str = (v: unknown, n: number) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, n) : null);
@@ -172,7 +185,7 @@ export function parseSentence(text: string, now = new Date()): PlayDraft {
   if (!spots && need) spots = format === 'singles' ? 2 : 4;
   const mCourts = t.match(/(\d{1,2})\s*courts?/);
   const courts = mCourts ? +mCourts[1] : undefined;
-  if (!spots && courts) spots = courts * perCourt(format);
+  // Courts alone don't cap the players: whoever shows up gets checked in.
 
   const lvl = t.match(/(\d\.\d{1,2})\s*(?:-|–|to)\s*(\d\.\d{1,2})/) || t.match(/(\d\.\d{1,2})\+?/);
   const level = lvl ? (lvl[2] ? `${lvl[1]}–${lvl[2]}` : lvl[0].trim()) : /beginner|advanced|intermediate/.exec(t)?.[0] ?? null;
@@ -231,8 +244,9 @@ export function awards(m: GuestMixer): Award[] {
   const duos = new Map<string, { ids: string[]; w: number; diff: number }>();
   let clutch: { ids: string[]; a: number; b: number } | null = null;
   for (const r of m.rounds) for (const x of r.matches) {
-    if (x.scoreA == null || x.scoreB == null || x.scoreA === x.scoreB) continue;
-    const [win, sw, sl] = x.scoreA > x.scoreB ? [x.teamA, x.scoreA, x.scoreB] : [x.teamB, x.scoreB, x.scoreA];
+    const wn = winnerOf(x);
+    if (!wn || x.scoreA == null || x.scoreB == null) continue;
+    const [win, sw, sl] = wn === 'A' ? [x.teamA, x.scoreA, x.scoreB] : [x.teamB, x.scoreB, x.scoreA];
     if (win.length === 2) { const k = [...win].sort().join('|'); const d = duos.get(k) ?? { ids: win, w: 0, diff: 0 }; d.w++; d.diff += sw - sl; duos.set(k, d); }
     if (sw - sl === 1 && (!clutch || sw > clutch.a)) clutch = { ids: win, a: sw, b: sl };
   }
@@ -245,7 +259,15 @@ export function awards(m: GuestMixer): Award[] {
 export function spotsLine(e: Pick<PlayEvent, 'rsvps' | 'spots'>): string {
   const n = e.rsvps.filter((r) => r.status === 'in').length;
   const w = e.rsvps.filter((r) => r.status === 'wait').length;
-  return n >= e.spots ? `Full · ${n} in${w ? ` · ${w} waiting` : ''}` : `${n} of ${e.spots} in · ${e.spots - n} spot${e.spots - n === 1 ? '' : 's'} left`;
+  const here = e.rsvps.filter((r) => r.status !== 'out' && r.checked_in_at).length;
+  const hereTxt = here ? ` · ${here} here` : '';
+  if (e.spots == null) return `${n} in${hereTxt} · all welcome`;
+  return n >= e.spots ? `Full · ${n} in${w ? ` · ${w} waiting` : ''}${hereTxt}` : `${n} of ${e.spots} in · ${e.spots - n} spot${e.spots - n === 1 ? '' : 's'} left${hereTxt}`;
+}
+
+/** Players who are actually here (checked in) and still in the event. */
+export function checkedIn(e: Pick<PlayEvent, 'rsvps'>): PlayRsvp[] {
+  return e.rsvps.filter((r) => r.status !== 'out' && !!r.checked_in_at);
 }
 
 export function whenLine(e: Pick<PlayDraft, 'when_text' | 'starts_at'>, tz?: string): string | null {

@@ -7,7 +7,8 @@
  * exactly like the real thing. This module is pure (no React, no storage) so
  * the whole flow is testable without a browser.
  */
-import { RoundGenerator, type HistoricalMatch } from '@/lib/advancedMatchGeneration';
+import { RoundGenerator, type GenerationMode, type HistoricalMatch } from '@/lib/advancedMatchGeneration';
+import { computeIndividualStandings } from '@/lib/mixerBoard';
 
 export type GuestFormat = 'maximize-courts' | 'king-of-court' | 'team-battle' | 'doubles' | 'mixed-doubles' | 'singles';
 export type Team = 'A' | 'B';
@@ -21,6 +22,8 @@ export interface GuestPlayer {
   out?: boolean;
   /** Team Battle side. */
   team?: Team;
+  /** Rating on the sport's scale (NTRP / DUPR / Playtomic). Higher = stronger. Used to balance courts. */
+  level?: number | null;
 }
 
 export interface GuestMatch {
@@ -30,6 +33,8 @@ export interface GuestMatch {
   teamB: string[];
   scoreA?: number | null;
   scoreB?: number | null;
+  /** Who won a tied score (tiebreak / coin flip), like MixerMode's score dialog. */
+  tiebreak?: Team | null;
 }
 
 export interface GuestRound {
@@ -46,6 +51,35 @@ export interface GuestMixer {
   players: GuestPlayer[];
   rounds: GuestRound[];
   createdAt: string;
+  /**
+   * 'smart' = MixerMode's policy: round 1 balanced by level (each court gets
+   * strong + weaker players), later rounds tiered by live standings.
+   * 'random' (or unset, as on /try) = shuffled, still avoiding repeat partners.
+   */
+  pairing?: 'smart' | 'random';
+  /** Team Battle: host-chosen court split. Unset = as many doubles as fit. */
+  teamSplit?: { singles: number; doubles: number } | null;
+  /** Club court numbers/names in order, e.g. ['5','6','7','8']. Unset = 1..N. */
+  courtLabels?: string[] | null;
+}
+
+/** The side that won a scored match, or null when it isn't decided yet. */
+export function winnerOf(x: GuestMatch): Team | null {
+  if (x.scoreA == null || x.scoreB == null) return null;
+  if (x.scoreA > x.scoreB) return 'A';
+  if (x.scoreB > x.scoreA) return 'B';
+  return x.tiebreak ?? null;
+}
+
+/** A match counts once both scores are in and a winner is known (ties need a tiebreak). */
+export function isScored(x: GuestMatch): boolean {
+  return winnerOf(x) != null;
+}
+
+/** What a court is called on the night: the club's own number when set. */
+export function courtLabel(m: Pick<GuestMixer, 'courtLabels'>, court: number): string {
+  const l = m.courtLabels?.[court - 1];
+  return l && l.trim() ? l.trim() : String(court);
 }
 
 export const FORMAT_LABELS: Record<GuestFormat, string> = {
@@ -132,7 +166,7 @@ export function cannotGenerate(m: GuestMixer): string | null {
   }
   if (m.format === 'king-of-court' && m.rounds.length) {
     const last = m.rounds[m.rounds.length - 1];
-    const missing = last.matches.filter((x) => x.scoreA == null || x.scoreB == null).length;
+    const missing = last.matches.filter((x) => !isScored(x)).length;
     if (missing) return `Enter ${missing === 1 ? 'the last court' : `${missing} courts`}' score${missing === 1 ? '' : 's'} first: winners move up, losers move down.`;
   }
   if (m.format === 'mixed-doubles') {
@@ -178,18 +212,37 @@ export function generateRound(m: GuestMixer, opts: { seed?: number; replaceLast?
     if (r) return r;
   }
 
+  // Strength order: by level when known (strongest first), otherwise sign-up order.
+  const order = strengthOrder(active);
+  const st = new Map(standings(base).map((x) => [x.id, x]));
   const gen = new RoundGenerator(
-    active.map((p, i) => ({ player_id: p.id, name: p.name, gender: p.gender, team_id: p.team, strength_order: i + 1 })),
+    active.map((p) => ({
+      player_id: p.id, name: p.name, gender: p.gender, team_id: p.team, strength_order: order.get(p.id)!,
+      wins: st.get(p.id)?.wins ?? 0, losses: st.get(p.id)?.losses ?? 0,
+      games_won: st.get(p.id)?.gamesFor ?? 0, games_lost: st.get(p.id)?.gamesAgainst ?? 0,
+    })),
     base.courts,
     base.format === 'king-of-court' ? 'doubles' : base.format,
   );
   if (base.format === 'team-battle') {
     const n = Math.min(active.filter((p) => p.team === 'A').length, active.filter((p) => p.team === 'B').length);
-    const doublesCourts = Math.min(base.courts, Math.floor(n / 2));
-    const singlesCourts = Math.min(base.courts - doublesCourts, n - 2 * doublesCourts);
+    let doublesCourts = Math.min(base.courts, Math.floor(n / 2));
+    let singlesCourts = Math.min(base.courts - doublesCourts, n - 2 * doublesCourts);
+    if (base.teamSplit) { // host's split, trimmed to what the smaller team can fill
+      doublesCourts = Math.max(0, Math.min(base.teamSplit.doubles, base.courts, Math.floor(n / 2)));
+      singlesCourts = Math.max(0, Math.min(base.teamSplit.singles, base.courts - doublesCourts, n - 2 * doublesCourts));
+    }
     gen.setTeamBattleConfig({ singlesCourts, doublesCourts, team1Id: 'A', team2Id: 'B' });
   }
+  // Same as MixerMode's round button: randomize on, and when generating one round at a
+  // time the mode decides doubles/Optimize Courts placement (singles, mixed and Team
+  // Battle have their own rules inside RoundGenerator).
   gen.setRandomize(true);
+  if (base.pairing === 'smart') {
+    const hasLevels = active.filter((p) => p.level != null).length >= Math.ceil(active.length / 2);
+    const mode: GenerationMode = base.rounds.length === 0 ? (hasLevels ? 'single-r1-balanced' : 'multi-random') : 'single-rN-tiered';
+    gen.setMode(mode);
+  }
   if (opts.seed != null) gen.setSeed(opts.seed);
   const past = history(base);
   if (past.length) gen.seedMatchHistory(past, { beforeRound: number });
@@ -224,45 +277,46 @@ export interface Standing {
   losses: number;
   gamesFor: number;
   gamesAgainst: number;
+  /** "1", "2", "T-3" (shared place), exactly like MixerMode's Standings tab. */
+  rank: string;
 }
 
-/** Individual standings: every player on a winning side gets the win. */
+/**
+ * Individual standings, ranked exactly like MixerMode (lib/mixerBoard): win %,
+ * then game difference, then fewest games lost, then head-to-head, then name.
+ * Every player on the winning side gets the win; a tie counts only once its
+ * tiebreak winner is set.
+ */
 export function standings(m: GuestMixer): Standing[] {
-  const rows = new Map<string, Standing>();
-  for (const p of m.players) {
-    rows.set(p.id, { id: p.id, name: p.name, played: 0, wins: 0, losses: 0, gamesFor: 0, gamesAgainst: 0 });
+  const rows = [];
+  for (const r of m.rounds) for (const x of r.matches) {
+    const w = winnerOf(x);
+    if (!w) continue;
+    rows.push({
+      player1_id: x.teamA[0] ?? null, player3_id: x.teamA[1] ?? null,
+      player2_id: x.teamB[0] ?? null, player4_id: x.teamB[1] ?? null,
+      team1_score: x.scoreA ?? 0, team2_score: x.scoreB ?? 0, winner_team: w === 'A' ? 1 : 2,
+    });
   }
-  for (const r of m.rounds) {
-    for (const x of r.matches) {
-      if (x.scoreA == null || x.scoreB == null) continue;
-      const apply = (ids: string[], f: number, a: number) => {
-        for (const id of ids) {
-          const s = rows.get(id);
-          if (!s) continue;
-          s.played++;
-          s.gamesFor += f;
-          s.gamesAgainst += a;
-          if (f > a) s.wins++;
-          else if (f < a) s.losses++;
-        }
-      };
-      apply(x.teamA, x.scoreA, x.scoreB);
-      apply(x.teamB, x.scoreB, x.scoreA);
-    }
-  }
-  return [...rows.values()]
-    .filter((s) => s.played > 0)
-    .sort(
-      (a, b) =>
-        b.wins - a.wins ||
-        b.gamesFor - b.gamesAgainst - (a.gamesFor - a.gamesAgainst) ||
-        b.gamesFor - a.gamesFor ||
-        a.name.localeCompare(b.name),
-    );
+  return computeIndividualStandings(m.players.map((p) => ({ id: p.id, name: p.name })), rows)
+    .filter((x) => x.played > 0)
+    .map((x) => ({ id: x.id, name: x.name, played: x.played, wins: x.wins, losses: x.losses, gamesFor: x.gamesWon, gamesAgainst: x.gamesLost, rank: x.rank }));
+}
+
+/** Strongest first by level; players without a level keep their sign-up order after those with one. */
+function strengthOrder(active: GuestPlayer[]): Map<string, number> {
+  const ranked = active.map((p, i) => ({ p, i })).sort((a, b) => {
+    const la = a.p.level, lb = b.p.level;
+    if (la != null && lb != null && la !== lb) return lb - la;
+    if (la != null && lb == null) return -1;
+    if (la == null && lb != null) return 1;
+    return a.i - b.i;
+  });
+  return new Map(ranked.map((x, k) => [x.p.id, k + 1]));
 }
 
 export function roundComplete(r: GuestRound): boolean {
-  return r.matches.every((x) => x.scoreA != null && x.scoreB != null);
+  return r.matches.every(isScored);
 }
 
 /** Saved state from localStorage, or null if it is missing or not ours. */
@@ -287,13 +341,13 @@ export function parseSaved(raw: string | null): GuestMixer | null {
 function riverRound(m: GuestMixer, number: number): GuestRound | null {
   const prev = m.rounds[m.rounds.length - 1];
   const ms = [...prev.matches].sort((a, b) => a.court - b.court);
-  if (!ms.length || ms.some((x) => x.teamA.length !== 2 || x.teamB.length !== 2 || x.scoreA == null || x.scoreB == null)) return null;
+  if (!ms.length || ms.some((x) => x.teamA.length !== 2 || x.teamB.length !== 2 || !isScored(x))) return null;
   const active = new Set(activePlayers(m).map((p) => p.id));
   const onCourt = ms.flatMap((x) => [...x.teamA, ...x.teamB]);
   if (onCourt.some((id) => !active.has(id))) return null; // someone left mid-night
   if (ms.length !== Math.min(m.courts, Math.floor(active.size / 4))) return null;
-  const W = ms.map((x) => ((x.scoreA ?? 0) >= (x.scoreB ?? 0) ? x.teamA : x.teamB));
-  const L = ms.map((x) => ((x.scoreA ?? 0) >= (x.scoreB ?? 0) ? x.teamB : x.teamA));
+  const W = ms.map((x) => (winnerOf(x) === 'A' ? x.teamA : x.teamB));
+  const L = ms.map((x) => (winnerOf(x) === 'A' ? x.teamB : x.teamA));
   const n = ms.length;
   const groups: string[][][] = Array.from({ length: n }, () => []);
   for (let i = 0; i < n; i++) {
@@ -301,7 +355,9 @@ function riverRound(m: GuestMixer, number: number): GuestRound | null {
     groups[Math.min(n - 1, i + 1)].push(L[i]);
   }
   // anyone who sat (or just arrived) comes in on the bottom court; the bottom losers sit
-  const waiting = [...active].filter((id) => !onCourt.includes(id));
+  // Longest wait comes in first, so nobody sits twice while someone else keeps playing.
+  const satStreak = (id: string) => { let n = 0; for (let i = m.rounds.length - 1; i >= 0 && m.rounds[i].sittingOut.includes(id); i--) n++; return n; };
+  const waiting = [...active].filter((id) => !onCourt.includes(id)).sort((a, b) => satStreak(b) - satStreak(a));
   let sittingOut: string[] = [];
   if (waiting.length >= 2) {
     const inc = waiting.slice(0, 2);
@@ -327,7 +383,8 @@ export function teamScore(m: GuestMixer): { A: number; B: number; gamesA: number
     const sideB = sideA === 'A' ? 'B' : 'A';
     out[sideA === 'A' ? 'gamesA' : 'gamesB'] += x.scoreA;
     out[sideB === 'A' ? 'gamesA' : 'gamesB'] += x.scoreB;
-    if (x.scoreA > x.scoreB) out[sideA]++; else if (x.scoreB > x.scoreA) out[sideB]++;
+    const w = winnerOf(x);
+    if (w === 'A') out[sideA]++; else if (w === 'B') out[sideB]++;
   }
   return out;
 }

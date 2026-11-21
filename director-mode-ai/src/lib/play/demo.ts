@@ -102,7 +102,7 @@ export function apply(e0: PlayEvent, b: Act, seed = 7): Applied {
   const add = (name: string, host = false): string => {
     const have = e.rsvps.find((r) => r.name.toLowerCase() === name.toLowerCase() && r.status !== 'out');
     if (have) return have.id;
-    const r: PlayRsvp = { id: rid(), name, gender: null, level: null, team: null, status: ins().length >= e.spots && e.status === 'open' ? 'wait' : 'in', is_host: host, created_at: new Date().toISOString() };
+    const r: PlayRsvp = { id: rid(), name, gender: null, level: null, team: null, status: ins().length >= (e.spots ?? 99) && e.status === 'open' ? 'wait' : 'in', is_host: host, created_at: new Date().toISOString() };
     e.rsvps.push(r);
     if (e.status === 'live' && e.state.mixer && r.status === 'in') e.state.mixer.players.push({ id: r.id, name });
     return r.id;
@@ -113,7 +113,7 @@ export function apply(e0: PlayEvent, b: Act, seed = 7): Applied {
     case 'add': String(b.names ?? '').split(/[,\n]+/).map((x) => x.trim()).filter(Boolean).forEach((x) => add(x)); break;
     case 'leave': case 'remove': {
       const r = e.rsvps.find((x) => x.id === b.id); if (r) r.status = 'out';
-      const w = e.rsvps.find((x) => x.status === 'wait'); if (w && ins().length < e.spots) w.status = 'in';
+      const w = e.rsvps.find((x) => x.status === 'wait'); if (w && ins().length < (e.spots ?? 99)) w.status = 'in';
       break;
     }
     case 'hype': {

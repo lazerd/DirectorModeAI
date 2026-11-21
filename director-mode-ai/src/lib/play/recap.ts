@@ -1,6 +1,6 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
-import { standings, teamScore, type GuestMixer } from '@/lib/mixer/guestMixer';
+import { standings, teamScore, winnerOf, type GuestMixer } from '@/lib/mixer/guestMixer';
 import { awards } from './core';
 
 /**
@@ -33,15 +33,16 @@ function facts(m: GuestMixer, title: string, crown: CrownChange | null) {
   for (const p of m.players) {
     const seq: string[] = [];
     for (const r of m.rounds) for (const x of r.matches) {
-      if (x.scoreA == null || x.scoreB == null) continue;
-      if (x.teamA.includes(p.id)) seq.push(x.scoreA > x.scoreB ? 'W' : x.scoreA < x.scoreB ? 'L' : 'T');
-      if (x.teamB.includes(p.id)) seq.push(x.scoreB > x.scoreA ? 'W' : x.scoreB < x.scoreA ? 'L' : 'T');
+      const w = winnerOf(x);
+      if (!w) continue;
+      if (x.teamA.includes(p.id)) seq.push(w === 'A' ? 'W' : 'L');
+      if (x.teamB.includes(p.id)) seq.push(w === 'B' ? 'W' : 'L');
     }
     streak[p.name] = seq.join('');
   }
   return {
     event: title,
-    standings: st.map((s, i) => ({ place: i + 1, name: s.name, wins: s.wins, losses: s.losses, games_for: s.gamesFor, games_against: s.gamesAgainst, results_in_order: streak[s.name] })),
+    standings: st.map((s) => ({ place: s.rank, name: s.name, wins: s.wins, losses: s.losses, games_for: s.gamesFor, games_against: s.gamesAgainst, results_in_order: streak[s.name] })),
     awards: awards(m).map((a) => ({ award: a.title, who: a.who, why: a.why })),
     rounds,
     team_battle: m.format === 'team-battle' ? { teams: m.players.reduce((acc, p) => { if (p.team) (acc[p.team] ||= []).push(p.name); return acc; }, {} as Record<string, string[]>), courts_won: teamScore(m), team_names: (m as GuestMixer & { teamNames?: unknown }).teamNames ?? null } : null,
