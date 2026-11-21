@@ -392,6 +392,7 @@ export function LiveView({ e, tab, setTab, busy, act, canScore, code, hereLink }
       </section>
 
       {e.format === 'team-battle' && <TeamBoard e={e} />}
+      {e.isHost && <a href={`/p/${code}/tv`} target="_blank" rel="noopener" className="mt-2 block text-right text-[13px] font-semibold underline" style={{ color: C.ink }}>Open the TV / projector board ↗</a>}
       {e.me && !inRotation && (
         <section className="mt-3 rounded-3xl p-5 shadow-sm" style={{ background: C.lime }}>
           <div className="text-[18px] font-semibold">You&apos;re signed up. Here now?</div>
@@ -726,6 +727,7 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
       </div>
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-2">
         {e.status === 'open' && <SubButton e={e} />}
+        <a href={`/p/${e.code}/tv`} target="_blank" rel="noopener" className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold" style={{ background: '#eef1e8' }}>TV / projector board ↗</a>
         <ChangePlace e={e} busy={busy} act={act} />
         {e.status === 'open' && onMove && <Btn onClick={onMove}><Clock className="h-4 w-4" />Move the game (rain check)</Btn>}
         <Toggle on={!!e.listed} disabled={!!busy || (!e.listed && e.place_lat == null)} onChange={(v) => act({ action: 'list', on: v }, 'list')}
