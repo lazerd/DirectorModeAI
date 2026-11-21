@@ -6,7 +6,7 @@ import { crownFor } from './crown';
 import { hostingAllowed, passCheckoutUrl } from './passes';
 import { callTheGame, hypeJoin, hypePreview, softenLine, type Spice } from './recap';
 import { formatLabel, whenLine } from './core';
-import { DrawError, buildDraw, fillCourts, isDrawFormat, moveMatch, type Draw, type DrawFormat, type DrawHow } from './draw';
+import { DrawError, addLateEntry, buildDraw, fillCourts, isDrawFormat, moveMatch, type Draw, type DrawFormat, type DrawHow } from './draw';
 import { cleanPairs, scoreDraw, scoreOnly } from './drawScore';
 import { crownChanged, nearbyNeedOne, watchCrown } from './notify';
 import { LEVEL_SCALE, levelNum, type LevelSport } from './levels';
@@ -364,7 +364,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
           if (r.status !== 'open') throw new PlayError('Already started.');
           const fmt = isDrawFormat(body.format) ? body.format : r.state?.drawFormat ?? 'rr-singles';
           const now = nowIso();
-          const draw = onDraw(() => fillCourts(buildDraw(fmt, ps, r.courts, { pairs: r.state?.drawPairs ?? null, courtLabels: r.state?.courtLabels ?? null }), now));
+          const draw = onDraw(() => fillCourts(buildDraw(fmt, ps, r.courts, { pairs: r.state?.drawPairs ?? null, seeds: r.state?.drawSeeds ?? null, courtLabels: r.state?.courtLabels ?? null, now }), now));
           return { status: 'live', state: { ...r.state, drawFormat: fmt, draw } };
         });
         return {};
@@ -488,14 +488,15 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       }
       const fresh = (await loadRow(c))!;
       const m = fresh.state?.mixer;
-      if (!m) return {};
+      const dr = fresh.format === 'tournament' ? fresh.state?.draw ?? null : null;
+      if (!m && !dr) return {};
       const spice: Spice = body.spice === 'mild' || body.spice === 'locker' || body.spice === 'club' ? body.spice : fresh.sport === 'pickleball' ? 'club' : 'mild';
       let crown = null;
       if (fresh.location) {
         const [before, after] = await Promise.all([crownFor(fresh.location, { excludeCode: fresh.code }), crownFor(fresh.location)]);
         if (after) crown = { place: after.place, before: before?.king?.name ?? null, after: after.king?.name ?? null };
       }
-      const named = fresh.state?.teamNames ? ({ ...m, teamNames: fresh.state.teamNames } as typeof m) : m;
+      const named = dr ?? (fresh.state?.teamNames ? ({ ...m!, teamNames: fresh.state.teamNames } as GuestMixer) : m!);
       const recap = await callTheGame(named, fresh.title, spice, crown).catch((e) => { console.error('[play] recap failed', e); return null; });
       if (recap) await mutate(fresh, (r) => ({ state: { ...r.state, recap } }));
       if (action === 'end' && crown) await crownChanged(crown.place, crown.before, crown.after).catch((e) => console.error('[play] crown alert failed', e));
@@ -506,9 +507,10 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       const mode = body.mode === 'skip' ? 'skip' : body.mode === 'show' ? 'show' : 'soften';
       const cur = row.state?.recap;
       const ln = cur?.lines.find((l) => l.id === mine.id);
-      if (!cur || !ln || !row.state?.mixer) return {};
+      const src = row.state?.mixer ?? (row.format === 'tournament' ? row.state?.draw : null);
+      if (!cur || !ln || !src) return {};
       let text = ln.line;
-      if (mode === 'soften') text = (await softenLine(row.state.mixer, row.title, ln).catch(() => null)) ?? ln.line;
+      if (mode === 'soften') text = (await softenLine(src, row.title, ln).catch(() => null)) ?? ln.line;
       await mutate(row, (r) => r.state?.recap ? { state: { ...r.state, recap: { ...r.state.recap, lines: r.state.recap.lines.map((l) => l.id !== mine.id ? l : { ...l, line: text, skipped: mode === 'skip' }) } } } : null);
       return {};
     }
@@ -518,7 +520,7 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       return {};
     }
     /* ---------------- tournaments (state.draw) ---------------- */
-    case 'draw_format': { // host, before the start: which draw (singles / doubles round robin now)
+    case 'draw_format': { // host, before the start: which draw (round robin, elimination, consolation, compass; singles or doubles)
       hostOnly();
       if (row.format !== 'tournament') throw new PlayError('This event isn’t a tournament.');
       if (row.status !== 'open') throw new PlayError('The draw is already made.');
@@ -533,6 +535,31 @@ export async function act(c: string, key: string | null, body: Body): Promise<{ 
       if (row.status !== 'open') throw new PlayError('The draw is already made.');
       const pairs = onDraw(() => cleanPairs(body.pairs, new Set(rs.filter((r) => r.status !== 'out').map((r) => r.id))));
       await mutate(row, (r) => ({ state: { ...r.state, drawPairs: pairs.length ? pairs : null } }));
+      return {};
+    }
+    case 'draw_seeds': { // host, before the start: seed order (rsvp ids, best first). Anyone not listed follows by level.
+      hostOnly();
+      if (row.format !== 'tournament') throw new PlayError('This event isn’t a tournament.');
+      if (row.status !== 'open') throw new PlayError('The draw is already made.');
+      const known = new Set(rs.filter((r) => r.status !== 'out').map((r) => r.id));
+      const raw = Array.isArray(body.seeds) ? body.seeds : [];
+      const seeds = [...new Set(raw.filter((x): x is string => typeof x === 'string').map((x) => x.trim().slice(0, 60)))].filter((x) => known.has(x)).slice(0, 96);
+      await mutate(row, (r) => ({ state: { ...r.state, drawSeeds: seeds.length ? seeds : null } }));
+      return {};
+    }
+    case 'draw_add_entry': { // host, live round robin: a late arrival (a pair in doubles) joins while no match is finished
+      hostOnly();
+      const ids = (Array.isArray(body.ids) ? body.ids : []).filter((x): x is string => typeof x === 'string').map((x) => x.trim().slice(0, 60)).slice(0, 2);
+      const group = ids.map((id) => rs.find((r) => r.id === id && r.status !== 'out'));
+      if (!group.length || group.some((g) => !g)) throw new PlayError('That player isn’t on this one.');
+      const ps = group.map((g) => ({ id: g!.id, name: g!.name, level: lvl(g!.level_num) }));
+      await mutate(row, (r) => {
+        const d = drawOf(r);
+        if (r.status !== 'live') throw new PlayError('The tournament isn’t running.');
+        return { state: { ...r.state, draw: onDraw(() => addLateEntry(d, ps, nowIso())) } };
+      });
+      // In the draw = here.
+      for (const g of group) if (!g!.checked_in_at || g!.status !== 'in') await db.from('play_rsvps').update({ checked_in_at: g!.checked_in_at ?? nowIso(), checked_in_by: 'host', status: 'in' }).eq('id', g!.id);
       return {};
     }
     case 'draw_score':

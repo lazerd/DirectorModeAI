@@ -9,9 +9,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { standings, teamScore, winnerOf, courtLabel, type GuestMatch, type GuestMixer } from '@/lib/mixer/guestMixer';
-import { awards, checkedIn, formatLabel, whenLine, type PlayEvent } from '@/lib/play/core';
+import { awards, checkedIn, drawAwards, formatLabel, whenLine, type PlayEvent } from '@/lib/play/core';
 import { TIME_UP_TEXT, clockLeft, clockText, crossedZero, drawBoardRows, drawCallout, pollMs, roundAnnouncement } from '@/lib/play/tv';
-import { courtName, drawProgress, entryOf, fillOrder, type Draw } from '@/lib/play/draw';
+import { courtName, drawProgress, entryOf, fillOrder, isBracket, roundLabel, scoreWinnerFirst, type Draw } from '@/lib/play/draw';
+import { BracketBoard } from './DrawViews';
 import { speakText, cancelSpeech, isSpeechSupported } from '@/lib/browserSpeech';
 import { C, api } from './shared';
 
@@ -386,6 +387,43 @@ function Done({ e, m, st }: { e: PlayEvent; m?: GuestMixer; st: ReturnType<typeo
   );
 }
 
+/* ---------- a finished bracket: champion, awards, final places, the draw ---------- */
+function BracketDone({ d, rows }: { d: Draw; rows: ReturnType<typeof drawBoardRows> }) {
+  const aw = drawAwards(d);
+  const champ = aw[0]?.title === 'Champion' ? aw[0] : null;
+  const half = Math.ceil(Math.min(rows.length, 24) / 2);
+  return (
+    <section className="grid flex-1 gap-[2vw] px-[3vw] pb-[3vh] lg:grid-cols-[1fr_1.2fr]">
+      <div className="flex flex-col justify-center gap-[2vh]">
+        {champ ? (
+          <div className="rounded-[1.5vw] p-[2vw] text-center" style={{ background: C.lime, color: C.ink }}>
+            <div className="font-semibold uppercase tracking-[3px]" style={{ fontSize: 'clamp(14px,1.3vw,26px)' }}>Champion</div>
+            <div className="font-bold leading-tight tracking-tight" style={{ fontSize: 'clamp(44px,6vw,150px)' }}>🏆 {champ.who}</div>
+            <div style={{ fontSize: 'clamp(16px,1.6vw,34px)' }}>{champ.why}</div>
+          </div>
+        ) : <Center text="That's a wrap" />}
+        <div className="grid gap-[1vw] sm:grid-cols-2">
+          {aw.filter((a) => a !== champ).map((a) => (
+            <div key={a.title} className="rounded-[1vw] p-[1vw]" style={{ background: '#ffffff12', fontSize: 'clamp(14px,1.2vw,26px)' }}>
+              <div style={{ color: SOFT, fontSize: '0.7em' }} className="font-semibold uppercase tracking-[2px]">{a.emoji} {a.title}</div>
+              <div className="font-bold">{a.who}</div>
+              <div style={{ color: SOFT, fontSize: '0.8em' }}>{a.why}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex flex-col justify-center">
+        <div className="mb-[1vh] font-semibold uppercase tracking-[2px]" style={{ color: SOFT, fontSize: 'clamp(12px,1vw,22px)' }}>Final places</div>
+        <div className="grid gap-[1vw] md:grid-cols-2">
+          <Board st={rows.slice(0, half)} max={half} title="" />
+          {rows.length > half && <Board st={rows.slice(half, 24)} max={24} title="" />}
+        </div>
+      </div>
+      <div className="lg:col-span-2"><BracketBoard d={d} flat /></div>
+    </section>
+  );
+}
+
 /* ---------- tournament: court board + standings ---------- */
 function DrawLive({ d, now }: { d: Draw; now: number }) {
   const onCourt = d.matches.filter((x) => x.status === 'on_court');
@@ -395,6 +433,8 @@ function DrawLive({ d, now }: { d: Draw; now: number }) {
   const pr = drawProgress(d);
   const nm = (id: string | null) => entryOf(d, id)?.name ?? 'TBD';
   const rows = drawBoardRows(d);
+  const bracket = isBracket(d.format);
+  const recent = bracket ? d.matches.filter((x) => x.status === 'done' && !x.bye).sort((a, b) => Date.parse(b.finishedAt ?? '0') - Date.parse(a.finishedAt ?? '0')).slice(0, 8) : [];
   return (
     <section className="grid flex-1 gap-[1.5vw] px-[2vw] pb-[2vh] lg:grid-cols-[1fr_minmax(260px,26vw)]">
       <div className="flex min-w-0 flex-col gap-[1.5vh]">
@@ -413,6 +453,7 @@ function DrawLive({ d, now }: { d: Draw; now: number }) {
                   <span className="rounded-full px-3 py-0.5 font-semibold" style={{ fontSize: '0.6em', background: x ? C.lime : '#ffffff1a', color: x ? C.ink : SOFT }}>{x ? `Playing · ${min} min` : 'Free'}</span>
                 </div>
                 {x ? (<>
+                  {bracket && <div className="mb-[0.4vh] font-semibold uppercase" style={{ color: C.muted, fontSize: '0.5em', letterSpacing: 1.5 }}>{roundLabel(d, x)}</div>}
                   <div className="font-semibold leading-tight">{nm(x.player1_id)}</div>
                   <div className="my-[0.4vh] font-semibold uppercase" style={{ color: C.muted, fontSize: '0.55em', letterSpacing: 2 }}>vs</div>
                   <div className="font-semibold leading-tight">{nm(x.player3_id)}</div>
@@ -431,13 +472,30 @@ function DrawLive({ d, now }: { d: Draw; now: number }) {
           </div>
         )}
       </div>
-      <aside className="flex flex-col gap-[1.5vh]"><Board st={rows} max={16} title="Standings" /></aside>
+      {bracket ? (
+        <aside className="flex flex-col gap-[1.5vh]">
+          <div className="flex-1 rounded-[1.2vw] p-[1.2vw]" style={{ background: '#ffffff12', fontSize: 'clamp(14px,1.25vw,28px)' }}>
+            <div className="mb-[0.8vh] font-semibold uppercase tracking-[2px]" style={{ color: SOFT, fontSize: '0.7em' }}>Results</div>
+            {recent.length ? recent.map((x) => {
+              const w = x.winner === 'b' ? x.player3_id : x.player1_id, l = x.winner === 'b' ? x.player1_id : x.player3_id;
+              return (
+                <div key={x.key} className="border-t py-[0.4vh]" style={{ borderColor: '#ffffff14' }}>
+                  <div style={{ color: SOFT, fontSize: '0.65em' }}>{roundLabel(d, x)}</div>
+                  <div><b>{nm(w)}</b> <span style={{ color: SOFT }}>d.</span> {nm(l)} <span className="tabular-nums" style={{ color: SOFT, fontSize: '0.8em' }}>{scoreWinnerFirst(x)}</span></div>
+                </div>
+              );
+            }) : <div style={{ color: SOFT }}>Results show up as courts finish.</div>}
+          </div>
+        </aside>
+      ) : <aside className="flex flex-col gap-[1.5vh]"><Board st={rows} max={16} title="Standings" /></aside>}
+      {bracket && <div className="lg:col-span-2"><BracketBoard d={d} flat /></div>}
     </section>
   );
 }
 
 function DrawDone({ d }: { d: Draw }) {
   const rows = drawBoardRows(d);
+  if (isBracket(d.format)) return <BracketDone d={d} rows={rows} />;
   const champ = rows[0]?.played ? rows[0] : null;
   const half = Math.ceil(Math.min(rows.length, 24) / 2);
   return (

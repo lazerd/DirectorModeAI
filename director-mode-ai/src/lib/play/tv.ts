@@ -63,7 +63,7 @@ export function drawCallout(d: Draw, prevOnCourt: Set<string>): string {
   return fresh.map((m) => `Court ${courtName(d, m.court ?? 0)}: ${side(m.player1_id)} versus ${side(m.player3_id)}.`).join(' ');
 }
 
-/** The board's leaderboard rows for a draw (same shape as the mixer's standings). */
+/** The board's leaderboard rows for a draw (same shape as the mixer's standings). A bracket shows its places. */
 export function drawBoardRows(d: Draw): Standing[] {
-  return standingsFor(d).map((s) => ({ id: s.id, name: s.name, played: s.played, wins: s.wins, losses: s.losses, gamesFor: s.gamesWon, gamesAgainst: s.gamesLost, rank: s.played ? String(s.rank) : '–' }));
+  return standingsFor(d).map((s) => ({ id: s.id, name: s.name, played: s.played, wins: s.wins, losses: s.losses, gamesFor: s.gamesWon, gamesAgainst: s.gamesLost, rank: s.played ? String(s.place) : '–' }));
 }

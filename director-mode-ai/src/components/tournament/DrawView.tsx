@@ -81,12 +81,15 @@ export default function DrawView({
   entries,
   matches,
   revealAllSeeds = true,
+  highlight,
 }: {
   format: string;
   entries: Entry[];
   matches: Match[];
   /** Public print view hides all but the top-4 seeds; the admin tab shows all. */
   revealAllSeeds?: boolean;
+  /** Entry ids to mark (Racquets IRL: the player's own lines on their phone). */
+  highlight?: ReadonlySet<string>;
 }) {
   const entryById = new Map(entries.map((en) => [en.id, en]));
 
@@ -215,7 +218,7 @@ export default function DrawView({
   if (isCompassFormat(format) && compassSizeOf(matches)) {
     return (
       <DrawSheetZoom>
-        <CompassDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />
+        <CompassDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} highlight={highlight} />
       </DrawSheetZoom>
     );
   }
@@ -262,7 +265,7 @@ export default function DrawView({
                       </div>
                       <div className="flex-1 flex flex-col justify-around gap-4 print:gap-2">
                         {stageMatches.map((m) => (
-                          <DrawMatchCard key={m.id} m={m} entryById={entryById} revealAllSeeds={revealAllSeeds} />
+                          <DrawMatchCard key={m.id} m={m} entryById={entryById} revealAllSeeds={revealAllSeeds} highlight={highlight} />
                         ))}
                       </div>
                     </div>
@@ -282,7 +285,7 @@ export default function DrawView({
   if (format.startsWith('single-elim') && layoutBracket(matches)) {
     return (
       <DrawSheetZoom>
-        <BracketDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} />
+        <BracketDrawSvg matches={matches} entryById={entryById} revealAllSeeds={revealAllSeeds} highlight={highlight} />
       </DrawSheetZoom>
     );
   }
@@ -316,7 +319,7 @@ export default function DrawView({
                       </div>
                       <div className="flex-1 flex flex-col justify-around gap-4 print:gap-2">
                         {roundMatches.map((m) => (
-                          <DrawMatchCard key={m.id} m={m} entryById={entryById} revealAllSeeds={revealAllSeeds} />
+                          <DrawMatchCard key={m.id} m={m} entryById={entryById} revealAllSeeds={revealAllSeeds} highlight={highlight} />
                         ))}
                       </div>
                     </div>
@@ -389,10 +392,12 @@ function DrawMatchCard({
   m,
   entryById,
   revealAllSeeds,
+  highlight,
 }: {
   m: Match;
   entryById: Map<string, Entry>;
   revealAllSeeds: boolean;
+  highlight?: ReadonlySet<string>;
 }) {
   const teamA = m.player1_id ? entryById.get(m.player1_id) : undefined;
   const teamB = m.player3_id ? entryById.get(m.player3_id) : undefined;
@@ -401,7 +406,10 @@ function DrawMatchCard({
   const parsed = parseScoreSets(m.score);
   const marker = scoreMarker(m.score);
   return (
-    <div className="border border-gray-400 rounded bg-white overflow-hidden print:border-gray-500">
+    <div
+      className="border border-gray-400 rounded bg-white overflow-hidden print:border-gray-500"
+      style={highlight && [m.player1_id, m.player3_id].some((id) => id && highlight.has(id)) ? { outline: '3px solid #d4ff49' } : undefined}
+    >
       <DrawTeamRow entry={teamA} won={aWon} sets={parsed?.a ?? null} marker={aWon ? marker : null} revealAllSeeds={revealAllSeeds} />
       <div className="border-t border-gray-300" />
       <DrawTeamRow entry={teamB} won={bWon} sets={parsed?.b ?? null} marker={bWon ? marker : null} revealAllSeeds={revealAllSeeds} />

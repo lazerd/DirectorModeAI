@@ -1,11 +1,13 @@
 import { ImageResponse } from 'next/og';
 import { standings, teamScore } from '@/lib/mixer/guestMixer';
-import { awards, FORMAT_NAME, whenLine } from '@/lib/play/core';
+import { awards, drawAwards, formatLabel, whenLine } from '@/lib/play/core';
+import { drawProgress, standingsFor } from '@/lib/play/draw';
 import type { PlayDraft, PlayState } from '@/lib/play/core';
 
 /**
  * /p/<code>/results.png — the night's results as one share image (1080×1350, like
  * MixerMode's results card): champion, top 8 with rank and W-L, Team Battle score.
+ * A tournament: champion, then the top 8 places with how far each got.
  * Same look as the per-player card at /p/<code>/card/<pid>.
  */
 // Edge + plain REST, like the card route (next/og's node runtime breaks on Windows font paths). Read-only.
@@ -23,14 +25,22 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
   if (!code || !e) return new Response('Not found', { status: 404 });
   e.state = e.state ?? {};
   const m = e.state.mixer;
+  const d = e.format === 'tournament' ? e.state.draw ?? null : null;
   const st = m ? standings(m) : [];
-  const champ = m ? awards(m)[0] : null;
+  const dw = d ? drawAwards(d) : [];
+  const champ = m ? awards(m)[0] : dw[0]?.title === 'Champion' ? dw[0] : null;
   const tb = m && m.format === 'team-battle' ? teamScore(m) : null;
   const tn = { A: e.state.teamNames?.A || 'Team A', B: e.state.teamNames?.B || 'Team B' };
   const date = whenLine(e, 'America/Los_Angeles') ?? new Date(e.created_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' });
-  const meta = [date, e.location, m ? `${m.rounds.length} round${m.rounds.length === 1 ? '' : 's'}` : null, st.length ? `${st.length} players` : null].filter(Boolean).join(' · ');
+  const places = d ? standingsFor(d) : [];
+  const meta = d
+    ? [date, e.location, `${places.length} ${d.matchType === 'doubles' ? 'pairs' : 'players'}`, `${drawProgress(d).done} matches`].filter(Boolean).join(' · ')
+    : [date, e.location, m ? `${m.rounds.length} round${m.rounds.length === 1 ? '' : 's'}` : null, st.length ? `${st.length} players` : null].filter(Boolean).join(' · ');
   const ink = '#103c32', lime = '#d4ff49', soft = '#bccdbb';
-  const top = st.slice(0, 8);
+  // One row shape for both: a night's standings (+/− games) or a draw's places (how far each got).
+  const top = d
+    ? places.slice(0, 8).map((s) => ({ id: s.id, rank: s.place, name: s.name, wins: s.wins, losses: s.losses, right: s.label.replace('Consolation', 'Cons.') }))
+    : st.slice(0, 8).map((s) => ({ id: s.id, rank: s.rank, name: s.name, wins: s.wins, losses: s.losses, right: `${s.gamesFor - s.gamesAgainst > 0 ? '+' : ''}${s.gamesFor - s.gamesAgainst}` }));
   const tbLead = tb ? (tb.A === tb.B ? null : tb.A > tb.B ? 'A' : 'B') : null;
 
   return new ImageResponse(
@@ -38,7 +48,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: ink, color: '#fff', padding: 72, fontFamily: 'sans-serif' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, fontSize: 32, color: soft }}>
           <div style={{ width: 48, height: 48, borderRadius: 16, background: lime, display: 'flex' }} />
-          Racquets IRL · {FORMAT_NAME[m?.format ?? e.format] ?? 'Results'}
+          Racquets IRL · {formatLabel({ format: m?.format ?? e.format, state: e.state }) ?? 'Results'}
         </div>
         <div style={{ marginTop: 36, fontSize: 72, fontWeight: 700, letterSpacing: -2, lineHeight: 1.15, display: 'flex', flexShrink: 0 }}>{e.title.length > 34 ? e.title.slice(0, 33) + '…' : e.title}</div>
         <div style={{ marginTop: 8, fontSize: 30, color: soft, display: 'flex', flexShrink: 0 }}>{meta}</div>
@@ -68,7 +78,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
                 <div style={{ display: 'flex', width: 110, color: i === 0 ? lime : soft, fontWeight: 700 }}>{s.rank}</div>
                 <div style={{ display: 'flex', flex: 1, fontWeight: i === 0 ? 700 : 400 }}>{s.name.length > 24 ? s.name.slice(0, 23) + '…' : s.name}</div>
                 <div style={{ display: 'flex', width: 150, justifyContent: 'flex-end', fontWeight: 700 }}>{s.wins}–{s.losses}</div>
-                <div style={{ display: 'flex', width: 150, justifyContent: 'flex-end', color: soft, fontSize: 30 }}>{s.gamesFor - s.gamesAgainst > 0 ? '+' : ''}{s.gamesFor - s.gamesAgainst}</div>
+                <div style={{ display: 'flex', width: d ? 250 : 150, justifyContent: 'flex-end', color: soft, fontSize: d ? 26 : 30 }}>{s.right}</div>
               </div>
             ))}
           </div>

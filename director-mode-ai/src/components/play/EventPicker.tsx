@@ -2,7 +2,7 @@
 
 import type { GuestFormat } from '@/lib/mixer/guestMixer';
 import { courtPlan, type PlayFormat } from '@/lib/play/core';
-import { DRAW_FORMAT_BLURB, type DrawFormat } from '@/lib/play/draw';
+import { DRAW_KIND_BLURB, DRAW_KIND_NAME, drawFormatFor, drawIsDoubles, drawKind, drawPlan, type DrawFormat, type DrawKind } from '@/lib/play/draw';
 import s from './EventPicker.module.css';
 
 /**
@@ -60,25 +60,49 @@ const SMALL: { f: GuestFormat; title: string; blurb: string; art: React.ReactNod
   { f: 'singles', title: 'Singles', blurb: 'One-on-one, new opponent each round.', art: <><Court dots={S} /><Court dots={S} dim /></> },
 ];
 
-/** "8 players: 28 matches, 7 each" for a round robin of n entries. */
-function rrLine(df: DrawFormat, spots: number | null, courts: number) {
-  const doubles = df === 'rr-doubles';
-  if (spots == null) return `${courts} court${courts === 1 ? '' : 's'} · everyone plays everyone once`;
+/** "8 players: 28 matches, 7 each" for this draw with the host's numbers. */
+function drawLine(df: DrawFormat, spots: number | null, courts: number) {
+  const doubles = drawIsDoubles(df);
+  if (spots == null) return `${courts} court${courts === 1 ? '' : 's'} · ${drawKind(df) === 'rr' ? 'everyone plays everyone once' : 'courts fill as matches are set'}`;
   const n = doubles ? Math.floor(spots / 2) : spots;
-  if (n < 2) return doubles ? 'Needs at least 4 players' : 'Needs at least 2 players';
-  return `${n} ${doubles ? 'pairs' : 'players'}: ${(n * (n - 1)) / 2} matches, ${n - 1} each`;
+  const plan = drawPlan(df, n);
+  if ('problem' in plan) return plan.problem.replace(/ \(.*\)\.?/, '.').replace(/\.$/, '');
+  return `${n} ${doubles ? 'pairs' : 'players'}: ${plan.matches} matches, ${plan.minEach === plan.maxEach ? plan.minEach : `${plan.minEach}–${plan.maxEach}`} each`;
 }
 
-/*
- * Tournament tiles. Round robin is live; the MixerMode brackets (single elimination,
- * FMLC, FFIC, Compass, Quads) get tiles here when each one's UI ships. Not shown yet.
- */
-const TOURNEY: { df: DrawFormat; title: string; art: React.ReactNode }[] = [
-  { df: 'rr-singles', title: 'Round Robin · Singles', art: <><Court dots={S} /><Court dots={S} dim /></> },
-  { df: 'rr-doubles', title: 'Round Robin · Doubles', art: <><Court dots={D} /><Court dots={D} dim /></> },
+/** A little draw sheet: two rounds of lines feeding a final (a compass fans both ways). */
+function Sheet({ compass, back }: { compass?: boolean; back?: boolean }) {
+  const line = '#ffffffb0', dim = '#ffffff55';
+  return (
+    <svg viewBox="0 0 92 68" className={s.court} style={{ width: 92 }} aria-hidden="true">
+      {compass ? (
+        <g fill="none" strokeWidth="1.4">
+          <path d="M34 14h24M34 26h24M34 42h24M34 54h24" stroke={line} />
+          <path d="M58 14v12M58 20h14M58 42v12M58 48h14M72 20v28M72 34h16" stroke="#d4ff49" />
+          <path d="M34 14v12M34 20H20M34 42v12M34 48H20M20 20v28M20 34H4" stroke={dim} />
+        </g>
+      ) : (
+        <g fill="none" strokeWidth="1.4">
+          <path d="M6 8h26M6 20h26M6 38h26M6 50h26" stroke={line} />
+          <path d="M32 8v12M32 14h26M32 38v12M32 44h26M58 14v30M58 29h28" stroke="#d4ff49" />
+          {back && <path d="M6 60h26M32 60v6M6 66h26" stroke={dim} />}
+        </g>
+      )}
+    </svg>
+  );
+}
+
+/* Tournament tiles: one per draw kind; singles or doubles is a switch above them. */
+const TOURNEY: { k: DrawKind; art: React.ReactNode }[] = [
+  { k: 'rr', art: <><Court dots={S} /><Court dots={S} dim /></> },
+  { k: 'single-elim', art: <Sheet /> },
+  { k: 'fmlc', art: <Sheet back /> },
+  { k: 'ffic', art: <Sheet back /> },
+  { k: 'compass', art: <Sheet compass /> },
 ];
 
 export default function EventPicker({ value, drawFormat, spots, courts, onChange }: { value: PlayFormat; drawFormat?: DrawFormat | null; spots: number | null; courts: number; onChange: (f: PlayFormat, df?: DrawFormat) => void }) {
+  const df: DrawFormat = drawFormat ?? 'rr-singles';
   const hero = planLine('maximize-courts', spots, courts);
   const heroPlan = courtPlan('maximize-courts', spots ?? courts * 4, courts);
   const heroCourts = heroPlan.doubles + heroPlan.singles
@@ -120,16 +144,28 @@ export default function EventPicker({ value, drawFormat, spots, courts, onChange
       </div>
 
       <div className={s.eyebrow} style={{ marginTop: 18 }}><b>Tournament</b><span>A real draw · courts fill themselves</span></div>
+      <div role="radiogroup" aria-label="Singles or doubles" style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 10, background: '#103c32' }}>
+        {[false, true].map((dbl) => {
+          const on = drawIsDoubles(df) === dbl;
+          return (
+            <button key={String(dbl)} type="button" role="radio" aria-checked={on} onClick={() => onChange('tournament', drawFormatFor(drawKind(df), dbl))}
+              style={{ padding: '5px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, background: on ? '#d4ff49' : 'transparent', color: on ? '#103c32' : '#e3ecdf' }}>
+              {dbl ? 'Doubles' : 'Singles'}
+            </button>
+          );
+        })}
+      </div>
       <div className={s.grid} role="radiogroup" aria-label="Tournament formats">
         {TOURNEY.map((t) => {
-          const on = value === 'tournament' && (drawFormat ?? 'rr-singles') === t.df;
+          const f = drawFormatFor(t.k, drawIsDoubles(df));
+          const on = value === 'tournament' && drawKind(df) === t.k;
           return (
-            <button key={t.df} type="button" role="radio" aria-checked={on} onClick={() => onChange('tournament', t.df)} className={`${s.tile} ${s.small} ${on ? s.on : ''}`}>
+            <button key={t.k} type="button" role="radio" aria-checked={on} onClick={() => onChange('tournament', f)} className={`${s.tile} ${s.small} ${on ? s.on : ''}`}>
               <span className={s.check}>✓</span>
               <div className={s.art}>{t.art}</div>
-              <div className={s.smallTitle} style={{ position: 'relative', zIndex: 1 }}>{t.title}</div>
-              <div className={s.smallBlurb} style={{ position: 'relative', zIndex: 1 }}>{DRAW_FORMAT_BLURB[t.df]}</div>
-              <div className={s.math} style={{ fontSize: 11 }}><i />{rrLine(t.df, spots, courts)}</div>
+              <div className={s.smallTitle} style={{ position: 'relative', zIndex: 1 }}>{DRAW_KIND_NAME[t.k]}</div>
+              <div className={s.smallBlurb} style={{ position: 'relative', zIndex: 1 }}>{t.k === 'rr' && drawIsDoubles(f) ? 'Fixed pairs, every pair plays every pair once.' : DRAW_KIND_BLURB[t.k]}</div>
+              <div className={s.math} style={{ fontSize: 11 }}><i />{drawLine(f, spots, courts)}</div>
             </button>
           );
         })}

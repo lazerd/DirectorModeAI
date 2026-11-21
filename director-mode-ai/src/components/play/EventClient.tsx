@@ -122,7 +122,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
         {e.status === 'open' && <OpenView e={e} meName={meR?.name} busy={busy} act={act} code={code} hereLink={hereLink} />}
         {e.status === 'live' && e.format === 'tournament' && <DrawLive e={e} busy={busy} act={act} />}
         {e.status === 'live' && e.format !== 'tournament' && <LiveView e={e} tab={tab} setTab={setTab} busy={busy} act={act} canScore={e.isHost || !!e.me} code={code} hereLink={hereLink} />}
-        {e.status === 'done' && e.format === 'tournament' && <DrawDone e={e} busy={busy} act={act} />}
+        {e.status === 'done' && e.format === 'tournament' && <><SportsDesk e={e} act={act} busy={busy} code={code} /><DrawDone e={e} busy={busy} act={act} />{e.state.draw && <ResultLinks code={code} />}</>}
         {e.status === 'done' && e.format !== 'tournament' && <DoneView e={e} busy={busy} act={act} code={code} myName={meR?.name} />}
 
         {e.season && <SeasonTable e={e} />}
@@ -719,7 +719,7 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
   const round = m?.rounds[m.rounds.length - 1];
   const unscored = round ? round.matches.filter((x) => !isScored(x)).length : 0;
   const inMixer = new Set((m?.players ?? []).filter((p) => !p.out).map((p) => p.id));
-  const isHere = (id: string) => (e.status === 'live' ? inMixer.has(id) : !!e.rsvps.find((r) => r.id === id)?.checked_in_at);
+  const isHere = (id: string) => (e.status === 'live' && e.format !== 'tournament' ? inMixer.has(id) : !!e.rsvps.find((r) => r.id === id)?.checked_in_at);
   const pairing = m?.pairing ?? e.state.pairingPref ?? 'smart';
   const Btn = ({ onClick, children, primary, disabled }: { onClick: () => void; children: React.ReactNode; primary?: boolean; disabled?: boolean }) => (
     <button onClick={onClick} disabled={!!busy || disabled} className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold disabled:opacity-50"
@@ -729,7 +729,7 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
     <section className="mt-6 rounded-3xl border border-dashed p-4" style={{ borderColor: '#b9c4b5' }}>
       <div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Host</div>
       <button className="mt-2 text-[14px] underline" onClick={() => act({ action: 'reopen' })}>Reopen this event</button>
-      {e.format !== 'tournament' && <ResultLinks code={e.code} />}
+      <ResultLinks code={e.code} />
     </section>
   );
   return (
@@ -816,7 +816,7 @@ export function HostPanel({ e, busy, act, hostKey, onMove }: { e: PlayEvent; bus
           </div>
         )}
       </div>
-      {e.format !== 'tournament' && <ResultLinks code={e.code} />}
+      <ResultLinks code={e.code} />
       <p className="mt-3 text-[12px]" style={{ color: C.muted }}>Run it from another phone too: send yourself the host link. Don&apos;t post that one in the group.</p>
       {hostKey && <HostLinkButtons code={e.code} hostKey={hostKey} />}
     </section>
@@ -970,7 +970,7 @@ function SportsDesk({ e, act, busy, code }: { e: PlayEvent; act: (b: Record<stri
   const brand = useContext(BrandContext);
   const [sharing, setSharing] = useState(false);
   if (!r) {
-    if (!e.state.mixer) return null;
+    if (!e.state.mixer && !e.state.draw) return null;
     if (!e.isHost) return <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-[14px] shadow-sm">🎙️ The sportscaster&apos;s write-up of tonight lands here in a moment, with a line about you.</p>;
     return (
       <section className="mt-4 rounded-3xl bg-white p-5 shadow-sm">

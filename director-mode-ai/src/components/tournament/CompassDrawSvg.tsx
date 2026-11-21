@@ -86,10 +86,13 @@ export default function CompassDrawSvg({
   matches,
   entryById,
   revealAllSeeds = false,
+  highlight,
 }: {
   matches: Match[];
   entryById: Map<string, Entry>;
   revealAllSeeds?: boolean;
+  /** Entry ids to mark (a player's own lines on their phone). */
+  highlight?: ReadonlySet<string>;
 }) {
   const size = compassSizeOf(matches);
   if (!size) return null;
@@ -250,7 +253,7 @@ export default function CompassDrawSvg({
           p.m ? (
             <MatchLines key={`${g.id}-${i}`} p={p} entryById={entryById}
                         revealAllSeeds={revealAllSeeds} color={colorFor[g.id]}
-                        tieBothSides={g.id === 'r1'} />
+                        tieBothSides={g.id === 'r1'} highlight={highlight} />
           ) : null
         )
       )}
@@ -262,7 +265,7 @@ export const leftEdge = (p: Placed) => (p.flow === 'right' ? p.x : p.x - PW);
 export const rightEdge = (p: Placed) => leftEdge(p) + PW;
 
 export function MatchLines({
-  p, entryById, revealAllSeeds, color, tieBothSides = false,
+  p, entryById, revealAllSeeds, color, tieBothSides = false, highlight,
 }: {
   p: Placed;
   entryById: Map<string, Entry>;
@@ -274,6 +277,8 @@ export function MatchLines({
    * normal one-directional draw — ties on one side only.
    */
   tieBothSides?: boolean;
+  /** Entry ids whose lines get a marker behind them. */
+  highlight?: ReadonlySet<string>;
 }) {
   const m = p.m!;
   const left = p.flow === 'right' ? p.x : p.x - PW;
@@ -283,8 +288,8 @@ export function MatchLines({
   const yB = p.yB;
   return (
     <g>
-      <PlayerLine x={left} y={yA} entry={a} won={m.winner_side === 'a'} score={sideScore(m.score, 'a')} revealAllSeeds={revealAllSeeds} color={color} />
-      <PlayerLine x={left} y={yB} entry={b} won={m.winner_side === 'b'} score={sideScore(m.score, 'b')} revealAllSeeds={revealAllSeeds} color={color} />
+      <PlayerLine x={left} y={yA} entry={a} won={m.winner_side === 'a'} score={sideScore(m.score, 'a')} revealAllSeeds={revealAllSeeds} color={color} hl={!!a && !!highlight?.has(a.id)} />
+      <PlayerLine x={left} y={yB} entry={b} won={m.winner_side === 'b'} score={sideScore(m.score, 'b')} revealAllSeeds={revealAllSeeds} color={color} hl={!!b && !!highlight?.has(b.id)} />
       {/* the vertical tie joining the pair, as on a printed draw sheet */}
       <path d={`M ${p.flow === 'right' ? left + PW : left} ${yA} V ${yB}`}
             stroke="#111827" strokeOpacity={0.85} strokeWidth={1.1} fill="none" />
@@ -297,10 +302,10 @@ export function MatchLines({
 }
 
 function PlayerLine({
-  x, y, entry, won, score, revealAllSeeds, color,
+  x, y, entry, won, score, revealAllSeeds, color, hl = false,
 }: {
   x: number; y: number; entry: Entry | undefined; won: boolean;
-  score: string; revealAllSeeds: boolean; color: string;
+  score: string; revealAllSeeds: boolean; color: string; hl?: boolean;
 }) {
   const name = entry
     ? entry.partner_name ? `${entry.player_name} / ${entry.partner_name}` : entry.player_name
@@ -308,6 +313,7 @@ function PlayerLine({
   const showSeed = entry?.seed != null && (revealAllSeeds || entry.seed <= 4);
   return (
     <g>
+      {hl && <rect x={x} y={y - 16} width={PW} height={16} rx={3} fill="#d4ff49" />}
       <path d={`M ${x} ${y} H ${x + PW}`} stroke={entry ? '#111827' : '#d7dee8'}
             strokeWidth={1} fill="none" />
       {showSeed && (

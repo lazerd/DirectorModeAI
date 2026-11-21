@@ -8,14 +8,14 @@ import { parseLevelRange } from './levels';
  * Pairing is the same RoundGenerator MixerMode uses (via guestMixer).
  */
 import { standings, winnerOf, type GuestFormat, type GuestMixer } from '@/lib/mixer/guestMixer';
-import { DRAW_FORMAT_NAME, type Draw, type DrawFormat } from './draw';
+import { DRAW_FORMAT_NAME, consolationChampion, drawKind, entryOf, resultOf, scoreWinnerFirst, standingsFor, type Draw, type DrawFormat } from './draw';
 
 export type Sport = 'tennis' | 'pickleball' | 'padel';
 export type PlayKind = 'game' | 'social';
 export type PlayStatus = 'open' | 'live' | 'done';
 /**
  * A social runs on the mixer (GuestFormat). 'tournament' runs a draw instead: the real
- * draw type (round robin now; brackets later) lives in state.drawFormat / state.draw.format.
+ * draw type (round robin, elimination, consolation, compass) lives in state.drawFormat / state.draw.format.
  */
 export type PlayFormat = GuestFormat | 'tournament';
 export const isTournament = (e: { format: PlayFormat | string }) => e.format === 'tournament';
@@ -80,6 +80,8 @@ export interface PlayState {
   drawFormat?: DrawFormat | null;
   /** Tournament, doubles: the host's pairs (rsvp ids) set before the start. Anyone unpaired is auto-paired. */
   drawPairs?: string[][] | null;
+  /** Tournament: the host's seed order (rsvp ids, best first) set before the start. Anyone not listed follows by level. */
+  drawSeeds?: string[] | null;
   /** Tournament: the live draw (entries, matches, courts). */
   draw?: Draw | null;
   preview?: { headline: string; lines: { id: string; name: string; line: string }[]; at: string } | null;
@@ -121,7 +123,7 @@ export const FORMAT_NAME: Record<PlayFormat, string> = {
   'maximize-courts': 'Optimize Courts', 'king-of-court': 'King of the Court', 'team-battle': 'Team Battle', doubles: 'Doubles', 'mixed-doubles': 'Mixed doubles', singles: 'Singles',
 };
 export const FORMAT_BLURB: Record<PlayFormat, string> = {
-  tournament: 'A real draw: round robin now, brackets soon. Courts fill themselves as matches finish.',
+  tournament: 'A real draw: round robin, elimination, consolation or compass. Courts fill themselves as matches finish.',
   'maximize-courts': 'Every court full: doubles where it fits, singles with the rest, fewest sit-outs.',
   'king-of-court': 'Winners move up a court, losers move down. Court 1 is the King court.',
   'team-battle': 'Two teams, lines matched by strength like team tennis. Every court counts toward the team score.',
@@ -273,6 +275,43 @@ export function awards(m: GuestMixer): Award[] {
   if (slayer) out.push({ emoji: '🗡️', title: 'Giant Slayer', who: slayer.ids.map(name).join(' & '), why: `beat a side rated ${fmtLvl(slayer.gap)} higher, ${slayer.a}–${slayer.b}` });
   const steady = mostConsistent(m);
   if (steady) out.push({ emoji: '🎯', title: 'Most Consistent', who: name(steady.id), why: `game diff ${sgn(steady.min)} to ${sgn(steady.max)} over ${steady.n} matches` });
+  return out;
+}
+
+/**
+ * A tournament's awards: Champion, Finalist (Runner-up in a round robin), Consolation
+ * champion (brackets with a back draw), Biggest upset by seed, Most games won.
+ * Only real results count (BYEs never do; a walkover or default is no upset).
+ */
+export function drawAwards(d: Draw): Award[] {
+  const st = standingsFor(d);
+  const real = d.matches.filter((m) => m.status === 'done' && !m.bye);
+  if (!st.length || !real.length) return [];
+  const out: Award[] = [];
+  const rr = drawKind(d.format) === 'rr';
+  const rec = (s: (typeof st)[0]) => `${s.wins}–${s.losses}, ${s.gamesWon} games won`;
+  const champ = rr ? (st[0].played ? st[0] : null) : st.find((s) => s.label === 'Champion' || (s.place === 1 && s.label === '1st'));
+  if (champ) out.push({ emoji: '🏆', title: 'Champion', who: champ.name, why: rr ? rec(champ) : `${rec(champ)}${champ.seed ? ` · No. ${champ.seed} seed` : ''}` });
+  const second = rr ? (champ && st[1]?.played ? st[1] : null) : st.find((s) => s.label === 'Finalist' || (s.place === 2 && s.label === '2nd'));
+  if (second) out.push({ emoji: '🥈', title: rr ? 'Runner-up' : 'Finalist', who: second.name, why: rec(second) });
+  const cc = consolationChampion(d);
+  const ccRow = cc ? st.find((s) => s.id === cc) : null;
+  if (ccRow) out.push({ emoji: '🎖️', title: 'Consolation champion', who: ccRow.name, why: `won the back draw · ${ccRow.wins}–${ccRow.losses}` });
+  let upset: { w: string; l: string; gap: number; score: string } | null = null;
+  for (const m of real) {
+    if (m.how === 'W/O' || m.how === 'DEF') continue;
+    const r = resultOf(m);
+    const w = r && entryOf(d, r.winner), l = r && entryOf(d, r.loser);
+    if (!w || !l) continue;
+    const gap = w.seed - l.seed;
+    if (gap >= 2 && (!upset || gap > upset.gap)) upset = { w: w.id, l: l.id, gap, score: scoreWinnerFirst(m) };
+  }
+  if (upset) {
+    const w = entryOf(d, upset.w)!, l = entryOf(d, upset.l)!;
+    out.push({ emoji: '🗡️', title: 'Biggest upset', who: w.name, why: `No. ${w.seed} seed beat No. ${l.seed} ${l.name}${upset.score ? `, ${upset.score}` : ''}` });
+  }
+  const most = [...st].sort((a, b) => b.gamesWon - a.gamesWon || a.rank - b.rank)[0];
+  if (most && most.gamesWon > 0) out.push({ emoji: '🔥', title: 'Most games won', who: most.name, why: `${most.gamesWon} games in ${most.played} match${most.played === 1 ? '' : 'es'}` });
   return out;
 }
 

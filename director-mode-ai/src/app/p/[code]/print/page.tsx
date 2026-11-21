@@ -4,11 +4,16 @@
  * current round's court sheet with blank score boxes, every past round with its
  * scores, then standings. One page each; the toolbar never prints.
  * `?sheet=checkin|courts|standings` prints just one. Public and read-only.
+ * A tournament prints its own: check-in, the draw sheet (`?sheet=draw`), every match
+ * with score boxes, and the places (or round robin standings).
  */
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { courtLabel, standings, teamScore, type GuestMatch, type GuestMixer, type GuestRound } from '@/lib/mixer/guestMixer';
-import { FORMAT_NAME, SPORT_LABEL, whenLine } from '@/lib/play/core';
+import { FORMAT_NAME, SPORT_LABEL, formatLabel, whenLine } from '@/lib/play/core';
+import { courtName, entryOf, isBracket, roundLabel, scoreWinnerFirst, standingsFor, type Draw, type DrawMatch } from '@/lib/play/draw';
+import { drawSheet } from '@/lib/play/drawSheet';
+import DrawView from '@/components/tournament/DrawView';
 import { loadResults, type ResultsEvent } from '@/lib/play/resultsData';
 import { winPct } from '@/lib/play/results';
 import PrintButton from './PrintButton';
@@ -16,12 +21,13 @@ import PrintButton from './PrintButton';
 export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Print sheets · Racquets IRL', robots: { index: false, follow: false } };
 
-type Sheet = 'all' | 'checkin' | 'courts' | 'standings';
+type Sheet = 'all' | 'checkin' | 'courts' | 'standings' | 'draw';
 
 export default async function PlayPrintPage({ params, searchParams }: { params: { code: string }; searchParams: { sheet?: string } }) {
   const e = await loadResults(params.code);
   if (!e) notFound();
-  const sheet: Sheet = (['checkin', 'courts', 'standings'] as const).includes(searchParams.sheet as never) ? (searchParams.sheet as Sheet) : 'all';
+  const sheet: Sheet = (['checkin', 'courts', 'standings', 'draw'] as const).includes(searchParams.sheet as never) ? (searchParams.sheet as Sheet) : 'all';
+  if (e.format === 'tournament') return <TournamentSheets e={e} sheet={sheet} />;
   const m = e.state.mixer ?? null;
   const rounds = m ? [...m.rounds].sort((a, b) => a.number - b.number) : [];
   const current = rounds[rounds.length - 1] ?? null;
@@ -107,6 +113,130 @@ export default async function PlayPrintPage({ params, searchParams }: { params: 
         </section>
       )}
     </div>
+  );
+}
+
+/* ---------------- tournaments (state.draw) ---------------- */
+function TournamentSheets({ e, sheet }: { e: ResultsEvent; sheet: Sheet }) {
+  const d = e.state.draw ?? null;
+  const tn = { A: 'Team A', B: 'Team B' };
+  const dateLine = [whenLine(e, 'America/Los_Angeles'), e.location].filter(Boolean).join(' · ');
+  const sub = [formatLabel(e), SPORT_LABEL[e.sport], dateLine].filter(Boolean).join(' · ');
+  const base = `/p/${e.code}/print`;
+  const show = (s: Exclude<Sheet, 'all'>) => sheet === 'all' || sheet === s;
+  const bracket = d ? isBracket(d.format) : false;
+  const notYet = (title: string) => (
+    <section className="wc-page"><Header e={e} title={title} sub={sub} /><p className="wc-big">The draw is made when the host starts the tournament.</p></section>
+  );
+  return (
+    <div id="wc-print">
+      <style>{PRINT_CSS}</style>
+      <nav className="wc-toolbar">
+        <PrintButton />
+        <a className={`wc-btn ${sheet === 'all' ? 'wc-on' : ''}`} href={base}>Everything</a>
+        <a className={`wc-btn ${sheet === 'checkin' ? 'wc-on' : ''}`} href={`${base}?sheet=checkin`}>Check-in</a>
+        <a className={`wc-btn ${sheet === 'draw' ? 'wc-on' : ''}`} href={`${base}?sheet=draw`}>Draw sheet</a>
+        <a className={`wc-btn ${sheet === 'courts' ? 'wc-on' : ''}`} href={`${base}?sheet=courts`}>Matches</a>
+        <a className={`wc-btn ${sheet === 'standings' ? 'wc-on' : ''}`} href={`${base}?sheet=standings`}>{bracket ? 'Places' : 'Standings'}</a>
+        <a className="wc-btn" href={`/p/${e.code}`}>Back to the tournament</a>
+      </nav>
+      {show('checkin') && <CheckIn e={e} sub={sub} tn={tn} />}
+      {show('draw') && (d ? (
+        <section className="wc-page wc-wide">
+          <Header e={e} title="The draw" sub={sub} />
+          <DrawSheetFor d={d} />
+        </section>
+      ) : sheet === 'draw' && notYet('The draw'))}
+      {show('courts') && (d ? (
+        <section className="wc-page">
+          <Header e={e} title="Matches" sub={sub} />
+          <DrawMatches d={d} />
+          <p className="wc-note">Scores are winner first. The boxes are for matches still to play: the winner’s games go first.</p>
+        </section>
+      ) : sheet === 'courts' && notYet('Matches'))}
+      {show('standings') && (d ? (
+        <section className="wc-page">
+          <Header e={e} title={bracket ? 'Places' : 'Standings'} sub={sub} />
+          <DrawPlaces d={d} />
+        </section>
+      ) : sheet === 'standings' && notYet('Standings'))}
+    </div>
+  );
+}
+
+function DrawSheetFor({ d }: { d: Draw }) {
+  const sh = drawSheet(d);
+  return <DrawView format={sh.format} entries={sh.entries} matches={sh.matches} revealAllSeeds />;
+}
+
+function DrawMatches({ d }: { d: Draw }) {
+  const name = (id: string | null) => (id ? entryOf(d, id)?.name ?? '?' : 'TBD');
+  const bracket = isBracket(d.format);
+  const order = (m: DrawMatch) => (bracket && m.bracket === 'consolation' ? 1000 : 0) + m.round;
+  const real = d.matches.filter((m) => !m.bye).sort((a, b) => order(a) - order(b) || a.slot - b.slot);
+  const stages = [...new Set(real.map((m) => `${m.bracket}:${m.round}`))];
+  return (
+    <>
+      {stages.map((st) => {
+        const ms = real.filter((m) => `${m.bracket}:${m.round}` === st);
+        return (
+          <div key={st} className="wc-round">
+            <h2>{roundLabel(d, ms[0])}</h2>
+            <table className="wc-courts">
+              <thead><tr><th className="wc-court-col">Court</th><th>Side A</th><th className="wc-vs-col" /><th>Side B</th><th className="wc-score-col">Score</th></tr></thead>
+              <tbody>
+                {ms.map((m) => {
+                  const done = m.status === 'done';
+                  const w = done ? (m.winner === 'b' ? m.player3_id : m.player1_id) : null;
+                  return (
+                    <tr key={m.key}>
+                      <td className="wc-court">{m.status === 'on_court' && m.court ? courtName(d, m.court) : ''}</td>
+                      <td className="wc-team">{done && w === m.player1_id ? <b>{name(m.player1_id)}</b> : name(m.player1_id)}</td>
+                      <td className="wc-vs">vs</td>
+                      <td className="wc-team">{done && w === m.player3_id ? <b>{name(m.player3_id)}</b> : name(m.player3_id)}</td>
+                      <td className="wc-score">
+                        {done ? (m.how === 'W/O' || m.how === 'DEF' ? m.how : scoreWinnerFirst(m))
+                          : m.player1_id && m.player3_id ? <span className="wc-boxes"><span className="wc-sbox" /> – <span className="wc-sbox" /></span>
+                          : <span>waiting</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function DrawPlaces({ d }: { d: Draw }) {
+  const st = standingsFor(d);
+  const bracket = isBracket(d.format);
+  if (!st.length) return <p className="wc-big">No results yet.</p>;
+  return (
+    <>
+      <table className="wc-table wc-standings">
+        <thead>
+          <tr><th>#</th>{bracket && <th className="wc-left">Finish</th>}<th className="wc-left">{d.matchType === 'doubles' ? 'Pair' : 'Player'}</th><th>Seed</th><th>Won</th><th>Lost</th><th>Games</th></tr>
+        </thead>
+        <tbody>
+          {st.map((s) => (
+            <tr key={s.id}>
+              <td>{bracket ? s.place : s.rank}</td>
+              {bracket && <td className="wc-left">{s.label}</td>}
+              <td className="wc-left wc-name">{s.name}</td>
+              <td>{s.seed}</td>
+              <td className="wc-strong">{s.wins}</td>
+              <td>{s.losses}</td>
+              <td>{s.gamesWon}–{s.gamesLost}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="wc-note">{bracket ? 'Placed by how far each got in the draw. A walkover counts as a win with no games.' : 'Ranked by wins, then game difference, then fewest games lost.'}</p>
+    </>
   );
 }
 
@@ -197,6 +327,7 @@ const PRINT_CSS = `
 .wc-btn-primary, .wc-on { background:#000; }
 #wc-print .wc-btn-primary, #wc-print .wc-on { color:#fff; }
 .wc-page { max-width: 1000px; margin: 0 auto 32px; padding: 24px; border: 1px solid #ccc; }
+.wc-wide { max-width: 1400px; }
 .wc-header { border-bottom: 3px solid #000; padding-bottom: 10px; margin-bottom: 18px; }
 .wc-event { font-size: 22px; font-weight: 700; }
 .wc-header h1 { font-size: 44px; line-height: 1.1; margin: 4px 0; font-weight: 900; }
@@ -243,5 +374,6 @@ const PRINT_CSS = `
   .wc-page { border:none; padding:0; margin:0; max-width:none; break-after: page; page-break-after: always; }
   .wc-page:last-child { break-after: auto; page-break-after: auto; }
   .wc-courts tr, .wc-table tr { break-inside: avoid; page-break-inside: avoid; }
+  .wc-wide svg { max-height: none !important; }
 }
 `;

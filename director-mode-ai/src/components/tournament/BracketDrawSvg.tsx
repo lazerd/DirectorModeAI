@@ -91,10 +91,13 @@ export default function BracketDrawSvg({
   matches,
   entryById,
   revealAllSeeds = false,
+  highlight,
 }: {
   matches: Match[];
   entryById: Map<string, Entry>;
   revealAllSeeds?: boolean;
+  /** Entry ids to mark (a player's own lines on their phone). */
+  highlight?: ReadonlySet<string>;
 }) {
   const sections = layoutBracket(matches);
   if (!sections) return null;
@@ -191,7 +194,7 @@ export default function BracketDrawSvg({
           r.items.map((p, i) =>
             p.m ? (
               <MatchLines key={`${s.bracket}-${r.round}-${i}`} p={p} entryById={entryById}
-                          revealAllSeeds={revealAllSeeds} color="#1d4ed8" />
+                          revealAllSeeds={revealAllSeeds} color="#1d4ed8" highlight={highlight} />
             ) : null
           )
         )

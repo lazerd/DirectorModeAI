@@ -1,7 +1,8 @@
 import 'server-only';
 import Anthropic from '@anthropic-ai/sdk';
 import { standings, teamScore, winnerOf, type GuestMixer } from '@/lib/mixer/guestMixer';
-import { awards } from './core';
+import { awards, drawAwards } from './core';
+import { DRAW_FORMAT_NAME, entryOf, resultOf, roundLabel, scoreWinnerFirst, standingsFor, type Draw } from './draw';
 
 /**
  * "Call the game": an AI sportscaster recap built ONLY from facts we recorded
@@ -17,6 +18,40 @@ export interface RecapLine { id: string; name: string; tag: string; line: string
 export interface Recap { headline: string; story: string; lines: RecapLine[]; spice: Spice; crown?: string | null; at: string }
 
 export interface CrownChange { place: string; before: string | null; after: string | null }
+
+/** A night on the mixer, or a tournament's draw (state.draw). */
+export type RecapSource = GuestMixer | Draw;
+const isDraw = (s: RecapSource): s is Draw => Array.isArray((s as Draw).entries);
+
+/** Every person (rsvp id + name): a doubles pair is two people, each gets a line. */
+function people(src: RecapSource): { id: string; name: string }[] {
+  if (!isDraw(src)) return src.players.map((p) => ({ id: p.id, name: p.name }));
+  return src.entries.filter((e) => !e.bye).flatMap((e) => e.rsvpIds.map((id, i) => ({ id, name: e.players[i] ?? e.name })));
+}
+
+/** The tournament fact sheet: format, seeds, placements, awards, and every result by stage. */
+function drawFacts(d: Draw, title: string, crown: CrownChange | null) {
+  const name = (id: string) => entryOf(d, id)?.name ?? 'TBD';
+  const results = d.matches
+    .filter((m) => m.status === 'done' && !m.bye)
+    .sort((a, b) => Date.parse(a.finishedAt ?? '0') - Date.parse(b.finishedAt ?? '0'))
+    .map((m) => {
+      const r = resultOf(m)!;
+      return { stage: roundLabel(d, m), winner: name(r.winner), winner_seed: entryOf(d, r.winner)?.seed ?? null, loser: name(r.loser), loser_seed: entryOf(d, r.loser)?.seed ?? null, score: m.how === 'W/O' || m.how === 'DEF' ? m.how : scoreWinnerFirst(m) || null };
+    });
+  return {
+    event: title,
+    tournament: DRAW_FORMAT_NAME[d.format],
+    players: people(d).map((p) => p.name),
+    placements: standingsFor(d).map((s) => ({ place: s.place, finish: s.label, name: s.name, seed: s.seed, wins: s.wins, losses: s.losses, games_for: s.gamesWon, games_against: s.gamesLost })),
+    awards: drawAwards(d).map((a) => ({ award: a.title, who: a.who, why: a.why })),
+    results_in_order: results,
+    unplayed_matches: d.matches.filter((m) => m.status !== 'done').length,
+    king_of_the_court: crown ? { place: crown.place, before_tonight: crown.before, after_tonight: crown.after, changed_hands: !!crown.after && crown.before !== crown.after } : null,
+  };
+}
+
+const factsFor = (src: RecapSource, title: string, crown: CrownChange | null) => (isDraw(src) ? drawFacts(src, title, crown) : facts(src, title, crown));
 
 function facts(m: GuestMixer, title: string, crown: CrownChange | null) {
   const name = (id: string) => m.players.find((p) => p.id === id)?.name ?? '?';
@@ -63,7 +98,7 @@ const TOOL = {
         items: {
           type: 'object',
           properties: {
-            name: { type: 'string', description: 'Exactly as in standings.' },
+            name: { type: 'string', description: 'Exactly as in standings (a tournament: exactly as in players).' },
             tag: { type: 'string', description: '2-3 word nickname for tonight, e.g. "Human Backboard", "Comeback Kid", "Carried Hard".' },
             line: { type: 'string', description: 'One sentence (max 22 words) about this player tonight, grounded in their real results.' },
           },
@@ -87,10 +122,10 @@ const RULES = `Hard rules:
 - No profanity. Nothing a club would be embarrassed to see on a screen.
 - One line for EVERY player in standings.`;
 
-export async function callTheGame(m: GuestMixer, title: string, spice: Spice, crown: CrownChange | null): Promise<Recap | null> {
+export async function callTheGame(m: RecapSource, title: string, spice: Spice, crown: CrownChange | null): Promise<Recap | null> {
   if (!KEY) return null;
-  const st = standings(m);
-  if (!st.length) return null;
+  if (isDraw(m) ? !m.matches.some((x) => x.status === 'done' && !x.bye) : !standings(m).length) return null;
+  const tourney = isDraw(m) ? ' This was a tournament: use the draw words (seeds, rounds, the final). Write one line for EVERY name in players (doubles partners each get their own line).' : '';
   const client = new Anthropic({ apiKey: KEY });
   const r = await client.messages.create({
     model: MODEL,
@@ -98,7 +133,7 @@ export async function callTheGame(m: GuestMixer, title: string, spice: Spice, cr
     tools: [TOOL],
     tool_choice: { type: 'auto' },
     system: `You are the sportscaster for a recreational tennis/pickleball group. Tone: ${SPICE[spice]}\n${RULES}`,
-    messages: [{ role: 'user', content: `Call the call_the_game tool with the recap. Facts from tonight (JSON):\n${JSON.stringify(facts(m, title, crown))}` }],
+    messages: [{ role: 'user', content: `Call the call_the_game tool with the recap.${tourney} Facts from tonight (JSON):\n${JSON.stringify(factsFor(m, title, crown))}` }],
   });
   const use = r.content.find((c) => c.type === 'tool_use');
   if (!use || use.type !== 'tool_use') return null;
@@ -106,7 +141,7 @@ export async function callTheGame(m: GuestMixer, title: string, spice: Spice, cr
   // 5.5 sometimes hands back the array as a JSON string; a cut-off reply drops it entirely.
   if (typeof x.lines === 'string') { try { x.lines = JSON.parse(x.lines); } catch { x.lines = []; } }
   if (!Array.isArray(x.lines) || !x.lines.length) console.warn('[play] recap had no lines', r.stop_reason, typeof x.lines);
-  const byName = new Map(m.players.map((p) => [p.name.toLowerCase(), p.id]));
+  const byName = new Map(people(m).map((p) => [p.name.toLowerCase(), p.id]));
   const lines: RecapLine[] = ((x.lines as { name: string; tag: string; line: string }[]) ?? []).map((l) => ({ id: byName.get(String(l.name).toLowerCase()) ?? '', name: l.name, tag: String(l.tag).slice(0, 40), line: String(l.line).slice(0, 240) })).filter((l) => l.id);
   const crownLine = crown?.after && crown.before !== crown.after
     ? `👑 ${crown.after} takes the crown at ${crown.place}${crown.before ? ` from ${crown.before}` : ''}.`
@@ -115,13 +150,13 @@ export async function callTheGame(m: GuestMixer, title: string, spice: Spice, cr
 }
 
 /** Rewrite one player's line, gentler. */
-export async function softenLine(m: GuestMixer, title: string, line: RecapLine): Promise<string | null> {
+export async function softenLine(m: RecapSource, title: string, line: RecapLine): Promise<string | null> {
   if (!KEY) return null;
   const client = new Anthropic({ apiKey: KEY });
   const r = await client.messages.create({
     model: MODEL, max_tokens: 200,
     system: `You write one warm, kind, celebratory sentence (max 22 words) about a rec tennis/pickleball player's night, using ONLY the facts given. No teasing at all.\n${RULES}`,
-    messages: [{ role: 'user', content: `Player: ${line.name}\nFacts (JSON): ${JSON.stringify(facts(m, title, null))}\nReply with only the sentence.` }],
+    messages: [{ role: 'user', content: `Player: ${line.name}\nFacts (JSON): ${JSON.stringify(factsFor(m, title, null))}\nReply with only the sentence.` }],
   });
   const t = r.content.find((c) => c.type === 'text');
   return t && t.type === 'text' ? t.text.trim().replace(/^"|"$/g, '').slice(0, 240) : null;
