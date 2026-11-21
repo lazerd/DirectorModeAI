@@ -57,14 +57,14 @@ export function WeatherCard({ e, isHost, onRainCheck }: { e: PlayEvent; isHost: 
   const [, icon, word] = sky(f.code);
   const wet = rainy(f);
   return (
-    <section className="mt-4 rounded-3xl p-4 shadow-sm" style={{ background: wet ? '#fff4d6' : '#fff' }}>
+    <section className="mt-4 rounded-2xl px-4 py-3 shadow-sm" style={{ background: wet ? '#fff4d6' : '#fff' }}>
       <div className="flex items-center gap-3">
-        <div className="text-[34px] leading-none">{icon}</div>
+        <div className="text-[26px] leading-none">{icon}</div>
         <div className="min-w-0 flex-1">
-          <div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>At game time</div>
-          <div className="text-[17px] font-semibold">{f.temp}°F · {word}</div>
+          <div className="text-[15px] font-semibold">{f.temp}°F · {word} <span className="text-[12px] font-normal" style={{ color: C.muted }}>at game time</span></div>
           <div className="text-[13px]" style={{ color: C.muted }}>{f.rain}% chance of rain · wind {f.wind} mph</div>
         </div>
+        <div className="self-end text-[10px]" style={{ color: '#9aa79c' }}>Open-Meteo</div>
       </div>
       {wet && (
         <div className="mt-3 rounded-2xl p-3 text-[14px]" style={{ background: '#ffe9a8' }}>
@@ -76,7 +76,6 @@ export function WeatherCard({ e, isHost, onRainCheck }: { e: PlayEvent; isHost: 
           )}
         </div>
       )}
-      <div className="mt-2 text-right text-[10px]" style={{ color: '#9aa79c' }}>Forecast: Open-Meteo</div>
     </section>
   );
 }

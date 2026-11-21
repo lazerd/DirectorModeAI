@@ -43,7 +43,7 @@ const drawTabName = (d: Draw) => (drawKind(d.format) === 'quads' ? 'Flights' : d
 /* Live                                                                 */
 /* ------------------------------------------------------------------ */
 
-export function DrawLive({ e, busy, act }: { e: PlayEvent; busy: string; act: Act }) {
+export function DrawLive({ e, busy, act, hostSlot }: { e: PlayEvent; busy: string; act: Act; hostSlot?: React.ReactNode }) {
   const d = e.state.draw;
   const [tab, setTab] = useState<'courts' | 'grid' | 'matches'>('courts');
   const card = useMemo(() => (d ? nextFor(d, e.me) : null), [d, e.me]);
@@ -59,24 +59,24 @@ export function DrawLive({ e, busy, act }: { e: PlayEvent; busy: string; act: Ac
   const bracket = isBracket(d.format);
   return (
     <>
-      <section className="mt-4 flex items-center justify-between rounded-3xl bg-white p-5 shadow-sm">
-        <div><div className="text-[12px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>{DRAW_FORMAT_NAME[d.format]}</div>
-          <div className="text-[28px] font-semibold leading-tight">{pr.complete ? 'All matches played' : `${pr.done} of ${pr.total} played`}</div></div>
-        <div className="text-right text-[13px]" style={{ color: C.muted }}>{pr.onCourt} on court<br />{pr.ready} ready</div>
-      </section>
-      {e.isHost && <a href={`/p/${e.code}/tv`} target="_blank" rel="noopener" className="mt-2 block text-right text-[13px] font-semibold underline" style={{ color: C.ink }}>Open the TV / projector board ↗</a>}
-
+      {/* The player's match first and biggest; the draw's progress is one slim line under it. */}
       {card && card.kind !== 'not_in' && <MyCard d={d} card={card} busy={busy} act={act} />}
       {card?.kind === 'not_in' && e.me && (
-        <section className="mt-3 rounded-3xl p-5 shadow-sm" style={{ background: '#e9eae3' }}>
+        <section className="mt-4 rounded-3xl p-5 shadow-sm" style={{ background: '#e9eae3' }}>
           <div className="text-[17px] font-semibold">You&apos;re not in this draw</div>
           <p className="mt-1 text-[14px]">The draw was made from the players checked in at the start. Enjoy the matches, and ask the host about the next one.</p>
         </section>
       )}
+      <section className="mt-3 flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 shadow-sm">
+        <div className="min-w-0"><div className="truncate text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>{DRAW_FORMAT_NAME[d.format]}</div>
+          <div className="text-[18px] font-semibold leading-tight">{pr.complete ? 'All matches played' : `${pr.done} of ${pr.total} played`}</div></div>
+        <div className="shrink-0 text-right text-[13px]" style={{ color: C.muted }}>{pr.onCourt} on court · {pr.ready} ready</div>
+      </section>
+      {hostSlot}
 
-      <div className="mt-4 flex gap-2 rounded-2xl bg-white p-1 text-[14px] font-semibold">
+      <div role="tablist" aria-label="Draw views" className="mt-4 flex gap-2 rounded-2xl bg-white p-1 text-[14px] font-semibold">
         {(['courts', 'grid', 'matches'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className="flex-1 rounded-xl py-2" style={tab === t ? { background: C.ink, color: '#fff' } : {}}>{t === 'courts' ? 'Courts' : t === 'grid' ? (bracket ? drawTabName(d) : 'Standings') : 'All matches'}</button>
+          <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className="flex-1 rounded-xl py-2" style={tab === t ? { background: C.ink, color: '#fff' } : {}}>{t === 'courts' ? 'Courts' : t === 'grid' ? (bracket ? drawTabName(d) : 'Standings') : 'All matches'}</button>
         ))}
       </div>
       {tab === 'courts' && <CourtBoard e={e} d={d} busy={busy} act={act} />}
@@ -522,6 +522,7 @@ export function DrawHostControls({ e, busy, act, checkIn }: { e: PlayEvent; busy
   const d = e.state.draw;
   const pr = d ? drawProgress(d) : null;
   const hereKey = here.map((r) => `${r.id}:${r.level_num ?? ''}`).join(',');
+  const [fmtOpen, setFmtOpen] = useState(false); // the format picker folds to one row
   // The draw as it would be made right now (pure, the same code the server runs), or why it can't be.
   const preview = useMemo(() => {
     if (e.status !== 'open') return null;
@@ -545,11 +546,21 @@ export function DrawHostControls({ e, busy, act, checkIn }: { e: PlayEvent; busy
     const setOptions = (o: Record<string, unknown>) => act({ action: 'draw_options', ...o }, 'draw_options');
     const poolOpts = n >= 6 ? poolChoices(n) : [2, 3, 4];
     const setFormat = (f: DrawFormat) => act({ action: 'draw_format', format: f }, 'draw_format');
+    const planLine = planText ?? (typeof preview === 'string' && here.length ? preview : 'Seeded by the levels people picked. You can change the seeds before you start.');
     return (
       <>
+        {!fmtOpen ? (
+          <button type="button" aria-expanded={false} onClick={() => setFmtOpen(true)} className="flex items-center justify-between gap-3 rounded-2xl p-3 text-left" style={{ background: '#eef1e8' }}>
+            <span className="min-w-0">
+              <span className="block text-[14px] font-semibold">{DRAW_KIND_NAME[kind]}{kind !== 'quads' ? ` · ${doubles ? 'Doubles' : 'Singles'}` : ''}</span>
+              <span className="block text-[12px]" style={{ color: C.muted }}>{planLine}</span>
+            </span>
+            <span className="shrink-0 text-[13px] font-semibold underline">Change</span>
+          </button>
+        ) : (
         <div className="rounded-2xl p-3" style={{ background: '#eef1e8' }}>
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[14px] font-semibold">Tournament format</div>
+            <div className="text-[14px] font-semibold">Tournament format <button type="button" onClick={() => setFmtOpen(false)} className="ml-1 text-[13px] underline">Done</button></div>
             {kind !== 'quads' && <div className="flex rounded-lg bg-white p-0.5 text-[12px] font-semibold">
               {[false, true].map((dbl) => (
                 <button key={String(dbl)} disabled={!!busy} onClick={() => dbl !== doubles && setFormat(drawFormatFor(kind, dbl))} className="rounded-md px-2.5 py-1"
@@ -580,15 +591,14 @@ export function DrawHostControls({ e, busy, act, checkIn }: { e: PlayEvent; busy
               })}
             </div>
           )}
-          <p className="mt-1 text-[12px]" style={{ color: C.muted }}>
-            {planText ?? (typeof preview === 'string' && here.length ? preview : 'Seeded by the levels people picked. You can change the seeds before you start.')}
-          </p>
+          <p className="mt-1 text-[12px]" style={{ color: C.muted }}>{planLine}</p>
         </div>
+        )}
         {doubles && <PairsEditor e={e} busy={busy} act={act} />}
         {checkIn}
         {preview && typeof preview !== 'string' && <SeedsEditor e={e} d={preview} busy={busy} act={act} />}
         <button onClick={() => act({ action: 'start' })} disabled={!!busy || typeof preview === 'string'}
-          className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-50" style={{ background: C.ink }}>
+          className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-50" style={{ background: C.lime, color: C.ink }}>
           {busy === 'start' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
           {!here.length ? 'Check people in to start' : typeof preview === 'string' ? `${here.length} checked in · not ready yet` : `Make the draw with ${here.length} checked in`}
         </button>
