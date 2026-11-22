@@ -51,3 +51,16 @@ describe('pricing line', () => {
     expect(PRICING_LINE).toMatch(/joining is always free/i);
   });
 });
+
+describe('landing demo stages are the same on every visit', () => {
+  it('two builds pair the same players on the same courts', () => {
+    const courts = (s: ReturnType<typeof buildStages>) => s.live.state.mixer!.rounds[0].matches.map((m) => [m.court, m.teamA, m.teamB]);
+    expect(courts(buildStages(now, 'tennis'))).toEqual(courts(buildStages(new Date('2027-03-01T10:00:00Z'), 'tennis')));
+  });
+});
+
+it('puts Math.random back after building', () => {
+  const before = Math.random;
+  buildStages(now, 'padel');
+  expect(Math.random).toBe(before);
+});

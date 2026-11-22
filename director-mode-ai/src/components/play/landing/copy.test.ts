@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
-import { BENEFITS, CTA, DEMO_STEPS, FINAL, FORMATS, HERO, STAGES, TAGLINE } from './copy';
+import { BENEFITS, CTA, FINAL, FORMATS, HERO, STORY, TAGLINE } from './copy';
 
 const src = (p: string) => readFileSync(path.join(__dirname, '..', '..', '..', p), 'utf8');
 const route = (href: string) => path.join(__dirname, '..', '..', '..', 'app', href.replace(/^\//, ''), 'page.tsx');
@@ -27,17 +27,21 @@ describe('landing copy', () => {
     expect(page).toContain('id="formats"');
   });
 
-  it('tells the three-stage story', () => {
-    expect(STAGES.map((s) => s.label)).toEqual(['Create it', 'Fill it', 'Play it']);
+  it('tells the three-stage story, each stage with real screens', () => {
+    expect(STORY.map((s) => s.label)).toEqual(['Create it', 'Fill it', 'Play it']);
+    const screens = src('components/play/landing/Screens.tsx');
+    for (const st of STORY) {
+      expect(st.screens.length).toBeGreaterThan(0);
+      for (const sc of st.screens) expect(screens).toContain(`case '${sc.id}':`);
+    }
   });
 
-  it('every demo step has a screen', () => {
-    const screens = src('components/play/landing/Screens.tsx');
-    for (const s of DEMO_STEPS) expect(screens).toContain(`case '${s.key}':`);
+  it('captions never name who partners whom (pairings differ by browser engine)', () => {
+    for (const sc of STORY.flatMap((s) => [...s.screens] as { id: string; caption: string }[])) expect(sc.caption).not.toMatch(/with (Jordan|Priya|Marcus|Dev|Elena|Chris|Sofia)/);
   });
 
   it('makes no invented social proof or metrics', () => {
-    const all = JSON.stringify({ HERO, STAGES, DEMO_STEPS, BENEFITS, FORMATS, FINAL });
+    const all = JSON.stringify({ HERO, STORY, BENEFITS, FORMATS, FINAL });
     expect(all).not.toMatch(/\b\d[\d,]*\+?\s*(users|hosts|players|games played|clubs)\b/i);
     expect(all).not.toMatch(/testimonial|rated|#1|best-in-class|revolutionary|seamless/i);
   });

@@ -15,11 +15,20 @@
   field, larger tap targets, visible keyboard focus. No logic changes.
 - `C.muted` darkened `#6a7b71` → `#5d6e64` (4.1:1 → 4.9:1 on paper, WCAG AA) on all /play screens.
 
+## Second pass (same day)
+- "How it works" and "See it in action" merged into one interactive **Create it. Fill it. Play it.**
+  (stage tabs drive one real phone; on mobile the switch sits right above it). Mobile page 8,300px → ~4,700px.
+- Benefits: 4 bold-led points per side, no checkmark lists. Formats: court diagrams, no fake sport "buttons".
+- Section kickers removed; the tagline now signs off the final CTA. Hero names the sports, one-line trust.
+- Demo game is deterministic per browser engine (fixed ids + seeded Math.random while building);
+  captions never name partners, since the pairing shuffle differs between engines.
+- Fixed a hydration mismatch from `>` in the page's inline CSS.
+
 ## Funnel events (existing first-party tracker, `trackEvent('feature_use', …)`)
 | Event | When |
 |---|---|
 | `page_view` | already automatic (AnalyticsTracker) |
-| `rirl_cta` `{where: nav/hero/demo/final}` | "Create a game" clicks |
+| `rirl_cta` `{where: nav/hero/story/final}` | "Create a game" clicks |
 | `rirl_how` `{where}` | "See how it works" / nav |
 | `rirl_demo_step` `{step, how}` | demo interaction |
 | `rirl_full_demo`, `rirl_join`, `rirl_nav` | deeper demo, find a game, nav |

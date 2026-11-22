@@ -27,65 +27,69 @@ export const TAGLINE = 'Racquet Sports. Together. In Real Life.';
 export const HERO = {
   title: ['More playing.', 'Less planning.'] as const,
   sub: 'Create the game. Bring everyone together. Make every minute on court more fun.',
-  trust: ['Tennis, pickleball & padel', 'No app or login, for you or your players', 'Your first game is free'],
+  sports: 'Tennis · Pickleball · Padel',
+  trust: 'Free first game · No app, no login',
 };
 
-export const STAGES = [
+/**
+ * Create it / Fill it / Play it, told on one real game: Friday Night Doubles, 8 players,
+ * 2 courts (lib/play/demoStages). Each stage owns the phone screens that show it.
+ * Captions never name partners: the pairing engine's shuffle differs by browser engine.
+ */
+export const STORY = [
   {
     key: 'create', label: 'Create it', title: 'Set up your game in seconds.',
-    body: 'Pick your sport and a format, add when and where. In a hurry? Type or say it in one sentence and the form fills itself in.',
+    body: 'Pick a sport and a format, add when and where. Or just say it in one sentence.',
+    screens: [{ id: 'create', caption: 'Jordan sets up Friday doubles: 2 courts, Lakeside Park.' }],
   },
   {
     key: 'fill', label: 'Fill it', title: 'One link. Everyone’s in.',
-    body: 'Drop the link in your group chat. Players tap in with just their name. You see who’s coming, and nudge the rest in one tap.',
+    body: 'Drop it in the group chat. Players tap in with just their name. No app, no account.',
+    screens: [
+      { id: 'share', caption: 'The link lands in the group chat.' },
+      { id: 'fill', caption: '8 of 8 in. Jordan sees exactly who’s coming.' },
+    ],
   },
   {
     key: 'play', label: 'Play it', title: 'Show up. Play. Have a blast.',
-    body: 'Tap Start and every phone shows its court, partner and opponents. Scores go in from any phone and the next round builds itself.',
+    body: 'Tap Start and every phone shows its court, partner and opponents. Scores go in from any phone.',
+    screens: [
+      { id: 'courts', caption: 'Maya’s phone: her court, partner and opponents.' },
+      { id: 'next', caption: 'Round 2: a new partner, and the standings so far.' },
+    ],
   },
-] as const;
-
-export const DEMO_STEPS = [
-  { key: 'create', title: 'Jordan creates the game', body: 'Sport, format, when and where, a first name. Done.' },
-  { key: 'share', title: 'One link in the group chat', body: 'No app to download, no account to make.' },
-  { key: 'fill', title: 'The roster fills itself', body: '8 of 8 in. Jordan sees exactly who’s coming.' },
-  { key: 'courts', title: 'Everyone gets a court', body: 'Jordan taps Start. Maya’s phone shows her court, partner and opponents.' },
-  { key: 'next', title: 'Scores in, next round ready', body: 'Scores from any phone, standings update live, fresh partners for round 2.' },
 ] as const;
 
 export const BENEFITS = {
   together: {
-    kicker: 'Bring everyone together',
-    title: 'Less chasing. More yeses.',
+    title: 'Easier to organize.',
     points: [
-      'One link for the group chat: WhatsApp, text, or a QR code at the courts.',
-      'Players join in seconds with a first name. No app, no account, no password.',
-      'See who’s in at a glance, and nudge the group chat in one tap when you need a few more.',
-      'Set a player cap and a waitlist fills any spot that opens up.',
-      'Same time every week? Turn on repeat and next week’s game sets itself up.',
+      ['No app, no account.', 'Players tap in with a first name.'],
+      ['Know who’s coming.', 'See who’s in and nudge the rest in one tap.'],
+      ['Drop-outs covered.', 'Set a cap and the waitlist fills any spot that opens.'],
+      ['Every week, sorted.', 'Turn on repeat and next week sets itself up.'],
     ],
   },
   court: {
-    kicker: 'Make it better on court',
-    title: 'Not just an RSVP. It runs the games.',
+    title: 'More fun to play.',
     points: [
-      'Courts, partners and opponents assigned in one tap. No clipboard, no shouting.',
-      'Partners rotate each round, and the format is picked to keep every court full.',
-      'Anyone in the game can enter a score. The standings update live.',
-      'King of the Court, round robins, team battles: formats people want to play.',
-      'At the end, a recap of the night with a line for every player.',
+      ['Courts in one tap.', 'No clipboard, no shouting across the fence.'],
+      ['Fresh partners every round.', 'And every court stays full.'],
+      ['Scores from any phone.', 'The standings move as the courts come in.'],
+      ['A recap worth sharing.', 'A line for every player at the end of the night.'],
     ],
   },
 } as const;
 
 export const FORMATS = [
-  { title: 'Casual doubles', sub: 'Or singles. One court, four players (or two). Your regular hit, organized.' },
-  { title: 'Social mixer', sub: 'Rotating partners for any headcount. Every court full, every round.' },
-  { title: 'King of the Court', sub: 'Win and move up, lose and move down. Everyone’s chasing Court 1.' },
-  { title: 'Tournament', sub: 'Round robins, brackets, compass draws, pools with playoffs. The draw is made for you.' },
+  { key: 'doubles', title: 'Doubles or singles', sub: 'Your regular game, on one court.' },
+  { key: 'mixer', title: 'Social mixer', sub: 'Rotating partners, any headcount.' },
+  { key: 'kotc', title: 'King of the Court', sub: 'Win and move up. Everyone wants Court 1.' },
+  { key: 'tournament', title: 'Tournament', sub: 'Round robins, brackets, pools. Draw made for you.' },
 ] as const;
 
-export const AUDIENCE = 'For whoever always ends up organizing: the friend who books the courts, pickleball group leaders, club pros and social mixer hosts.';
+export const AUDIENCE = 'For whoever always ends up organizing: the friend who books the courts, pickleball group leaders, club pros and mixer hosts.';
+export const FORMATS_ALSO = 'Tennis, pickleball and padel. Mixed doubles and team battles too.';
 
 export const FINAL = {
   title: 'Your next great game starts here.',

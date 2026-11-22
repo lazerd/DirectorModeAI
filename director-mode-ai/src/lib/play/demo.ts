@@ -99,17 +99,18 @@ export interface Applied { e: PlayEvent; id?: string }
 export function apply(e0: PlayEvent, b: Act, seed = 7): Applied {
   const e: PlayEvent = structuredClone(e0);
   const ins = () => e.rsvps.filter((r) => r.status === 'in');
-  const add = (name: string, host = false): string => {
+  const add = (name: string, host = false, id?: string): string => {
     const have = e.rsvps.find((r) => r.name.toLowerCase() === name.toLowerCase() && r.status !== 'out');
     if (have) return have.id;
-    const r: PlayRsvp = { id: rid(), name, gender: null, level: null, team: null, status: ins().length >= (e.spots ?? 99) && e.status === 'open' ? 'wait' : 'in', is_host: host, created_at: new Date().toISOString() };
+    const r: PlayRsvp = { id: id ?? rid(), name, gender: null, level: null, team: null, status: ins().length >= (e.spots ?? 99) && e.status === 'open' ? 'wait' : 'in', is_host: host, created_at: new Date().toISOString() };
     e.rsvps.push(r);
     if (e.status === 'live' && e.state.mixer && r.status === 'in') e.state.mixer.players.push({ id: r.id, name });
     return r.id;
   };
   const m = e.state.mixer;
   switch (b.action) {
-    case 'join': return { e, id: add(String(b.name), !!b.host) };
+    // id: optional fixed id, so a scripted scene (the landing page) pairs the same way on every load.
+    case 'join': return { e, id: add(String(b.name), !!b.host, typeof b.id === 'string' ? b.id : undefined) };
     case 'add': String(b.names ?? '').split(/[,\n]+/).map((x) => x.trim()).filter(Boolean).forEach((x) => add(x)); break;
     case 'leave': case 'remove': {
       const r = e.rsvps.find((x) => x.id === b.id); if (r) r.status = 'out';

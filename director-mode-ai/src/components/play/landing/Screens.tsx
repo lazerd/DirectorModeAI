@@ -12,7 +12,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react';
 import { Check } from 'lucide-react';
 import { whenLine } from '@/lib/play/core';
 import { DEMO_SPORTS, type DemoSport } from '@/lib/play/demo';
-import { buildStages, STAGE_PLAYERS, STAGE_TITLE, viewAs } from '@/lib/play/demoStages';
+import { stagesFor, STAGE_PLAYERS, STAGE_TITLE, viewAs } from '@/lib/play/demoStages';
 import { Compose, EventScreen, blankForm } from '../DemoScreens';
 import { BrandContext } from '../shared';
 
@@ -26,7 +26,7 @@ const ANCHOR: Partial<Record<ScreenId, string>> = {
 };
 
 export default function Screens({ id, sport = 'tennis', height }: { id: ScreenId; sport?: DemoSport; height: number }) {
-  const s = useMemo(() => buildStages(new Date(), sport), [sport]);
+  const s = useMemo(() => stagesFor(sport), [sport]);
   const scroller = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {

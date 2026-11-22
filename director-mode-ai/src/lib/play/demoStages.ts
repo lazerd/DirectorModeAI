@@ -8,7 +8,7 @@
  * product really does.
  */
 import { normalizeDraft, type PlayEvent } from '@/lib/play/core';
-import { CREW, DEMO_SPORTS, HOST, ME, apply, demoDraft, makeEvent, type Act, type DemoSport } from '@/lib/play/demo';
+import { CREW, DEMO_SPORTS, HOST, ME, apply, demoDraft, makeEvent, rng, type Act, type DemoSport } from '@/lib/play/demo';
 
 export const STAGE_TITLE = 'Friday Night Doubles';
 export const STAGE_PLAYERS = 8;
@@ -35,6 +35,15 @@ export interface Stages {
 const first = (n: string) => n.split(' ')[0];
 
 export function buildStages(now = new Date(), sport: DemoSport = 'tennis'): Stages {
+  // The real pairing engine breaks ties with Math.random even when seeded. For this one
+  // scripted scene, borrow a seeded source while it builds, so every visitor (and the hero
+  // and the walkthrough) sees the same courts. The real app is untouched.
+  const real = Math.random;
+  Math.random = rng(20261122);
+  try { return build(now, sport); } finally { Math.random = real; }
+}
+
+function build(now: Date, sport: DemoSport): Stages {
   const K = DEMO_SPORTS[sport];
   const draft = normalizeDraft({
     ...demoDraft(now, sport),
@@ -47,7 +56,8 @@ export function buildStages(now = new Date(), sport: DemoSport = 'tennis'): Stag
   let e = makeEvent(draft);
   let hostId = '', mayaId = '';
   const run = (b: Act) => { const r = apply(e, b); e = r.e; return r.id; };
-  const join = (name: string) => run({ action: 'join', name, host: name === HOST })!;
+  // Fixed ids: the pairing engine is seeded, so the same ids give the same courts on every visit.
+  const join = (name: string) => run({ action: 'join', name, host: name === HOST, id: `p-${first(name).toLowerCase()}` })!;
 
   hostId = join(HOST);
   const created = e;
@@ -75,6 +85,14 @@ export function buildStages(now = new Date(), sport: DemoSport = 'tennis'): Stag
   const next = e;
 
   return { created, filling, full, live, next, hostId, mayaId };
+}
+
+/** One game per sport per page: the hero and the walkthrough show the same night. */
+const cache = new Map<DemoSport, Stages>();
+export function stagesFor(sport: DemoSport = 'tennis'): Stages {
+  let s = cache.get(sport);
+  if (!s) { s = buildStages(new Date(), sport); cache.set(sport, s); }
+  return s;
 }
 
 /** The event as one phone sees it: the host's, or Maya's. */
