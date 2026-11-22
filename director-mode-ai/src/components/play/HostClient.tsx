@@ -196,12 +196,9 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             headline; tapping listens (or opens a small box where speech isn't supported) and the
             steps below fill in. */}
         {!typing ? (
-          <button type="button" onClick={openSay} className="mx-auto mt-4 flex max-w-sm items-start gap-3 rounded-2xl px-3 py-2 text-left">
+          <button type="button" onClick={openSay} className="mx-auto mt-4 flex items-center gap-3 rounded-full px-3 py-2 text-left">
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full" style={{ background: C.ink, color: C.lime }}><Mic className="h-5 w-5" /></span>
-            <span>
-              <span className="block text-[15px] font-semibold">Know what you want? Just say it.</span>
-              <span className="block text-[13px] italic leading-snug" style={{ color: C.muted }}>&ldquo;{SAY_EXAMPLE}&rdquo;</span>
-            </span>
+            <span className="text-[15px] font-semibold">Know what you want? Just say it.</span>
           </button>
         ) : (
           <form className="mt-4" onSubmit={(e) => { e.preventDefault(); build(); }}>
