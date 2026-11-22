@@ -10,12 +10,12 @@
  */
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Check, Loader2, Pause, Play, RotateCcw, Sparkles } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Clock, MapPin, Mic, Pause, Play, RotateCcw } from 'lucide-react';
 import { standings } from '@/lib/mixer/guestMixer';
-import { parseSentence, whenLine, type PlayDraft, type PlayEvent } from '@/lib/play/core';
+import { whenLine, type PlayEvent } from '@/lib/play/core';
 import { DEMO_BRAND, DEMO_SPORTS, DEMO_TAGLINE, HOST, isDemoSport, type DemoSport, ME, apply, courtOf, demoDraft, makeEvent, nextFriday, rng, simScore, type Act } from '@/lib/play/demo';
 import { DoneView, EventCard, HostPanel, LiveView, OpenView, StatusSheet, type Res } from './EventClient';
-import EventPicker from './EventPicker';
+import { FormatChooser } from './EventPicker';
 import { PlaceMap } from './PlacePicker';
 import { BrandContext, C, PlayHeader } from './shared';
 
@@ -23,7 +23,7 @@ type PhoneId = 'host' | 'chat' | 'maya';
 type Msg = { id: number; from: string; text?: string; link?: { title: string; sub: string }; card?: { name: string; tag: string; line: string } };
 
 const CHAPTERS = [
-  { t: 'Say it once.', d: 'The host types one sentence. It becomes a real event: when, where, how many, which courts, what level, and a format that fills every court.' },
+  { t: 'Four quick steps.', d: 'The host fills in one short page: sport, format, when and where, and a first name. It picks a format that fills every court.' },
   { t: 'Drop one link.', d: 'No app to download and no accounts to make. The link goes where the group already talks: the group chat.' },
   { t: 'Everyone taps in.', d: 'Five seconds a player. The page fills itself, and an announcer writes a line for every name that taps in.' },
   { t: 'Know who’s coming.', d: 'Tap Status: who’s in, who hasn’t answered, and a one-tap nudge with their names in it. Nobody has to keep a list.' },
@@ -34,9 +34,14 @@ const CHAPTERS = [
 ];
 
 /* ---------------- tour state ---------------- */
+// Jordan's Start a game page (/play/new, HostClient), filled in step by step. Kevin 11/22/26: the tour
+// trains new hosts, and a new host fills in the steps rather than using the mic, so the tour does too.
+type Field = 'where' | 'level' | 'name';
+interface Form { sport: DemoSport; tile: 'game' | 'mixer'; when: string; where: string; courts: number; more: boolean; level: string; cap: number | null; name: string; typing: Field | null }
+const blankForm = (): Form => ({ sport: 'tennis', tile: 'game', when: '', where: '', courts: 1, more: false, level: '', cap: null, name: '', typing: null });
 interface Tour {
   sport: DemoSport; e: PlayEvent; hostId: string | null; mayaId: string | null;
-  host: 'compose' | 'event'; compose: string; draft: PlayDraft | null; tidy: boolean; hostName: string; banner: boolean;
+  host: 'compose' | 'event'; form: Form; banner: boolean;
   maya: 'lock' | 'event';
   notif: { phone: PhoneId; title: string; body: string; k: number } | null;
   chat: Msg[]; typing: string | null;
@@ -49,7 +54,7 @@ interface Tour {
 }
 const fresh = (sport: DemoSport = 'tennis'): Tour => ({
   sport, e: makeEvent(demoDraft(new Date(), sport)), hostId: null, mayaId: null,
-  host: 'compose', compose: '', draft: null, tidy: false, hostName: '', banner: false,
+  host: 'compose', form: blankForm(), banner: false,
   maya: 'lock',
   notif: null, chat: [], typing: null,
   chapter: -1, beat: '', focus: 'host',
@@ -214,23 +219,44 @@ export default function DemoTour() {
     const clock = (minsLeft: number) => set((t) => ({ e: { ...t.e, state: { ...t.e.state, roundStartedAt: new Date(Date.now() - (t.e.round_minutes - minsLeft) * 60e3).toISOString() } } }));
 
     (async () => {
-      /* 1 · Say it once */
+      /* 1 · Four quick steps */
       chapter(0);
-      beat('Jordan has a Friday group and three courts. Watch what one sentence does.', 'host');
-      await wait(1600);
-      await type((v) => set({ compose: v }), K.sentence);
+      const F = (p: Partial<Form>) => set((t) => ({ form: { ...t.form, ...p } }));
+      const fill = async (f: Field, text: string, cps = 16) => { await type((v) => F({ [f]: v, typing: f } as Partial<Form>), text, cps); F({ typing: null }); };
+      beat('Jordan has a Friday group and three courts. Jordan opens Start a game.', 'host');
+      await wait(1800);
+      beat(`Step 1, Sport: ${K.label}.`);
+      await tap('host', `[data-demo="sport-${sportRef.current}"]`);
+      F({ sport: sportRef.current });
+      await wait(600);
+      beat('Step 2, Format: Social mixer. Partners rotate and nobody sits out.');
+      await tap('host', '[data-demo="tile-mixer"]');
+      F({ tile: 'mixer', courts: 2 });
+      await wait(1200);
+      beat('It picks Optimize Courts, so every court is full every round.');
+      await scrollTo('host', '[data-demo="chooser"]');
+      await wait(1800);
+      beat(`Step 3, When & where: Friday 6pm at ${K.place}, 3 courts.`);
+      await tap('host', '[data-demo="when"]');
+      F({ when: whenLine(S.current.e) ?? 'Friday 6pm' });
       await wait(500);
-      await tap('host', '[aria-label="Make it"]');
-      const parsed = parseSentence(K.sentence);
-      set({ draft: { ...parsed, starts_at: nextFriday().toISOString() }, tidy: true });
-      beat(`It reads the sentence: ${K.read}.`);
-      await wait(2200);
-      set({ draft: demoDraft(new Date(), sportRef.current), tidy: false });
-      beat('Then it tidies the title and picks the format: Optimize Courts, so every court is full and nobody sits.');
-      await scrollTo('host', '[data-demo="picker"]', 'start');
-      await wait(2600);
-      await scrollTo('host', '[aria-label="Your name"]');
-      await type((v) => set({ hostName: v }), 'Jordan', 12);
+      await tap('host', '[data-demo="where"]');
+      await fill('where', K.place);
+      await tap('host', '[aria-label="More Courts"]');
+      F({ courts: 3 });
+      await wait(800);
+      beat(`More options: level ${K.level} and a 12-player cap.`);
+      await tap('host', '[data-demo="more"]');
+      F({ more: true });
+      await wait(500);
+      await tap('host', '[aria-label="Level"]');
+      await fill('level', K.level, 14);
+      await tap('host', '[aria-label="More Player cap"]');
+      F({ cap: 12 });
+      await wait(800);
+      beat('Step 4, You: a first name, then Make my link.');
+      await tap('host', '[aria-label="Your name"]');
+      await fill('name', 'Jordan', 12);
       await tap('host', 'text:Make my link');
       const hid = joinAs(HOST);
       set({ hostId: hid, host: 'event', banner: true });
@@ -602,47 +628,114 @@ function EventScreen({ e, act, busy, tab, setTab, sheet, setSheet, banner }: {
 }
 
 function Compose({ t }: { t: Tour }) {
-  const d = t.draft;
+  // Mirrors HostClient (/play/new). Display only: the tour fills it in.
+  const f = t.form;
+  const caret = (k: Field) => (f.typing === k ? <span className="demo-caret" /> : null);
+  const box = 'flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5 text-[16px]';
+  const ph = { color: '#8a978d' };
+  const title = demoDraft(new Date(), f.sport).title;
+  const TILES = [['game', 'A game', 'Doubles or singles, 1 court'], ['mixer', 'Social mixer', 'Rotating partners, any headcount'], ['kotc', 'King of the Court', 'Winners move up a court'], ['tournament', 'Tournament', 'Round robin or brackets']] as const;
   return (
     <div className="min-h-full pb-16" style={{ background: C.paper, color: C.ink }}>
-      <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Tennis · Pickleball · Padel</span>} />
+      <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Free · No login</span>} />
       <main className="px-5">
-        {!d && (
-          <section className="pt-6 text-center">
-            <div className="text-[10px] font-semibold uppercase tracking-[2px]" style={{ color: C.muted }}>Racquet Sports. Together. In Real Life.</div>
-            <h1 className="mt-4 text-[44px] font-medium leading-[1.02] tracking-[-2.5px]">Racquets IRL</h1>
-            <p className="mx-auto mt-4 max-w-sm text-[15px] leading-relaxed" style={{ color: C.muted }}>Free to use. No login needed.</p>
-          </section>
-        )}
-        <div className="mt-7 flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
-          <div className="min-h-[52px] flex-1 py-2 text-[16px]">{t.compose || <span style={{ color: '#8a978d' }}>e.g. Doubles Friday 6pm at Heather Farm, need 3 more</span>}{!d && <span className="demo-caret" />}</div>
-          <span aria-label="Make it" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ background: C.ink }}>{t.tidy ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}</span>
+        <h1 className="pt-6 text-center text-[36px] font-medium leading-[1.04] tracking-[-1.5px]">Start a game</h1>
+        <div className="mx-auto mt-4 flex w-fit items-center gap-3 rounded-full px-3 py-2">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full" style={{ background: C.ink, color: C.lime }}><Mic className="h-5 w-5" /></span>
+          <span className="text-[15px] font-semibold">Know what you want? Just say it.</span>
         </div>
-        {d && (
-          <section className="demo-pop mt-5 rounded-3xl p-5 text-white shadow-lg" style={{ background: C.ink }}>
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: '#bccdbb' }}>
-              <span>{d.sport} · rotating partners</span>{t.tidy && <span className="inline-flex items-center gap-1"><Sparkles className="h-3.5 w-3.5" /> tidying up…</span>}
+        <div className="mt-1 text-center text-[14px] underline underline-offset-4" style={{ color: C.muted }}>Or just type it in.</div>
+
+        <DemoStep n={1} title="Sport">
+          <div className="grid grid-cols-3 gap-1 rounded-xl p-1" style={{ background: '#e7ece2' }}>
+            {(['tennis', 'pickleball', 'padel'] as DemoSport[]).map((x) => (
+              <span key={x} data-demo={`sport-${x}`} className="rounded-lg py-2 text-center text-[14px] font-semibold" style={f.sport === x ? { background: C.ink, color: '#fff' } : undefined}>{DEMO_SPORTS[x].label}</span>
+            ))}
+          </div>
+        </DemoStep>
+
+        <DemoStep n={2} title="Format">
+          <div className="grid grid-cols-2 gap-2">
+            {TILES.map(([id, label, sub]) => {
+              const on = f.tile === id;
+              return (
+                <div key={id} data-demo={`tile-${id}`} className="rounded-2xl border px-3.5 py-3"
+                  style={{ borderColor: on ? C.ink : C.line, background: on ? '#f4ffd9' : '#fff', boxShadow: on ? `inset 0 0 0 1px ${C.ink}` : undefined }}>
+                  <span className="flex items-center justify-between gap-1 text-[15px] font-semibold">{label}{on && <Check className="h-4 w-4" />}</span>
+                  <span className="mt-0.5 block text-[12px] leading-snug" style={{ color: C.muted }}>{sub}</span>
+                </div>
+              );
+            })}
+          </div>
+          {f.tile === 'game' && (
+            <div className="mt-2 grid grid-cols-2 gap-1 rounded-xl p-1" style={{ background: '#e7ece2' }}>
+              <span className="rounded-lg py-2 text-center text-[14px] font-semibold" style={{ background: C.ink, color: '#fff' }}>Doubles (4)</span>
+              <span className="py-2 text-center text-[14px] font-semibold">Singles (2)</span>
             </div>
-            <div key={d.title} className="demo-pop mt-2 text-[28px] font-medium leading-tight tracking-tight">{d.title}</div>
-            <div className="mt-3 grid gap-1.5 text-[15px]">
-              <div>🕕 {whenLine(d)}</div><div>📍 {d.location}</div>
+          )}
+          {f.tile === 'mixer' && (
+            <div data-demo="chooser" className="demo-pop pointer-events-none"><FormatChooser value="maximize-courts" spots={f.cap} courts={f.courts} onChange={() => {}} /></div>
+          )}
+        </DemoStep>
+
+        <DemoStep n={3} title="When & where">
+          <div className="grid gap-2">
+            <div data-demo="when" className={box} style={{ borderColor: C.line }}><Clock className="h-4 w-4 shrink-0" style={{ color: C.muted }} />{f.when || <span style={ph}>Pick a day &amp; time</span>}</div>
+            <div data-demo="where" className={box} style={{ borderColor: C.line }}><MapPin className="h-4 w-4 shrink-0" style={{ color: C.muted }} />{f.where || (f.typing === 'where' ? null : <span style={ph}>Where? (courts, park, club)</span>)}{caret('where')}</div>
+            {f.tile !== 'game' && <DemoStepper label="Courts" value={f.courts} />}
+          </div>
+        </DemoStep>
+
+        <div className="mt-4">
+          <div data-demo="more" className="flex w-fit items-center gap-1 text-[13px] font-semibold" style={{ color: C.muted }}>
+            More options <span className="font-normal">(name, level, player cap, weekly)</span> <ChevronDown className={`h-4 w-4 transition-transform ${f.more ? 'rotate-180' : ''}`} />
+          </div>
+          {f.more && (
+            <div className="demo-pop mt-2 grid gap-2 text-[14px]">
+              <div className={box} style={{ borderColor: C.line }}><span className="shrink-0 text-[14px]" style={{ color: C.muted }}>Name</span>{title}</div>
+              <div aria-label="Level" className={box} style={{ borderColor: C.line }}><span className="shrink-0 text-[14px]" style={{ color: C.muted }}>Level</span>{f.level || (f.typing === 'level' ? null : <span style={ph}>Any level</span>)}{caret('level')}</div>
+              <DemoStepper label="Player cap" value={f.cap ?? 'None'} />
+              <div className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line }}><span className="h-4 w-4 rounded border" style={{ borderColor: C.muted }} />Every week</div>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">
-              {[['Players', d.spots], ['Courts', d.courts], ['Sport', DEMO_SPORTS[t.sport].label], ['Level', d.level]].map(([k, v]) => (
-                <div key={k as string} className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}><span style={{ color: '#bccdbb' }}>{k}</span><b>{v}</b></div>
-              ))}
-            </div>
-          </section>
-        )}
-        {d && <div data-demo="picker" className="pointer-events-none"><EventPicker value={d.format} spots={d.spots} courts={d.courts} onChange={() => {}} /></div>}
-        {d && (
-          <section className="mt-4 grid gap-3">
-            <div aria-label="Your name" className="w-full rounded-xl border bg-white px-3 py-2.5 text-[16px]" style={{ borderColor: C.line }}>{t.hostName || <span style={{ color: '#8a978d' }}>Your first name</span>}</div>
-            <button className="flex h-14 items-center justify-center rounded-2xl text-[17px] font-semibold" style={{ background: C.lime, color: C.ink }}>Make my link</button>
-            <p className="text-center text-[12px]" style={{ color: C.muted }}>Your first event is free. Joining is always free.</p>
-          </section>
-        )}
+          )}
+        </div>
+
+        <DemoStep n={4} title="You">
+          <div className="grid gap-3">
+            <div aria-label="Your name" className="w-full rounded-xl border bg-white px-3 py-2.5 text-[16px]" style={{ borderColor: C.line }}>{f.name || (f.typing === 'name' ? null : <span style={ph}>Your first name</span>)}{caret('name')}</div>
+            <div className="flex items-center gap-2 text-[14px]"><span className="grid h-5 w-5 place-items-center rounded text-white" style={{ background: C.ink }}><Check className="h-3.5 w-3.5" /></span>I&apos;m playing too{f.cap != null ? ` (counts as 1 of the ${f.cap})` : ''}</div>
+          </div>
+        </DemoStep>
+
+        <section className="mt-5 grid gap-2">
+          <button className="flex h-14 items-center justify-center rounded-2xl text-[17px] font-semibold" style={{ background: C.lime, color: C.ink }}>Make my link</button>
+          <p className="text-center text-[12px]" style={{ color: C.muted }}>Free to host your first game. Joining is always free.</p>
+        </section>
       </main>
+    </div>
+  );
+}
+
+function DemoStep({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-6">
+      <h2 className="mb-2 flex items-center gap-2 text-[15px] font-semibold">
+        <span className="grid h-6 w-6 place-items-center rounded-full text-[12px] font-bold" style={{ background: C.ink, color: C.lime }}>{n}</span>{title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+
+function DemoStepper({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="flex items-center justify-between rounded-xl border bg-white px-3 py-2" style={{ borderColor: C.line }}>
+      <span className="text-[14px]" style={{ color: C.muted }}>{label}</span>
+      <span className="flex items-center gap-2">
+        <span className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: '#eef1e8' }}>−</span>
+        <b key={String(value)} className="demo-pop min-w-6 text-center text-[16px]">{value}</b>
+        <span aria-label={`More ${label}`} className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: '#eef1e8' }}>+</span>
+      </span>
     </div>
   );
 }
@@ -787,19 +880,15 @@ function Narrator({ t, wide, paused, driving, speed, pills, onToggle, onRestart,
 }
 
 function EndCard({ onReplay }: { onReplay: () => void }) {
-  const [q, setQ] = useState('');
   return (
     <div className="demo-fade absolute inset-0 z-50 grid place-items-center rounded-3xl p-4" style={{ background: '#07231cee', backdropFilter: 'blur(6px)' }}>
       <div className="w-full max-w-lg text-center">
         <Logo s={48} />
         <div className="mt-3 text-[13px] font-semibold uppercase tracking-[2px]" style={{ color: C.lime }}>{DEMO_BRAND} · {DEMO_TAGLINE}</div>
         <h2 className="mt-4 text-[44px] font-semibold leading-[1.02] tracking-[-2px]">A whole night.<br />Zero clipboards.</h2>
-        <p className="mx-auto mt-3 max-w-md text-[16px]" style={{ color: '#b8cbbd' }}>One sentence, one link, every phone on the right court, and a recap people actually share. Your first one is on us.</p>
-        <form className="mt-6 flex gap-2 rounded-2xl bg-white p-2" onSubmit={(x) => { x.preventDefault(); location.href = `/play/new?q=${encodeURIComponent(q.trim() || 'Doubles this Saturday 9am, 4 players')}`; }}>
-          <input value={q} onChange={(x) => setQ(x.target.value)} placeholder="Describe your game: Doubles Sat 9am at…" aria-label="Describe your game"
-            className="min-w-0 flex-1 bg-transparent px-3 text-[16px] outline-none" style={{ color: C.ink }} />
-          <button className="rounded-xl px-5 py-3 text-[15px] font-semibold" style={{ background: C.lime, color: C.ink }}>Make it</button>
-        </form>
+        <p className="mx-auto mt-3 max-w-md text-[16px]" style={{ color: '#b8cbbd' }}>Four quick steps, one link, every phone on the right court, and a recap people actually share. Your first one is on us.</p>
+        <Link href="/play/new" className="mt-6 inline-flex items-center gap-2 rounded-2xl px-6 py-4 text-[17px] font-semibold" style={{ background: C.lime, color: C.ink }}>Start a game <ArrowRight className="h-5 w-5" /></Link>
+        <div />
         <button onClick={onReplay} className="mt-4 inline-flex items-center gap-1.5 text-[14px] font-semibold underline underline-offset-4"><RotateCcw className="h-4 w-4" />Watch it again</button>
       </div>
     </div>
