@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, ChevronDown, Check, Zap } from 'lucide-react';
+import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, ChevronDown, Check } from 'lucide-react';
 import { PlacePicker } from './PlacePicker';
 import { levelLabel } from '@/lib/play/levels';
 import { levelPresets } from './Levels';
@@ -44,7 +44,6 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   const router = useRouter();
   const [text, setText] = useState(initial ?? '');
   const [draft, setDraft] = useState<PlayDraft | null>(FRESH);
-  const [typing, setTyping] = useState(!!initial); // the 'just type it' shortcut is open
   const autoTitle = useRef(true); // title follows the format until the host names it (or types a sentence)
   const [thinking, setThinking] = useState(false);
   const [mic, setMic] = useState<null | (() => void)>(null);
@@ -187,6 +186,23 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       <main className="mx-auto w-full max-w-xl px-5">
         <h1 className="pt-6 text-center text-[36px] font-medium leading-[1.04] tracking-[-1.5px] sm:text-[48px]">Start a game</h1>
 
+            <form className="mt-5" onSubmit={(e) => { e.preventDefault(); build(); }}>
+              <div className="flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
+                <textarea value={text} onChange={(e) => { mark(); setText(e.target.value); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); build(); } }}
+                  rows={2} placeholder="Doubles Sat 9am at Heather Farm, need 3 more" aria-label="Describe your game"
+                  className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-[16px] outline-none placeholder:text-[#8a978d]" />
+                {micOk && (
+                  <button type="button" onClick={talk} aria-label={mic ? 'Stop listening' : 'Say it'} className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${mic ? 'animate-pulse' : ''}`}
+                    style={{ background: mic ? '#e0735e' : '#eef1e8', color: mic ? '#fff' : C.ink }}><Mic className="h-5 w-5" /></button>
+                )}
+                <button type="submit" aria-label="Fill it in" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ background: C.ink }}>
+                  {thinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
+                </button>
+              </div>
+              <p className="mt-2 text-center text-[12px]" style={{ color: C.muted }}>{mic ? 'Listening… say when, where, how many' : 'Type it or say it and the steps below fill in. Or just tap through them.'}</p>
+            </form>
+
         {recent.length > 0 && (
           <section className="mt-5 grid gap-2">
             {recent.map((r) => (
@@ -231,11 +247,12 @@ export default function HostClient({ initial, club, resume }: { initial?: string
 
         <Step n={3} title="When & where">
           <div className="grid gap-2">
-            <label className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
+            <label className="relative flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
               <Clock className="h-4 w-4 shrink-0" style={{ color: C.muted }} />
               <input type="datetime-local" aria-label="When" value={d.starts_at ? toLocalInput(d.starts_at) : ''}
                 onChange={(e) => set({ starts_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                className="min-w-0 flex-1 bg-transparent text-[16px] outline-none" />
+                className={`peer min-w-0 flex-1 bg-transparent text-[16px] outline-none ${d.starts_at ? '' : 'text-transparent focus:text-[#103c32]'}`} />
+              {!d.starts_at && <span className="pointer-events-none absolute peer-focus:hidden left-10 text-[16px]" style={{ color: '#8a978d' }}>{d.when_text ?? 'Pick a day & time'}</span>}
             </label>
             <div className="flex items-start gap-2 rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
               <MapPin className="mt-1 h-4 w-4 shrink-0" style={{ color: C.muted }} />
@@ -305,29 +322,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
         </section>
 
         <section className="mt-8 border-t pt-5" style={{ borderColor: C.line }}>
-          {!typing ? (
-            <button type="button" onClick={() => setTyping(true)} className="mx-auto flex items-center gap-1.5 text-[14px] font-semibold" style={{ color: C.ink }}>
-              <Zap className="h-4 w-4" /> Or just type it{micOk ? ' or say it' : ''}
-            </button>
-          ) : (
-            <form onSubmit={(e) => { e.preventDefault(); build(); }}>
-              <div className="flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
-                <textarea value={text} onChange={(e) => { mark(); setText(e.target.value); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); build(); } }}
-                  rows={2} autoFocus={!initial} placeholder="Doubles Sat 9am at Heather Farm, need 3 more" aria-label="Describe your game"
-                  className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-[16px] outline-none placeholder:text-[#8a978d]" />
-                {micOk && (
-                  <button type="button" onClick={talk} aria-label={mic ? 'Stop listening' : 'Say it'} className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${mic ? 'animate-pulse' : ''}`}
-                    style={{ background: mic ? '#e0735e' : '#eef1e8', color: mic ? '#fff' : C.ink }}><Mic className="h-5 w-5" /></button>
-                )}
-                <button type="submit" aria-label="Fill it in" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ background: C.ink }}>
-                  {thinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
-                </button>
-              </div>
-              <p className="mt-2 text-center text-[12px]" style={{ color: C.muted }}>{mic ? 'Listening… say when, where, how many' : 'It fills in the steps above. Check them, then Make my link.'}</p>
-            </form>
-          )}
-          <p className="mt-5 text-center text-[13px]" style={{ color: C.muted }}>
+          <p className="text-center text-[13px]" style={{ color: C.muted }}>
             <a href="/play/demo" className="underline underline-offset-4">Watch a demo</a>
             <span className="mx-2">·</span>
             <a href="/play/near" className="underline underline-offset-4">Find a game near me</a>
