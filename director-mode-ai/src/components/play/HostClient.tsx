@@ -241,7 +241,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
               onChange={(v) => set({ format: v as PlayDraft['format'], spots: v === 'singles' ? 2 : 4, kind: 'game', courts: 1 })} /></div>
           )}
           {(tile === 'mixer' || tile === 'tournament') && (
-            <FormatChooser value={d.format} drawFormat={drawFormat} spots={d.spots} courts={d.courts} onChange={(f, df) => { if (df) setDrawFormat(df); set({ format: f, kind: 'social' }); }} />
+            <FormatChooser inline={tile === 'tournament'} value={d.format} drawFormat={drawFormat} spots={d.spots} courts={d.courts} onChange={(f, df) => { if (df) setDrawFormat(df); set({ format: f, kind: 'social' }); }} />
           )}
         </Step>
 

@@ -215,18 +215,20 @@ const SOCIAL_ROWS: { f: GuestFormat; title: string; blurb: string }[] = [
   ...SMALL.map((t) => ({ f: t.f, title: t.title, blurb: t.blurb })),
 ];
 
-export function FormatChooser({ value, drawFormat, spots, courts, onChange }: { value: PlayFormat; drawFormat?: DrawFormat | null; spots: number | null; courts: number; onChange: (f: PlayFormat, df?: DrawFormat) => void }) {
+// inline: the list is always open, no summary row and no Social/Tournament tabs (the Tournament tile on /play/new).
+export function FormatChooser({ value, drawFormat, spots, courts, onChange, inline }: { value: PlayFormat; drawFormat?: DrawFormat | null; spots: number | null; courts: number; onChange: (f: PlayFormat, df?: DrawFormat) => void; inline?: boolean }) {
   const df: DrawFormat = drawFormat ?? 'rr-singles';
   const isT = value === 'tournament';
   const [open, setOpen] = useStateCompat(false);
-  const [tab, setTab] = useStateCompat<'social' | 'tournament'>(isT ? 'tournament' : 'social');
+  const [tabState, setTab] = useStateCompat<'social' | 'tournament'>(isT ? 'tournament' : 'social');
+  const tab = inline ? (isT ? 'tournament' : 'social') : tabState;
   const name = isT ? `${DRAW_KIND_NAME[drawKind(df)]}${drawKind(df) === 'quads' ? '' : drawIsDoubles(df) ? ' · Doubles' : ' · Singles'}` : SOCIAL_ROWS.find((r) => r.f === value)?.title ?? 'Optimize Courts';
   const math = isT ? drawLine(df, spots, courts) : planLine(value as GuestFormat, spots, courts).text;
   const ink = '#103c32', lime = '#d4ff49', muted = '#5f7268', line = '#dfe5da';
   const row = (on: boolean) => ({ borderColor: on ? ink : line, background: on ? '#f4ffd9' : '#fff' });
   return (
     <section aria-label="Format" className="mt-4">
-      <div className="flex items-center gap-3 rounded-2xl border bg-white p-4" style={{ borderColor: line }}>
+      {!inline && <div className="flex items-center gap-3 rounded-2xl border bg-white p-4" style={{ borderColor: line }}>
         <div className="min-w-0 flex-1">
           <div className="text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: muted }}>{isT ? 'Tournament' : 'Format'}</div>
           <div className="text-[17px] font-semibold leading-tight" style={{ color: ink }}>{name}</div>
@@ -235,15 +237,15 @@ export function FormatChooser({ value, drawFormat, spots, courts, onChange }: { 
         <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="shrink-0 rounded-xl px-3.5 py-2 text-[14px] font-semibold" style={{ background: open ? ink : '#eef1e8', color: open ? '#fff' : ink }}>
           {open ? 'Done' : 'Change'}
         </button>
-      </div>
-      {open && (
-        <div className="mt-2 rounded-2xl border bg-white p-2" style={{ borderColor: line }}>
-          <div role="tablist" className="mb-2 grid grid-cols-2 gap-1 rounded-xl p-1" style={{ background: '#eef1e8' }}>
+      </div>}
+      {(open || inline) && (
+        <div className={`${inline ? '' : 'mt-2 '}rounded-2xl border bg-white p-2`} style={{ borderColor: line }}>
+          {!inline && <div role="tablist" className="mb-2 grid grid-cols-2 gap-1 rounded-xl p-1" style={{ background: '#eef1e8' }}>
             {(['social', 'tournament'] as const).map((k) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className="rounded-lg py-2 text-[14px] font-semibold"
                 style={tab === k ? { background: ink, color: '#fff' } : { color: ink }}>{k === 'social' ? 'Social' : 'Tournament'}</button>
             ))}
-          </div>
+          </div>}
           {tab === 'tournament' && (
             <div className="mb-2 flex items-center gap-2 px-1 text-[13px]" style={{ color: muted }}>
               {[false, true].map((dbl) => {
