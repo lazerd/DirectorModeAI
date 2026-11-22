@@ -47,12 +47,12 @@ describe('landing copy', () => {
   });
 });
 
-describe('side-by-side comparison', () => {
-  it('the live front door still shows the original tour; the redesign is at /racquetsirl/new', () => {
-    expect(src('app/racquetsirl/page.tsx')).toContain('<DemoTour />');
-    expect(src('app/(home)/page.tsx')).toContain('<DemoTour />');
-    expect(src('app/racquetsirl/new/page.tsx')).toContain('<Landing />');
-    expect(src('app/racquetsirl/new/page.tsx')).toContain('index: false');
+describe('front door', () => {
+  it('/racquetsirl and signed-out / show the new landing page; /racquetsirl/new redirects', () => {
+    expect(src('app/racquetsirl/page.tsx')).toContain('<Landing />');
+    expect(src('app/(home)/page.tsx')).toContain('<Landing />');
+    expect(src('app/racquetsirl/new/page.tsx')).toContain("permanentRedirect('/racquetsirl')");
+    expect(src('app/play/page.tsx')).toContain("redirect('/racquetsirl')");
   });
 });
 

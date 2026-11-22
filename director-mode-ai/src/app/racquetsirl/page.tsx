@@ -1,8 +1,15 @@
 import type { Metadata } from 'next';
-import DemoTour from '@/components/play/DemoTour';
+import Landing from '@/components/play/landing/Landing';
+
+/**
+ * The Racquets IRL front door (also / when signed out; /play redirects here).
+ * The redesign became the main page on 11/22/26 (Darrin + Kevin). The previous
+ * front door, the self-running tour, is still at /play/demo; to switch back,
+ * render <DemoTour /> here and in app/(home)/page.tsx.
+ */
 
 const title = 'Racquets IRL: Racquet Sports. Together. In Real Life.';
-const description = 'Watch a Friday night run itself. Tennis, pickleball, padel. One sentence. One link. Everybody plays. No app, no account.';
+const description = 'More playing. Less planning. Create a tennis, pickleball or padel game, fill it with one link, and let Racquets IRL run the courts, partners and scores. No app, no login. First game free.';
 
 export const metadata: Metadata = {
   title, description,
@@ -11,5 +18,5 @@ export const metadata: Metadata = {
 };
 
 export default function RacquetsIRLPage() {
-  return <DemoTour />;
+  return <Landing />;
 }
