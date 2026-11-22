@@ -135,6 +135,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
   }
 
   const [typing, setTyping] = useState(!!initial);
+  const [typeOnly, setTypeOnly] = useState(false); // opened with "Or just type it in": focus the box, don't start the mic
   function openSay() { setTyping(true); if (micOk && !mic) talk(); }
 
   const usedMic = useRef(false);
@@ -200,10 +201,13 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full" style={{ background: C.ink, color: C.lime }}><Mic className="h-5 w-5" /></span>
             <span className="text-[15px] font-semibold">Know what you want? Just say it.</span>
           </button>
+        ) : null}
+        {!typing ? (
+          <button type="button" onClick={() => { setTyping(true); setTypeOnly(true); }} className="mx-auto mt-1 block text-[14px] underline underline-offset-4" style={{ color: C.muted }}>Or just type it in.</button>
         ) : (
           <form className="mt-4" onSubmit={(e) => { e.preventDefault(); build(); }}>
             <div className="flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
-              <textarea value={text} onChange={(e) => { mark(); setText(e.target.value); }} autoFocus={!micOk}
+              <textarea value={text} onChange={(e) => { mark(); setText(e.target.value); }} autoFocus={!micOk || typeOnly}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); build(); } }}
                 rows={2} placeholder={SAY_EXAMPLE} aria-label="Describe your game"
                 className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-[16px] outline-none placeholder:text-[#8a978d]" />
