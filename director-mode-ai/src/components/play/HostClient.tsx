@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, ChevronDown } from 'lucide-react';
+import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, ChevronDown, Check, Zap } from 'lucide-react';
 import { PlacePicker } from './PlacePicker';
 import { levelLabel } from '@/lib/play/levels';
 import { levelPresets } from './Levels';
@@ -15,15 +15,20 @@ import { trackEvent } from '@/lib/analytics';
 import type { DrawFormat } from '@/lib/play/draw';
 import { InviteGroupPicker } from './Groups';
 
-// Start screen (Darrin 11/21/26: sample sentences were a waste). Instead: pick the kind of game
-// (one tap = a ready draft, which also shows what the app can run), and for returning hosts,
-// "Run it back" on the games they made before.
-const KINDS: { label: string; sub: string; draft: Partial<PlayDraft> }[] = [
-  { label: 'Doubles', sub: '4 players, 1 court', draft: { kind: 'game', format: 'doubles', spots: 4, courts: 1 } },
-  { label: 'Social mixer', sub: 'Rotating partners, any headcount', draft: { kind: 'social', format: 'maximize-courts', spots: null, courts: 3 } },
-  { label: 'King of the Court', sub: 'Winners move up a court', draft: { title: 'King of the Court', kind: 'social', format: 'king-of-court', spots: null, courts: 3 } },
-  { label: 'Tournament', sub: 'Round robin or brackets', draft: { kind: 'social', format: 'tournament', spots: null, courts: 2 } },
+/*
+ * /play/new is one numbered path (Darrin 11/21/26: "crystal clear how to proceed... all their options
+ * laid out concisely. No clutter!"): 1 Sport, 2 Format, 3 When & where, 4 You, then Make my link.
+ * Typing or saying it is a shortcut at the bottom that fills the same steps.
+ */
+type Tile = 'game' | 'mixer' | 'kotc' | 'tournament';
+const TILES: { id: Tile; label: string; sub: string }[] = [
+  { id: 'game', label: 'A game', sub: 'Doubles or singles, 1 court' },
+  { id: 'mixer', label: 'Social mixer', sub: 'Rotating partners, any headcount' },
+  { id: 'kotc', label: 'King of the Court', sub: 'Winners move up a court' },
+  { id: 'tournament', label: 'Tournament', sub: 'Round robin or brackets' },
 ];
+const tileOf = (d: PlayDraft): Tile => (d.format === 'tournament' ? 'tournament' : d.format === 'king-of-court' ? 'kotc' : d.kind === 'game' ? 'game' : 'mixer');
+const FRESH = (): PlayDraft => normalizeDraft({ kind: 'game', format: 'doubles', spots: 4, courts: 1 });
 type Recent = { title: string; text: string; draft: PlayDraft };
 const RECENT = 'rirl_recent_games';
 const readRecent = (): Recent[] => { try { const v = JSON.parse(localStorage.getItem(RECENT) || '[]'); return Array.isArray(v) ? v.slice(0, 3) : []; } catch { return []; } };
@@ -38,7 +43,9 @@ function localNow() {
 export default function HostClient({ initial, club, resume }: { initial?: string; club?: string; resume?: boolean }) {
   const router = useRouter();
   const [text, setText] = useState(initial ?? '');
-  const [draft, setDraft] = useState<PlayDraft | null>(null);
+  const [draft, setDraft] = useState<PlayDraft | null>(FRESH);
+  const [typing, setTyping] = useState(!!initial); // the 'just type it' shortcut is open
+  const autoTitle = useRef(true); // title follows the format until the host names it (or types a sentence)
   const [thinking, setThinking] = useState(false);
   const [mic, setMic] = useState<null | (() => void)>(null);
   const [micOk, setMicOk] = useState(false);
@@ -81,6 +88,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     setErr('');
     const quick = parseSentence(t);
     touched.current = new Set();
+    autoTitle.current = false;
     setDraft(quick);
     setThinking(true);
     try {
@@ -103,13 +111,25 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     setThinking(false);
   }
 
-  // A kind-of-game tile or a past game: straight to an editable draft.
-  function start(d: Partial<PlayDraft>, src = '') {
+  // Run it back: re-read the sentence so "Saturday 9am" means the coming Saturday.
+  function again(r: Recent) {
+    mark();
+    if (r.text) { setText(r.text); build(r.text); return; }
+    touched.current = new Set(); autoTitle.current = false; setErr('');
+    setDraft(normalizeDraft({ ...r.draft, starts_at: null, when_text: null }));
+  }
+  // Step 2: one tap sets the format; the title follows it until the host names the game.
+  function pickTile(t: Tile) {
     mark();
     if (!drafted.current) { drafted.current = true; trackEvent('feature_use', 'play_draft', 'courtconnect', {}); }
-    if (src) { setText(src); build(src); return; } // re-read "Saturday 9am" as the coming Saturday
-    touched.current = new Set(); setErr('');
-    setDraft(normalizeDraft({ ...d, starts_at: null, when_text: null }));
+    const d = draft ?? FRESH();
+    const many = Math.max(2, d.courts);
+    const p: Partial<PlayDraft> =
+      t === 'game' ? { kind: 'game', format: d.format === 'singles' ? 'singles' : 'doubles', spots: d.format === 'singles' ? 2 : 4, courts: 1 }
+      : t === 'mixer' ? { kind: 'social', format: 'maximize-courts', spots: null, courts: many }
+      : t === 'kotc' ? { kind: 'social', format: 'king-of-court', spots: null, courts: many }
+      : { kind: 'social', format: 'tournament', spots: null, courts: many };
+    set(p);
   }
 
   const usedMic = useRef(false);
@@ -150,158 +170,192 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     if ('location' in p) ['place_address', 'place_lat', 'place_lng'].forEach((k) => touched.current.add(k));
     const raw: Partial<PlayDraft> = {};
     for (const k of ['title', 'location', 'level', 'notes'] as const) if (typeof p[k] === 'string') (raw as Record<string, string>)[k] = p[k] as string;
+    if (autoTitle.current && !('title' in p)) {
+      const n = normalizeDraft({ ...d, ...p, title: '' });
+      return { ...n, title: n.format === 'king-of-court' ? 'King of the Court' : n.title, ...raw };
+    }
+    if ('title' in p) autoTitle.current = false;
     return { ...normalizeDraft({ ...d, ...p }), ...raw };
   });
   const field = 'w-full rounded-xl border bg-white px-3 py-2.5 text-[16px] outline-none focus:ring-2';
 
+  const d = draft ?? FRESH();
+  const tile = tileOf(d);
   return (
     <div className="min-h-screen pb-16" style={{ background: C.paper, color: C.ink }}>
-      <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Tennis · Pickleball · Padel</span>} />
+      <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Free · No login</span>} />
       <main className="mx-auto w-full max-w-xl px-5">
-        {!draft && (
-          <section className="pt-8 text-center">
-            <h1 className="text-[40px] font-medium leading-[1.04] tracking-[-2px] sm:text-[52px]">Start a game</h1>
-            <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed" style={{ color: C.muted }}>Type it like you&apos;d text your group. Free. No login needed.</p>
-          </section>
-        )}
+        <h1 className="pt-6 text-center text-[36px] font-medium leading-[1.04] tracking-[-1.5px] sm:text-[48px]">Start a game</h1>
 
-        <form className="mt-7" onSubmit={(e) => { e.preventDefault(); build(); }}>
-          <div className="flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
-            <textarea
-              value={text}
-              onChange={(e) => { mark(); setText(e.target.value); }}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); build(); } }}
-              rows={2}
-              placeholder="e.g. Doubles Friday 6pm at Heather Farm, need 3 more"
-              aria-label="Describe your game"
-              className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-[16px] outline-none placeholder:text-[#8a978d]"
-            />
-            {micOk && (
-              <button type="button" onClick={talk} aria-label={mic ? 'Stop listening' : 'Say it'}
-                className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${mic ? 'animate-pulse' : ''}`}
-                style={{ background: mic ? '#e0735e' : '#eef1e8', color: mic ? '#fff' : C.ink }}>
-                <Mic className="h-5 w-5" />
+        {recent.length > 0 && (
+          <section className="mt-5 grid gap-2">
+            {recent.map((r) => (
+              <button key={r.title} onClick={() => again(r)} className="flex items-center justify-between rounded-2xl border bg-white px-4 py-3 text-left" style={{ borderColor: C.line }}>
+                <span className="min-w-0">
+                  <span className="block text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Run it back</span>
+                  <span className="block truncate text-[15px] font-semibold">{r.title}{r.draft.location ? ` · ${r.draft.location}` : ''}</span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0" />
               </button>
-            )}
-            <button type="submit" aria-label="Make it" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ background: C.ink }}>
-              {thinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
-            </button>
+            ))}
+          </section>
+        )}
+
+        {thinking && <p className="mt-4 flex items-center justify-center gap-1.5 text-[13px]" style={{ color: C.muted }}><Sparkles className="h-4 w-4" /> Filling it in…</p>}
+
+        <Step n={1} title="Sport">
+          <Seg value={d.sport} options={[['tennis', 'Tennis'], ['pickleball', 'Pickleball'], ['padel', 'Padel']]} onChange={(v) => set({ sport: v as PlayDraft['sport'] })} />
+        </Step>
+
+        <Step n={2} title="Format">
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Format">
+            {TILES.map((t) => {
+              const on = tile === t.id;
+              return (
+                <button key={t.id} type="button" role="radio" aria-checked={on} onClick={() => pickTile(t.id)} className="rounded-2xl border px-3.5 py-3 text-left"
+                  style={{ borderColor: on ? C.ink : C.line, background: on ? '#f4ffd9' : '#fff', boxShadow: on ? `inset 0 0 0 1px ${C.ink}` : undefined }}>
+                  <span className="flex items-center justify-between gap-1 text-[15px] font-semibold">{t.label}{on && <Check className="h-4 w-4" />}</span>
+                  <span className="mt-0.5 block text-[12px] leading-snug" style={{ color: C.muted }}>{t.sub}</span>
+                </button>
+              );
+            })}
           </div>
-          {mic && <p className="mt-2 text-center text-sm" style={{ color: C.muted }}>Listening… say when, where, how many</p>}
-        </form>
+          {tile === 'game' && (
+            <div className="mt-2"><Seg value={d.format === 'singles' ? 'singles' : 'doubles'} options={[['doubles', 'Doubles (4)'], ['singles', 'Singles (2)']]}
+              onChange={(v) => set({ format: v as PlayDraft['format'], spots: v === 'singles' ? 2 : 4, kind: 'game', courts: 1 })} /></div>
+          )}
+          {(tile === 'mixer' || tile === 'tournament') && (
+            <FormatChooser value={d.format} drawFormat={drawFormat} spots={d.spots} courts={d.courts} onChange={(f, df) => { if (df) setDrawFormat(df); set({ format: f, kind: 'social' }); }} />
+          )}
+        </Step>
 
-        {!draft && recent.length > 0 && (
-          <section className="mt-6">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>Run it back</div>
-            <div className="grid gap-2">
-              {recent.map((r) => (
-                <button key={r.title} onClick={() => start(r.draft, r.text)} className="flex items-center justify-between rounded-2xl border bg-white px-4 py-3 text-left" style={{ borderColor: C.line }}>
-                  <span className="min-w-0">
-                    <span className="block truncate text-[15px] font-semibold">{r.title}</span>
-                    <span className="block truncate text-[12px]" style={{ color: C.muted }}>{[r.draft.location, r.draft.courts ? `${r.draft.courts} court${r.draft.courts > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ') || 'Same setup as last time'}</span>
-                  </span>
-                  <ArrowRight className="h-4 w-4 shrink-0" />
-                </button>
-              ))}
+        <Step n={3} title="When & where">
+          <div className="grid gap-2">
+            <label className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
+              <Clock className="h-4 w-4 shrink-0" style={{ color: C.muted }} />
+              <input type="datetime-local" aria-label="When" value={d.starts_at ? toLocalInput(d.starts_at) : ''}
+                onChange={(e) => set({ starts_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
+                className="min-w-0 flex-1 bg-transparent text-[16px] outline-none" />
+            </label>
+            <div className="flex items-start gap-2 rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
+              <MapPin className="mt-1 h-4 w-4 shrink-0" style={{ color: C.muted }} />
+              <PlacePicker value={d} onChange={(pl) => set(pl)} dark={false} />
             </div>
-          </section>
-        )}
-        {!draft && (
-          <section className="mt-6">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: C.muted }}>{recent.length ? 'Or start something new' : 'Or pick the kind of game'}</div>
-            <div className="grid grid-cols-2 gap-2">
-              {KINDS.map((k) => (
-                <button key={k.label} onClick={() => start(k.draft)} className="rounded-2xl border bg-white px-3.5 py-3 text-left" style={{ borderColor: C.line }}>
-                  <span className="block text-[15px] font-semibold">{k.label}</span>
-                  <span className="mt-0.5 block text-[12px] leading-snug" style={{ color: C.muted }}>{k.sub}</span>
-                </button>
-              ))}
-            </div>
-          </section>
-        )}
-        {!draft && (
-          <p className="mt-8 text-center text-[13px]" style={{ color: C.muted }}>
-            <a href="/play/demo" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Watch a demo</a>
-            <span className="mx-2">·</span>
-            <a href="/play/near" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Find a game near me</a>
-          </p>
-        )}
+            {tile !== 'game' && <Stepper label="Courts" value={d.courts} min={1} max={24} onChange={(v) => set({ courts: v })} />}
+          </div>
+        </Step>
 
-        {draft && (
-          <section className="mt-5 rounded-3xl p-5 text-white shadow-lg" style={{ background: C.ink }}>
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[1.5px]" style={{ color: '#bccdbb' }}>
-              <span>{draft.sport} · {draft.format === 'tournament' ? 'tournament' : draft.kind === 'game' ? 'a game' : 'rotating partners'}</span>
-              {thinking ? <span className="inline-flex items-center gap-1"><Sparkles className="h-3.5 w-3.5" /> tidying up…</span> : null}
-            </div>
-            <input value={draft.title} onChange={(e) => set({ title: e.target.value })} aria-label="Title"
-              className="mt-2 w-full bg-transparent text-[28px] font-medium leading-tight tracking-tight text-white outline-none" />
-            <div className="mt-3 grid gap-2 text-[15px]">
-              <label className="flex items-center gap-2"><Clock className="h-4 w-4 shrink-0" style={{ color: C.lime }} />
-                <input type="datetime-local" aria-label="When"
-                  value={draft.starts_at ? toLocalInput(draft.starts_at) : ''}
-                  onChange={(e) => set({ starts_at: e.target.value ? new Date(e.target.value).toISOString() : null })}
-                  className="bg-transparent text-white outline-none [color-scheme:dark]" />
-                {!draft.starts_at && <span style={{ color: '#bccdbb' }}>{draft.when_text ?? 'Pick a time'}</span>}
+        <div className="mt-4">
+          <button type="button" onClick={() => setMore((v) => !v)} aria-expanded={more} className="flex items-center gap-1 text-[13px] font-semibold" style={{ color: C.muted }}>
+            More options <span className="font-normal">(name, level, player cap, weekly)</span> <ChevronDown className={`h-4 w-4 transition-transform ${more ? 'rotate-180' : ''}`} />
+          </button>
+          {more && (
+            <div className="mt-2 grid gap-2 text-[14px]">
+              <label className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
+                <span className="shrink-0" style={{ color: C.muted }}>Name</span>
+                <input value={d.title} onChange={(e) => set({ title: e.target.value })} aria-label="Name of the game" className="min-w-0 flex-1 bg-transparent text-[16px] outline-none" />
               </label>
-              <label className="flex items-center gap-2"><MapPin className="h-4 w-4 shrink-0" style={{ color: C.lime }} />
-                <PlacePicker value={draft} onChange={(p) => set(p)} />
-              </label>
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-[13px]">
-              <Pick label="Sport" value={draft.sport} options={[['tennis', 'Tennis'], ['pickleball', 'Pickleball'], ['padel', 'Padel']]} onChange={(v) => set({ sport: v as PlayDraft['sport'] })} wide />
-              <Stepper label="Courts" value={draft.courts} min={1} max={24} onChange={(v) => set({ courts: v })} />
-              <label className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
-                <span style={{ color: '#bccdbb' }}>Level</span>
-                <input value={draft.level ?? ''} onChange={(e) => set({ level: e.target.value })} placeholder="any" aria-label="Level" className="w-full min-w-0 bg-transparent text-white outline-none placeholder:text-[#9fb3a6]" />
-                {draft.level?.trim() && <span className="shrink-0 text-[11px] font-semibold" style={{ color: draft.level_min != null || draft.level_max != null ? C.lime : '#ffb4a2' }}>{draft.level_min != null || draft.level_max != null ? levelLabel({ min: draft.level_min ?? null, max: draft.level_max ?? null }, draft.sport) : '?'}</span>}
-              </label>
-            </div>
-            <button type="button" onClick={() => setMore((v) => !v)} aria-expanded={more} className="mt-3 flex items-center gap-1 text-[13px] font-semibold" style={{ color: '#bccdbb' }}>
-              More options <ChevronDown className={`h-4 w-4 transition-transform ${more ? 'rotate-180' : ''}`} />
-            </button>
-            {more && (
-              <div className="mt-2 grid gap-2 text-[13px] text-white">
-                <div className="flex flex-wrap gap-1.5">
-                  {levelPresets(draft.sport).map((x) => (
-                    <button key={x} type="button" onClick={() => set({ level: draft.level === x ? '' : x })} className="rounded-lg px-2.5 py-1 text-[12px] font-semibold"
-                      style={draft.level === x ? { background: C.lime, color: C.ink } : { background: '#ffffff14', color: '#fff' }}>{x}</button>
+              <div className="rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
+                <div className="flex items-center gap-2">
+                  <span className="shrink-0" style={{ color: C.muted }}>Level</span>
+                  <input value={d.level ?? ''} onChange={(e) => set({ level: e.target.value })} placeholder="Any level" aria-label="Level" className="min-w-0 flex-1 bg-transparent text-[16px] outline-none" />
+                  {d.level?.trim() && <span className="shrink-0 text-[12px] font-semibold" style={{ color: d.level_min != null || d.level_max != null ? '#2f7a4f' : '#b4432f' }}>{d.level_min != null || d.level_max != null ? levelLabel({ min: d.level_min ?? null, max: d.level_max ?? null }, d.sport) : '?'}</span>}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {levelPresets(d.sport).map((x) => (
+                    <button key={x} type="button" onClick={() => set({ level: d.level === x ? '' : x })} className="rounded-lg px-2.5 py-1 text-[12px] font-semibold"
+                      style={d.level === x ? { background: C.ink, color: '#fff' } : { background: '#eef1e8', color: C.ink }}>{x}</button>
                   ))}
                 </div>
-                <Stepper label="Player cap" value={draft.spots} min={2} max={96} nullable={{ def: Math.max(perCourt(draft.format), draft.courts * perCourt(draft.format)), off: 'None' }}
-                  onChange={(v) => set(v == null ? { spots: null, kind: 'social' } : { spots: v, kind: v > perCourt(draft.format) ? 'social' : 'game', courts: Math.max(1, Math.min(draft.courts, Math.ceil(v / perCourt(draft.format)))) })} />
-                {draft.kind === 'social' && draft.format !== 'tournament' && <Stepper label="Min / round" value={draft.round_minutes} min={5} max={120} step={5} onChange={(v) => set({ round_minutes: v })} />}
-                <label className="flex items-center gap-2 rounded-xl px-3 py-2 text-white" style={{ background: '#ffffff14' }}>
-                  <input type="checkbox" checked={!!draft.repeat_weekly} onChange={(e) => set({ repeat_weekly: e.target.checked })} className="h-4 w-4 accent-[#d4ff49]" />
-                  <span>Every week <span style={{ color: '#bccdbb' }}>(next week’s game makes itself)</span></span>
-                </label>
-                <label className="flex items-start gap-2 rounded-xl px-3 py-2 text-white" style={{ background: '#ffffff14', opacity: draft.place_lat == null ? 0.6 : 1 }}>
-                  <input type="checkbox" checked={listed && draft.place_lat != null} disabled={draft.place_lat == null} onChange={(e) => setListed(e.target.checked)} className="mt-0.5 h-4 w-4 accent-[#d4ff49]" />
-                  <span>Let nearby players find it<span className="block text-[12px]" style={{ color: '#bccdbb' }}>{draft.place_lat == null ? 'Pick the place from the map suggestions to turn this on.' : 'Shows on “Games near me” while it needs players.'}</span></span>
-                </label>
               </div>
-            )}
-          </section>
-        )}
+              {tile !== 'game' && (
+                <Stepper label="Player cap" value={d.spots} min={2} max={96} nullable={{ def: Math.max(perCourt(d.format), d.courts * perCourt(d.format)), off: 'None' }}
+                  onChange={(v) => set(v == null ? { spots: null, kind: 'social' } : { spots: v, kind: 'social' })} />
+              )}
+              {d.kind === 'social' && d.format !== 'tournament' && <Stepper label="Minutes per round" value={d.round_minutes} min={5} max={120} step={5} onChange={(v) => set({ round_minutes: v })} />}
+              <label className="flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line }}>
+                <input type="checkbox" checked={!!d.repeat_weekly} onChange={(e) => set({ repeat_weekly: e.target.checked })} className="h-4 w-4 accent-[#103c32]" />
+                <span>Every week <span style={{ color: C.muted }}>(next week&apos;s game makes itself)</span></span>
+              </label>
+              <label className="flex items-start gap-2 rounded-xl border bg-white px-3 py-2.5" style={{ borderColor: C.line, opacity: d.place_lat == null ? 0.6 : 1 }}>
+                <input type="checkbox" checked={listed && d.place_lat != null} disabled={d.place_lat == null} onChange={(e) => setListed(e.target.checked)} className="mt-1 h-4 w-4 accent-[#103c32]" />
+                <span>Let nearby players find it<span className="block text-[12px]" style={{ color: C.muted }}>{d.place_lat == null ? 'Pick the place from the map suggestions to turn this on.' : 'Shows on “Games near me” while it needs players.'}</span></span>
+              </label>
+            </div>
+          )}
+        </div>
 
-        {draft && <FormatChooser value={draft.format} drawFormat={drawFormat} spots={draft.spots} courts={draft.courts} onChange={(f, df) => { if (df) setDrawFormat(df); set({ format: f, kind: draft.spots == null || draft.spots > 4 || f === 'king-of-court' || f === 'maximize-courts' || f === 'team-battle' || f === 'tournament' ? 'social' : draft.kind }); }} />}
-
-        {draft && (
-          <section className="mt-4 grid gap-3">
+        <Step n={4} title="You">
+          <div className="grid gap-3">
             <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="Your first name" aria-label="Your name" className={field} style={{ borderColor: C.line }} />
             <label className="flex items-center gap-2 text-[14px]">
               <input type="checkbox" checked={playing} onChange={(e) => setPlaying(e.target.checked)} className="h-5 w-5 bg-white accent-[#103c32]" />
-              I&apos;m playing too{draft.spots != null ? ` (counts as 1 of the ${draft.spots})` : ''}
+              I&apos;m playing too{d.spots != null ? ` (counts as 1 of the ${d.spots})` : ''}
             </label>
             <InviteGroupPicker value={inviteGroup} onChange={setInviteGroup} />
-            {err && <p className="text-[14px] text-[#b4432f]">{err}</p>}
-            <button onClick={() => create({ ...draft, listed: listed && draft.place_lat != null })} disabled={saving} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
-              {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : null} Make my link
+          </div>
+        </Step>
+
+        <section className="mt-5 grid gap-2">
+          {err && <p className="text-[14px] text-[#b4432f]">{err}</p>}
+          <button onClick={() => create({ ...d, listed: listed && d.place_lat != null })} disabled={saving || thinking} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
+            {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : null} Make my link
+          </button>
+          {paywall ? <Paywall info={paywall} /> : <p className="text-center text-[12px]" style={{ color: C.muted }}>Free to host your first game. Joining is always free.</p>}
+        </section>
+
+        <section className="mt-8 border-t pt-5" style={{ borderColor: C.line }}>
+          {!typing ? (
+            <button type="button" onClick={() => setTyping(true)} className="mx-auto flex items-center gap-1.5 text-[14px] font-semibold" style={{ color: C.ink }}>
+              <Zap className="h-4 w-4" /> Or just type it{micOk ? ' or say it' : ''}
             </button>
-            {paywall ? <Paywall info={paywall} /> : <p className="text-center text-[12px]" style={{ color: C.muted }}>Free to host your first game. Joining is always free.</p>}
-          </section>
-        )}
-        <ClubGamesLink className="mt-8 text-center text-[13px]" />
+          ) : (
+            <form onSubmit={(e) => { e.preventDefault(); build(); }}>
+              <div className="flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
+                <textarea value={text} onChange={(e) => { mark(); setText(e.target.value); }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); build(); } }}
+                  rows={2} autoFocus={!initial} placeholder="Doubles Sat 9am at Heather Farm, need 3 more" aria-label="Describe your game"
+                  className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-[16px] outline-none placeholder:text-[#8a978d]" />
+                {micOk && (
+                  <button type="button" onClick={talk} aria-label={mic ? 'Stop listening' : 'Say it'} className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${mic ? 'animate-pulse' : ''}`}
+                    style={{ background: mic ? '#e0735e' : '#eef1e8', color: mic ? '#fff' : C.ink }}><Mic className="h-5 w-5" /></button>
+                )}
+                <button type="submit" aria-label="Fill it in" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ background: C.ink }}>
+                  {thinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
+                </button>
+              </div>
+              <p className="mt-2 text-center text-[12px]" style={{ color: C.muted }}>{mic ? 'Listening… say when, where, how many' : 'It fills in the steps above. Check them, then Make my link.'}</p>
+            </form>
+          )}
+          <p className="mt-5 text-center text-[13px]" style={{ color: C.muted }}>
+            <a href="/play/demo" className="underline underline-offset-4">Watch a demo</a>
+            <span className="mx-2">·</span>
+            <a href="/play/near" className="underline underline-offset-4">Find a game near me</a>
+          </p>
+        </section>
+        <ClubGamesLink className="mt-6 text-center text-[13px]" />
       </main>
+    </div>
+  );
+}
+
+function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-6">
+      <h2 className="mb-2 flex items-center gap-2 text-[15px] font-semibold">
+        <span className="grid h-6 w-6 place-items-center rounded-full text-[12px] font-bold" style={{ background: C.ink, color: C.lime }}>{n}</span>{title}
+      </h2>
+      {children}
+    </section>
+  );
+}
+function Seg({ value, options, onChange }: { value: string; options: [string, string][]; onChange: (v: string) => void }) {
+  return (
+    <div role="radiogroup" className="grid gap-1 rounded-xl p-1" style={{ background: '#e7ece2', gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}>
+      {options.map(([v, l]) => (
+        <button key={v} type="button" role="radio" aria-checked={v === value} onClick={() => onChange(v)} className="rounded-lg py-2 text-[14px] font-semibold"
+          style={v === value ? { background: C.ink, color: '#fff' } : { color: C.ink }}>{l}</button>
+      ))}
     </div>
   );
 }
@@ -316,25 +370,12 @@ function Stepper<N extends number | null = number>({ label, value, min, max, ste
   const down = () => (value == null ? undefined : value - step < min ? (nullable ? onChange(null as N) : onChange(min as N)) : onChange((value - step) as N));
   const up = () => onChange((value == null ? Math.min(max, Math.max(min, nullable?.def ?? min)) : Math.min(max, value + step)) as N);
   return (
-    <div className="flex items-center justify-between rounded-xl px-3 py-2" style={{ background: '#ffffff14' }}>
-      <span style={{ color: '#bccdbb' }}>{label}</span>
+    <div className="flex items-center justify-between rounded-xl border bg-white px-3 py-2" style={{ borderColor: C.line }}>
+      <span className="text-[14px]" style={{ color: C.muted }}>{label}</span>
       <span className="flex items-center gap-2">
-        <button type="button" aria-label={`Fewer ${label}`} onClick={down} disabled={value == null} className="grid h-7 w-7 place-items-center rounded-lg bg-white/10 disabled:opacity-40">−</button>
+        <button type="button" aria-label={`Fewer ${label}`} onClick={down} disabled={value == null} className="grid h-8 w-8 place-items-center rounded-lg disabled:opacity-40" style={{ background: '#eef1e8' }}>−</button>
         <b className="min-w-6 text-center text-[16px]">{value ?? nullable?.off ?? ''}</b>
-        <button type="button" aria-label={`More ${label}`} onClick={up} className="grid h-7 w-7 place-items-center rounded-lg bg-white/10">+</button>
-      </span>
-    </div>
-  );
-}
-function Pick({ label, value, options, onChange, wide }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void; wide?: boolean }) {
-  return (
-    <div className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2 ${wide ? 'col-span-2' : ''}`} style={{ background: '#ffffff14' }}>
-      <span style={{ color: '#bccdbb' }}>{label}</span>
-      <span className="flex gap-1">
-        {options.map(([v, l]) => (
-          <button type="button" key={v} onClick={() => onChange(v)} className="rounded-lg px-2 py-1 text-[12px] font-semibold"
-            style={v === value ? { background: C.lime, color: C.ink } : { background: '#ffffff10', color: '#dfe8dc' }}>{l}</button>
-        ))}
+        <button type="button" aria-label={`More ${label}`} onClick={up} className="grid h-8 w-8 place-items-center rounded-lg" style={{ background: '#eef1e8' }}>+</button>
       </span>
     </div>
   );
