@@ -7,7 +7,7 @@ import { createContext, useContext } from 'react';
 export const BrandContext = createContext('Racquets IRL');
 
 /** Brand colors from the signed-out homepage (Kevin's design). */
-export const C = { paper: '#f4f5ef', ink: '#103c32', muted: '#6a7b71', lime: '#d4ff49', line: '#173b2c22', card: '#ffffff' };
+export const C = { paper: '#f4f5ef', ink: '#103c32', muted: '#5d6e64', /* was #6a7b71 (4.1:1 on paper); now 4.9:1, WCAG AA */ lime: '#d4ff49', line: '#173b2c22', card: '#ffffff' };
 
 export function PlayHeader({ right }: { right?: React.ReactNode }) {
   const brand = useContext(BrandContext);

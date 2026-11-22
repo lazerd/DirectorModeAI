@@ -107,6 +107,9 @@ export default function EventClient({ code, initial }: { code: string; initial: 
       const r = await api<Res>(`/api/p/${code}`, body, key);
       if (r.playerKey) { setKey(code, r.playerKey); setK(r.playerKey); }
       if (r.event) setE(r.event);
+      // Funnel: a player joined; the host started the game (the game really got organized).
+      if (body.action === 'join') trackEvent('feature_use', 'play_join', 'courtconnect', { code, host: !!r.event?.isHost });
+      if (body.action === 'start') trackEvent('feature_use', 'play_started', 'courtconnect', { code, players: r.event?.rsvps.filter((x) => x.status === 'in').length ?? null });
       return r;
     } catch (x) {
       if (x instanceof Error && x.message === 'PAYWALL') { location.href = '/play/pass'; return; }
@@ -316,11 +319,18 @@ function groupText(e: PlayEvent, url: string) {
 }
 
 /** WhatsApp with the message filled in, or copy it to paste anywhere (falls back to selected text). */
-function GroupChatButtons({ text, extra }: { text: () => string; compact?: boolean; extra?: React.ReactNode }) {
+/** Funnel events for a real game only (the demos render these screens on other paths). */
+function trackGame(name: string, meta: Record<string, unknown> = {}) {
+  const code = /^\/p\/([^/]+)/.exec(location.pathname)?.[1];
+  if (code) trackEvent('feature_use', name, 'courtconnect', { code, ...meta });
+}
+
+function GroupChatButtons({ text, extra, where = 'invite' }: { text: () => string; compact?: boolean; extra?: React.ReactNode; where?: string }) {
   const [copied, setCopied] = useState(false);
   const [shown, setShown] = useState<string | null>(null);
   const copy = async () => {
     const t = text();
+    trackGame('play_share', { channel: 'copy', where });
     try { await navigator.clipboard.writeText(t); setCopied(true); setShown(null); setTimeout(() => setCopied(false), 2500); }
     catch { setShown(t); }
   };
@@ -328,7 +338,7 @@ function GroupChatButtons({ text, extra }: { text: () => string; compact?: boole
   return (
     <div className="grid gap-2">
       <div className={`grid gap-2 ${extra ? 'grid-cols-3' : 'grid-cols-2'}`}>
-        <a href={`https://wa.me/?text=${encodeURIComponent(text())}`} target="_blank" rel="noopener noreferrer" className={`${b} text-white`} style={{ background: '#1f9e57' }}>
+        <a href={`https://wa.me/?text=${encodeURIComponent(text())}`} target="_blank" rel="noopener noreferrer" onClick={() => trackGame('play_share', { channel: 'whatsapp', where })} className={`${b} text-white`} style={{ background: '#1f9e57' }}>
           <MessageCircle className="h-4 w-4 shrink-0" />WhatsApp
         </a>
         <button type="button" onClick={copy} className={b} style={{ background: '#eef1e8', color: C.ink }}>
@@ -350,6 +360,7 @@ function ShareBox({ e, code, bare }: { e: PlayEvent; code: string; bare?: boolea
   const msg = () => groupText(e, url);
   useEffect(() => { if (showQr && !qr) QRCode.toDataURL(url, { margin: 1, width: 480, color: { dark: '#103c32', light: '#ffffff' } }).then(setQr).catch(() => {}); }, [showQr, qr, url]);
   const share = async () => {
+    trackGame('play_share', { channel: 'sheet', where: 'invite' });
     try { if (navigator.share) { await navigator.share({ title: e.title, text: msg() }); return; } } catch { return; }
     await navigator.clipboard?.writeText(msg());
   };
@@ -366,7 +377,7 @@ function ShareBox({ e, code, bare }: { e: PlayEvent; code: string; bare?: boolea
       {more && (
         <>
           <div className="mt-2 grid grid-cols-3 gap-2 text-[13px] font-semibold">
-            <a href={`sms:?&body=${encodeURIComponent(msg())}`} className="flex items-center justify-center gap-1.5 rounded-xl py-2.5" style={{ background: '#eef1e8' }}><MessageCircle className="h-4 w-4" />Text</a>
+            <a href={`sms:?&body=${encodeURIComponent(msg())}`} onClick={() => trackGame('play_share', { channel: 'sms', where: 'invite' })} className="flex items-center justify-center gap-1.5 rounded-xl py-2.5" style={{ background: '#eef1e8' }}><MessageCircle className="h-4 w-4" />Text</a>
             <button onClick={share} className="flex items-center justify-center gap-1.5 rounded-xl py-2.5" style={{ background: '#eef1e8' }}><Share2 className="h-4 w-4" />Share…</button>
             <button onClick={() => setShowQr((v) => !v)} className="flex items-center justify-center gap-1.5 rounded-xl py-2.5" style={{ background: showQr ? C.ink : '#eef1e8', color: showQr ? '#fff' : C.ink }}><QrCode className="h-4 w-4" />QR</button>
           </div>
@@ -653,7 +664,7 @@ export function DoneView({ e, busy, act, code, myName }: { e: PlayEvent; busy: s
         ) : (
           <Link href="/play/new" className="flex h-14 items-center justify-center rounded-2xl text-[17px] font-semibold" style={{ background: C.lime, color: C.ink }}>Host your own</Link>
         )}
-        <GroupChatButtons text={() => `🏆 ${e.title}: ${aw[0] ? `${aw[0].who} took it (${aw[0].why}).` : 'final results are in.'}${e.state.recap ? '\n🎙️ ' + e.state.recap.headline : ''}\nFull recap: ${url}`}
+        <GroupChatButtons where="recap" text={() => `🏆 ${e.title}: ${aw[0] ? `${aw[0].who} took it (${aw[0].why}).` : 'final results are in.'}${e.state.recap ? '\n🎙️ ' + e.state.recap.headline : ''}\nFull recap: ${url}`}
           extra={<button onClick={share} className="flex items-center justify-center gap-1.5 rounded-xl py-3 text-[14px] font-semibold" style={{ background: '#eef1e8' }}><Share2 className="h-4 w-4" />Share…</button>} />
         {joinedNext && next && <p className="text-center text-[13px]"><Link className="underline" href={`/p/${next}`}>See next week&apos;s game</Link></p>}
       </div>
@@ -1347,7 +1358,7 @@ export function StatusSheet({ e, busy, act, hostKey, onClose }: { e: PlayEvent; 
               </button>
             )}
             <div className="mt-1 text-[13px] font-semibold">{missing.length ? 'Nudge the group' : open ? `Fill the last ${open}` : 'Tell the group'}</div>
-            <GroupChatButtons text={nudge} />
+            <GroupChatButtons text={nudge} where="nudge" />
             {isHost && (
               <button disabled={!!busy || here < need} onClick={async () => { const r = await act({ action: 'start' }, 'start'); if (r) onClose(); }} className="mt-1 flex items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-white disabled:opacity-50" style={{ background: C.ink }}>
                 {busy === 'start' ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}{here < need ? (here ? `${here} checked in · need ${need - here} more` : 'Check people in to start') : `Start with ${here} checked in`}

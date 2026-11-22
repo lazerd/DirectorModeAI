@@ -73,7 +73,7 @@ export default function NearClient() {
 
   return (
     <div className="min-h-screen pb-16" style={{ background: C.paper, color: C.ink }}>
-      <PlayHeader right={<Link href="/play/new" className="rounded-full px-3 py-1.5 text-[13px] font-semibold" style={{ background: C.lime }}>Start a game</Link>} />
+      <PlayHeader right={<Link href="/play/new" className="rounded-full px-3 py-1.5 text-[13px] font-semibold" style={{ background: C.lime }}>Create a game</Link>} />
       <main className="mx-auto w-full max-w-xl px-4">
         <h1 className="mt-2 text-[34px] font-medium leading-[1.05] tracking-[-1px]">Games near you that need a player.</h1>
         <p className="mt-2 text-[15px]" style={{ color: C.muted }}>Open spots at your level. Tap in, no app, no account.</p>
@@ -112,7 +112,7 @@ export default function NearClient() {
               <div className="text-[18px] font-semibold">{games?.length ? 'Nothing at your level right now.' : `No open ${SPORT_LABEL[sport].toLowerCase()} games nearby yet.`}</div>
               <p className="mt-1 text-[14px]" style={{ color: C.muted }}>Start one and it shows up here for everyone near you, or get an email when one does.</p>
               <Link href={`/play/new?q=${encodeURIComponent(`${SPORT_LABEL[sport]} doubles Saturday 9am${level != null ? `, ${levelLabel({ min: level, max: level }, sport, false)}` : ''}`)}`}
-                className="mt-4 inline-block rounded-2xl px-5 py-3 text-[15px] font-semibold" style={{ background: C.lime }}>Start a game</Link>
+                className="mt-4 inline-block rounded-2xl px-5 py-3 text-[15px] font-semibold" style={{ background: C.lime }}>Create a game</Link>
             </div>
           )}
           {hidden > 0 && (

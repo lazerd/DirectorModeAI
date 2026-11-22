@@ -1,6 +1,7 @@
 import 'server-only';
 import { randomBytes } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { PASS_PRICES } from './pricing';
 
 /**
  * CourtConnect paid hosting (Darrin, 11/18/26):
@@ -12,7 +13,8 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
  * No accounts: a host is the device id their browser keeps (cc_host_id). Passes are
  * written by the LemonSqueezy webhook (price_key cc_host / cc_club).
  */
-export const PASS_PRICES = { host: 25, club: 100 } as const;
+// Prices live in ./pricing so the landing page and checkout can never disagree.
+export { PASS_PRICES };
 
 const ACTIVE = ['active', 'on_trial', 'past_due', 'cancelled'];
 
