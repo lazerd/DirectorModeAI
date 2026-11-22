@@ -27,7 +27,7 @@ const TILES: { id: Tile; label: string; sub: string }[] = [
   { id: 'kotc', label: 'King of the Court', sub: 'Winners move up a court' },
   { id: 'tournament', label: 'Tournament', sub: 'Round robin or brackets' },
 ];
-const SAY_EXAMPLE = 'Tennis mixed doubles drop-in Saturday 9am at Heather Farm, fixed partners, 3 courts, 3.5–4.0, 12 players';
+const SAY_EXAMPLE = 'Tennis mixed doubles drop-in Saturday 9am at Heather Farm, 3 courts, 3.5–4.0, 12 players';
 const tileOf = (d: PlayDraft): Tile => (d.format === 'tournament' ? 'tournament' : d.format === 'king-of-court' ? 'kotc' : d.kind === 'game' ? 'game' : 'mixer');
 const FRESH = (): PlayDraft => normalizeDraft({ kind: 'game', format: 'doubles', spots: 4, courts: 1 });
 type Recent = { title: string; text: string; draft: PlayDraft };
