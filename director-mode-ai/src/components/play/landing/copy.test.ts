@@ -47,6 +47,15 @@ describe('landing copy', () => {
   });
 });
 
+describe('side-by-side comparison', () => {
+  it('the live front door still shows the original tour; the redesign is at /racquetsirl/new', () => {
+    expect(src('app/racquetsirl/page.tsx')).toContain('<DemoTour />');
+    expect(src('app/(home)/page.tsx')).toContain('<DemoTour />');
+    expect(src('app/racquetsirl/new/page.tsx')).toContain('<Landing />');
+    expect(src('app/racquetsirl/new/page.tsx')).toContain('index: false');
+  });
+});
+
 describe('/play/new and the tours stay in sync', () => {
   it('the create button reads "Create my game" everywhere the tour taps it', () => {
     const host = src('components/play/HostClient.tsx');

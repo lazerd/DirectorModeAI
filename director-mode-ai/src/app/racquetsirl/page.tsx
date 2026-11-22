@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import Landing from '@/components/play/landing/Landing';
+import DemoTour from '@/components/play/DemoTour';
 
 const title = 'Racquets IRL: Racquet Sports. Together. In Real Life.';
-const description = 'More playing. Less planning. Create a tennis, pickleball or padel game, fill it with one link, and let Racquets IRL run the courts, partners and scores. No app, no login. First game free.';
+const description = 'Watch a Friday night run itself. Tennis, pickleball, padel. One sentence. One link. Everybody plays. No app, no account.';
 
 export const metadata: Metadata = {
   title, description,
@@ -11,5 +11,5 @@ export const metadata: Metadata = {
 };
 
 export default function RacquetsIRLPage() {
-  return <Landing />;
+  return <DemoTour />;
 }

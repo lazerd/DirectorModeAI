@@ -1,10 +1,10 @@
 /**
- * Racquets IRL landing page (clubmode.ai/racquetsirl, and / when signed out).
+ * Racquets IRL landing page, redesign (clubmode.ai/racquetsirl/new).
  *
- * Replaced the full-screen, self-running 8-step tour as the front door (11/22/26).
- * The tour is unchanged and still lives at /play/demo; this page links to it as the
- * deeper "watch a whole night" option. To roll back, render <DemoTour /> again in
- * app/racquetsirl/page.tsx and app/(home)/page.tsx.
+ * The redesigned front door, served at /racquetsirl/new for side-by-side comparison with the
+ * live page (the self-running tour, still at /racquetsirl, / and /play/demo). To adopt it,
+ * render <Landing /> in app/racquetsirl/page.tsx and app/(home)/page.tsx, and point the
+ * logo link below back to /racquetsirl.
  *
  * Five beats, alternating night / day: hero → Create it, Fill it, Play it (one real game you
  * tap through) → the two benefits → formats → the ask.
@@ -29,7 +29,7 @@ export default function Landing() {
       {/* ---------------- header + hero (night) ---------------- */}
       <div className="rl-dark overflow-hidden" style={{ background: NIGHT, color: '#eef3ea' }}>
         <header className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-5 py-4 sm:px-8">
-          <a href="/racquetsirl" className="rl-focus flex min-w-0 items-center gap-2.5 rounded-lg" aria-label="Racquets IRL home">
+          <a href="/racquetsirl/new" className="rl-focus flex min-w-0 items-center gap-2.5 rounded-lg" aria-label="Racquets IRL home">
             <Logo s={30} />
             <span className="text-[18px] font-semibold tracking-tight">Racquets IRL</span>
           </a>
