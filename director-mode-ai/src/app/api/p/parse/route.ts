@@ -1,3 +1,4 @@
+import { DRAW_FORMATS } from '@/lib/play/draw';
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { normalizeDraft, type PlayDraft } from '@/lib/play/core';
@@ -21,7 +22,8 @@ const TOOL = {
       title: { type: 'string', description: 'Short, warm title, max 6 words, e.g. "Friday Night Doubles Mixer". No emoji.' },
       sport: { type: 'string', enum: ['tennis', 'pickleball', 'padel'] },
       kind: { type: 'string', enum: ['game', 'social'], description: 'game = one court, a fixed group (e.g. a doubles 4some or a singles hit). social = rotating partners across courts (mixer, round robin).' },
-      format: { type: 'string', enum: ['maximize-courts', 'king-of-court', 'team-battle', 'doubles', 'mixed-doubles', 'singles'], description: 'team-battle if two teams/clubs/groups play each other ("Team Battle", "us vs them", "Ryder Cup"). king-of-court if they say King of the Court or up-and-down-the-river. maximize-courts ("Optimize Courts": doubles where possible, singles with leftovers, every court full) is the DEFAULT for any social/mixer/round robin unless they say mixed or singles. A fixed 4some = doubles.' },
+      format: { type: 'string', enum: ['maximize-courts', 'king-of-court', 'team-battle', 'doubles', 'mixed-doubles', 'singles', 'tournament'], description: 'tournament if they say tournament, bracket, draw, elimination, consolation, compass, quads, pools, OR fixed/set partners or teams that stay together all day (partners only stay fixed in a tournament draw). team-battle if two teams/clubs/groups play each other ("Team Battle", "us vs them", "Ryder Cup"). king-of-court if they say King of the Court or up-and-down-the-river. maximize-courts ("Optimize Courts": doubles where possible, singles with leftovers, every court full) is the DEFAULT for any social/mixer/round robin unless they say mixed or singles. A fixed 4some = doubles.' },
+      draw_format: { type: 'string', enum: DRAW_FORMATS as unknown as string[], description: 'Only when format = tournament. rr = round robin (the default), single-elim, fmlc = first-match loser consolation, ffic = feed-in consolation, compass, quads, rr-pools = pools then playoffs. Use the -doubles version for doubles or fixed partners/pairs, -singles otherwise.' },
       local_start: { type: 'string', description: 'Start as local wall-clock "YYYY-MM-DDTHH:mm", resolved against the current local time given. Omit if no time was said.' },
       when_text: { type: 'string', description: 'How to say it, e.g. "Fri 6pm". Omit if no time.' },
       location: { type: 'string', description: 'Courts / park / club as said. Omit if none.' },
@@ -51,8 +53,15 @@ export async function POST(req: Request) {
     });
     const use = r.content.find((c) => c.type === 'tool_use');
     if (!use || use.type !== 'tool_use') return new NextResponse(null, { status: 204 });
-    const x = use.input as Partial<PlayDraft> & { local_start?: string };
-    return NextResponse.json({ draft: normalizeDraft({ ...x, starts_at: null }), local_start: x.local_start ?? null });
+    const x = use.input as Partial<PlayDraft> & { local_start?: string; draw_format?: string };
+    // Partners only stay together in a tournament doubles draw, so "fixed partners" always means one (round robin unless they named another draw).
+    if (/\b(fixed|set|same|steady|permanent)\s+(partners?|pairs?|teams?)\b|\bbring (a|your) partner\b|\bwith your partner\b/i.test(text)) {
+      const k = typeof x.draw_format === 'string' ? x.draw_format.replace(/-(singles|doubles)$/, '') : 'rr';
+      x.format = 'tournament'; x.kind = 'social';
+      x.draw_format = k === 'quads' ? 'rr-doubles' : `${k}-doubles`;
+    }
+    const draw_format = x.format === 'tournament' && (DRAW_FORMATS as readonly string[]).includes(String(x.draw_format)) ? x.draw_format : x.format === 'tournament' ? 'rr-doubles' : null;
+    return NextResponse.json({ draft: normalizeDraft({ ...x, starts_at: null }), local_start: x.local_start ?? null, draw_format });
   } catch {
     return new NextResponse(null, { status: 204 });
   }

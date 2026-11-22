@@ -27,6 +27,7 @@ const TILES: { id: Tile; label: string; sub: string }[] = [
   { id: 'kotc', label: 'King of the Court', sub: 'Winners move up a court' },
   { id: 'tournament', label: 'Tournament', sub: 'Round robin or brackets' },
 ];
+const SAY_EXAMPLE = 'Tennis mixed doubles drop-in Saturday 9am at Heather Farm, fixed partners, 3 courts, 3.5–4.0, 12 players';
 const tileOf = (d: PlayDraft): Tile => (d.format === 'tournament' ? 'tournament' : d.format === 'king-of-court' ? 'kotc' : d.kind === 'game' ? 'game' : 'mixer');
 const FRESH = (): PlayDraft => normalizeDraft({ kind: 'game', format: 'doubles', spots: 4, courts: 1 });
 type Recent = { title: string; text: string; draft: PlayDraft };
@@ -93,10 +94,11 @@ export default function HostClient({ initial, club, resume }: { initial?: string
     try {
       const r = await fetch('/api/p/parse', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: t, local: localNow() }) });
       if (r.status === 200) {
-        const j = (await r.json()) as { draft: PlayDraft; local_start: string | null };
+        const j = (await r.json()) as { draft: PlayDraft; local_start: string | null; draw_format?: DrawFormat | null };
+        if (j.draw_format) setDrawFormat(j.draw_format);
         const starts = j.local_start && !isNaN(Date.parse(j.local_start)) ? new Date(j.local_start).toISOString() : quick.starts_at;
         // Optimize Courts is the default for any social unless they said "doubles only" (host can still switch).
-        const fmt = j.draft.kind === 'social' && j.draft.format === 'doubles' && !/doubles only|only doubles/i.test(t) ? 'maximize-courts' : j.draft.format;
+        const fmt = j.draft.format !== 'tournament' && j.draft.kind === 'social' && j.draft.format === 'doubles' && !/doubles only|only doubles/i.test(t) ? 'maximize-courts' : j.draft.format;
         const ai = normalizeDraft({ ...j.draft, format: fmt, starts_at: starts, when_text: j.draft.when_text ?? quick.when_text, location: j.draft.location ?? quick.location });
         // Anything the host already changed while it was tidying up stays theirs.
         setDraft((d) => {
@@ -108,6 +110,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       }
     } catch { /* keep the quick reading */ }
     setThinking(false);
+    document.getElementById('step-1')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   // Run it back: re-read the sentence so "Saturday 9am" means the coming Saturday.
@@ -130,6 +133,9 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       : { kind: 'social', format: 'tournament', spots: null, courts: many };
     set(p);
   }
+
+  const [typing, setTyping] = useState(!!initial);
+  function openSay() { setTyping(true); if (micOk && !mic) talk(); }
 
   const usedMic = useRef(false);
   function talk() {
@@ -186,22 +192,35 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       <main className="mx-auto w-full max-w-xl px-5">
         <h1 className="pt-6 text-center text-[36px] font-medium leading-[1.04] tracking-[-1.5px] sm:text-[48px]">Start a game</h1>
 
-            <form className="mt-5" onSubmit={(e) => { e.preventDefault(); build(); }}>
-              <div className="flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
-                <textarea value={text} onChange={(e) => { mark(); setText(e.target.value); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); build(); } }}
-                  rows={2} placeholder="Doubles Sat 9am at Heather Farm, need 3 more" aria-label="Describe your game"
-                  className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-[16px] outline-none placeholder:text-[#8a978d]" />
-                {micOk && (
-                  <button type="button" onClick={talk} aria-label={mic ? 'Stop listening' : 'Say it'} className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${mic ? 'animate-pulse' : ''}`}
-                    style={{ background: mic ? '#e0735e' : '#eef1e8', color: mic ? '#fff' : C.ink }}><Mic className="h-5 w-5" /></button>
-                )}
-                <button type="submit" aria-label="Fill it in" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ background: C.ink }}>
-                  {thinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
-                </button>
-              </div>
-              <p className="mt-2 text-center text-[12px]" style={{ color: C.muted }}>{mic ? 'Listening… say when, where, how many' : 'Type it or say it and the steps below fill in. Or just tap through them.'}</p>
-            </form>
+        {/* Say it (Darrin 11/21/26, Kevin: the big AI box complicated the page). One line under the
+            headline; tapping listens (or opens a small box where speech isn't supported) and the
+            steps below fill in. */}
+        {!typing ? (
+          <button type="button" onClick={openSay} className="mx-auto mt-4 flex max-w-sm items-start gap-3 rounded-2xl px-3 py-2 text-left">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full" style={{ background: C.ink, color: C.lime }}><Mic className="h-5 w-5" /></span>
+            <span>
+              <span className="block text-[15px] font-semibold">Know what you want? Just say it.</span>
+              <span className="block text-[13px] italic leading-snug" style={{ color: C.muted }}>&ldquo;{SAY_EXAMPLE}&rdquo;</span>
+            </span>
+          </button>
+        ) : (
+          <form className="mt-4" onSubmit={(e) => { e.preventDefault(); build(); }}>
+            <div className="flex items-end gap-2 rounded-2xl border bg-white p-2 pl-4 shadow-sm" style={{ borderColor: C.line }}>
+              <textarea value={text} onChange={(e) => { mark(); setText(e.target.value); }} autoFocus={!micOk}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); build(); } }}
+                rows={2} placeholder={SAY_EXAMPLE} aria-label="Describe your game"
+                className="min-h-[52px] flex-1 resize-none bg-transparent py-2 text-[16px] outline-none placeholder:text-[#8a978d]" />
+              {micOk && (
+                <button type="button" onClick={talk} aria-label={mic ? 'Stop listening' : 'Say it'} className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl ${mic ? 'animate-pulse' : ''}`}
+                  style={{ background: mic ? '#e0735e' : '#eef1e8', color: mic ? '#fff' : C.ink }}><Mic className="h-5 w-5" /></button>
+              )}
+              <button type="submit" aria-label="Fill it in" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white" style={{ background: C.ink }}>
+                {thinking ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowRight className="h-5 w-5" />}
+              </button>
+            </div>
+            <p className="mt-2 text-center text-[12px]" style={{ color: C.muted }}>{mic ? 'Listening… say the sport, format, when, where, courts' : 'The steps below fill in. Check them, then Make my link.'}</p>
+          </form>
+        )}
 
         {recent.length > 0 && (
           <section className="mt-5 grid gap-2">
@@ -336,7 +355,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
 
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
-    <section className="mt-6">
+    <section id={`step-${n}`} className="mt-6 scroll-mt-4">
       <h2 className="mb-2 flex items-center gap-2 text-[15px] font-semibold">
         <span className="grid h-6 w-6 place-items-center rounded-full text-[12px] font-bold" style={{ background: C.ink, color: C.lime }}>{n}</span>{title}
       </h2>
