@@ -1,8 +1,10 @@
 import type { Metadata } from 'next';
-import DemoTour from '@/components/play/DemoTour';
+import Landing from '@/components/play/landing/Landing';
 
-const title = 'Racquets IRL: Racquet Sports. Together. In Real Life.';
-const description = 'Watch a Friday night run itself. Tennis, pickleball, padel. One sentence. One link. Everybody plays. No app, no account.';
+/** The Racquets IRL front door (Kevin + Darrin, 11/23/26): the redesigned landing page, also
+ *  served on signed-out clubmode.ai/ and reached from /play. The old self-running tour lives on at /play/demo. */
+const title = 'Racquets IRL: More playing. Less planning.';
+const description = 'Create a tennis, pickleball or padel game, fill it with one link, and let Racquets IRL run the courts, partners and scores. No app, no login. First game free.';
 
 export const metadata: Metadata = {
   title, description,
@@ -11,5 +13,5 @@ export const metadata: Metadata = {
 };
 
 export default function RacquetsIRLPage() {
-  return <DemoTour />;
+  return <Landing />;
 }

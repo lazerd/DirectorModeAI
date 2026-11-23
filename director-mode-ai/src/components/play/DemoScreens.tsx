@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * The phone screens the landing page (/racquetsirl/new) shows: the host's Create a game page (a display-only
+ * The phone screens the landing page (/racquetsirl) shows: the host's Create a game page (a display-only
  * mirror of HostClient) and the real event screens (EventCard, OpenView, LiveView,
  * DoneView, HostPanel, StatusSheet) fed by the local demo engine.
  * A copy of the screens inside DemoTour (which keeps its own, unchanged). Keep Compose in step

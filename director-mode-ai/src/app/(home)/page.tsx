@@ -1,16 +1,16 @@
 import type { Metadata } from 'next';
 import { createClient } from '@/lib/supabase/server';
 import PlatformHome from '@/components/home/PlatformHome';
-import DemoTour from '@/components/play/DemoTour';
+import Landing from '@/components/play/landing/Landing';
 
 /**
  * clubmode.ai/ — two front doors on one URL.
  *
  *   signed in  → PlatformHome, the full 18-tool homepage, exactly as before.
  *                Sleepy Hollow and every club run on it; nothing about it changes.
- *   signed out → Racquets IRL (11/20/26, Darrin): the same self-running demo as
- *                /racquetsirl, with a small footer link to /platform for the suite.
- *                (Kevin's three-door GuestHome was the signed-out page before.)
+ *   signed out → the Racquets IRL landing page (11/23/26, Kevin + Darrin), the same
+ *                page as /racquetsirl. Its footer links to /platform for the suite.
+ *                (Before: the self-running tour, now at /play/demo; before that, Kevin's GuestHome.)
  *
  * The full homepage stays reachable signed out at /platform, so a prospect can
  * still be shown everything.
@@ -18,10 +18,10 @@ import DemoTour from '@/components/play/DemoTour';
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Racquets IRL: Racquet Sports. Together. In Real Life.',
-  description: 'Watch a Friday night run itself. Tennis, pickleball, padel. One sentence. One link. Everybody plays. No app, no account.',
+  title: 'Racquets IRL: More playing. Less planning.',
+  description: 'Create a tennis, pickleball or padel game, fill it with one link, and let Racquets IRL run the courts, partners and scores. No app, no login. First game free.',
   alternates: { canonical: '/' },
-  openGraph: { title: 'Racquets IRL: Racquet Sports. Together. In Real Life.', url: '/' },
+  openGraph: { title: 'Racquets IRL: More playing. Less planning.', description: 'Create a tennis, pickleball or padel game, fill it with one link, and let Racquets IRL run the courts, partners and scores. No app, no login. First game free.', url: '/' },
 };
 
 export default async function HomePage() {
@@ -35,5 +35,5 @@ export default async function HomePage() {
   } catch {
     // An auth hiccup must never blank the front page: show the guest door.
   }
-  return signedIn ? <PlatformHome fallbackToGuest /> : <DemoTour />;
+  return signedIn ? <PlatformHome fallbackToGuest /> : <Landing />;
 }
