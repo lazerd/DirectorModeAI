@@ -72,6 +72,8 @@ const PUBLIC = [
   '/c',
   // CourtConnect games: a standalone player product (/play, /p/<code>, /court/<place>).
   '/play', '/p', '/court',
+  // Racquets IRL's AI connector sign-in (Claude / ChatGPT): an organizer, not a director.
+  '/oauth',
   // The RacquetsIRL demo stands alone: none of the ClubMode suite on it.
   '/racquetsirl',
 ];

@@ -40,14 +40,14 @@ export default function AiConnectClient() {
               {copied ? <><Check className="h-4 w-4" />Copied</> : <><Copy className="h-4 w-4" />Copy</>}
             </button>
           </div>
-          <p className="mt-2 text-[12px]" style={{ color: C.muted }}>No account or password needed. Free to host your first game.</p>
+          <p className="mt-2 text-[12px]" style={{ color: C.muted }}>When you connect, you confirm your email once with a 6-digit code. No password. Free to host your first game. Your players never sign in.</p>
         </section>
 
         <section className="mt-6">
           <h2 className="text-[18px] font-semibold">In Claude</h2>
           <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-[15px] leading-relaxed">
             <li>Open <b>Settings → Connectors</b> and choose <b>Add custom connector</b>.</li>
-            <li>Name it <b>Racquets IRL</b> and paste the URL above.</li>
+            <li>Name it <b>Racquets IRL</b>, paste the URL above, and confirm your email with the code we send.</li>
             <li>In a new chat, turn on Racquets IRL and tell it about your game.</li>
           </ol>
         </section>
@@ -56,8 +56,8 @@ export default function AiConnectClient() {
           <h2 className="text-[18px] font-semibold">In ChatGPT</h2>
           <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-[15px] leading-relaxed">
             <li>In <b>Settings → Apps &amp; Connectors</b>, open <b>Advanced settings</b> and turn on <b>Developer mode</b>.</li>
-            <li>Create a connector named <b>Racquets IRL</b> with the URL above (no authentication).</li>
-            <li>In a new chat, add Racquets IRL and tell it about your game.</li>
+            <li>Create a connector named <b>Racquets IRL</b> with the URL above. Authentication: <b>OAuth</b>.</li>
+            <li>Confirm your email with the code we send, then in a new chat add Racquets IRL and tell it about your game.</li>
           </ol>
           <p className="mt-2 text-[12px]" style={{ color: C.muted }}>Custom connectors depend on your ChatGPT or Claude plan. Menu names can change as they update their apps.</p>
         </section>

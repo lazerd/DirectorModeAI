@@ -165,8 +165,9 @@ export default function PrivacyPage() {
             Organizers can connect Racquets IRL to ChatGPT or Claude and run games by asking. When you do,
             we receive only what your AI sends to our tools to do what you asked: game details, players&rsquo;
             names, check-ins and scores. We do not receive your chat history, other conversations, files or
-            account details from ChatGPT or Claude, and we do not ask for passwords. Each game is
-            controlled by a private host key that your AI keeps for that game.
+            account details from ChatGPT or Claude, and we do not ask for passwords. To connect, you
+            confirm your email address with a one-time code; we keep that email to know which games are
+            yours, and we use it only to send sign-in codes. Players never sign in.
           </p>
           <p>
             Your conversation itself is covered by your AI provider&rsquo;s privacy policy (OpenAI or Anthropic).

@@ -32,7 +32,7 @@ export const AI = {
   title: 'Or just ask ChatGPT or Claude.',
   sub: 'Connect Racquets IRL to the AI you already use. Say what you want, and it sets up the game, writes the group-chat invite, runs the rounds, keeps score and writes the recap. Your players still just tap the link.',
   points: [
-    ['A minute to connect.', 'Paste one link into ChatGPT or Claude. No account.'],
+    ['A minute to connect.', 'Paste one link into ChatGPT or Claude and confirm your email. No password.'],
     ['Talk, don’t tap.', '“Court 2 was 11–7. Next round.”'],
     ['Run it back.', '“Same group next Thursday.” Done.'],
   ] as const,

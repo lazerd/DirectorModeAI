@@ -116,6 +116,8 @@ const COLLAPSED = 72;
 const PUBLIC_PREFIXES = [
   // CourtConnect games: standalone, for players with no club account.
   '/play', '/p', '/court',
+  // Racquets IRL's AI connector sign-in (Claude / ChatGPT): an organizer, not a director.
+  '/oauth',
   // The RacquetsIRL demo stands alone: none of the ClubMode suite on it.
   '/racquetsirl',
   // --- marketing and auth: a stranger from a cold email should never see the
