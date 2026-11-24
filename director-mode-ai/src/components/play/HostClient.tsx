@@ -347,6 +347,9 @@ export default function HostClient({ initial, club, resume }: { initial?: string
             <span className="mx-2">·</span>
             <a href="/play/near" className="underline underline-offset-4">Find a game near me</a>
           </p>
+          <p className="mt-3 text-center text-[13px]">
+            <a href="/play/ai" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Set it up from ChatGPT or Claude →</a>
+          </p>
         </section>
         <ClubGamesLink className="mt-6 text-center text-[13px]" />
       </main>
