@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
-import { BENEFITS, CTA, FINAL, FORMATS, HERO, STORY, TAGLINE } from './copy';
+import { AI, BENEFITS, CTA, FINAL, FORMATS, HERO, STORY, TAGLINE } from './copy';
 
 const src = (p: string) => readFileSync(path.join(__dirname, '..', '..', '..', p), 'utf8');
 const route = (href: string) => path.join(__dirname, '..', '..', '..', 'app', href.replace(/^\//, ''), 'page.tsx');
@@ -16,7 +16,7 @@ describe('landing copy', () => {
   });
 
   it('every page link goes to a route that exists (no dead-end CTAs)', () => {
-    for (const c of [CTA.primary, CTA.fullDemo, CTA.join, CTA.suite]) {
+    for (const c of [CTA.primary, CTA.fullDemo, CTA.join, CTA.suite, CTA.ai]) {
       expect(existsSync(route(c.href)), c.href).toBe(true);
     }
   });
@@ -25,6 +25,7 @@ describe('landing copy', () => {
     const page = src('components/play/landing/Landing.tsx');
     expect(page).toContain(`id="${CTA.secondary.href.slice(1)}"`);
     expect(page).toContain('id="formats"');
+    expect(page).toContain('id="ai"');
   });
 
   it('tells the three-stage story, each stage with real screens', () => {
@@ -41,9 +42,17 @@ describe('landing copy', () => {
   });
 
   it('makes no invented social proof or metrics', () => {
-    const all = JSON.stringify({ HERO, STORY, BENEFITS, FORMATS, FINAL });
+    const all = JSON.stringify({ HERO, STORY, BENEFITS, FORMATS, FINAL, AI });
     expect(all).not.toMatch(/\b\d[\d,]*\+?\s*(users|hosts|players|games played|clubs)\b/i);
     expect(all).not.toMatch(/testimonial|rated|#1|best-in-class|revolutionary|seamless/i);
+  });
+});
+
+describe('ChatGPT / Claude section', () => {
+  it('only claims what is live: a connector URL, not an app-store listing', () => {
+    const all = JSON.stringify(AI);
+    expect(all).not.toMatch(/app store|marketplace|directory|one[- ]click/i);
+    expect(existsSync(path.join(__dirname, '..', '..', '..', 'app', 'api', 'mcp', 'route.ts'))).toBe(true);
   });
 });
 

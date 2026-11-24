@@ -192,6 +192,9 @@ export default function HostClient({ initial, club, resume }: { initial?: string
       <PlayHeader right={<span className="text-xs" style={{ color: C.muted }}>Free · No login</span>} />
       <main className="mx-auto w-full max-w-xl px-5">
         <h1 className="pt-6 text-center text-[36px] font-medium leading-[1.04] tracking-[-1.5px] sm:text-[48px]">Start a game</h1>
+        <a href="/play/ai" className="mx-auto mt-3 flex w-fit items-center gap-2 rounded-full px-4 py-2 text-[13px] font-semibold" style={{ background: C.ink, color: C.lime }}>
+          <Sparkles className="h-4 w-4" />New: run your games from ChatGPT or Claude<ArrowRight className="h-4 w-4" />
+        </a>
 
         {/* Say it (Darrin 11/21/26, Kevin: the big AI box complicated the page). One line under the
             headline; tapping listens (or opens a small box where speech isn't supported) and the

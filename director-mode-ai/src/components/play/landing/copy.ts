@@ -20,7 +20,30 @@ export const CTA = {
   fullDemo: { label: 'Watch a whole night in 60 seconds', href: '/play/demo' },
   join: { label: 'Find a game near me', href: '/play/near' },
   suite: { label: 'All ClubMode tools', href: '/platform' },
+  ai: { label: 'Connect ChatGPT or Claude', short: 'Use with AI', href: '/play/ai' },
 } as const;
+
+/**
+ * Run it from ChatGPT or Claude (the MCP server at /api/mcp, live 11/24/26). True today via a
+ * custom connector (paste one URL); not yet a one-click directory listing, so never say "in the app store".
+ */
+export const AI = {
+  badge: 'New: run your games from ChatGPT or Claude',
+  title: 'Or just ask ChatGPT or Claude.',
+  sub: 'Connect Racquets IRL to the AI you already use. Say what you want, and it sets up the game, writes the group-chat invite, runs the rounds, keeps score and writes the recap. Your players still just tap the link.',
+  points: [
+    ['A minute to connect.', 'Paste one link into ChatGPT or Claude. No account.'],
+    ['Talk, don’t tap.', '“Court 2 was 11–7. Next round.”'],
+    ['Run it back.', '“Same group next Thursday.” Done.'],
+  ] as const,
+  chat: {
+    ask: 'Set up pickleball Saturday 9am at Lakeside Park, 3 courts, open to everyone.',
+    reply: 'Done! Paste this in your group chat:',
+    invite: ['Pickleball Mixer · Sat 9:00 AM · Lakeside Park', 'Tap to join: clubmode.ai/p/k7m2qx'] as const,
+    ask2: 'Everyone’s here. Check them in and start it.',
+    reply2: 'Started! 12 checked in, 3 courts. Everyone’s phone shows their court for round 1.',
+  },
+};
 
 export const TAGLINE = 'Racquet Sports. Together. In Real Life.';
 

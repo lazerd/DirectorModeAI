@@ -9,9 +9,9 @@
  * Server component: the hero text, CTAs and copy are in the first HTML response.
  * Only the phones (real app screens) and the stage switch hydrate.
  */
-import { ArrowRight, MapPin } from 'lucide-react';
+import { ArrowRight, MapPin, Sparkles } from 'lucide-react';
 import { PRICING_LINE } from '@/lib/play/pricing';
-import { AUDIENCE, BENEFITS, CTA, FINAL, FORMATS, FORMATS_ALSO, HERO, TAGLINE } from './copy';
+import { AI, AUDIENCE, BENEFITS, CTA, FINAL, FORMATS, FORMATS_ALSO, HERO, TAGLINE } from './copy';
 import { CtaLink, Phone, Story } from './LandingClient';
 
 const INK = '#103c32', LIME = '#d4ff49', NIGHT = '#07231c', PAPER = '#f4f5ef';
@@ -33,6 +33,7 @@ export default function Landing() {
           <nav aria-label="Main" className="flex items-center gap-1 sm:gap-2">
             <CtaLink href="#how" event="rirl_how" where="nav" className="rl-focus rl-navlink hidden md:inline-block">How it works</CtaLink>
             <CtaLink href="#formats" event="rirl_nav" where="formats" className="rl-focus rl-navlink hidden md:inline-block">Formats</CtaLink>
+            <CtaLink href="#ai" event="rirl_ai" where="nav" className="rl-focus rl-navlink hidden md:inline-block">{CTA.ai.short}</CtaLink>
             <CtaLink href={CTA.join.href} event="rirl_join" where="nav" className="rl-focus rl-navlink hidden sm:inline-block">Find a game</CtaLink>
             <CtaLink href={CTA.primary.href} event="rirl_cta" where="nav" className="rl-focus rl-btn ml-1 inline-flex items-center whitespace-nowrap rounded-full px-4 py-2.5 text-[14px] font-semibold" style={{ background: LIME, color: INK }}>
               {CTA.primary.short}
@@ -42,6 +43,9 @@ export default function Landing() {
 
         <section aria-labelledby="hero-title" className="mx-auto grid max-w-6xl items-center gap-10 px-5 pt-6 sm:px-8 sm:pt-10 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-8 lg:pb-20 lg:pt-12">
           <div className="text-center lg:text-left">
+            <CtaLink href="#ai" event="rirl_ai" where="hero_badge" className="rl-focus mb-5 inline-flex min-h-[40px] items-center gap-2 rounded-full border px-4 py-2 text-[14px] font-semibold" style={{ borderColor: '#d4ff4966', background: '#d4ff4914', color: LIME }}>
+              <Sparkles className="h-4 w-4" aria-hidden="true" />{AI.badge}<ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </CtaLink>
             <p className="text-[15px] font-medium tracking-[0.02em] text-[#a9bdb0]">{HERO.sports}</p>
             <h1 id="hero-title" className="mt-4 text-[clamp(3.1rem,12vw,6rem)] font-semibold leading-[0.93] tracking-[-0.05em]">
               {HERO.title[0]}<br /><span style={{ color: LIME }}>{HERO.title[1]}</span>
@@ -114,6 +118,30 @@ export default function Landing() {
           </div>
         </section>
 
+        {/* ---------------- run it from ChatGPT or Claude (lime: the new thing) ---------------- */}
+        <section id="ai" tabIndex={-1} aria-labelledby="ai-title" className="scroll-mt-2 outline-none" style={{ background: LIME, color: INK }}>
+          <div className="mx-auto grid max-w-6xl items-center gap-12 px-5 py-16 sm:px-8 sm:py-24 lg:grid-cols-2 lg:gap-16 lg:py-28">
+            <div>
+              <p className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-[13px] font-bold uppercase tracking-[0.12em]" style={{ background: INK, color: LIME }}>
+                <Sparkles className="h-4 w-4" aria-hidden="true" />New
+              </p>
+              <h2 id="ai-title" className="rl-h2 mt-5">{AI.title}</h2>
+              <p className="mt-5 max-w-xl text-[18px] leading-relaxed" style={{ color: '#173f33' }}>{AI.sub}</p>
+              <ul className="mt-8 divide-y border-y" style={{ borderColor: '#103c3226' }}>
+                {AI.points.map(([lead, rest]) => (
+                  <li key={lead} className="py-4 text-[17px] leading-snug" style={{ borderColor: '#103c3226' }}>
+                    <b className="font-semibold">{lead}</b> <span style={{ color: '#2b4f43' }}>{rest}</span>
+                  </li>
+                ))}
+              </ul>
+              <CtaLink href={CTA.ai.href} event="rirl_ai_connect" where="ai" className="rl-focus rl-btn mt-9 inline-flex w-full items-center justify-center gap-2 rounded-2xl px-7 py-4 text-[18px] font-semibold sm:w-auto" style={{ background: INK, color: '#fff' }}>
+                {CTA.ai.label}<ArrowRight className="h-5 w-5" aria-hidden="true" />
+              </CtaLink>
+            </div>
+            <AiChat />
+          </div>
+        </section>
+
         {/* ---------------- formats (day) ---------------- */}
         <section id="formats" tabIndex={-1} aria-labelledby="formats-title" className="scroll-mt-2 outline-none">
           <div className="mx-auto max-w-6xl px-5 py-16 sm:px-8 sm:py-24 lg:py-28">
@@ -164,6 +192,31 @@ export default function Landing() {
         </div>
       </footer>
     </div>
+  );
+}
+
+/** A plain chat mock (no ChatGPT or Claude branding): the organizer asks, the AI runs the game. */
+function AiChat() {
+  const me = 'ml-auto max-w-[85%] rounded-2xl rounded-br-md px-4 py-3 text-[15px] leading-snug';
+  const ai = 'max-w-[90%] rounded-2xl rounded-bl-md px-4 py-3 text-[15px] leading-snug';
+  return (
+    <figure aria-label="An organizer asking their AI to set up and start a pickleball game" className="mx-auto w-full max-w-md rounded-[28px] p-4 shadow-[0_30px_60px_#103c3240] sm:p-5" style={{ background: NIGHT, color: '#eef3ea' }}>
+      <div className="mb-4 flex items-center gap-2 border-b border-white/10 pb-3 text-[13px] font-semibold text-[#a9bdb0]">
+        <Sparkles className="h-4 w-4" style={{ color: LIME }} aria-hidden="true" />Your AI · Racquets IRL connected
+      </div>
+      <div className="space-y-3">
+        <p className={me} style={{ background: '#1d4a3c' }}>{AI.chat.ask}</p>
+        <div className={ai} style={{ background: '#ffffff12' }}>
+          <p>{AI.chat.reply}</p>
+          <div className="mt-2 rounded-xl p-3 text-[14px]" style={{ background: '#fff', color: INK }}>
+            <p className="font-semibold">{AI.chat.invite[0]}</p>
+            <p className="mt-0.5 underline">{AI.chat.invite[1]}</p>
+          </div>
+        </div>
+        <p className={me} style={{ background: '#1d4a3c' }}>{AI.chat.ask2}</p>
+        <p className={ai} style={{ background: '#ffffff12' }}>{AI.chat.reply2}</p>
+      </div>
+    </figure>
   );
 }
 

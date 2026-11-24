@@ -35,8 +35,9 @@ async function handle(req: Request): Promise<Response> {
 
 export const POST = handle;
 export const DELETE = handle;
-/** Stateless server: no standalone SSE stream to offer. */
-export async function GET() {
+/** Stateless server: no standalone SSE stream to offer. A person opening the URL in a browser gets the setup page. */
+export async function GET(req: Request) {
+  if ((req.headers.get('accept') ?? '').includes('text/html')) return Response.redirect(new URL('/play/ai', req.url), 307);
   return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed. POST JSON-RPC to this endpoint.' }, id: null }), {
     status: 405, headers: { 'content-type': 'application/json', Allow: 'POST, DELETE, OPTIONS', ...CORS },
   });
