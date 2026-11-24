@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/privacy' },
 };
 
-const UPDATED = 'August 28, 2026';
+const UPDATED = 'November 24, 2026';
 const CONTACT = 'hello@clubmode.ai';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -131,10 +131,48 @@ export default function PrivacyPage() {
           <p>
             We use a small number of service providers to run the product, and they only ever
             receive what they need to perform their function: hosting and database
-            (Vercel, Supabase), email delivery (Resend), text message delivery (Twilio), and payment
-            processing. They are not permitted to use the information for their own purposes.
+            (Vercel, Supabase), email delivery (Resend), text message delivery (Twilio), payment
+            processing, and AI text features such as game recaps (Anthropic). They are not permitted to use the information for their own purposes.
           </p>
           <p>We disclose information otherwise only when the law requires it.</p>
+        </Section>
+
+        <Section title="Racquets IRL games">
+          <p>
+            Racquets IRL (<span className="text-white/85">clubmode.ai/play</span>) lets anyone organize a
+            tennis, pickleball or padel game without an account. A game holds what the organizer enters
+            (title, time, place, level, courts, notes and the organizer&rsquo;s first name) and, for each
+            player who joins, the name they type, and optionally a gender (for mixed doubles), a skill
+            level, and an email address if they tick the box to get game emails or crown alerts. Scores,
+            rounds and the recap are stored with the game.
+          </p>
+          <p>
+            <strong className="text-white/85">Who sees it:</strong> anyone with a game&rsquo;s link can see
+            that game, its players&rsquo; names and its results. Email addresses are never shown to other
+            players. A game appears in &ldquo;Games near me&rdquo; only if its organizer chooses to list it.
+            Recaps and pre-game previews are written by an AI model (Anthropic) from the game&rsquo;s names
+            and scores.
+          </p>
+          <p>
+            <strong className="text-white/85">How long:</strong> games and results are kept so weekly series,
+            season standings and the King of the Court crown keep working. An organizer can remove a
+            player at any time, and we delete a game, or everything tied to your name or email, on request.
+          </p>
+        </Section>
+
+        <Section title="Connecting ChatGPT or Claude">
+          <p>
+            Organizers can connect Racquets IRL to ChatGPT or Claude and run games by asking. When you do,
+            we receive only what your AI sends to our tools to do what you asked: game details, players&rsquo;
+            names, check-ins and scores. We do not receive your chat history, other conversations, files or
+            account details from ChatGPT or Claude, and we do not ask for passwords. Each game is
+            controlled by a private host key that your AI keeps for that game.
+          </p>
+          <p>
+            Your conversation itself is covered by your AI provider&rsquo;s privacy policy (OpenAI or Anthropic).
+            Data that reaches us through the connection is stored and handled exactly like a game made on
+            the website, as described above.
+          </p>
         </Section>
 
         <Section title="How long we keep it">

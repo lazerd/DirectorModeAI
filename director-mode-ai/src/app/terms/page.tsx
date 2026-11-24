@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   alternates: { canonical: '/terms' },
 };
 
-const UPDATED = 'August 28, 2026';
+const UPDATED = 'November 24, 2026';
 const CONTACT = 'hello@clubmode.ai';
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -112,6 +112,20 @@ export default function TermsPage() {
               Privacy Policy
             </Link>
             .
+          </p>
+        </Section>
+
+        <Section title="Racquets IRL games">
+          <p>
+            Racquets IRL lets anyone organize a game and share it by link, on the website or by asking
+            ChatGPT or Claude once connected. Joining a game is free. An organizer&rsquo;s first hosted game
+            is free; hosting more may require a Host Pass, and the price is shown before you pay.
+          </p>
+          <p>
+            Anyone with a game&rsquo;s link can see it, so only add people who agreed to play, and don&rsquo;t
+            put private information in a game&rsquo;s title or notes. Keep your host link and host key to
+            yourself: whoever has them can run the game. Scores and recaps are for fun; an AI writes the
+            recaps from the game&rsquo;s names and scores and can get things wrong.
           </p>
         </Section>
 

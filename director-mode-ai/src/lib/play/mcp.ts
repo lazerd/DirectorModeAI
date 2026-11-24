@@ -147,6 +147,7 @@ export function buildRirlServer(): McpServer {
   const server = new McpServer({ name: 'racquets-irl', version: '1.0.0' }, { instructions: MCP_INSTRUCTIONS });
 
   server.registerTool('create_game', {
+    annotations: { title: 'Create a game', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     title: 'Create a game',
     description: 'Create a tennis, pickleball or padel game, social/mixer, or tournament and get a link players join from (no app or login). '
       + 'Formats: "maximize-courts" (Optimize Courts, the best default for socials: every court full, fewest sit-outs), "king-of-court" (winners move up), '
@@ -195,10 +196,10 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('get_game', {
+    annotations: { title: 'Look at a game', readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     title: 'Look at a game',
     description: 'Who is in and checked in, the current round\'s courts and scores, standings, tournament matches still to play, and the recap once it\'s over. Pass host_key to also get the host link.',
     inputSchema: { code, host_key: hostKey.optional() },
-    annotations: { readOnlyHint: true },
   }, async (a) => guard(async () => {
     const e = await mustView(a.code, a.host_key ?? null);
     const s = summary(e, a.host_key);
@@ -206,6 +207,7 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('add_players', {
+    annotations: { title: 'Add players', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     title: 'Add players',
     description: 'Add people to the game by name (a pasted list is fine). Set here=true if they are already at the courts (checks them in). Gender is only needed for mixed doubles.',
     inputSchema: {
@@ -226,6 +228,7 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('check_in', {
+    annotations: { title: 'Check players in or out', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     title: 'Check players in or out',
     description: 'Only checked-in players get put on courts. Check in named players, or everyone signed up (before the start only). out=true checks them out instead (they stop getting rounds).',
     inputSchema: {
@@ -246,10 +249,10 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('remove_player', {
+    annotations: { title: 'Remove a player', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     title: 'Remove a player',
     description: 'Take someone off the game (they left or cancelled). Their finished rounds still count.',
     inputSchema: { code, host_key: hostKey, name: z.string().min(1).max(40) },
-    annotations: { destructiveHint: true },
   }, async (a) => guard(async () => {
     const e = await hostView(a.code, a.host_key);
     await act(a.code, a.host_key, { action: 'remove', id: findPlayer(e, a.name).id });
@@ -258,6 +261,7 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('update_game', {
+    annotations: { title: 'Change game details', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     title: 'Change game details',
     description: 'Change the time, place, level, number of courts, player cap, round length, format or title. During a live social, a format or court change applies from the next round.',
     inputSchema: {
@@ -282,6 +286,7 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('start_game', {
+    annotations: { title: 'Start the game', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     title: 'Start the game',
     description: 'Start with everyone who is checked in: makes round 1 (social) or the draw (tournament). Players see "You\'re on Court N" on their phones. pairing "smart" balances by level and standings (default); "random" shuffles.',
     inputSchema: { code, host_key: hostKey, pairing: z.enum(['smart', 'random']).optional() },
@@ -293,6 +298,7 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('next_round', {
+    annotations: { title: 'Next round', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     title: 'Next round',
     description: 'Social games only: make the next round from everyone checked in (new partners and opponents, fair sit-outs). Set reshuffle=true to redo the current round instead.',
     inputSchema: { code, host_key: hostKey, reshuffle: z.boolean().optional() },
@@ -304,6 +310,7 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('record_score', {
+    annotations: { title: 'Record a court score (social)', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     title: 'Record a court score (social)',
     description: 'Social games: games won by each side on one court. Side A is listed first in get_game. A tied score needs tiebreak_winner. Round defaults to the current round.',
     inputSchema: {
@@ -324,6 +331,7 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('record_match_result', {
+    annotations: { title: 'Record a tournament match', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     title: 'Record a tournament match',
     description: 'Tournaments: the winner of one match (match_key from get_game), with the score written winner-first or player-a-first, e.g. "6-4, 3-6, 10-7". how "W/O", "RET" or "DEF" for a walkover, retirement or default.',
     inputSchema: {
@@ -338,6 +346,7 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('end_game', {
+    annotations: { title: 'End the game and get the recap', readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
     title: 'End the game and get the recap',
     description: 'Finish the night: final standings, awards and an AI sportscaster recap players see on the game link. spice: mild (default for tennis), club (default for pickleball) or locker (roast).',
     inputSchema: { code, host_key: hostKey, spice: z.enum(['mild', 'club', 'locker']).optional() },
@@ -349,6 +358,7 @@ export function buildRirlServer(): McpServer {
   }));
 
   server.registerTool('run_it_back', {
+    annotations: { title: 'Run it back next week', readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     title: 'Run it back next week',
     description: 'Make next week\'s game with the same settings (same host key). Returns the new code and an invite message for last week\'s group.',
     inputSchema: { code, host_key: hostKey },
