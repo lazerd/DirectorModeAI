@@ -136,7 +136,7 @@ const CSS = `
 .ch-nav a:hover,.ch-nav button:hover{color:#fff}
 .ch-hero{position:relative;min-height:88vh;display:flex;align-items:flex-end;overflow:hidden}
 .ch-hero-img{position:absolute;inset:0;background:url(/proshop/scene.jpg) center 40%/cover no-repeat}
-.ch-hero-veil{position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,18,14,.55) 0%,rgba(7,18,14,.2) 35%,rgba(7,18,14,.85) 78%,#07120e 100%)}
+.ch-hero-veil{position:absolute;inset:0;background:linear-gradient(90deg,rgba(7,18,14,.82) 0%,rgba(7,18,14,.55) 42%,rgba(7,18,14,0) 72%),linear-gradient(180deg,rgba(7,18,14,.55) 0%,rgba(7,18,14,.15) 35%,rgba(7,18,14,.8) 80%,#07120e 100%)}
 .ch-hero-in{position:relative;z-index:2;max-width:760px;padding:0 clamp(18px,5vw,56px) 64px}
 .ch-kicker{font-size:12px;letter-spacing:.32em;text-transform:uppercase;color:#d9bd7c;margin:0 0 14px}
 .ch-h1{font:400 clamp(38px,6vw,68px)/1.04 Georgia,'Times New Roman',serif;margin:0 0 16px;color:#fbf5e6}

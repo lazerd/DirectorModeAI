@@ -74,9 +74,9 @@ const CSS = `
 .mg-h{font:400 40px/1.1 Georgia,'Times New Roman',serif;margin:0 0 10px;color:#f6efdf}
 .mg-p{margin:0 0 26px;color:rgba(241,234,217,.66);font-size:15px;line-height:1.5}
 .mg-form{display:flex;gap:8px}
-.mg-in{flex:1;min-width:0;background:rgba(255,255,255,.06);border:1px solid rgba(214,190,130,.35);border-radius:12px;padding:14px 14px;color:#f6efdf;font:600 16px Archivo,system-ui;letter-spacing:.18em;text-align:center;outline:none}
-.mg-in::placeholder{color:rgba(241,234,217,.35);letter-spacing:.08em;font-weight:500}
-.mg-in:focus{border-color:#d9bd7c;box-shadow:0 0 0 3px rgba(217,189,124,.18)}
+.mg .mg-in{flex:1;min-width:0;background:rgba(255,255,255,.06) !important;-webkit-text-fill-color:#f6efdf;border:1px solid rgba(214,190,130,.35);border-radius:12px;padding:14px 14px;color:#f6efdf;font:600 16px Archivo,system-ui;letter-spacing:.18em;text-align:center;outline:none}
+.mg .mg-in::placeholder{color:rgba(241,234,217,.35);letter-spacing:.08em;font-weight:500}
+.mg .mg-in:focus{border-color:#d9bd7c;box-shadow:0 0 0 3px rgba(217,189,124,.18)}
 .mg-go{border:0;border-radius:12px;padding:0 20px;background:#d9bd7c;color:#14100a;font:700 15px Archivo,system-ui;cursor:pointer}
 .mg-go:disabled{opacity:.45;cursor:default}
 .mg-err{min-height:20px;margin:10px 0 6px;color:#e9a3a3;font-size:14px}
