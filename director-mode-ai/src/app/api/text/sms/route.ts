@@ -34,6 +34,8 @@ export async function POST(req: Request) {
       body: params.Body || '',
       providerId: params.MessageSid,
       hasMedia: Number(params.NumMedia || 0) > 0,
+      media: Array.from({ length: Math.min(3, Number(params.NumMedia || 0)) }, (_, i) => ({ url: params[`MediaUrl${i}`], type: params[`MediaContentType${i}`] }))
+        .filter((m) => m.url && /^image\//.test(m.type || '')),
     });
   } catch (e) {
     console.error('text staff sms inbound failed', e);

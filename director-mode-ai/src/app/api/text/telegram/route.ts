@@ -26,6 +26,9 @@ export async function POST(req: Request) {
       body: text === '/start' ? 'help' : text,
       providerId: String(u.update_id),
       hasMedia: !!(m.photo || m.document || m.voice),
+      media: Array.isArray(m.photo) && m.photo.length
+        ? [{ telegramFileId: String(m.photo[m.photo.length - 1].file_id), type: 'image/jpeg' }]
+        : m.document && /^image\//.test(String(m.document.mime_type || '')) ? [{ telegramFileId: String(m.document.file_id), type: String(m.document.mime_type) }] : [],
     });
   } catch (e) {
     console.error('text staff telegram inbound failed', e);

@@ -9,6 +9,8 @@ import { staffById } from '@/lib/proshop/staff';
 import { isPlatformOwnerEmail } from '@/lib/platformOwner';
 import { sendTo, showTyping, type Channel } from './channels';
 import { buildHuddle, buildRecap, type MenuItem } from './huddle';
+import { fetchMedia, keepMedia, money, readPhoto, type InMedia } from './photos';
+import { queueJob } from '@/lib/bridge/jobs';
 
 /*
  * One message in from a director's phone → what their staff does and says back.
@@ -24,9 +26,13 @@ import { buildHuddle, buildRecap, type MenuItem } from './huddle';
 export interface Line {
   id: string; user_id: string; club_id: string; channel: Channel; address: string | null;
   status: 'pending' | 'active' | 'stopped'; link_code: string | null; link_expires_at: string | null;
-  morning: boolean; evening: boolean; menu: MenuItem[]; awaiting: MenuItem | null; history: ChatTurn[];
+  morning: boolean; evening: boolean; menu: MenuItem[]; awaiting: Awaiting | null; history: ChatTurn[]; sent_alerts?: string[];
   last_morning: string | null; last_evening: string | null; verified_at: string | null;
 }
+
+/** A receipt waiting for the director's YES to go to the accountant. */
+type ReceiptItem = { n: 0; kind: 'receipt'; ref: { vendor: string; date: string; amount: number; description: string; mediaId: string }; label: string };
+type Awaiting = MenuItem | ReceiptItem;
 
 const db = () => getSupabaseAdmin();
 const HELP = (ch: Channel) =>
@@ -77,7 +83,7 @@ function remember(line: Line, user: string, assistant: string): ChatTurn[] {
  * Handle one inbound message. `providerId` (Twilio MessageSid / Telegram update id)
  * makes a retried webhook harmless.
  */
-export async function handleInbound(msg: { channel: Channel; address: string; body: string; providerId?: string; hasMedia?: boolean }): Promise<void> {
+export async function handleInbound(msg: { channel: Channel; address: string; body: string; providerId?: string; hasMedia?: boolean; media?: InMedia[] }): Promise<void> {
   const body = (msg.body || '').trim();
   if (msg.providerId) {
     const { count } = await db().from('text_messages').select('id', { count: 'exact', head: true })
@@ -153,11 +159,17 @@ export async function handleInbound(msg: { channel: Channel; address: string; bo
     return;
   }
 
-  // ---- everything else: the staff
-  if (msg.hasMedia && !body) {
-    await say(line, "I can't read photos by text yet. Tell me in words what you need, or use the Pro Shop page.", 'system');
+  // ---- a photo: a receipt to reimburse, or something to read
+  if (msg.media?.length) {
+    await handlePhoto(line, ctx, msg.media[0], body);
     return;
   }
+  if (msg.hasMedia && !body) {
+    await say(line, "I couldn't open that photo. Try sending it again as a photo (not a file).", 'system');
+    return;
+  }
+
+  // ---- everything else: the staff
   await showTyping(line.channel, line.address!);
   const { data: who } = await db().auth.admin.getUserById(line.user_id);
   const r = await withActiveClub(line.club_id, () =>
@@ -166,6 +178,39 @@ export async function handleInbound(msg: { channel: Channel; address: string; bo
   const reply = r.ok ? r.text : r.message;
   await updateLine(line.id, { history: remember(line, body, reply), awaiting: null });
   await say(line, reply);
+}
+
+/** A photo texted in. Receipts go to the accountant after a YES; anything else is read back. */
+async function handlePhoto(line: Line, ctx: ClubCtx, media: InMedia, caption: string) {
+  await showTyping(line.channel, line.address!);
+  const img = await fetchMedia(media).catch(() => null);
+  if (!img) { await say(line, "I couldn't open that photo. Send it as a regular photo (JPG or PNG).", 'system'); return; }
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: ctx.timeZone }).format(new Date());
+  const read = await readPhoto(img, today).catch((e) => { console.error('photo read failed', e); return null; });
+  if (!read) { await say(line, "I couldn't read that one. Try a sharper photo, or tell me what it is.", 'system'); return; }
+  if (read.kind === 'receipt') {
+    if (read.amount == null || !(read.amount > 0)) {
+      await say(line, `That looks like a receipt from ${read.vendor || 'a store'}, but I can't read the total. What was the total?`);
+      await updateLine(line.id, { history: remember(line, caption || '[photo of a receipt]', `Receipt from ${read.vendor || 'unknown vendor'}, total unreadable. Asked for the total.`) });
+      return;
+    }
+    const mediaId = await keepMedia(line.id, img);
+    const ref = { vendor: read.vendor || 'Unknown vendor', date: read.date && /^\d{4}-\d{2}-\d{2}$/.test(read.date) ? read.date : today, amount: Math.round(read.amount * 100) / 100, description: (caption || read.description || 'Supplies').slice(0, 60), mediaId };
+    const label = `${ref.vendor}, ${ref.date}, ${money(ref.amount)}, ${ref.description}`;
+    await updateLine(line.id, { awaiting: { n: 0, kind: 'receipt', ref, label } });
+    await say(line, `Receipt: ${label} (Tennis).\nReply YES and I'll send it to Edi for reimbursement, or SKIP.`);
+    return;
+  }
+  if (read.kind === 'signin') {
+    const names = (read.names ?? []).slice(0, 40);
+    const msg = `${read.title ? read.title + ': ' : ''}I read ${names.length} name${names.length === 1 ? '' : 's'}: ${names.join(', ')}.\nWhich class and date is this for? I'll put the attendance on the board.`;
+    await updateLine(line.id, { history: remember(line, caption || '[photo of a sign-in sheet]', msg) });
+    await say(line, msg);
+    return;
+  }
+  const msg = `${read.summary} What should I do with it?`;
+  await updateLine(line.id, { history: remember(line, caption || '[photo]', msg) });
+  await say(line, msg);
 }
 
 /** Show one huddle item and what YES would do. */
@@ -196,8 +241,14 @@ async function openItem(line: Line, ctx: ClubCtx, item: MenuItem) {
   await say(line, `${c.program.title}, ${when.day} ${when.time}. ${kind === 'spots_left' ? `${prev.spotsLeft} spot${prev.spotsLeft === 1 ? '' : 's'} open. ` : ''}One email each to ${who}: "${prev.subject}".\nReply YES to send or SKIP.`);
 }
 
-async function decideItem(line: Line, ctx: ClubCtx, item: MenuItem, yes: boolean) {
+async function decideItem(line: Line, ctx: ClubCtx, item: Awaiting, yes: boolean) {
   await updateLine(line.id, { awaiting: null });
+  if (item.kind === 'receipt') {
+    if (!yes) { await say(line, 'Skipped. Nothing sent.'); return; }
+    await queueJob({ kind: 'reimburse', input: { ...item.ref, notify: true }, clubId: ctx.clubId, userId: line.user_id, lineId: line.id });
+    await say(line, `Filing it: ${item.label}. The club computer fills the form and emails Edi, CC you. I'll text you when it's sent.`);
+    return;
+  }
   if (!MANAGER_ROLES.has(ctx.role)) { await say(line, 'Only the club owner or director can say yes to that.', 'system'); return; }
   if (item.kind === 'task') {
     const status = yes ? 'approved' : 'declined';
@@ -252,6 +303,24 @@ async function linkWithCode(channel: Channel, address: string, code: string): Pr
   return true;
 }
 
+/** Heads-ups from Secretary (rain on a match day, unbooked courts, junior billing), each texted once. */
+async function sendAlerts(line: Line) {
+  const base = process.env.SECRETARY_TEXT_URL, key = process.env.SECRETARY_TEXT_SECRET;
+  if (!base || !key) return;
+  const { data } = await db().auth.admin.getUserById(line.user_id);
+  if (!isPlatformOwnerEmail(data?.user?.email)) return;
+  let alerts: { id: string; text: string }[] = [];
+  try {
+    const r = await fetch(base.replace(/\/text$/, '/alerts'), { headers: { authorization: `Bearer ${key}` }, cache: 'no-store', signal: AbortSignal.timeout(20_000) });
+    alerts = ((await r.json().catch(() => null)) as { alerts?: typeof alerts } | null)?.alerts ?? [];
+  } catch { return; }
+  const sent = new Set(line.sent_alerts ?? []);
+  const fresh = alerts.filter((a) => a?.id && !sent.has(a.id));
+  if (!fresh.length) return;
+  for (const a of fresh) await say(line, a.text, 'alert');
+  await updateLine(line.id, { sent_alerts: [...sent, ...fresh.map((a) => a.id)].slice(-300) });
+}
+
 /** The platform owner's morning briefing from Secretary (secretary-dc.vercel.app), or null. */
 async function secretaryBriefing(userId: string): Promise<string | null> {
   const url = process.env.SECRETARY_TEXT_URL, key = process.env.SECRETARY_TEXT_SECRET;
@@ -287,6 +356,7 @@ export async function tick(now = new Date()): Promise<{ morning: number; evening
         await say(line, h.text, 'huddle');
         out.morning++;
       }
+      if (hour >= 7 && hour <= 20) await sendAlerts(line);
       if (line.evening && hour >= 18 && hour < 22 && line.last_evening !== today) {
         await updateLine(line.id, { last_evening: today });
         const since = new Date(now.getTime() - 14 * 3600_000).toISOString();
