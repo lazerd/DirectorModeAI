@@ -6,6 +6,7 @@ import { runChat, type ChatTurn } from '@/lib/assistant/runChat';
 import { loadClinic, sendClinic, clinicWhen } from '@/lib/programs/clinicSignups';
 import { APP_URL } from '@/lib/appUrl';
 import { staffById } from '@/lib/proshop/staff';
+import { isPlatformOwnerEmail } from '@/lib/platformOwner';
 import { sendTo, showTyping, type Channel } from './channels';
 import { buildHuddle, buildRecap, type MenuItem } from './huddle';
 
@@ -251,6 +252,21 @@ async function linkWithCode(channel: Channel, address: string, code: string): Pr
   return true;
 }
 
+/** The platform owner's morning briefing from Secretary (secretary-dc.vercel.app), or null. */
+async function secretaryBriefing(userId: string): Promise<string | null> {
+  const url = process.env.SECRETARY_TEXT_URL, key = process.env.SECRETARY_TEXT_SECRET;
+  if (!url || !key) return null;
+  const { data } = await db().auth.admin.getUserById(userId);
+  if (!isPlatformOwnerEmail(data?.user?.email)) return null;
+  try {
+    const r = await fetch(url, { headers: { authorization: `Bearer ${key}` }, cache: 'no-store', signal: AbortSignal.timeout(20_000) });
+    const j = (await r.json().catch(() => null)) as { text?: string } | null;
+    return r.ok && j?.text ? j.text : null;
+  } catch {
+    return null;
+  }
+}
+
 /** The scheduled texts. Called every hour; sends each line's huddle at 7am and recap at 6pm, its club's time. */
 export async function tick(now = new Date()): Promise<{ morning: number; evening: number; errors: string[] }> {
   const { data } = await db().from('text_lines').select('*').eq('status', 'active').not('address', 'is', null).limit(1000);
@@ -262,6 +278,10 @@ export async function tick(now = new Date()): Promise<{ morning: number; evening
       const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: ctx.timeZone, hour: 'numeric', hourCycle: 'h23' }).format(now));
       const today = new Intl.DateTimeFormat('en-CA', { timeZone: ctx.timeZone }).format(now);
       if (line.morning && hour >= 7 && hour < 11 && line.last_morning !== today) {
+        // Darrin's own line: his Secretary briefing comes first ("Good morning, league
+        // match today on courts 5, 6, 8, 9...", 11/25/26), then the staff huddle.
+        const brief = await secretaryBriefing(line.user_id);
+        if (brief) await say(line, brief, 'secretary');
         const h = await buildHuddle(ctx);
         await updateLine(line.id, { menu: h.menu, awaiting: null, last_morning: today });
         await say(line, h.text, 'huddle');
