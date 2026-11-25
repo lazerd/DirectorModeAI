@@ -39,7 +39,7 @@ export const AI = {
   chat: {
     ask: 'Set up pickleball Saturday 9am at Lakeside Park, 3 courts, open to everyone.',
     reply: 'Done! Paste this in your group chat:',
-    invite: ['Pickleball Mixer · Sat 9:00 AM · Lakeside Park', 'Tap to join: clubmode.ai/p/k7m2qx'] as const,
+    invite: ['Pickleball Mixer · Sat 9:00 AM · Lakeside Park', 'Tap to join: racquetsirl.com/p/k7m2qx'] as const,
     ask2: 'Everyone’s here. Check them in and start it.',
     reply2: 'Started! 12 checked in, 3 courts. Everyone’s phone shows their court for round 1.',
   },
@@ -51,7 +51,7 @@ export const HERO = {
   title: ['More playing.', 'Less planning.'] as const,
   sub: 'Create the game. Bring everyone together. Make every minute on court more fun.',
   sports: 'Tennis · Pickleball · Padel',
-  trust: 'Free first game · No app, no login',
+  trust: 'Free at launch · No app, no login',
 };
 
 /**

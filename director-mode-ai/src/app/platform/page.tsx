@@ -1,16 +1,28 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
 import PlatformHome from '@/components/home/PlatformHome';
+import { createClient } from '@/lib/supabase/server';
+import { PASS_COOKIE, verifyPass } from '@/lib/members/pass';
 
 /**
- * /platform — the full ClubMode homepage (every tool), reachable signed out.
- * Signed-in users already get this at "/". Signed-out visitors get the simple
- * three-door page there instead, and this is where "See everything" points.
+ * /platform — the full 18-tool ClubMode page. Members only since 11/25/26: a signed-in
+ * member or a browser that entered a member code. Everyone else goes to the door at "/".
  */
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Everything in ClubMode',
   alternates: { canonical: '/platform' },
+  robots: { index: false },
 };
 
-export default function PlatformPage() {
+export default async function PlatformPage() {
+  let signedIn = false;
+  try {
+    const { data: { user } } = await (await createClient()).auth.getUser();
+    signedIn = !!user;
+  } catch {}
+  if (!signedIn && !verifyPass((await cookies()).get(PASS_COOKIE)?.value)) redirect('/');
   return <PlatformHome />;
 }

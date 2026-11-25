@@ -202,6 +202,43 @@ function rewritePtlHost(request: NextRequest): NextResponse | null {
 }
 
 /**
+ * Racquets IRL lives on racquetsirl.com, ClubMode on clubmode.ai: one deployment, two front doors.
+ *
+ *   racquetsirl.com/             -> the Racquets IRL landing (rewrite of /racquetsirl)
+ *   racquetsirl.com/racquetsirl  -> redirect to /  (and bare /play, which used to land there)
+ *   clubmode.ai/racquetsirl, /play  -> 308 to racquetsirl.com/ (marketing links, the old ad)
+ *
+ * Game links (/p/<code>, /play/new, /play/i/...) work on BOTH hosts and are never moved:
+ * an organizer's host key lives in the browser storage of whichever host they used, so
+ * bouncing an existing clubmode.ai/p link to the other domain would lock them out of
+ * running their own game. New links are built on racquetsirl.com (RIRL_URL).
+ */
+const RIRL_HOSTS = new Set(['racquetsirl.com', 'www.racquetsirl.com']);
+function routeRacquetsIrlHost(request: NextRequest): NextResponse | null {
+  const host = request.headers.get('host')?.toLowerCase().split(':')[0] ?? '';
+  const path = request.nextUrl.pathname;
+  if (RIRL_HOSTS.has(host)) {
+    if (path === '/racquetsirl' || path === '/play') {
+      const u = request.nextUrl.clone(); u.pathname = '/';
+      if (path === '/play' && (u.searchParams.has('q') || u.searchParams.has('club') || u.searchParams.has('resume'))) return null;
+      return NextResponse.redirect(u, 308);
+    }
+    if (path === '/') {
+      const u = request.nextUrl.clone(); u.pathname = '/racquetsirl';
+      return NextResponse.rewrite(u);
+    }
+    return null;
+  }
+  if (host === 'clubmode.ai' || host === 'www.clubmode.ai') {
+    const bare = path === '/play' && ![...request.nextUrl.searchParams.keys()].some((k) => k === 'q' || k === 'club' || k === 'resume');
+    if (path === '/racquetsirl' || bare) {
+      return NextResponse.redirect(`https://racquetsirl.com/${request.nextUrl.search}`, 308);
+    }
+  }
+  return null;
+}
+
+/**
  * /event/<code> of a DEMO club's mixer forwards to that mixer's MixerMode page,
  * signed in through the club's demo link, opened on Rounds.
  *
@@ -245,6 +282,10 @@ export async function middleware(request: NextRequest) {
     const u = request.nextUrl.clone(); u.pathname = '/racquetsirl';
     return NextResponse.redirect(u, 307);
   }
+
+  // Racquets IRL has its own domain (11/25/26): its front door is racquetsirl.com/.
+  const rirl = routeRacquetsIrlHost(request);
+  if (rirl) return rirl;
 
   // Before any session work: a PTL page has no use for a ClubMode auth cookie,
   // and the rewrite has to happen before routing decides what this path is.

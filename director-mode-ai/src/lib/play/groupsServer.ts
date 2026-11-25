@@ -2,7 +2,7 @@ import 'server-only';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { sendBilledEmail, sendBilledEmails } from '@/lib/email';
-import { APP_URL } from '@/lib/appUrl';
+import { APP_URL, RIRL_URL } from '@/lib/appUrl';
 import { safeNext } from '@/lib/postLogin';
 import { activePass, passCheckoutUrl } from './passes';
 import { SPORT_LABEL, whenLine } from './core';
@@ -264,11 +264,11 @@ export async function blastGroup(user: GroupUser, o: { groupId: unknown; code: u
   const host = row.host_name || 'Your host';
   const when = whenLine(row as never, 'America/Los_Angeles') ?? '';
   const sport = SPORT_LABEL[row.sport as keyof typeof SPORT_LABEL] ?? 'Tennis';
-  const link = `${APP_URL}/p/${row.code}`;
+  const link = `${RIRL_URL}/p/${row.code}`;
   const payloads: Payload[] = to.map((m) => {
     const email = cleanEmail(m.email)!;
-    const offGroup = `${APP_URL}/play/unsubscribe?t=${signUnsub({ email, ownerId: user.id, groupId: g.id }, unsubSecret())}`;
-    const offHost = `${APP_URL}/play/unsubscribe?t=${signUnsub({ email, ownerId: user.id, groupId: null }, unsubSecret())}`;
+    const offGroup = `${RIRL_URL}/play/unsubscribe?t=${signUnsub({ email, ownerId: user.id, groupId: g.id }, unsubSecret())}`;
+    const offHost = `${RIRL_URL}/play/unsubscribe?t=${signUnsub({ email, ownerId: user.id, groupId: null }, unsubSecret())}`;
     return {
       platformPaid: true, fromName: 'Racquets IRL', to: email,
       ...(user.email ? { replyTo: user.email } : {}),

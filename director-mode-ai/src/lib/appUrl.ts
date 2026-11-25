@@ -21,6 +21,14 @@ export const APP_URL = (
   process.env.NEXT_PUBLIC_APP_URL || 'https://clubmode.ai'
 ).replace(/\/$/, '');
 
+/**
+ * Racquets IRL's own domain (bought 11/25/26). Every link a player or organizer sees
+ * for a game (/p/<code>, /play/...) is built on this host; the app behind it is the
+ * same deployment, so old clubmode.ai/p links keep working too.
+ */
+export const RIRL_URL = (process.env.NEXT_PUBLIC_RIRL_URL || 'https://racquetsirl.com').replace(/\/$/, '');
+export const RIRL_HOST = RIRL_URL.replace(/^https?:\/\//, '');
+
 /** Bare hostname, for display in UI ("clubmode.ai/leagues/…") and share strings. */
 export const APP_HOST = APP_URL.replace(/^https?:\/\//, '');
 

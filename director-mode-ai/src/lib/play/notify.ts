@@ -11,7 +11,7 @@ import { SPORT_LABEL, whenLine } from './core';
  * CourtConnect email: crown alerts (opt-in) and pass-restore codes. ClubMode pays
  * (platformPaid); nobody's meter is touched. Plain, short, one link.
  */
-const APP = process.env.NEXT_PUBLIC_APP_URL || 'https://clubmode.ai';
+const APP = process.env.NEXT_PUBLIC_RIRL_URL || 'https://racquetsirl.com';
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
 const okEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e) && e.length <= 200;
 

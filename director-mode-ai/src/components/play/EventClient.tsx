@@ -392,7 +392,7 @@ function icsHref(e: PlayEvent, code: string) {
   const s = new Date(e.starts_at), en = new Date(s.getTime() + 2 * 3600e3);
   const f = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
   const body = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ClubMode//CourtConnect//EN', 'BEGIN:VEVENT', `UID:${code}@clubmode.ai`, `DTSTAMP:${f(new Date())}`,
-    `DTSTART:${f(s)}`, `DTEND:${f(en)}`, `SUMMARY:${e.title}`, `LOCATION:${e.location ?? ''}`, `URL:https://clubmode.ai/p/${code}`, `DESCRIPTION:https://clubmode.ai/p/${code}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
+    `DTSTART:${f(s)}`, `DTEND:${f(en)}`, `SUMMARY:${e.title}`, `LOCATION:${e.location ?? ''}`, `URL:https://racquetsirl.com/p/${code}`, `DESCRIPTION:https://racquetsirl.com/p/${code}`, 'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
   return `data:text/calendar;charset=utf-8,${encodeURIComponent(body)}`;
 }
 

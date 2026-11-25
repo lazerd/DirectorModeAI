@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { APP_URL } from '@/lib/appUrl';
+import { RIRL_URL } from '@/lib/appUrl';
 import { standings } from '@/lib/mixer/guestMixer';
 import { act, createEvent, PlayError, view } from './server';
 import { formatLabel, whenLine, type PlayDraft, type PlayEvent, type PlayRsvp } from './core';
@@ -23,7 +23,7 @@ import type { Organizer } from './mcpAuth';
 
 const TZ = 'America/Los_Angeles';
 /** Links the organizer pastes into a group chat: always the current domain, never the legacy one. */
-const SITE = APP_URL.replace('club.coachmode.ai', 'clubmode.ai');
+const SITE = RIRL_URL;
 const SOCIAL_FORMATS = ['maximize-courts', 'king-of-court', 'team-battle', 'doubles', 'mixed-doubles', 'singles', 'tournament'] as const;
 
 export const MCP_INSTRUCTIONS = [

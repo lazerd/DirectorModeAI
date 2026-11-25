@@ -30,7 +30,7 @@ export async function GET(_req: Request, { params }: { params: { code: string; p
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
           {recap.crown ? <div style={{ background: '#fff7d6', color: ink, borderRadius: 28, padding: '22px 30px', fontSize: 36, fontWeight: 700, display: 'flex' }}>{recap.crown}</div> : null}
           <div style={{ fontSize: 34, color: '#bccdbb', display: 'flex' }}>{recap.headline}</div>
-          <div style={{ fontSize: 30, color: lime, display: 'flex' }}>clubmode.ai/p/{code} · host your own</div>
+          <div style={{ fontSize: 30, color: lime, display: 'flex' }}>racquetsirl.com/p/{code} · host your own</div>
         </div>
       </div>
     ),

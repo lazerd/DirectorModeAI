@@ -139,7 +139,7 @@ export default function PrivacyPage() {
 
         <Section title="Racquets IRL games">
           <p>
-            Racquets IRL (<span className="text-white/85">clubmode.ai/play</span>) lets anyone organize a
+            Racquets IRL (<span className="text-white/85">racquetsirl.com</span>) lets anyone organize a
             tennis, pickleball or padel game without an account. A game holds what the organizer enters
             (title, time, place, level, courts, notes and the organizer&rsquo;s first name) and, for each
             player who joins, the name they type, and optionally a gender (for mixed doubles), a skill

@@ -1,39 +1,39 @@
 import type { Metadata } from 'next';
+import { cookies } from 'next/headers';
 import { createClient } from '@/lib/supabase/server';
-import PlatformHome from '@/components/home/PlatformHome';
-import Landing from '@/components/play/landing/Landing';
+import MembersGate from '@/components/home/MembersGate';
+import Clubhouse from '@/components/home/Clubhouse';
+import { PASS_COOKIE, verifyPass } from '@/lib/members/pass';
 
 /**
- * clubmode.ai/ — two front doors on one URL.
+ * clubmode.ai/ — members only (Darrin, 11/25/26).
  *
- *   signed in  → PlatformHome, the full 18-tool homepage, exactly as before.
- *                Sleepy Hollow and every club run on it; nothing about it changes.
- *   signed out → the Racquets IRL landing page (11/23/26, Kevin + Darrin), the same
- *                page as /racquetsirl. Its footer links to /platform for the suite.
- *                (Before: the self-running tour, now at /play/demo; before that, Kevin's GuestHome.)
+ *   signed in        → the Clubhouse (member): the staff, texts, and every tool ("the rooms")
+ *   a member code    → the Clubhouse (insider): what's inside, and how to claim a membership
+ *   anyone else      → the gate: one line and a box for a code
  *
- * The full homepage stays reachable signed out at /platform, so a prospect can
- * still be shown everything.
+ * Racquets IRL moved to its own front door, racquetsirl.com (middleware rewrites its "/").
+ * The old 18-tool homepage is still at /platform, for members.
  */
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: 'Racquets IRL: More playing. Less planning.',
-  description: 'Create a tennis, pickleball or padel game, fill it with one link, and let Racquets IRL run the courts, partners and scores. No app, no login. First game free.',
+  title: 'ClubMode · Members only',
+  description: 'A private club for the people who run racquet clubs. By invitation.',
   alternates: { canonical: '/' },
-  openGraph: { title: 'Racquets IRL: More playing. Less planning.', description: 'Create a tennis, pickleball or padel game, fill it with one link, and let Racquets IRL run the courts, partners and scores. No app, no login. First game free.', url: '/' },
+  openGraph: { title: 'ClubMode · Members only', description: 'A private club for the people who run racquet clubs. By invitation.', url: '/' },
 };
 
 export default async function HomePage() {
   let signedIn = false;
   try {
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     signedIn = !!user;
   } catch {
-    // An auth hiccup must never blank the front page: show the guest door.
+    // An auth hiccup must never blank the front page: show the door.
   }
-  return signedIn ? <PlatformHome fallbackToGuest /> : <Landing />;
+  if (signedIn) return <Clubhouse mode="member" />;
+  const pass = verifyPass((await cookies()).get(PASS_COOKIE)?.value);
+  return pass ? <Clubhouse mode="insider" /> : <MembersGate />;
 }

@@ -57,9 +57,11 @@ describe('ChatGPT / Claude section', () => {
 });
 
 describe('front door', () => {
-  it('signed-out /, /racquetsirl and /play all land on the redesign; /racquetsirl/new redirects', () => {
+  it('racquetsirl.com/, /racquetsirl and /play all land on the redesign; /racquetsirl/new redirects', () => {
     expect(src('app/racquetsirl/page.tsx')).toContain('<Landing />');
-    expect(src('app/(home)/page.tsx')).toContain('<Landing />');
+    // Since 11/25/26 the landing is racquetsirl.com's "/" (a middleware rewrite); clubmode.ai/ is the members' door.
+    expect(src('middleware.ts')).toMatch(/RIRL_HOSTS[\s\S]*u\.pathname = '\/racquetsirl';\s*return NextResponse\.rewrite/);
+    expect(src('app/(home)/page.tsx')).toContain('<MembersGate />');
     expect(src('app/play/page.tsx')).toContain("redirect('/racquetsirl')");
     expect(src('app/racquetsirl/new/page.tsx')).toContain("redirect('/racquetsirl')");
     expect(src('app/racquetsirl/page.tsx')).not.toContain('index: false');

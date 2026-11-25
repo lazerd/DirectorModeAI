@@ -84,7 +84,7 @@ export async function GET(_req: Request, { params }: { params: { code: string } 
           </div>
         ) : null}
 
-        <div style={{ marginTop: 'auto', display: 'flex', fontSize: 30, color: lime }}>clubmode.ai/p/{e.code} · host your own</div>
+        <div style={{ marginTop: 'auto', display: 'flex', fontSize: 30, color: lime }}>racquetsirl.com/p/{e.code} · host your own</div>
       </div>
     ),
     { width: 1080, height: 1350, headers: { 'Cache-Control': 'no-store' } },
