@@ -112,10 +112,16 @@ export default function MixerHomePage() {
           <h1 className="font-semibold text-2xl sm:text-3xl mb-1">MixerMode</h1>
           <p className="text-gray-500">Your casual socials &amp; mixers. Tournaments and leagues have their own tabs.</p>
         </div>
-        <Link href="/mixer/select-format" className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600">
-          <Plus size={18} />
-          Create Event
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {/* The one-link pickup game (11/25/26): same engine as racquetsirl.com, kept inside MixerMode on ClubMode. */}
+          <Link href="/play/new" className="inline-flex items-center justify-center gap-2 px-4 py-2 border border-orange-300 text-orange-700 rounded-lg font-medium hover:bg-orange-50">
+            One-link game
+          </Link>
+          <Link href="/mixer/select-format" className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg font-medium hover:bg-orange-600">
+            <Plus size={18} />
+            Create Event
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">

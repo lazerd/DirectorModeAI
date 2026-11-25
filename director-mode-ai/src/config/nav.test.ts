@@ -33,8 +33,8 @@ describe('the canonical product list', () => {
     expect(PRODUCTS.map((t) => t.name)).not.toContain('Partner Finder');
   });
 
-  it('sends "Racquets IRL" to the public /play product and "Club Games" to the club board', () => {
-    expect(FOR_PLAYERS.find((t) => t.name === 'Racquets IRL')?.href).toBe('/play');
+  it('keeps Racquets IRL off ClubMode (its own site since 11/25/26) and sends "Club Games" to the club board', () => {
+    expect(FOR_PLAYERS.find((t) => t.name === 'Racquets IRL')).toBeUndefined();
     expect(FOR_PLAYERS.find((t) => t.name === 'Club Games')?.href).toBe('/member/games');
   });
 

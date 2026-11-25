@@ -54,8 +54,6 @@ export default function MembersGate() {
         <a className="mg-link" href="/login">Members, sign in</a>
       </div>
       <footer className="mg-foot">
-        <a href="https://racquetsirl.com">Looking for a game? Racquets IRL</a>
-        <span aria-hidden="true">·</span>
         <a href="/privacy">Privacy</a>
         <a href="/terms">Terms</a>
       </footer>

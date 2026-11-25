@@ -355,8 +355,6 @@ export default function ClubSidebar() {
               // CourtConnect: pairing members for games is the member-side reason
               // to open the app. Always shown, court reservations or not.
               { name: 'Club Games', href: '/member/games', matches: ['/member/games'], icon: Handshake, color: '#34d399' },
-              // Racquets IRL: the public one-link pickup games at /play.
-              { name: 'Racquets IRL', href: '/play', matches: ['/play'], icon: Users, color: '#D3FB52' },
               { name: 'My Account', href: '/client/dashboard', matches: ['/client/dashboard'], icon: Calendar, color: '#60a5fa' },
               { name: 'Find a Coach', href: '/find-coach', matches: ['/find-coach'], icon: GraduationCap, color: '#a78bfa' },
             ],

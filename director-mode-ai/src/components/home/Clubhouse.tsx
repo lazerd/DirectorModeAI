@@ -109,11 +109,6 @@ export default function Clubhouse({ mode }: { mode: 'insider' | 'member' }) {
               <span className="ch-room-d">{t.description}</span>
             </a>
           ))}
-          <a href="https://racquetsirl.com" className="ch-room">
-            <span className="ch-dot" style={{ background: '#d7f25a' }} />
-            <span className="ch-room-name">Racquets IRL</span>
-            <span className="ch-room-d">Pickup games for your members: one link, courts and partners done.</span>
-          </a>
         </div>
       </section>
 

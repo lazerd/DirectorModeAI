@@ -141,7 +141,7 @@ export const SECTIONS: Section[] = [
         name: 'MixerMode',
         href: '/mixer/home',
         match: '/mixer/home',
-        description: 'Socials, mixers and team battles. Build the lines, run the day, post the results.',
+        description: 'Socials, mixers, team battles and one-link pickup games. Build the lines, run the day, post the results.',
         pitch: 'Round robins, balanced team generation, tournaments and quads — live scores and standings across every format.',
         icon: Shuffle,
         color: '#fb923c',
@@ -440,16 +440,6 @@ export const FOR_PLAYERS: Tool[] = [
     description: "A player's own home: upcoming bookings, lessons and history.",
     icon: User,
     color: '#60a5fa',
-  },
-  {
-    // The public pickup-game product (/play, /p/<code>). Not a club tool, so
-    // not counted as a product here.
-    name: 'Racquets IRL',
-    href: '/play',
-    match: '/play',
-    description: 'Start a game anyone can join with one link. No club needed.',
-    icon: Users,
-    color: '#D3FB52',
   },
   {
     // The member side of CourtConnect (the old shared events board is retired).

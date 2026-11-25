@@ -161,7 +161,7 @@ export default function EventClient({ code, initial }: { code: string; initial: 
           <span className="mx-2">·</span>
           <Link href={`/play/near?sport=${e.sport}`} className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>Find a game near me</Link>
           <div className="mt-2">Run your own: <Link href="/play/ai" className="font-semibold underline underline-offset-4" style={{ color: C.ink }}>just ask ChatGPT or Claude</Link></div>
-          <div className="mt-2">Racquets IRL by ClubMode · no app, no account</div>
+          <div className="mt-2">Racquets IRL · no app, no account</div>
           <ClubGamesLink className="mt-2" />
         </div>
       </main>
