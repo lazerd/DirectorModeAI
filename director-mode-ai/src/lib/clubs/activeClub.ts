@@ -19,6 +19,7 @@
  * tampered cookie falls back rather than granting anything.
  */
 
+import { AsyncLocalStorage } from 'async_hooks';
 import { cookies } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { isPlatformOwnerEmail } from '@/lib/platformOwner';
@@ -101,6 +102,19 @@ export async function reachableClubs(
 }
 
 /**
+ * Run `fn` as if the person had chosen `clubId` in the switcher. Used where there is
+ * no browser cookie (a director's text message), with the club their line is tied to.
+ * Still validated against what they may reach, exactly like the cookie.
+ */
+const clubOverride = new AsyncLocalStorage<string>();
+async function readCookie(): Promise<string | undefined> {
+  try { return (await cookies()).get(ACTIVE_CLUB_COOKIE)?.value; } catch { return undefined; }
+}
+export function withActiveClub<T>(clubId: string, fn: () => Promise<T>): Promise<T> {
+  return clubOverride.run(clubId, fn);
+}
+
+/**
  * The club to act on: their explicit choice if it is still valid, else the
  * best claim they have.
  *
@@ -115,7 +129,8 @@ export async function resolveActiveClub(
   const clubs = await reachableClubs(userId, email);
   if (clubs.length === 0) return { active: null, clubs };
 
-  const chosen = (await cookies()).get(ACTIVE_CLUB_COOKIE)?.value;
+  // A text message has no cookie: the line it came in on names the club.
+  const chosen = clubOverride.getStore() ?? (await readCookie());
   // Validated against the list rather than trusted: a stale cookie from a club
   // they have left, or a hand-edited one, must fall back and never grant.
   const match = chosen ? clubs.find((c) => c.id === chosen) : undefined;

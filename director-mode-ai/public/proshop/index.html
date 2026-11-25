@@ -245,7 +245,7 @@ select.field{appearance:auto}
 .tour{position:fixed;left:18px;bottom:18px;z-index:8;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px 18px;box-shadow:0 14px 40px rgba(0,0,0,.2);width:min(340px,calc(100% - 36px))}
 .tour[hidden]{display:none}
 .tour ol{margin:0;padding:0 0 0 20px;display:flex;flex-direction:column;gap:6px}
-.tour li button{display:inline;border:0;background:none;color:inherit;font:700 15px Nunito;text-align:left;cursor:pointer;padding:4px 0;min-height:32px}
+.tour li button{display:block;border:0;background:none;color:inherit;font:700 15px Nunito;text-align:left;cursor:pointer;padding:4px 0;min-height:32px}
 .tour li.did button{text-decoration:line-through;color:var(--mute)}
 .tour li::marker{font-weight:800;color:var(--accent)}
 .tourx{margin-top:8px;border:1px solid var(--line);background:transparent;color:inherit;border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:700}
@@ -324,7 +324,7 @@ select.field{appearance:auto}
   <div class="db" id="dBody"></div>
   <form class="ask" id="askForm"><label for="askIn" class="sr">Ask or give an order</label><input id="askIn" autocomplete="off" placeholder="Ask me, or tell me what to do"><button class="go" type="submit">Go</button></form>
 </aside>
-<div class="tour" id="tour" hidden role="region" aria-label="Three things to try"><p class="lbl">Three things to try</p><ol><li><button type="button" data-tour="1">Tap a robot to talk to them</button></li><li><button type="button" data-tour="2">Run the "Rain out" play</button></li><li><button type="button" data-tour="3">Tap Yes on something your staff prepped</button></li></ol><button type="button" class="tourx" id="tourx">Got it</button></div>
+<div class="tour" id="tour" hidden role="region" aria-label="Three things to try"><p class="lbl">Three things to try</p><ol><li><button type="button" data-tour="1">Tap an agent to talk to them</button></li><li><button type="button" data-tour="2">Run the "Rain out" play</button></li><li><button type="button" data-tour="3">Tap Yes on something your staff prepped</button></li></ol><button type="button" class="tourx" id="tourx">Got it</button></div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script>
@@ -342,7 +342,7 @@ const chats={};const bubbles={};
 
 function paintHead(){
   document.title=C.name;
-  $("#title").innerHTML=esc(C.name)+(C.demo?'<span class="demo">DEMO</span>':"");
+  $("#title").innerHTML=esc(C.name)+(C.demo?'<span class="demo">'+esc(C.badge||"DEMO")+'</span>':"");
   $("#today").textContent=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})+(C.place?" · "+C.place:"");
   $("#foot").textContent=`${C.club} · runs on ${C.software} and Claude · your staff never sends, books or charges without your OK`;
 }
@@ -617,7 +617,7 @@ function renderMine(){
   });
 }
 if(C.demo){
-  $("#cta").hidden=false;
+  $("#cta").hidden=!!C.fixed;
   {let seenT=false;try{seenT=localStorage.getItem("proshop-tour")==="1"}catch{}
    if(!seenT)setTimeout(()=>{$("#tour").hidden=false},1200);
    const done=()=>{$("#tour").hidden=true;try{localStorage.setItem("proshop-tour","1")}catch{}};
@@ -626,10 +626,12 @@ if(C.demo){
      const k=b.dataset.tour;if(k==="1")openAgent(AG[0].id);if(k==="2")openPlay("rain");if(k==="3"){$("#okH").scrollIntoView({behavior:"smooth",block:"center"})}
      if($("#tour").querySelectorAll("li.did").length===3)setTimeout(done,800)});}
 
+  if(!C.fixed){
   $("#title").insertAdjacentHTML("afterend","");
   document.querySelector(".brand").insertAdjacentHTML("beforeend",'<button class="mine" id="mineBtn" type="button">Make it yours</button>');
   $("#mineBtn").addEventListener("click",()=>{cur=null;curPlay=null;renderMine();paintScene();openDrawer();setTimeout(()=>$("#mClub").focus(),80)});
   try{const m=JSON.parse(localStorage.getItem("proshop-mine")||"null");if(m){C.mine=m;applyMine(m)}}catch{}
+  }
 }
 
 /* ---------- mic: dictate an order ---------- */

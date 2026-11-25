@@ -17,3 +17,14 @@ export function toE164US(raw: string): string | null {
   if (d.length === 11 && d.startsWith('1')) return `+${d}`;
   return null;
 }
+
+/**
+ * The opt-in a club director agrees to on /text before their staff line is connected.
+ * Same carrier rules as above: frequency, rates, STOP/HELP, not a condition.
+ * Shown on /sms too (the campaign's CTA page), with sample messages.
+ */
+export const STAFF_TEXT_CONSENT =
+  'I agree to receive text messages from ClubMode at this number about running my club: ' +
+  'a morning summary, an evening recap, and replies to messages I send. ' +
+  'Message frequency varies (typically 2–10 per day). Msg & data rates may apply. ' +
+  'Reply STOP to unsubscribe or HELP for help. Consent is not a condition of using ClubMode.';

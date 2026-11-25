@@ -11,15 +11,32 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import SmsOptInForm from './SmsOptInForm';
+import { STAFF_TEXT_CONSENT } from '@/lib/smsConsent';
 
 export const metadata: Metadata = {
   title: 'Text messages from ClubMode — sign up',
   description:
-    'Get match lineups, confirmations and match-day messages from your club or team by text. How to opt in, what we send, and how to stop.',
+    'Get match lineups, confirmations and match-day messages from your club or team by text, and club directors get their staff by text. How to opt in, what we send, and how to stop.',
   alternates: { canonical: '/sms' },
 };
 
 const CONTACT = 'hello@clubmode.ai';
+
+const NUMBER = '(816) 684-6936';
+
+const STAFF_SAMPLES = [
+  `Morning from your Sleepy Hollow staff.
+2 things need you:
+1) Clinic Desk: Tue Ladies 9am has 2 open. Tell 11 regulars
+2) Front Desk: reply to the newest parent email
+Reply a number to see it, or text me anything. Reply STOP to opt out.`,
+  `Tue Ladies, Tue Dec 1 9:00-10:30am. 2 spots open. One email each to 11 regulars who haven't signed up: "2 spots left for Tue Ladies Tue".
+Reply YES to send or SKIP.`,
+  `Today at Sleepy Hollow:
+- Clinic Desk sent 6 clinic reminders.
+- You said yes to 2 things.
+Nothing waiting on you.`,
+];
 
 const SAMPLES = [
   "ClubMode: Fall B2/B3 lineup for Wed 9/30 9:30am vs Orinda CC is out. You're on court 1 with Shannon. Confirm: clubmode.ai/captain/confirm/abc123. Reply STOP to opt out.",
@@ -89,6 +106,36 @@ export default function SmsPage() {
           </div>
         </Section>
 
+        <Section title="For club directors: your staff by text">
+          <p>
+            A club director can connect their own phone to their ClubMode staff. Each morning
+            they get a short summary of what needs them, each evening a recap, and replies to
+            anything they text in (&ldquo;remind everyone for Friday&rsquo;s clinic&rdquo;). These
+            texts go only to the director who turned them on, never to members.
+          </p>
+          <p>
+            <strong className="text-white/85">How a director opts in:</strong> signed in to
+            ClubMode, they open{' '}
+            <Link href="/text" className="text-[#D3FB52] hover:underline">
+              clubmode.ai/text
+            </Link>
+            , read the terms below, tick an unchecked consent box, and then text a one-time
+            JOIN code to {NUMBER} from their own phone. Nothing is sent to a number until its owner
+            has texted us that code.
+          </p>
+          <p className="text-white/50 text-sm">Consent wording: &ldquo;{STAFF_TEXT_CONSENT}&rdquo;</p>
+          <div className="space-y-2.5">
+            {STAFF_SAMPLES.map((s) => (
+              <div
+                key={s}
+                className="whitespace-pre-line rounded-2xl rounded-bl-sm bg-white/[0.06] border border-white/10 px-4 py-3 text-sm text-white/80"
+              >
+                {s}
+              </div>
+            ))}
+          </div>
+        </Section>
+
         <Section title="Ways to opt in">
           <p>Every path uses an unchecked box you tick yourself. We never opt anyone in for them.</p>
           <ol className="list-decimal pl-5 space-y-1.5">
@@ -103,6 +150,10 @@ export default function SmsPage() {
                 clubmode.ai/courtsheet/sleepy-hollow
               </Link>
               ): tick &ldquo;Text me a confirmation&rdquo; and enter your mobile number.
+            </li>
+            <li>
+              <strong className="text-white/85">Club directors:</strong> at clubmode.ai/text, tick
+              the consent box, then text the JOIN code from their phone (see above).
             </li>
             <li>
               <strong className="text-white/85">From your team captain:</strong> captains send
