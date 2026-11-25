@@ -25,17 +25,19 @@ const CONTACT = 'hello@clubmode.ai';
 const NUMBER = '(816) 684-6936';
 
 const STAFF_SAMPLES = [
-  `Morning from your Sleepy Hollow staff.
+  `ClubMode: Morning from your Sleepy Hollow staff.
 2 things need you:
 1) Clinic Desk: Tue Ladies 9am has 2 open. Tell 11 regulars
 2) Front Desk: reply to the newest parent email
-Reply a number to see it, or text me anything. Reply STOP to opt out.`,
-  `Tue Ladies, Tue Dec 1 9:00-10:30am. 2 spots open. One email each to 11 regulars who haven't signed up: "2 spots left for Tue Ladies Tue".
+Reply a number to see it, or text me anything.
+Reply STOP to opt out.`,
+  `ClubMode: Tue Ladies, Tue Dec 1 9:00-10:30am. 2 spots open. One email each to 11 regulars who haven't signed up: "2 spots left for Tue Ladies Tue".
 Reply YES to send or SKIP.`,
-  `Today at Sleepy Hollow:
+  `ClubMode: Today at Sleepy Hollow:
 - Clinic Desk sent 6 clinic reminders.
 - You said yes to 2 things.
-Nothing waiting on you.`,
+Nothing waiting on you.
+Reply STOP to opt out.`,
 ];
 
 const SAMPLES = [

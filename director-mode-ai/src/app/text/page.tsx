@@ -7,6 +7,7 @@
  * text a morning huddle and an evening recap, and answer anything you send.
  */
 import { useCallback, useEffect, useState } from 'react';
+import { STAFF_TEXT_CONSENT } from '@/lib/smsConsent';
 
 type LineOut = { channel: 'sms' | 'telegram'; status: 'pending' | 'active' | 'stopped'; to: string | null; morning: boolean; evening: boolean; otherClub: boolean };
 type State = { club: string; smsNumber: string; telegram: string | null; consent: string; lines: LineOut[] };
@@ -71,7 +72,26 @@ export default function TextPage() {
     </div>
   );
 
-  if (signin) return wrap(<div style={card}><p style={{ marginTop: 0 }}>Sign in to ClubMode to connect your phone.</p><a style={btn} href="/login?next=/text">Sign in</a></div>);
+  // Signed out: the same opt-in screen, readable by anyone (carrier reviewers must be able
+  // to see every opt-in path without logging in, 30909). Connecting still needs a sign-in.
+  if (signin) return wrap(
+    <>
+      <div style={card}>
+        <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>Text messages</div>
+        <p style={{ margin: '0 0 10px', color: C.mute }}>Club directors connect their own phone in two steps:</p>
+        <ol style={{ margin: '0 0 14px', paddingLeft: 20, lineHeight: 1.6 }}>
+          <li>Tick the box below to agree to texts. It starts unticked.</li>
+          <li>Text the one-time JOIN code this page shows you to <b>(816) 684-6936</b> from your own phone. Nothing is sent to a number until that text arrives.</li>
+        </ol>
+        <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', margin: '6px 0 14px', fontSize: 14, color: C.mute, lineHeight: 1.45 }}>
+          <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} style={{ marginTop: 3 }} />
+          <span>{STAFF_TEXT_CONSENT} <a href="/sms" style={{ color: C.green }}>Details</a> · <a href="/privacy" style={{ color: C.green }}>Privacy</a> · <a href="/terms" style={{ color: C.green }}>Terms</a></span>
+        </label>
+        <a style={{ ...btn, opacity: agreed ? 1 : 0.45, pointerEvents: agreed ? 'auto' : 'none' }} href="/login?next=/text">Sign in to connect my phone</a>
+      </div>
+      <p style={{ color: C.mute, fontSize: 14 }}>Only for directors of clubs on ClubMode. Members never get these texts.</p>
+    </>,
+  );
   if (!s) return wrap(<p style={{ color: C.mute }}>{err || 'Loading…'}</p>);
 
   const lineCard = (ch: 'sms' | 'telegram', l: LineOut) => (

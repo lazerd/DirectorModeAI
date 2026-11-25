@@ -45,7 +45,7 @@ export async function sendTo(
   let res: SendResult;
   try {
     if (channel === 'telegram') res = await sendTelegram(address, text);
-    else res = await sendSmsMsg(opts.userId ?? null, address, text);
+    else res = await sendSmsMsg(opts.userId ?? null, address, smsWording(text, opts.kind));
   } catch (e) {
     res = { ok: false, error: (e as Error).message };
   }
@@ -54,6 +54,16 @@ export async function sendTo(
     kind: opts.kind ?? 'reply', provider_id: res.id ?? null, status: res.ok ? 'sent' : 'failed', error: res.error ?? null,
   });
   return res;
+}
+
+/**
+ * Real texts match the samples registered with the carriers (A2P 10DLC): every text names
+ * the brand, and the scheduled ones (the morning summary, the recap) carry the opt-out.
+ */
+export function smsWording(text: string, kind?: string): string {
+  let t = /^clubmode\b/i.test(text) ? text : `ClubMode: ${text}`;
+  if ((kind === 'huddle' || kind === 'recap' || kind === 'secretary') && !/reply stop/i.test(t)) t += '\nReply STOP to opt out.';
+  return t;
 }
 
 async function sendSmsMsg(userId: string | null, to: string, body: string): Promise<SendResult> {
