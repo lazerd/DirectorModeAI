@@ -30,7 +30,11 @@ const nextConfig = {
   },
   async rewrites() {
     // Customer stories are static pages in public/stories; serve them without the .html.
-    return [{ source: '/stories/season-builder', destination: '/stories/season-builder.html' }];
+    return [
+      { source: '/stories/season-builder', destination: '/stories/season-builder.html' },
+      // The Pro Shop (AI staff) is a static page in public/proshop that reads /api/proshop/*.
+      { source: '/proshop', destination: '/proshop/index.html' },
+    ];
   },
 };
 

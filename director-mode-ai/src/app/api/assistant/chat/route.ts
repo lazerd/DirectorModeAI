@@ -158,7 +158,10 @@ export async function POST(req: Request) {
   const available = await resolvePacks(user.id, page);
   // Only the packs this request needs — see lib/assistant/router.
   const routed = await routePacks(client, available.map((p) => p.domain), message, history, page);
-  const packs = routed.domains ? available.filter((p) => routed.domains!.includes(p.domain)) : available;
+  // On /proshop the staff pack always rides along: it's what that page is for.
+  const packs = routed.domains
+    ? available.filter((p) => routed.domains!.includes(p.domain) || (p.domain === 'proshop' && page?.startsWith('/proshop')))
+    : available;
   const routerUsage = addUsage(emptyUsage(), routed.usage);
   const canAct = packs.length > 0;
   const tools: Anthropic.Messages.Tool[] = packs.flatMap((p) => p.toolSchemas);

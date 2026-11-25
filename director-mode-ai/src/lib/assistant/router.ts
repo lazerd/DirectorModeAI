@@ -24,6 +24,7 @@ export const PACK_SUMMARIES: Record<string, string> = {
   benchmarks: 'director compensation benchmarks and candidate search',
   events: 'tournaments/quads/mixers/team battles: what is live or open, signups by division and today, who paid/owes, share link/QR, build or fix the match schedule, check conflicts, generate draw, late entry, withdraw/move alternate in, extend payment/registration deadline, enter a score, this year vs last year, create a draft mixer/team battle',
   people: 'PlayerVault members: look up email/phone/membership/access level, fix a name or contact, remove a duplicate, why someone is not getting emails, bulk add members; Club Games (CourtConnect, the club partner board) pickup games: post a game, who said yes/no, add a guest, cancel a game; LessonMode: lessons today/this week, cancel a lesson',
+  proshop: 'the Pro Shop AI staff page: talk to a staff member, give the staff an order, what is on the board or waiting for a yes',
   ops: 'how are we doing / board-meeting numbers, revenue for a class or event, who still owes money, court utilization by month; stringing jobs (log a job, ready/overdue rackets, email ready, restring nudge, mark jobs or stringer paid); maintenance work orders (add, what is open, mark done) and daily checklist',
 };
 
