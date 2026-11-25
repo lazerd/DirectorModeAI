@@ -143,7 +143,10 @@ export async function runChat(opts: {
   // Resolve which domain packs are available for this user on this page. Each
   // pack carries its own tools, guidance, and executor (bound to its context).
   const client = new Anthropic({ apiKey: ANTHROPIC_KEY });
-  const available = await resolvePacks(user.id, page);
+  let available = await resolvePacks(user.id, page);
+  // A club whose courts live in ClubSpot (Sleepy Hollow): ClubMode's own court sheet is empty
+  // there, so court questions go to the ClubSpot pack only.
+  if (available.some((p) => p.domain === 'clubspot')) available = available.filter((p) => p.domain !== 'courts');
   // Only the packs this request needs — see lib/assistant/router.
   const routed = await routePacks(client, available.map((p) => p.domain), message, history, page);
   // On /proshop the staff pack always rides along: it's what that page is for.
