@@ -1,6 +1,7 @@
 import 'server-only';
 import { randomBytes } from 'crypto';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { FREE_AT_LAUNCH } from './pricing';
 
 /**
  * CourtConnect paid hosting (Darrin, 11/18/26):
@@ -40,6 +41,7 @@ export async function activePass(hostId: string | null, clubCode: string | null)
 
 /** Can this device host one more event? */
 export async function hostingAllowed(hostId: string | null, clubCode: string | null, opts: { runback?: boolean } = {}): Promise<{ ok: boolean; reason?: 'paywall' }> {
+  if (FREE_AT_LAUNCH) return { ok: true };
   if (await activePass(hostId, clubCode)) return { ok: true };
   if (!hostId) return { ok: !opts.runback };
   if (!opts.runback && (await freeEventsUsed(hostId)) < 1) return { ok: true };

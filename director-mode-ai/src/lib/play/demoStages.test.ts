@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildStages, STAGE_COURTS, STAGE_PLAYERS, STAGE_TITLE } from './demoStages';
-import { PASS_PRICES, PRICING_LINE } from './pricing';
+import { FREE_AT_LAUNCH, PASS_PRICES, PRICING_LINE } from './pricing';
 
 const ins = (e: { rsvps: { status: string }[] }) => e.rsvps.filter((r) => r.status === 'in').length;
 const now = new Date('2026-11-22T12:00:00-08:00');
@@ -45,7 +45,12 @@ describe('landing demo stages (Friday Night Doubles)', () => {
 });
 
 describe('pricing line', () => {
-  it('states the real Host Pass price and that the first game and joining are free', () => {
+  it('matches the switch: free at launch, or the real Host Pass price', () => {
+    if (FREE_AT_LAUNCH) {
+      expect(PRICING_LINE).toMatch(/free at launch/i);
+      expect(PRICING_LINE).not.toContain('$');
+      return;
+    }
     expect(PRICING_LINE).toContain(`$${PASS_PRICES.host}`);
     expect(PRICING_LINE).toMatch(/first game is free/i);
     expect(PRICING_LINE).toMatch(/joining is always free/i);

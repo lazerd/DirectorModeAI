@@ -1,5 +1,6 @@
 'use client';
 
+import { PRICING_LINE } from '@/lib/play/pricing';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2, Mic, Sparkles, ArrowRight, MapPin, Clock, ChevronDown, Check } from 'lucide-react';
@@ -341,7 +342,7 @@ export default function HostClient({ initial, club, resume }: { initial?: string
           <button onClick={() => create({ ...d, listed: listed && d.place_lat != null })} disabled={saving || thinking} className="flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-semibold disabled:opacity-60" style={{ background: C.lime, color: C.ink }}>
             {saving ? <Loader2 className="h-5 w-5 animate-spin" /> : null} Make my link
           </button>
-          {paywall ? <Paywall info={paywall} /> : <p className="text-center text-[12px]" style={{ color: C.muted }}>Free to host your first game. Joining is always free.</p>}
+          {paywall ? <Paywall info={paywall} /> : <p className="text-center text-[12px]" style={{ color: C.muted }}>{PRICING_LINE}</p>}
         </section>
 
         <section className="mt-8 border-t pt-5" style={{ borderColor: C.line }}>

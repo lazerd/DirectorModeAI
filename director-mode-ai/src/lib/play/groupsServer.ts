@@ -5,6 +5,7 @@ import { sendBilledEmail, sendBilledEmails } from '@/lib/email';
 import { APP_URL, RIRL_URL } from '@/lib/appUrl';
 import { safeNext } from '@/lib/postLogin';
 import { activePass, passCheckoutUrl } from './passes';
+import { FREE_AT_LAUNCH } from './pricing';
 import { SPORT_LABEL, whenLine } from './core';
 import { PlayError, loadRow } from './server';
 import {
@@ -213,7 +214,7 @@ export async function groupAction(user: GroupUser, b: Record<string, unknown>, h
 /* ---------- the blast ---------- */
 
 /** The paywall is live once the LemonSqueezy Host Pass link is configured. */
-export const paywallLive = () => !!passCheckoutUrl('host', 'x');
+export const paywallLive = () => !FREE_AT_LAUNCH && !!passCheckoutUrl('host', 'x');
 
 async function hasPass(user: GroupUser, hostId: string | null, clubCode: string | null): Promise<boolean> {
   if (await activePass(hostId, clubCode)) return true;
