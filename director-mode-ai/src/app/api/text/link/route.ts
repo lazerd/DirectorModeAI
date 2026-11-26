@@ -30,7 +30,13 @@ const mask = (ch: string, a: string | null) => (!a ? null : ch === 'sms' ? `(•
 
 export async function GET() {
   const c = await caller();
-  if (!c) return NextResponse.json({ error: 'Sign in as a club director.' }, { status: 401 });
+  if (!c) {
+    // Signed in but no club yet (a brand-new director straight from sign-up): send them to
+    // club setup, not back to a sign-in button they've already passed.
+    const { data: { user } } = await (await createClient()).auth.getUser();
+    if (user) return NextResponse.json({ error: 'Set up your club first.', needsClub: true }, { status: 403 });
+    return NextResponse.json({ error: 'Sign in as a club director.' }, { status: 401 });
+  }
   const { data } = await getSupabaseAdmin()
     .from('text_lines')
     .select('channel, status, address, morning, evening, verified_at, club_id')

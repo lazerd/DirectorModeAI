@@ -20,6 +20,7 @@ const ghost: React.CSSProperties = { background: 'none', border: `1px solid ${C.
 export default function TextPage() {
   const [s, setS] = useState<State | null>(null);
   const [signin, setSignin] = useState(false);
+  const [needsClub, setNeedsClub] = useState(false);
   const [agreed, setAgreed] = useState(false);
   const [join, setJoin] = useState<{ channel: 'sms' | 'telegram'; code: string; href: string } | null>(null);
   const [err, setErr] = useState('');
@@ -28,6 +29,7 @@ export default function TextPage() {
     const r = await fetch('/api/text/link', { cache: 'no-store' });
     if (r.status === 401) { setSignin(true); return; }
     const j = await r.json();
+    if (j.needsClub) { setNeedsClub(true); return; }
     if (!r.ok) { setErr(j.error || 'Could not load.'); return; }
     setS(j);
   }, []);
@@ -91,6 +93,13 @@ export default function TextPage() {
       </div>
       <p style={{ color: C.mute, fontSize: 14 }}>Only for directors of clubs on ClubMode. Members never get these texts.</p>
     </>,
+  );
+  if (needsClub) return wrap(
+    <div style={card}>
+      <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 6 }}>First, set up your club</div>
+      <p style={{ margin: '0 0 14px', color: C.mute }}>Your staff work for a club. Name yours (about a minute), then come back here to connect your phone.</p>
+      <a style={btn} href="/start?next=/text">Set up my club</a>
+    </div>,
   );
   if (!s) return wrap(<p style={{ color: C.mute }}>{err || 'Loading…'}</p>);
 

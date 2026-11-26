@@ -100,6 +100,15 @@ export default function StartPage() {
    * show the wrong answer for a frame.
    */
   const [timezone, setTimezone] = useState('');
+  /*
+   * Where they were going before setup (?next=/ledger, /text, /proshop): a director sent
+   * here from a staff page goes straight back to it when the club exists. Relative only.
+   */
+  const [next, setNext] = useState<string | null>(null);
+  useEffect(() => {
+    const n = new URLSearchParams(window.location.search).get('next') || '';
+    if (n.startsWith('/') && !n.startsWith('//')) { setNext(n); setRole('director'); }
+  }, []);
   useEffect(() => {
     try {
       setTimezone(Intl.DateTimeFormat().resolvedOptions().timeZone || '');
@@ -230,11 +239,11 @@ export default function StartPage() {
         {step < 4 && (
           <>
             <h1 className="mt-5 text-3xl font-bold tracking-tight sm:text-4xl">
-              Let&apos;s set up your first league
+              Let&apos;s set up your club
             </h1>
             <p className="mt-2 text-[15px] text-white/50">
-              Four quick questions and your club has real data in it. Skip anything you
-              don&apos;t want to answer yet — you can change all of it later.
+              Four quick questions. Only the club name is needed: skip the rest if you
+              don&apos;t run leagues here. You can change all of it later.
             </p>
 
             {/* Progress */}
@@ -467,10 +476,10 @@ export default function StartPage() {
               )}
 
               <button
-                onClick={() => router.push('/run/courts')}
+                onClick={() => router.push(next || '/run/courts')}
                 className="mt-8 inline-flex items-center gap-2 rounded-xl bg-[#D3FB52] px-6 py-3 font-semibold text-[#002838] transition-colors hover:bg-[#c5f035]"
               >
-                Go to my club <ArrowRight size={16} />
+                {next ? 'Continue' : 'Go to my club'} <ArrowRight size={16} />
               </button>
             </div>
           )}

@@ -34,7 +34,7 @@ export async function GET() {
     clubmode: true,
   };
   if (!c.ok) {
-    return js({ ...base, signin: true, signinMessage: c.error, name: 'Pro Shop', club: 'ClubMode', place: '', director: 'you', software: 'your club software' });
+    return js({ ...base, signin: true, needsClub: c.status === 403, signinMessage: c.error, name: 'Pro Shop', club: 'ClubMode', place: '', director: 'you', software: 'your club software' });
   }
   const { ctx } = c;
   return js({
