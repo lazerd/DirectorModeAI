@@ -12,7 +12,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import SessionGrid from '@/components/clubSite/SessionGrid';
-import { formatPrice, formatSessionDate } from '@/lib/programs/sessions';
+import { formatPrice, formatSessionDate, programSessions } from '@/lib/programs/sessions';
 
 type Registration = {
   id: string;
@@ -551,6 +551,56 @@ export default function ClassDetail({ id }: { id: string }) {
             'Not holding any courts — this class is invisible to the court sheet, so its times can be booked by somebody else.'
           )}
         </p>
+      </section>
+
+      {/* ------------------------------------------- per-date sign-ups (clinics) */}
+      <section>
+        <h2 className="font-display text-xl text-white">Drop-in sign-ups &amp; reminders</h2>
+        <p className="mt-1 text-sm text-white/50">
+          For clinics people join date by date. Members tap &ldquo;I&apos;m in&rdquo; for one date; the day before,
+          everyone signed up gets a reminder, and if spots are open the clinic&apos;s regulars get one
+          &ldquo;spots left&rdquo; note each. Or just ask your staff: &ldquo;remind everyone for Friday&apos;s clinic.&rdquo;
+        </p>
+        <div className="mt-3 grid max-w-xl gap-3 sm:grid-cols-2">
+          <div>
+            <label className={label} htmlFor="meeting_capacity">
+              Spots per date
+            </label>
+            <input
+              id="meeting_capacity"
+              inputMode="numeric"
+              placeholder={program.capacity ? `Same as capacity (${program.capacity})` : 'No limit'}
+              defaultValue={(program.meeting_capacity as number | null) ?? ''}
+              onBlur={(e) => {
+                const raw = e.target.value.trim();
+                patch({ meeting_capacity: raw === '' ? null : Math.min(200, Math.max(1, parseInt(raw, 10) || 1)) });
+              }}
+              style={{ color: '#ffffff' }}
+              className={field}
+            />
+          </div>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm text-white/80">
+            <input
+              type="checkbox"
+              checked={!!program.auto_reminders}
+              onChange={(e) => patch({ auto_reminders: e.target.checked })}
+            />
+            Send the reminders automatically, the day before
+          </label>
+        </div>
+        {(() => {
+          const today = new Date().toLocaleDateString('en-CA', { timeZone });
+          const next = programSessions(program, timeZone).dates.find((d) => d >= today);
+          if (!next) return null;
+          const link = `${typeof window !== 'undefined' ? window.location.origin : ''}/clinic?p=${program.id}&d=${next}`;
+          return (
+            <p className="mt-3 text-sm text-white/50">
+              Sign-up link for {formatSessionDate(next, timeZone)}:{' '}
+              <a href={link} target="_blank" rel="noreferrer" className="break-all text-[#D3FB52] underline">{link}</a>
+              {program.status !== 'published' && <span className="text-amber-300"> (works once the class is published)</span>}
+            </p>
+          );
+        })()}
       </section>
 
       {/* --------------------------------------------------------- payment */}
