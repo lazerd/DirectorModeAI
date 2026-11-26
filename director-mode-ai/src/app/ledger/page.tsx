@@ -35,6 +35,7 @@ export default function LedgerPage() {
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
+  const [noClub, setNoClub] = useState(false);
   const [rosterCount, setRosterCount] = useState(0);
   const [rosterAt, setRosterAt] = useState<string | null>(null);
   const [pros, setPros] = useState<Pro[]>([]);
@@ -49,7 +50,7 @@ export default function LedgerPage() {
 
   const load = () => fetch('/api/ledger/setup').then(async (r) => {
     const j = await r.json();
-    if (!r.ok) { setErr(j.error || 'Sign in to ClubMode first.'); setLoaded(true); return; }
+    if (!r.ok) { setErr(j.error || 'Sign in to ClubMode first.'); setNoClub(r.status === 403); setLoaded(true); return; }
     setRosterCount(j.rosterCount); setRosterAt(j.rosterUpdatedAt); setPros(j.pros?.length ? j.pros : [{ name: '', sheet: '', employee: '' }]);
     setSetup(j.setup); setSa(j.serviceAccount); setLoaded(true);
   });
@@ -98,7 +99,7 @@ export default function LedgerPage() {
   }
 
   if (!loaded) return <main style={{ padding: 40, fontFamily: 'system-ui' }}>Loading…</main>;
-  if (err && !pros.length) return <main style={{ padding: 40, fontFamily: 'system-ui' }}><p>{err}</p><a href="/login?next=/ledger">Sign in to ClubMode</a></main>;
+  if (err && !pros.length) return <main style={{ padding: 40, fontFamily: 'system-ui' }}><p>{err}</p>{noClub ? <a href="/start?next=/ledger">Set up my club</a> : <a href="/login?next=/ledger">Sign in to ClubMode</a>}</main>;
 
   return (
     <main style={{ background: C.bg, minHeight: '100vh', padding: '24px 14px', fontFamily: 'system-ui, sans-serif', color: C.ink }}>
@@ -116,7 +117,9 @@ export default function LedgerPage() {
 
         <section style={card}>
           <h2 style={{ marginTop: 0, fontSize: 18 }}>2. Your pros and their sheets</h2>
-          {sa && <p style={{ color: C.mute, marginTop: 0 }}>Each pro shares their sheet (view only) with <b style={{ color: C.ink }}>{sa}</b>. Or upload it as a CSV when you build.</p>}
+          {sa
+            ? <p style={{ color: C.mute, marginTop: 0 }}>Each pro shares their sheet (view only) with <b style={{ color: C.ink }}>{sa}</b>. Or upload it as a CSV when you build.</p>
+            : <p style={{ color: C.mute, marginTop: 0 }}>Add each pro by name. Reading Google Sheet links isn&apos;t switched on here yet, so when you build, upload each pro&apos;s sheet as a CSV (in Google Sheets: File → Download → CSV).</p>}
           {pros.map((p, i) => (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 1.3fr auto', gap: 8, marginBottom: 8 }}>
               <input style={input} placeholder="Pro (as on the sheet)" value={p.name} onChange={(e) => setPros(pros.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />

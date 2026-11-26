@@ -34,6 +34,24 @@ export interface LessonLine {
   source?: string;       // "Carrie's sheet, row 14"
 }
 
+/**
+ * What the Ledger uses until the director saves their own items. The /ledger page shows
+ * these filled in, so the build must use them too: a director who never taps "Save items"
+ * (the boxes already look right) otherwise got every line back as "No item set".
+ */
+export const DEFAULT_LEDGER_SETUP = {
+  area: 'Tennis',
+  items: { private: 'Member Tennis Lessons', semi: 'Member Tennis Lessons', group: 'Member Tennis Lessons', clinic: 'Member Clinics', other: '' } as Record<LessonKind, string>,
+  taxExempt: true,
+  prices: '',
+};
+
+/** Saved setup (may be null or partial) over the defaults; a blank saved item keeps the blank. */
+export function ledgerSetupOf(saved: any): typeof DEFAULT_LEDGER_SETUP {
+  const s = saved && typeof saved === 'object' ? saved : {};
+  return { ...DEFAULT_LEDGER_SETUP, ...s, items: { ...DEFAULT_LEDGER_SETUP.items, ...(s.items ?? {}) } };
+}
+
 export interface ChargeSetup {
   area: string;                                   // e.g. "Tennis"
   items: Partial<Record<LessonKind, string>>;     // kind -> Clubessential item name
@@ -195,14 +213,23 @@ export function buildCharges(lines: LessonLine[], roster: RosterMember[], setup:
   return { charges, needsYou };
 }
 
-/** Per pro: lessons, hours and what was billed. The pay itself depends on each pro's deal. */
+/**
+ * Per pro: lessons, hours and what was billed. The pay itself depends on each pro's deal.
+ * A shared lesson is split into one line per student for billing, but the pro taught it
+ * once: lines from the same sheet row count as ONE lesson and its minutes once (a semi
+ * with two students is 1 lesson, 1 hour, two charges). Lines without a source row count
+ * on their own.
+ */
 export function proSummary(lines: LessonLine[]): { pro: string; lessons: number; hours: number; billed: number }[] {
   const by = new Map<string, { pro: string; lessons: number; minutes: number; billed: number }>();
-  for (const l of lines) {
+  const taught = new Set<string>();
+  lines.forEach((l, i) => {
     const k = l.pro || 'Unknown';
     const r = by.get(k) ?? { pro: k, lessons: 0, minutes: 0, billed: 0 };
-    r.lessons += 1; r.minutes += l.minutes || 0; r.billed += l.price || 0;
+    const lesson = `${k}|${l.source || `#${i}`}|${l.date}`;
+    if (!taught.has(lesson)) { taught.add(lesson); r.lessons += 1; r.minutes += l.minutes || 0; }
+    r.billed += l.price || 0;
     by.set(k, r);
-  }
+  });
   return [...by.values()].map((r) => ({ pro: r.pro, lessons: r.lessons, hours: Math.round((r.minutes / 60) * 100) / 100, billed: Math.round(r.billed * 100) / 100 })).sort((a, b) => a.pro.localeCompare(b.pro));
 }
