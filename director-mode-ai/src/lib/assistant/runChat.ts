@@ -19,6 +19,8 @@ import {
 } from '@/lib/assistant/meter';
 import { AI_MONTHLY_CAP_USD } from '@/config/pricing';
 import { buildCheckoutUrl } from '@/lib/lemonsqueezy';
+import { resolveClubCtx } from '@/lib/assistant/clubContext';
+import { houseRulesPrompt, loadHouseRules } from '@/lib/proshop/houseRules';
 
 /*
  * Ask Claude's engine, shared by every way a director talks to their staff:
@@ -173,8 +175,20 @@ export async function runChat(opts: {
   while (messages.length && messages[0].role !== 'user') messages.shift();
   messages.push({ role: 'user', content: message });
 
+  // The club's house rules (what the director taught the staff) ride on every answer,
+  // right after the base prompt and cached with it: they change rarely.
+  let houseRules = '';
+  try {
+    const club = await resolveClubCtx(user.id);
+    // HOUSE_RULES_OFF=1 only for scripts/_staff-eval.ts baseline runs.
+    if (club && process.env.HOUSE_RULES_OFF !== '1') houseRules = houseRulesPrompt(club.clubName, await loadHouseRules(club.db, club.clubId));
+  } catch { houseRules = ''; }
+
   const systemBlocks = [
-    { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    houseRules
+      ? { type: 'text', text: SYSTEM_PROMPT }
+      : { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    ...(houseRules ? [{ type: 'text', text: houseRules, cache_control: { type: 'ephemeral' } }] : []),
     ...(canAct ? [{ type: 'text', text: ACTIONS_PREAMBLE }] : []),
     ...packs.map((p) => ({ type: 'text', text: p.actionsPrompt })),
     ...(opts.channel === 'text' ? [{ type: 'text', text: TEXT_CHANNEL }] : []),

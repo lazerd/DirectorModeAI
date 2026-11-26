@@ -27,6 +27,7 @@ export const PACK_SUMMARIES: Record<string, string> = {
   clinics: 'clinic signups for ONE date (who is in, spots left), remind everyone signed up, "spots left" note to regulars, sign someone up for a date, automatic clinic reminders',
   clubspot: 'courts (this club runs them in ClubSpot): what is on the courts / booked / blocked on a date, block courts for an event, match, clinic or lesson, which courts are free',
   proshop: 'the Pro Shop AI staff page: talk to a staff member, give the staff an order, what is on the board or waiting for a yes',
+  houserules: 'teach the staff: remember a rule, from now on / always / never, a correction of how this club does things; list or forget house rules',
   ops: 'how are we doing / board-meeting numbers, revenue for a class or event, who still owes money, court utilization by month; stringing jobs (log a job, ready/overdue rackets, email ready, restring nudge, mark jobs or stringer paid); maintenance work orders (add, what is open, mark done) and daily checklist',
 };
 
