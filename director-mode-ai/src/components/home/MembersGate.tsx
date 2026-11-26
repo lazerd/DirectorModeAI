@@ -34,7 +34,7 @@ export default function MembersGate() {
 
   return (
     <main className="mg">
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <div className="mg-bg" aria-hidden="true" />
       <div className="mg-veil" aria-hidden="true" />
       <div className="mg-card">

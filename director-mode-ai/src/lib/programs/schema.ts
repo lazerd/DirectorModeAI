@@ -103,6 +103,10 @@ export const programBaseSchema = z
     price_note: optionalText(160),
 
     capacity: z.number().int().min(1).max(1000).nullable().optional(),
+    // Clinic per-date sign-ups (clinic_signups.sql): spots per date, and the daily
+    // reminder / spots-left emails. No defaults, so a create never sets them.
+    meeting_capacity: z.number().int().min(1).max(200).nullable().optional(),
+    auto_reminders: z.boolean().optional(),
     waitlist_enabled: z.boolean().default(true),
     registration_opens_at: z.string().datetime({ offset: true }).nullable().optional(),
     registration_closes_at: z.string().datetime({ offset: true }).nullable().optional(),

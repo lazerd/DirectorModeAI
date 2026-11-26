@@ -6,17 +6,11 @@
  */
 import { NextResponse } from 'next/server';
 import { proshopCaller, canDecide } from '@/lib/proshop/server';
-import { parseRoster } from '@/lib/clubessential/charges';
+import { ledgerSetupOf, parseRoster } from '@/lib/clubessential/charges';
 import { serviceAccountEmail, sheetIdOf } from '@/lib/clubessential/extract';
 
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_SETUP = {
-  area: 'Tennis',
-  items: { private: 'Member Tennis Lessons', semi: 'Member Tennis Lessons', group: 'Member Tennis Lessons', clinic: 'Member Clinics', other: '' },
-  taxExempt: true,
-  prices: '',
-};
 
 export async function GET() {
   const c = await proshopCaller();
@@ -27,7 +21,7 @@ export async function GET() {
     rosterCount: Array.isArray(row?.roster) ? row.roster.length : 0,
     rosterUpdatedAt: row?.roster_updated_at ?? null,
     pros: row?.pros ?? [],
-    setup: { ...DEFAULT_SETUP, ...(row?.setup ?? {}), items: { ...DEFAULT_SETUP.items, ...(row?.setup?.items ?? {}) } },
+    setup: ledgerSetupOf(row?.setup),
     serviceAccount: serviceAccountEmail(),
     canEdit: canDecide(c.ctx),
   });

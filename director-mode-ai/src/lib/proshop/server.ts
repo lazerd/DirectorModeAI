@@ -10,7 +10,7 @@ export async function proshopCaller(): Promise<
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, status: 401, error: 'Sign in to ClubMode to open your Pro Shop.' };
   const ctx = await resolveClubCtx(user.id);
-  if (!ctx) return { ok: false, status: 403, error: 'Your Pro Shop opens once you run a club in ClubMode.' };
+  if (!ctx) return { ok: false, status: 403, error: 'Set up your club first: your staff work for a club. It takes about a minute.' };
   return { ok: true, ctx, email: user.email ?? null };
 }
 

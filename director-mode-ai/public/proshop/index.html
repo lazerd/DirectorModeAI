@@ -585,7 +585,7 @@ if(!matchMedia("(prefers-reduced-motion: reduce)").matches)setInterval(chat,3800
 
 /* ---------- demo: make it yours ---------- */
 const PROGS=[["juniors","Juniors & camps"],["league","Leagues & teams"],["host","Socials & tournaments"],["proshop","Stringing & pro shop"]];
-const SOFT=["ClubSpot","CourtReserve","Clubessential","Jonas Club","Club Automation","Playbypoint","Something else"];
+const SOFT=["ClubSpot","CourtReserve","Clubessential","TopDog","Jonas Club","Club Automation","Playbypoint","Something else"];
 function applyMine(m){
   if(!m||!m.club)return;
   C.club=m.club;C.name=m.club.replace(/\s+(country club|racquet club|tennis club|swim (&|and) tennis club|athletic club|club)$/i,"").trim()+" Pro Shop";
@@ -664,17 +664,18 @@ function paintSetup(){
   const s1=hasLimit()||(usage&&usage.exempt),s2=!!SU.s2,s3=hasOrder(),sw=softName()||"your club software";
   const done=s1&&s2&&s3&&!SU.edit;
   $("#setup").hidden=done;$("#setbar").hidden=!done;
-  if(done){$("#setbar").innerHTML=`<b>Your staff is set up:</b><span class="ck">${usage&&usage.limitCents!=null?`$${Math.round(usage.limitCents/100)}/month limit`:"No limit"}</span><span class="ck">${esc(sw)}</span><span class="ck">First order</span><button type="button" data-su="edit">Change</button>`;return}
+  if(done){$("#setbar").innerHTML=`<b>Your staff is set up:</b><span class="ck">${usage&&usage.limitCents!=null?`$${Math.round(usage.limitCents/100)}/month limit`:"No limit"}</span><span class="ck">${esc(sw)}</span><span class="ck">First order</span>${softName()==="Clubessential"?`<a class="ck" href="/ledger">Ledger: lesson charges</a>`:""}<button type="button" data-su="edit">Change</button>`;return}
   const lim=usage&&usage.limitCents!=null?Math.round(usage.limitCents/100):"";
   const owner=!usage||usage.isOwner;
   $("#setup").innerHTML=`<h2 id="setH">Put your staff to work</h2><p class="sub">Three steps. You pay only for what your staff does, a few cents a job, and never more than your limit.</p>
   <div class="ss${s1&&!SU.edit?" ok":""}"><div class="num"><span>1</span></div><div><h3>Set your monthly limit</h3><p>Your staff stops for the month when it reaches this. No surprises on your bill.</p>
     ${owner?`<form class="row" id="suLimit"><span>$</span><input id="suLimitIn" type="number" min="0" step="1" inputmode="numeric" placeholder="25" value="${esc(lim)}" style="max-width:120px;flex:none"><span>a month</span><button class="go" type="submit">Save</button></form>`:`<p class="note">Your club owner sets this.</p>`}
     ${setMsg.s1?`<p class="msg">${esc(setMsg.s1)}</p>`:""}</div></div>
-  <div class="ss${s2?" ok":""}"><div class="num"><span>2</span></div><div><h3>Let your staff into ${esc(sw)}</h3><p>Your staff works inside your club software, signed in as you. No API, and no passwords handed over. The ClubMode Staff extension for Chrome arrives in December; pick your software and we'll set it up with you.</p>
+  <div class="ss${s2?" ok":""}"><div class="num"><span>2</span></div><div><h3>Let your staff into ${esc(sw)}</h3><p>${softName()==="Clubessential"?`Clubessential Office is a desktop app, so your Ledger works by file: it reads your pros' lesson sheets and hands you one charge file to import there. <a href="/ledger">Set up the Ledger</a>: your member list, each pro's sheet, your item names.`:`Your staff works inside your club software, signed in as you. No API, and no passwords handed over. The ClubMode Staff extension for Chrome arrives in December; pick your software and we'll set it up with you.`}</p>
     <div class="row"><select id="suSoft" aria-label="Your club software"><option value=""${SU.soft?"":" selected"}>Pick your club software</option>${SOFT.map(x=>`<option${x===SU.soft?" selected":""}>${esc(x)}</option>`).join("")}</select><button class="no" type="button" data-su="s2"${SU.soft?"":" disabled"}>Save</button></div></div></div>
-  <div class="ss${s3?" ok":""}"><div class="num"><span>3</span></div><div><h3>Give your first order</h3><p>Try "Bill everything from yesterday." Your staff does the prep and brings it back for your yes.</p>
-    <div class="row">${s3?`<span class="note">Done. Your staff is on the clock.</span>`:`<button class="go" type="button" data-su="s3">Try it</button>`}</div></div></div>`;
+  ${softName()==="Clubessential"?`<div class="ss${s3?" ok":""}"><div class="num"><span>3</span></div><div><h3>Build last week's lesson charges</h3><p>Ledger reads your pros' sheets, matches every student to a member number (it never guesses), and hands you the file to import in Clubessential, with each pro's totals for payroll.</p>
+    <div class="row">${s3?`<span class="note">Done. Your staff is on the clock.</span>`:`<a class="go" href="/ledger" data-su="ledger">Open the Ledger</a>`}</div></div></div>`:`<div class="ss${s3?" ok":""}"><div class="num"><span>3</span></div><div><h3>Give your first order</h3><p>Try "Bill everything from yesterday." Your staff does the prep and brings it back for your yes.</p>
+    <div class="row">${s3?`<span class="note">Done. Your staff is on the clock.</span>`:`<button class="go" type="button" data-su="s3">Try it</button>`}</div></div></div>`}`;
 }
 document.addEventListener("change",e=>{if(e.target.id==="suSoft"){SU.soft=e.target.value;saveSU();paintSetup()}});
 document.addEventListener("submit",async e=>{if(e.target.id!=="suLimit")return;e.preventDefault();
@@ -684,11 +685,12 @@ document.addEventListener("submit",async e=>{if(e.target.id!=="suLimit")return;e
 document.addEventListener("click",e=>{const b=e.target.closest("[data-su]");if(!b)return;const k=b.dataset.su;
   if(k==="edit"){SU.edit=true;paintSetup();return}
   if(k==="s2"){SU.s2=true;delete SU.edit;saveSU();paintSetup();return}
+  if(k==="ledger"){SU.s3=true;saveSU();return} // the link itself goes to /ledger
   if(k==="s3"){const h=(C.hints||[])[1]||"Bill everything from yesterday";$("#cmdIn").value=h;$("#cmdIn").focus();return}
 });
 
 if(C.signin){
-  document.querySelector("main.wrap").innerHTML=`<section class="signin"><h2>Your Pro Shop</h2><p>${esc(C.signinMessage||"Sign in to ClubMode to open your Pro Shop.")}</p><a class="go" href="/login?next=/proshop">Sign in to ClubMode</a></section>`;
+  document.querySelector("main.wrap").innerHTML=`<section class="signin"><h2>Your Pro Shop</h2><p>${esc(C.signinMessage||"Sign in to ClubMode to open your Pro Shop.")}</p>${C.needsClub?'<a class="go" href="/start?next=/proshop">Set up my club</a>':'<a class="go" href="/login?next=/proshop">Sign in to ClubMode</a>'}</section>`;
   document.querySelector(".pills").hidden=true;
 }else{
   paintHints();paintPlays();paintAll();paintSetup();refresh();

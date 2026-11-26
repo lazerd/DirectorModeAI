@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCsv, parseRoster, matchMember, buildCharges, chargesCsv, proSummary, CE_HEADER, type LessonLine } from './charges';
+import { parseCsv, parseRoster, matchMember, buildCharges, chargesCsv, proSummary, ledgerSetupOf, CE_HEADER, type LessonLine } from './charges';
 
 const ROSTER_CSV = `Member Number,Last Name,First Name,Status
 ALE010,Alvarez,Maria,Active
@@ -59,5 +59,15 @@ describe('clubessential charges', () => {
       { pro: 'Alex', lessons: 1, hours: 1, billed: 90 },
       { pro: 'Carrie', lessons: 2, hours: 1.5, billed: 170 },
     ]);
+  });
+  it('counts a shared lesson once for payroll, but bills each student', () => {
+    const semi = { kind: 'semi' as const, price: 60, source: "Carrie's sheet, Fall row 5" };
+    expect(proSummary([line({ ...semi, student: 'Wei Chen' }), line({ ...semi, student: 'Tom Davis' }), line({ source: "Carrie's sheet, Fall row 6" })])).toEqual([
+      { pro: 'Carrie', lessons: 2, hours: 2, billed: 230 },
+    ]);
+  });
+  it('uses the default items until the director saves their own', () => {
+    expect(ledgerSetupOf(null).items.private).toBe('Member Tennis Lessons');
+    expect(ledgerSetupOf({ area: 'Racquets', items: { clinic: 'Adult Clinics' } })).toMatchObject({ area: 'Racquets', items: { private: 'Member Tennis Lessons', clinic: 'Adult Clinics' } });
   });
 });
