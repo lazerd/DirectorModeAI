@@ -31,7 +31,7 @@ export default function Clubhouse({ mode }: { mode: 'insider' | 'member' }) {
 
   return (
     <main className="ch">
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <header className="ch-top">
         <a href="/" className="ch-brand"><span className="ch-crest">CM</span><span>CLUBMODE</span></a>
         <nav className="ch-nav">
