@@ -3,6 +3,7 @@ import { resolveClubCtx, type ClubCtx } from '../clubContext';
 import { clubspotClubId, runOnBridge } from '@/lib/bridge/jobs';
 import { MANAGER_ROLES } from '../clubContext';
 import { sendBilledEmails } from '@/lib/email';
+import { readDayEvents } from '@/lib/lessons/dayEvents';
 
 /*
  * ClubSpot pack (11/25/26): Sleepy Hollow's courts live in ClubSpot, which has no API. The
@@ -259,6 +260,19 @@ async function postLines(ctx: ClubCtx, lines: any[]) {
 const billingTools: ToolDef<ClubCtx>[] = [
   {
     schema: {
+      name: 'my_calendar_day',
+      description: "The director's own Google Calendar for one day: every event with time, title and notes. Use it for \"charge my lessons from today\" (titles name the players and often the price or \"don't charge\"), and for what is on my calendar.",
+      input_schema: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD' } }, required: ['date'] },
+    },
+    run: async (input, ctx) => {
+      const date = String(input?.date ?? '');
+      if (!YMD.test(date)) return { ok: false, error: 'Which day?' };
+      const r = await readDayEvents(ctx.userId, date);
+      return r.ok ? { ok: true, date: dayLabel(date), events: r.events } : r;
+    },
+  },
+  {
+    schema: {
       name: 'clubspot_event_billing',
       description: "Who has been charged for a ClubSpot event/camp/social and who still owes (paid at sign-up or on their member tab), per household, with the event price. Runs on the club computer.",
       input_schema: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD of the event' }, event: { type: 'string', description: 'Part of the event name' } } },
@@ -343,6 +357,7 @@ export const clubspotPack: DomainPack<ClubCtx> = {
 - To block courts: call clubspot_block_courts without confirm to get the preview, show it in one line, and ask "Reply YES to block." Only run it after a clear yes.
 - "Email the people in this morning's camp" = clubspot_email_event with today's date: write the email yourself from what the director said, preview it (subject, message, how many people), and ask "Reply YES to send."
 - BILLING IS YOURS. "Who has been charged for the camp" = clubspot_event_billing. "Charge anyone who hasn't been charged" = clubspot_charge_event (preview the who/how much list, then "Reply YES to charge."). "Charge Max $90 for today's lesson" = clubspot_charge_member. Never say you cannot see or post ClubSpot charges: you can. When a billing preview has sayExactly, send that text as your reply (you may drop the Paid line only if the director did not ask who paid). Text format: short lines, one person per line. Charges go on the member tab and go out on the monthly statement; a mistake is reversed in ClubSpot.
+- "Charge my lessons from today" (or a date) = my_calendar_day, then ONE clubspot_charge_member preview with every lesson to charge. Use the house-rule rates; a $ amount in the title wins; "each" means per player; semi = each player pays the semi rate. Skip events that say don't charge / paid / Venmo / Zelle, personal or admin events, clinics that bill elsewhere, and anyone the house rules say never to charge. Mark any amount you guessed with (guess). After the preview list what you skipped and why in one line.
 - If a result says pending, tell the director it's on the way and you'll text when it's done. Never claim it happened.`,
   resolve: async (userId) => {
     const ctx = await resolveClubCtx(userId);
