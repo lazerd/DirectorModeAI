@@ -175,16 +175,178 @@ const eventTools: ToolDef<ClubCtx>[] = [
   },
 ];
 
+
+// ---- Billing (11/27/26): who was charged for an event, and charges on household MEMBER TABS.
+// Lines go on the tab (monthly statement), the way the club bills; a wrong line is reversed in
+// ClubSpot. Every charge is previewed and needs the director's YES.
+const LESSON_PRODUCTS: Record<string, string> = { darrin: '60kPSCIIUT', cc: 'aYd5ndCd9Z', alex: 'xXn6KVUtlh', julia: 'Ylq9AY1RQ2', jim: 'vVHi2M3CMB', josh: 'bL52QLwbCo' };
+const NEVER_BILL = /\b(gavin|vivian) cohen\b/i; // the director's own kids (house rule, enforced here too)
+const usd = (c: number) => '$' + `${(c / 100).toFixed(c % 100 ? 2 : 0)}`;
+const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
+
+async function bridgeRead(ctx: ClubCtx, kind: 'clubspot_event_billing' | 'clubspot_find_member', input: Record<string, unknown>) {
+  const r = await runOnBridge({ kind, input, clubId: ctx.clubId, userId: ctx.userId }, 75_000);
+  if (!r.ok) return { ok: false as const, error: (r as any).error ?? 'ClubSpot did not answer.' };
+  if ('queued' in r) return { ok: false as const, error: r.online ? 'ClubSpot is slow right now; try again in a minute.' : 'The club computer is offline, so ClubSpot cannot be read right now.' };
+  return { ok: true as const, result: r.result as any };
+}
+
+interface BillRow { membershipId: string | null; memberNumber: string; people: string[]; charged: number; owes: number }
+async function eventBilling(input: any, ctx: ClubCtx) {
+  const date = input?.date && YMD.test(String(input.date)) ? String(input.date) : null;
+  const name = input?.event ? String(input.event) : null;
+  if (!date && !name) return { ok: false as const, error: 'Which event? Give the date or its name.' };
+  const r = await bridgeRead(ctx, 'clubspot_event_billing', { date, name });
+  if (!r.ok) return r;
+  const b = r.result;
+  if (!b.event) return { ok: false as const, error: b.events?.length ? `More than one event matches: ${b.events.map((e: any) => `${e.name} (${dayLabel(e.date)})`).join('; ')}. Which one?` : 'No ClubSpot event found for that.' };
+  return { ok: true as const, event: b.event as { id: string; name: string; date: string }, productId: b.productId as string | null, price: b.price as number, rows: b.rows as BillRow[] };
+}
+
+function chargePlan(b: { event: { id: string; name: string }; productId: string | null; price: number; rows: BillRow[] }, input: any) {
+  const only = (input?.only ?? []).map((s: string) => s.toLowerCase());
+  const skip = (input?.skip ?? []).map((s: string) => s.toLowerCase());
+  const hit = (row: BillRow, list: string[]) => list.some((n) => row.people.some((p) => p.toLowerCase().includes(n)));
+  const owing = b.rows.filter((r) => r.owes > 0 && r.membershipId && (!only.length || hit(r, only)) && !hit(r, skip));
+  const blocked = owing.filter((r) => r.people.some((p) => NEVER_BILL.test(p)));
+  const lines = owing.filter((r) => !blocked.includes(r)).map((r) => ({
+    membershipId: r.membershipId!, productId: b.productId!, amountCents: r.owes,
+    description: `${b.event.name} - ${r.people.join(', ')}`, key: `ev-${b.event.id}-${r.membershipId}-${r.owes}`, who: r.people.join(' + '),
+  }));
+  return { lines, blocked: blocked.map((r) => r.people.join(' + ')), noHousehold: b.rows.filter((r) => r.owes > 0 && !r.membershipId).map((r) => r.people.join(' + ')) };
+}
+
+interface ChargeIn { person: string; amount: number; what: string; date?: string; pro?: string; household?: string }
+async function memberChargePlan(input: any, ctx: ClubCtx) {
+  const charges: ChargeIn[] = Array.isArray(input?.charges) ? input.charges.slice(0, 20) : [];
+  if (!charges.length) return { ok: false as const, error: 'Who should be charged, for what and how much?' };
+  for (const c of charges) {
+    if (!c.person || !(Number(c.amount) > 0) || Number(c.amount) > 1000 || !c.what) return { ok: false as const, error: 'Each charge needs a person, an amount ($1-$1000) and what it is for.' };
+    if (NEVER_BILL.test(c.person)) return { ok: false as const, error: `${c.person} is never billed (house rule).` };
+  }
+  const r = await bridgeRead(ctx, 'clubspot_find_member', { names: charges.map((c) => c.person) });
+  if (!r.ok) return r;
+  const lines: any[] = [], problems: string[] = [];
+  charges.forEach((c, i) => {
+    const found = r.result.results?.[i]?.households ?? [];
+    let hh = found;
+    if (c.household) hh = found.filter((h: any) => h.membershipId === c.household || h.memberNumber === String(c.household));
+    if (!hh.length) { problems.push(`${c.person}: not found in ClubSpot${c.household ? ' under that household' : ''}. Are they set up in ClubSpot?`); return; }
+    if (hh.length > 1) { problems.push(`${c.person}: in more than one household (${hh.map((h: any) => `#${h.memberNumber} ${h.household.slice(0, 3).join('/')}`).join('; ')}). Which one? (say the # )`); return; }
+    const h = hh[0];
+    if (h.household.some((p: string) => NEVER_BILL.test(p)) && /cohen/i.test(c.person)) { problems.push(`${c.person}: Cohen household, never billed.`); return; }
+    const pro = String(c.pro ?? 'darrin').toLowerCase().split(/\s+/)[0];
+    const productId = LESSON_PRODUCTS[pro] ?? LESSON_PRODUCTS.darrin;
+    const date = c.date && YMD.test(c.date) ? c.date : null;
+    const md = date ? `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}` : '';
+    const description = `${c.what}${md ? ' ' + md : ''} - ${c.person}`.slice(0, 200);
+    const cents = Math.round(Number(c.amount) * 100);
+    const dup = (h.recent ?? []).find((l: any) => l.amount === cents && md && String(l.description).includes(md) && String(l.description).toLowerCase().includes(c.person.split(/\s+/)[0].toLowerCase()));
+    lines.push({ membershipId: h.membershipId, productId, amountCents: cents, description, key: `mt-${h.membershipId}-${date ?? 'nodate'}-${slug(c.person)}-${slug(c.what)}-${cents}`,
+      who: c.person, household: `#${h.memberNumber} ${h.household.slice(0, 4).join(', ')}`, pastDue: h.status === 'past_due', alreadyOnTab: dup ? `${dup.description} (${usd(dup.amount)}, ${dup.at})` : null });
+  });
+  return { ok: true as const, lines, problems };
+}
+
+async function postLines(ctx: ClubCtx, lines: any[]) {
+  const r = await runOnBridge({ kind: 'clubspot_tab_charge', input: { lines: lines.map(({ membershipId, productId, amountCents, description, key }) => ({ membershipId, productId, amountCents, description, key })) }, clubId: ctx.clubId, userId: ctx.userId }, 90_000);
+  if (!r.ok) return { ok: false, error: (r as any).error };
+  if ('queued' in r) return { ok: true, pending: true, note: r.online ? 'Posting on the club computer now; I will text when it is done.' : 'The club computer is offline; it will post when it is back on.' };
+  const res = ((r.result as any)?.results ?? []) as any[];
+  return { ok: res.some((x) => x.ok), posted: res.filter((x) => x.ok).map((x) => `${x.description}: ${usd(x.amountCents)}`), failed: res.filter((x) => !x.ok).map((x) => `${x.description}: ${x.error}`), where: 'ClubSpot member tabs (go out on the monthly statement)' };
+}
+
+const billingTools: ToolDef<ClubCtx>[] = [
+  {
+    schema: {
+      name: 'clubspot_event_billing',
+      description: "Who has been charged for a ClubSpot event/camp/social and who still owes (paid at sign-up or on their member tab), per household, with the event price. Runs on the club computer.",
+      input_schema: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD of the event' }, event: { type: 'string', description: 'Part of the event name' } } },
+    },
+    run: async (input, ctx) => {
+      const b = await eventBilling(input, ctx);
+      if (!b.ok) return b;
+      return { ok: true, event: b.event.name, date: dayLabel(b.event.date), price: usd(b.price),
+        charged: b.rows.filter((r) => r.charged > 0).map((r) => `${r.people.join(' + ')}: ${usd(r.charged)}`),
+        owes: b.rows.filter((r) => r.owes > 0).map((r) => `${r.people.join(' + ')}: ${usd(r.owes)}`),
+        totalOwed: usd(b.rows.reduce((s, r) => s + r.owes, 0)) };
+    },
+  },
+  {
+    schema: {
+      name: 'clubspot_charge_event',
+      description: "Charge everyone signed up for a ClubSpot event who has not paid yet: puts the event price per person on their household's member tab. Optional only/skip lists of names. Preview first; post only after the director says yes.",
+      input_schema: { type: 'object', properties: {
+        date: { type: 'string', description: 'YYYY-MM-DD of the event' }, event: { type: 'string', description: 'Part of the event name' },
+        only: { type: 'array', items: { type: 'string' }, description: 'Charge only these people' }, skip: { type: 'array', items: { type: 'string' }, description: 'Do not charge these people' } } },
+    },
+    destructive: true,
+    preview: async (input, ctx) => {
+      const b = await eventBilling(input, ctx);
+      if (!b.ok) return b;
+      if (!b.productId || !b.price) return { ok: false, error: `${b.event.name} has no price in ClubSpot, so I don't know what to charge. How much per person?` };
+      const p = chargePlan(b, input);
+      if (!p.lines.length) return { ok: false, error: `Nobody owes for ${b.event.name}: everyone signed up has been charged.` };
+      const paid = b.rows.filter((r) => r.charged > 0).map((r) => r.people.join(' + '));
+      const total = usd(p.lines.reduce((s, l) => s + l.amountCents, 0));
+      const sayExactly = `${b.event.name}
+Paid (${paid.length}): ${paid.join(', ')}
+Not charged yet: ${p.lines.map((l) => `${l.who} ${usd(l.amountCents)}`).join(', ')}
+Charge ${total} to their member tabs? Reply YES.`;
+      return { ok: true, sayExactly, event: b.event.name, willCharge: p.lines.map((l) => `${l.who}: ${usd(l.amountCents)}`), total: usd(p.lines.reduce((s, l) => s + l.amountCents, 0)),
+        alreadyCharged: b.rows.filter((r) => r.charged > 0).map((r) => `${r.people.join(' + ')} ${usd(r.charged)}`), neverBilled: p.blocked, notInClubSpot: p.noHousehold, where: 'member tab (monthly statement)' };
+    },
+    run: async (input, ctx) => {
+      if (!MANAGER_ROLES.has(ctx.role)) return { ok: false, error: 'Only the owner or a director can charge.' };
+      const b = await eventBilling(input, ctx);
+      if (!b.ok) return b;
+      if (!b.productId || !b.price) return { ok: false, error: 'That event has no price in ClubSpot.' };
+      const p = chargePlan(b, input);
+      if (!p.lines.length) return { ok: false, error: 'Nobody owes any more (already charged).' };
+      return postLines(ctx, p.lines);
+    },
+  },
+  {
+    schema: {
+      name: 'clubspot_charge_member',
+      description: "Charge people on their household's ClubSpot member tab: lessons (private/semi), drop-ins, stringing, anything with a dollar amount. Finds each person's household, flags the same charge already on the tab, and previews; posts only after the director says yes. Product = the pro's lesson product (default Darrin).",
+      input_schema: { type: 'object', properties: { charges: { type: 'array', items: { type: 'object', properties: {
+        person: { type: 'string', description: 'Full name of the player' }, amount: { type: 'number', description: 'Dollars' },
+        what: { type: 'string', description: 'Short line description, e.g. "Private lesson w/ Darrin", "Semi private lesson"' },
+        date: { type: 'string', description: 'YYYY-MM-DD of the lesson/session' }, pro: { type: 'string', description: 'darrin, cc, alex, julia, jim or josh' },
+        household: { type: 'string', description: 'Household # when the person is in more than one' } }, required: ['person', 'amount', 'what'] } } }, required: ['charges'] },
+    },
+    destructive: true,
+    preview: async (input, ctx) => {
+      const p = await memberChargePlan(input, ctx);
+      if (!p.ok) return p;
+      if (!p.lines.length) return { ok: false, error: p.problems.join(' ') };
+      return { ok: true, willCharge: p.lines.map((l) => `${l.who} (${l.household}): ${usd(l.amountCents)} "${l.description}"${l.alreadyOnTab ? ` ⚠️ already on tab: ${l.alreadyOnTab}` : ''}${l.pastDue ? ' (account past due)' : ''}`),
+        total: usd(p.lines.reduce((s, l) => s + l.amountCents, 0)), needsAnswer: p.problems, where: 'member tab (monthly statement)' };
+    },
+    run: async (input, ctx) => {
+      if (!MANAGER_ROLES.has(ctx.role)) return { ok: false, error: 'Only the owner or a director can charge.' };
+      const p = await memberChargePlan(input, ctx);
+      if (!p.ok) return p;
+      const lines = p.lines.filter((l) => !l.alreadyOnTab);
+      if (!lines.length) return { ok: false, error: 'Nothing to post (already on the tab or not found).' };
+      const out: any = await postLines(ctx, lines);
+      return { ...out, skippedAlreadyOnTab: p.lines.filter((l) => l.alreadyOnTab).map((l) => l.who), notPosted: p.problems };
+    },
+  },
+];
+
 export const clubspotPack: DomainPack<ClubCtx> = {
   domain: 'clubspot',
-  actionsPrompt: `CLUBSPOT (Sleepy Hollow). The club's courts, court blocks AND event sign-ups (camps, socials) live in ClubSpot. You can read a day's court blocks, block courts, see an event's sign-ups, and email everyone signed up for an event; both run on the club computer, so a reply can take a few seconds or come later by text.
+  actionsPrompt: `CLUBSPOT (Sleepy Hollow). The club's courts, court blocks AND event sign-ups (camps, socials) live in ClubSpot. You can read a day's court blocks, block courts, see an event's sign-ups, email everyone signed up for an event, see who has been charged for an event, and CHARGE people on their household member tab (events, lessons, drop-ins, anything); both run on the club computer, so a reply can take a few seconds or come later by text.
 - Times are Pacific. Convert "4 to 6" into 16:00-18:00, "tomorrow" etc. into a date.
 - To block courts: call clubspot_block_courts without confirm to get the preview, show it in one line, and ask "Reply YES to block." Only run it after a clear yes.
 - "Email the people in this morning's camp" = clubspot_email_event with today's date: write the email yourself from what the director said, preview it (subject, message, how many people), and ask "Reply YES to send."
+- BILLING IS YOURS. "Who has been charged for the camp" = clubspot_event_billing. "Charge anyone who hasn't been charged" = clubspot_charge_event (preview the who/how much list, then "Reply YES to charge."). "Charge Max $90 for today's lesson" = clubspot_charge_member. Never say you cannot see or post ClubSpot charges: you can. When a billing preview has sayExactly, send that text as your reply (you may drop the Paid line only if the director did not ask who paid). Text format: short lines, one person per line. Charges go on the member tab and go out on the monthly statement; a mistake is reversed in ClubSpot.
 - If a result says pending, tell the director it's on the way and you'll text when it's done. Never claim it happened.`,
   resolve: async (userId) => {
     const ctx = await resolveClubCtx(userId);
     return ctx && ctx.clubId === clubspotClubId() ? ctx : null;
   },
-  tools: [...tools, ...eventTools],
+  tools: [...tools, ...eventTools, ...billingTools],
 };

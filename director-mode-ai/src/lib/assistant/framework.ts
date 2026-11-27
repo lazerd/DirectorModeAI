@@ -87,7 +87,8 @@ export function bindPack<Ctx>(pack: DomainPack<Ctx>, ctx: Ctx): BoundPack {
     execute: async (name, input) => {
       const t = byName.get(name);
       if (!t) return { ok: false, error: `Unknown tool ${name}` };
-      if (t.destructive && input?.confirm !== true) {
+      // ASSISTANT_DRY_RUN=1 (audits/evals): a destructive tool never runs, even with confirm.
+      if (t.destructive && (input?.confirm !== true || process.env.ASSISTANT_DRY_RUN === '1')) {
         const preview = t.preview ? await t.preview(input, ctx) : { ok: true as const };
         /*
          * A FAILED preview is not something to confirm.
@@ -100,10 +101,13 @@ export function bindPack<Ctx>(pack: DomainPack<Ctx>, ctx: Ctx): BoundPack {
          * been shown. Preserve the refusal, and only ask for confirmation of
          * something that can actually happen.
          */
+        (globalThis as any).__assistantTrace?.getStore?.()?.push({ tool: name, input, result: preview, preview: true });
         if (preview.ok === false) return preview;
         return { ...preview, ok: true, needsConfirm: true };
       }
-      return t.run(input, ctx);
+      const out = await t.run(input, ctx);
+      (globalThis as any).__assistantTrace?.getStore?.()?.push({ tool: name, input, result: out });
+      return out;
     },
   };
 }
