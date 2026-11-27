@@ -158,7 +158,8 @@ const eventTools: ToolDef<ClubCtx>[] = [
     preview: async (input, ctx) => {
       const p = await emailPlan(input, ctx);
       if (!p.ok) return p;
-      return { ok: true, needsConfirm: true, event: p.ev.name, date: dayLabel(p.ev.date), recipients: p.emails.length, people: p.ev.count, noEmail: p.noEmail, subject: p.subject, message: p.message };
+      const goesTo = p.emails.length === p.ev.count ? `${p.ev.count} people` : `${p.ev.count} people (${p.emails.length} emails; some families share one)`;
+      return { ok: true, needsConfirm: true, event: p.ev.name, date: dayLabel(p.ev.date), goesTo, noEmail: p.noEmail, subject: p.subject, message: p.message, sayExactly: `Goes to ${goesTo}.` };
     },
     run: async (input, ctx) => {
       if (!MANAGER_ROLES.has(ctx.role)) return { ok: false, error: 'Only the owner or a director can email an event.' };
