@@ -181,11 +181,15 @@ const eventTools: ToolDef<ClubCtx>[] = [
 // Lines go on the tab (monthly statement), the way the club bills; a wrong line is reversed in
 // ClubSpot. Every charge is previewed and needs the director's YES.
 const LESSON_PRODUCTS: Record<string, string> = { darrin: '60kPSCIIUT', cc: 'aYd5ndCd9Z', alex: 'xXn6KVUtlh', julia: 'Ylq9AY1RQ2', jim: 'vVHi2M3CMB', josh: 'bL52QLwbCo' };
+// Team clinic drop-ins bill to the clinic's own ClubSpot product (not a lesson).
+const CLINIC_PRODUCTS: Record<string, string> = { ladies_b: '2PXvXePdkQ', ladies_c: 'hvm5Fixqux', mens: 'z8fnpg9tJj' };
+const NO_CHARGE_WHY = (st: string) => (/^RULED/.test(st) ? 'make-up, $0 (Darrin ruled)' : /^MAKE-UP/.test(st) ? 'make-up, $0' : /^CHARGED/.test(st) ? 'already charged' : /^WRITTEN/.test(st) ? 'older than a week, written off' : /^REGISTERED/.test(st) ? 'registered' : st.toLowerCase());
+const CLINIC_OF_TAB: Record<string, string> = { 'LADIES B Team': 'ladies_b', 'LADIES B Team PM': 'ladies_b', 'LADIES C Team AM': 'ladies_c', 'LADIES C Team PM': 'ladies_c', 'MENS Combo Team': 'mens' };
 const NEVER_BILL = /\b(gavin|vivian) cohen\b/i; // the director's own kids (house rule, enforced here too)
 const usd = (c: number) => '$' + `${(c / 100).toFixed(c % 100 ? 2 : 0)}`;
 const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
 
-async function bridgeRead(ctx: ClubCtx, kind: 'clubspot_event_billing' | 'clubspot_find_member', input: Record<string, unknown>) {
+async function bridgeRead(ctx: ClubCtx, kind: 'clubspot_event_billing' | 'clubspot_find_member' | 'clinic_attendance', input: Record<string, unknown>) {
   const r = await runOnBridge({ kind, input, clubId: ctx.clubId, userId: ctx.userId }, 75_000);
   if (!r.ok) return { ok: false as const, error: (r as any).error ?? 'ClubSpot did not answer.' };
   if ('queued' in r) return { ok: false as const, error: r.online ? 'ClubSpot is slow right now; try again in a minute.' : 'The club computer is offline, so ClubSpot cannot be read right now.' };
@@ -217,7 +221,7 @@ function chargePlan(b: { event: { id: string; name: string }; productId: string 
   return { lines, blocked: blocked.map((r) => r.people.join(' + ')), noHousehold: b.rows.filter((r) => r.owes > 0 && !r.membershipId).map((r) => r.people.join(' + ')) };
 }
 
-interface ChargeIn { person: string; amount: number; what: string; date?: string; pro?: string; household?: string }
+interface ChargeIn { person: string; amount: number; what: string; date?: string; pro?: string; household?: string; product?: string }
 async function memberChargePlan(input: any, ctx: ClubCtx) {
   const charges: ChargeIn[] = Array.isArray(input?.charges) ? input.charges.slice(0, 20) : [];
   if (!charges.length) return { ok: false as const, error: 'Who should be charged, for what and how much?' };
@@ -237,7 +241,7 @@ async function memberChargePlan(input: any, ctx: ClubCtx) {
     const h = hh[0];
     if (h.household.some((p: string) => NEVER_BILL.test(p)) && /cohen/i.test(c.person)) { problems.push(`${c.person}: Cohen household, never billed.`); return; }
     const pro = String(c.pro ?? 'darrin').toLowerCase().split(/\s+/)[0];
-    const productId = LESSON_PRODUCTS[pro] ?? LESSON_PRODUCTS.darrin;
+    const productId = (c.product && CLINIC_PRODUCTS[c.product]) || LESSON_PRODUCTS[pro] || LESSON_PRODUCTS.darrin;
     const date = c.date && YMD.test(c.date) ? c.date : null;
     const md = date ? `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}` : '';
     const description = `${c.what}${md ? ' ' + md : ''} - ${c.person}`.slice(0, 200);
@@ -258,6 +262,24 @@ async function postLines(ctx: ClubCtx, lines: any[]) {
 }
 
 const billingTools: ToolDef<ClubCtx>[] = [
+  {
+    schema: {
+      name: 'clinic_attendance_billing',
+      description: "Team clinic attendance for one date (Ladies B Thu AM, B Wed PM, C Thu AM, C Mon PM = CC's, Men's Combo) from the attendance sheet, each person classified by the club's rules: registered, DROP-IN $35 (half session $17.50), EXTRA $35 (ahead of their own clinic), MAKE-UP $0, already charged, or written off (older than a week). Use for \"attendance is in, bill away\" / \"who needs to be charged from tonight's clinic\". Runs on the club computer.",
+      input_schema: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD' } }, required: ['date'] },
+    },
+    run: async (input, ctx) => {
+      const date = String(input?.date ?? '');
+      if (!YMD.test(date)) return { ok: false, error: 'Which day?' };
+      const r = await bridgeRead(ctx, 'clinic_attendance', { date, asOf: process.env.CLINIC_ASOF || undefined });
+      if (!r.ok) return r;
+      const rows = (r.result.rows ?? []) as { clinic: string; tab: string; name: string; status: string; amount: number; note: string }[];
+      if (!rows.length) return { ok: true, date: dayLabel(date), note: 'No clinic attendance marked on the sheet for that day (not run, rained out, or not entered yet).' };
+      return { ok: true, date: dayLabel(date),
+        toCharge: rows.filter((x) => x.amount > 0).map((x) => ({ person: x.name, amount: x.amount, product: CLINIC_OF_TAB[x.tab], what: `${x.clinic} clinic ${x.status.startsWith('EXTRA') ? 'extra session' : x.amount < 35 ? 'drop-in (half)' : 'drop-in'}`, date, why: x.status })),
+        noCharge: rows.filter((x) => !(x.amount > 0)).map((x) => `${x.name} (${x.clinic}): ${NO_CHARGE_WHY(x.status)}`) };
+    },
+  },
   {
     schema: {
       name: 'my_calendar_day',
@@ -328,6 +350,7 @@ Charge ${total} to their member tabs? Reply YES.`;
         person: { type: 'string', description: 'Full name of the player' }, amount: { type: 'number', description: 'Dollars' },
         what: { type: 'string', description: 'Short line description, e.g. "Private lesson w/ Darrin", "Semi private lesson"' },
         date: { type: 'string', description: 'YYYY-MM-DD of the lesson/session' }, pro: { type: 'string', description: 'darrin, cc, alex, julia, jim or josh' },
+        product: { type: 'string', enum: ['ladies_b', 'ladies_c', 'mens'], description: 'Team clinic drop-ins/extras: the clinic product (from clinic_attendance_billing). Omit for lessons.' },
         household: { type: 'string', description: 'Household # when the person is in more than one' } }, required: ['person', 'amount', 'what'] } } }, required: ['charges'] },
     },
     destructive: true,
@@ -357,6 +380,7 @@ export const clubspotPack: DomainPack<ClubCtx> = {
 - To block courts: call clubspot_block_courts without confirm to get the preview, show it in one line, and ask "Reply YES to block." Only run it after a clear yes.
 - "Email the people in this morning's camp" = clubspot_email_event with today's date: write the email yourself from what the director said, preview it (subject, message, how many people), and ask "Reply YES to send."
 - BILLING IS YOURS. "Who has been charged for the camp" = clubspot_event_billing. "Charge anyone who hasn't been charged" = clubspot_charge_event (preview the who/how much list, then "Reply YES to charge."). "Charge Max $90 for today's lesson" = clubspot_charge_member. Never say you cannot see or post ClubSpot charges: you can. When a billing preview has sayExactly, send that text as your reply (you may drop the Paid line only if the director did not ask who paid). Text format: short lines, one person per line. Charges go on the member tab and go out on the monthly statement; a mistake is reversed in ClubSpot.
+- "Attendance is in for tonight's clinic, bill away" / "charge whoever needs to be charged from the B clinic" = clinic_attendance_billing for that date, then ONE clubspot_charge_member preview of its toCharge list exactly as given (person, amount, what, date, product). Never add registered people, make-ups, already-charged or written-off ones; list those in one short line after the preview. If toCharge is empty, say nobody owes and why. Anything older than a week is written off: never bill it.
 - "Charge my lessons from today" (or a date) = my_calendar_day, then ONE clubspot_charge_member preview with every lesson to charge. Use the house-rule rates; a $ amount in the title wins; "each" means per player; semi = each player pays the semi rate. Skip events that say don't charge / paid / Venmo / Zelle, personal or admin events, clinics that bill elsewhere, and anyone the house rules say never to charge. Mark any amount you guessed with (guess). After the preview list what you skipped and why in one line.
 - If a result says pending, tell the director it's on the way and you'll text when it's done. Never claim it happened.`,
   resolve: async (userId) => {
