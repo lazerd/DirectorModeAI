@@ -10,7 +10,7 @@ import { getSupabaseAdmin } from '@/lib/supabase/admin';
  * otherwise get "queued": the worker's result is texted to the line when it lands.
  */
 
-export type BridgeKind = 'clubspot_day' | 'clubspot_block' | 'reimburse';
+export type BridgeKind = 'clubspot_day' | 'clubspot_block' | 'clubspot_events' | 'reimburse';
 export interface BridgeJob {
   id: string; kind: BridgeKind; status: 'queued' | 'running' | 'done' | 'failed';
   input: Record<string, unknown>; result: Record<string, unknown> | null; error: string | null;
