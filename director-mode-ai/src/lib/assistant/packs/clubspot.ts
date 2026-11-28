@@ -189,7 +189,7 @@ const NEVER_BILL = /\b(gavin|vivian) cohen\b/i; // the director's own kids (hous
 const usd = (c: number) => '$' + `${(c / 100).toFixed(c % 100 ? 2 : 0)}`;
 const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 24);
 
-async function bridgeRead(ctx: ClubCtx, kind: 'clubspot_event_billing' | 'clubspot_find_member' | 'clinic_attendance', input: Record<string, unknown>) {
+async function bridgeRead(ctx: ClubCtx, kind: 'clubspot_event_billing' | 'clubspot_find_member' | 'clinic_attendance' | 'missed_charges', input: Record<string, unknown>) {
   const r = await runOnBridge({ kind, input, clubId: ctx.clubId, userId: ctx.userId }, 75_000);
   if (!r.ok) return { ok: false as const, error: (r as any).error ?? 'ClubSpot did not answer.' };
   if ('queued' in r) return { ok: false as const, error: r.online ? 'ClubSpot is slow right now; try again in a minute.' : 'The club computer is offline, so ClubSpot cannot be read right now.' };
@@ -262,6 +262,24 @@ async function postLines(ctx: ClubCtx, lines: any[]) {
 }
 
 const billingTools: ToolDef<ClubCtx>[] = [
+  {
+    schema: {
+      name: 'missed_charges',
+      description: "The daily missed-charges check (runs every morning on the club computer): lessons on the director's calendar, team clinic drop-ins/extras and paid ClubSpot events from the last 7 days that are NOT on anyone's ClubSpot member tab yet. Use for \"what did I miss charging\", \"any missed charges\", \"charge the missed ones\".",
+      input_schema: { type: 'object', properties: {} },
+    },
+    run: async (_input, ctx) => {
+      const r = await bridgeRead(ctx, 'missed_charges', {});
+      if (!r.ok) return r;
+      const m = r.result as { today: string; from: string; to: string; total: number; missed: any[]; unsure: string[] };
+      const tab = m.missed.filter((x) => x.type !== 'event');
+      return { ok: true, checked: `${dayLabel(m.from)} to ${dayLabel(m.to)} (as of ${dayLabel(m.today)} morning)`, total: m.total,
+        toCharge: tab.map((x) => ({ person: x.person, amount: x.amount, what: x.what, date: x.date, product: x.productKey || undefined, household: x.household?.memberNumber, note: [x.guess ? 'GUESS: no $ in the calendar title' : '', x.lastChance ? 'last day before write-off' : '', x.source].filter(Boolean).join('; ') })),
+        unpaidEvents: m.missed.filter((x) => x.type === 'event').map((x) => ({ event: x.what, date: x.date, who: x.person, owes: x.amount })),
+        needsYou: m.unsure,
+        howToCharge: 'toCharge -> ONE clubspot_charge_member preview with exactly those lines (person, amount, what, date, product, household). unpaidEvents -> clubspot_charge_event for that event.' };
+    },
+  },
   {
     schema: {
       name: 'clinic_attendance_billing',
@@ -380,6 +398,7 @@ export const clubspotPack: DomainPack<ClubCtx> = {
 - To block courts: call clubspot_block_courts without confirm to get the preview, show it in one line, and ask "Reply YES to block." Only run it after a clear yes.
 - "Email the people in this morning's camp" = clubspot_email_event with today's date: write the email yourself from what the director said, preview it (subject, message, how many people), and ask "Reply YES to send."
 - BILLING IS YOURS. "Who has been charged for the camp" = clubspot_event_billing. "Charge anyone who hasn't been charged" = clubspot_charge_event (preview the who/how much list, then "Reply YES to charge."). "Charge Max $90 for today's lesson" = clubspot_charge_member. Never say you cannot see or post ClubSpot charges: you can. When a billing preview has sayExactly, send that text as your reply (you may drop the Paid line only if the director did not ask who paid). Text format: short lines, one person per line. Charges go on the member tab and go out on the monthly statement; a mistake is reversed in ClubSpot.
+- "What did I miss charging?" / "any missed charges" / "charge the missed ones" = missed_charges, then ONE clubspot_charge_member preview of its toCharge list exactly as given (keep each date so the tab shows the day), plus clubspot_charge_event for any unpaidEvents. Mention GUESS amounts and needsYou items in one short line. If nothing is missed, say so in one line.
 - "Attendance is in for tonight's clinic, bill away" / "charge whoever needs to be charged from the B clinic" = clinic_attendance_billing for that date, then ONE clubspot_charge_member preview of its toCharge list exactly as given (person, amount, what, date, product). Never add registered people, make-ups, already-charged or written-off ones; list those in one short line after the preview. If toCharge is empty, say nobody owes and why. Anything older than a week is written off: never bill it.
 - "Charge my lessons from today" (or a date) = my_calendar_day, then ONE clubspot_charge_member preview with every lesson to charge. Use the house-rule rates; a $ amount in the title wins; "each" means per player; semi = each player pays the semi rate. Skip events that say don't charge / paid / Venmo / Zelle, personal or admin events, clinics that bill elsewhere, and anyone the house rules say never to charge. Mark any amount you guessed with (guess). After the preview list what you skipped and why in one line.
 - If a result says pending, tell the director it's on the way and you'll text when it's done. Never claim it happened.`,
